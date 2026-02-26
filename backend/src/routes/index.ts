@@ -1,0 +1,14 @@
+import { Router } from "express";
+import authRoutes from "./auth.routes";
+import userRoutes from "./user.routes";
+import companyRoutes from "./company.routes";
+import roleRoutes from "./role.routes";
+
+const router = Router();
+
+router.use("/auth", authRoutes);
+router.use("/users", userRoutes);
+router.use("/companies", companyRoutes);
+router.use("/roles", roleRoutes);
+
+export default router;
