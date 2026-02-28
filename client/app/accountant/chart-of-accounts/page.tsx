@@ -6,14 +6,8 @@ import { ChevronRight, ChevronDown, Plus, RefreshCw, TreePine } from "lucide-rea
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
-import {
-  Breadcrumb, BreadcrumbItem, BreadcrumbList,
-  BreadcrumbPage, BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
-import {
-  SidebarInset, SidebarProvider, SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { PageHeader } from "@/components/page-header";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { accountApi, type Account } from "@/lib/api/accounts";
@@ -181,46 +175,32 @@ export default function ChartOfAccountsPage() {
       <AppSidebar />
       <SidebarInset>
         {/* Header */}
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>Accountant</BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>Chart of Accounts</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchAccounts}
-              disabled={fetching}
-            >
-              <RefreshCw className={`h-4 w-4 mr-1 ${fetching ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            {accounts.length === 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSeedTemplate}
-                disabled={seeding}
-              >
-                <TreePine className="h-4 w-4 mr-1" />
-                {seeding ? "Loading..." : "Load Standard Template"}
+        <PageHeader
+          breadcrumb={
+            <span className="text-sm text-muted-foreground">
+              Accountant <span className="mx-1">/</span>
+              <span className="font-medium text-foreground">Chart of Accounts</span>
+            </span>
+          }
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={fetchAccounts} disabled={fetching}>
+                <RefreshCw className={`h-4 w-4 mr-1 ${fetching ? "animate-spin" : ""}`} />
+                Refresh
               </Button>
-            )}
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-1" />
-              New Account
-            </Button>
-          </div>
-        </header>
+              {accounts.length === 0 && (
+                <Button variant="outline" size="sm" onClick={handleSeedTemplate} disabled={seeding}>
+                  <TreePine className="h-4 w-4 mr-1" />
+                  {seeding ? "Loading..." : "Load Template"}
+                </Button>
+              )}
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                New Account
+              </Button>
+            </>
+          }
+        />
 
         {/* Content */}
         <div className="flex flex-1 flex-col p-6 gap-4">

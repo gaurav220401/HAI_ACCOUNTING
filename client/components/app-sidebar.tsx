@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 
 import { NavUser } from "@/components/nav-user";
-import { OrgSwitcher } from "@/components/org-switcher";
 import {
   Collapsible,
   CollapsibleContent,
@@ -130,9 +129,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" {...props}>
-      {/* ── Header: Org Switcher ── */}
+      {/* ── Header: App brand only ── */}
       <SidebarHeader>
-        <OrgSwitcher />
+        <div className="flex items-center gap-2.5 px-2 py-3 group-data-[collapsible=icon]:justify-center">
+          {/* Logo mark */}
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background text-xs font-black tracking-tight select-none">
+            H
+          </div>
+          {/* Logotype — hidden when sidebar is icon-only */}
+          <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+            HAI Accounting
+          </span>
+        </div>
       </SidebarHeader>
 
       {/* ── Nav ── */}
