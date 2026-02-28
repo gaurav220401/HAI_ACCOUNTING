@@ -10,3 +10,50 @@ export type {
   CreateOrganizationInput,
   UpdateOrganizationInput,
 } from "./organizations";
+
+export { accountApi } from "./accounts";
+export type {
+  Account,
+  AccountRootType,
+  AccountType,
+  CreateAccountInput,
+  UpdateAccountInput,
+} from "./accounts";
+
+export { contactApi } from "./contacts";
+export type {
+  Contact,
+  ContactType,
+  TaxTreatment,
+  ContactPerson,
+  Address,
+  CreateContactInput,
+  UpdateContactInput,
+  ContactListParams,
+} from "./contacts";
+
+export { itemApi } from "./items";
+export type {
+  Item,
+  ItemType,
+  ItemGroup,
+  UnitOfMeasurement,
+  CreateItemInput,
+  UpdateItemInput,
+} from "./items";
+
+export { currencyApi } from "./currencies";
+export type { Currency, ExchangeRate } from "./currencies";
+
+export { settingsApi } from "./settings";
+export type {
+  Tax,
+  TaxType,
+  PaymentTerms,
+  Warehouse,
+  SalesPerson,
+  PaymentMode,
+  ExpenseCategory,
+  ReportingTag,
+  PriceList,
+} from "./settings";

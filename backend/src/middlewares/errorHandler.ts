@@ -11,10 +11,11 @@ const errorHandler = (
   res: Response,
   _next: NextFunction,
 ): void => {
-  // Log the error
+  // Log the error (always include stack in non-production)
+  const isProduction = process.env.NODE_ENV === "production";
   console.error(`[${new Date().toISOString()}] Error:`, {
     message: err.message,
-    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    stack: isProduction ? undefined : err.stack,
     path: req.path,
     method: req.method,
   });

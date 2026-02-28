@@ -197,3 +197,298 @@ export interface ServiceResult<T = unknown> {
   error?: string;
   statusCode?: number;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+//  PHASE 1 — MASTER DATA TYPES
+// ═══════════════════════════════════════════════════════════════════════
+
+// ─── 1.2 Chart of Accounts ────────────────────────────────────────────
+export type AccountRootType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+export type AccountType =
+  | "Receivable" | "Payable" | "Bank" | "Cash" | "Fixed Asset"
+  | "Current Asset" | "Current Liability" | "Long Term Liability"
+  | "Equity" | "Income" | "Cost of Goods Sold" | "Expense"
+  | "Tax" | "Round Off" | "Other";
+
+export interface IAccount extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  code?: string;
+  parentId?: Types.ObjectId | null;
+  rootType: AccountRootType;
+  accountType: AccountType;
+  isGroup: boolean;
+  currency?: string;
+  description?: string;
+  isSystemAccount: boolean;  // system accounts cannot be deleted
+  balance: number;           // denormalized, updated on GL posting
+  isActive: boolean;
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 1.3 Contacts ─────────────────────────────────────────────────────
+export type ContactType = "Customer" | "Vendor" | "Both";
+export type TaxTreatment =
+  | "Taxable" | "TaxExempt" | "ReverseCharge" | "SEZ"
+  | "Overseas" | "Composition" | "UIN";
+
+export interface IContactPerson {
+  name: string;
+  email?: string;
+  phone?: string;
+  designation?: string;
+  isPrimary: boolean;
+}
+
+export interface IContact extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  contactType: ContactType;
+  displayName: string;
+  companyName?: string;
+  email?: string;
+  phone?: string;
+  currency: string;
+  paymentTermsId?: Types.ObjectId | null;
+  taxTreatment: TaxTreatment;
+  taxId?: string;        // GSTIN / VAT / PAN
+  billingAddress?: {
+    street?: string; city?: string; state?: string; zip?: string; country?: string;
+  };
+  shippingAddress?: {
+    street?: string; city?: string; state?: string; zip?: string; country?: string;
+  };
+  contactPersons: IContactPerson[];
+  notes?: string;
+  portalEnabled: boolean;
+  language?: string;
+  reportingTags: Types.ObjectId[];
+  // Customer-specific
+  creditLimit?: number;
+  salesPersonId?: Types.ObjectId | null;
+  // Vendor-specific
+  tdsCategory?: string;
+  outstandingPayable: number;
+  outstandingReceivable: number;
+  isActive: boolean;
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 1.4 Items & Services ──────────────────────────────────────────────
+export type ItemType = "Goods" | "Service";
+export type TaxPreference = "Taxable" | "NonTaxable" | "Exempt";
+
+export interface IItem extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  itemType: ItemType;
+  name: string;
+  sku?: string;
+  unit?: Types.ObjectId | null;        // ref: UOM
+  itemGroupId?: Types.ObjectId | null; // ref: ItemGroup
+  description?: string;
+  sellingPrice: number;
+  sellingDescription?: string;
+  costPrice: number;
+  purchaseDescription?: string;
+  taxPreference: TaxPreference;
+  taxId?: Types.ObjectId | null;       // ref: Tax
+  hsnSacCode?: string;
+  salesAccountId?: Types.ObjectId | null;
+  purchaseAccountId?: Types.ObjectId | null;
+  inventoryTracked: boolean;
+  stockOnHand: number;
+  reorderPoint?: number;
+  preferredVendorId?: Types.ObjectId | null;
+  warehouseId?: Types.ObjectId | null;
+  image?: string;
+  isActive: boolean;
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IItemGroup extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  parentId?: Types.ObjectId | null;
+  description?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IUnitOfMeasurement extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;           // e.g. "Kilogram"
+  abbreviation: string;   // e.g. "kg"
+  isSystemUnit: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 1.5 Price Lists ──────────────────────────────────────────────────
+export type PriceListType = "Sales" | "Purchase" | "Both";
+
+export interface IPriceListItem {
+  itemId: Types.ObjectId;
+  customPrice: number;
+  discount?: number;
+}
+
+export interface IPriceList extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  priceListType: PriceListType;
+  currency: string;
+  items: IPriceListItem[];
+  effectiveFrom?: Date;
+  effectiveTo?: Date;
+  isActive: boolean;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 1.6 Currency & Exchange Rates ────────────────────────────────────
+export interface ICurrency extends Document {
+  _id: Types.ObjectId;
+  code: string;      // ISO 4217: "INR", "USD"
+  name: string;      // "Indian Rupee"
+  symbol: string;    // "₹"
+  decimalPlaces: number;
+  isEnabled: boolean;
+}
+
+export interface IExchangeRate extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  fromCurrency: string;
+  toCurrency: string;
+  date: Date;
+  rate: number;
+  source: "Manual" | "Auto";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 1.7 Tax ──────────────────────────────────────────────────────────
+export type TaxType = "Tax" | "TaxGroup" | "CompoundTax";
+
+export interface ITaxComponent {
+  taxId: Types.ObjectId;  // ref to a simple Tax
+  rate: number;
+}
+
+export interface ITax extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  taxType: TaxType;
+  rate: number;               // percentage, 0 for groups
+  taxAuthority?: string;
+  components: ITaxComponent[];   // populated for TaxGroup
+  isCompound: boolean;
+  isSystemTax: boolean;
+  description?: string;
+  isActive: boolean;
+  isDeleted: boolean;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 1.8 Payment Terms ────────────────────────────────────────────────
+export interface IPaymentTerms extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;          // "Net 30", "Due on Receipt"
+  netDays: number;       // 0 = due on receipt
+  discountPercentage: number;
+  discountDays: number;
+  isDefault: boolean;
+  isSystemTerm: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 1.9 Other Master Data ────────────────────────────────────────────
+export interface IWarehouse extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  address?: { street?: string; city?: string; state?: string; zip?: string; country?: string };
+  isPrimary: boolean;
+  isActive: boolean;
+  createdBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ISalesPerson extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  email?: string;
+  phone?: string;
+  commissionRate: number;   // percentage
+  isActive: boolean;
+  createdBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IPaymentMode extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;   // "Cash", "Bank Transfer", "UPI", "Credit Card"
+  accountId?: Types.ObjectId | null;   // linked GL account
+  isSystemMode: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IExpenseCategory extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  accountId?: Types.ObjectId | null;   // linked GL expense account
+  description?: string;
+  isActive: boolean;
+  createdBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IReportingTag extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  name: string;
+  description?: string;
+  color?: string;   // hex color for UI display
+  isActive: boolean;
+  createdBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}

@@ -12,19 +12,18 @@ export function softDeletePlugin(schema: Schema): void {
     deletedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
   });
 
-  // Auto-filter deleted documents from find queries
-  function applyDeleteFilter(this: any, next: any) {
+  // Auto-filter deleted documents from find queries (async style — Mongoose 9)
+  function applyDeleteFilter(this: any) {
     const filter = this.getFilter();
     if (filter.isDeleted === undefined) {
       this.where({ isDeleted: { $ne: true } });
     }
-    next();
   }
 
-  (schema as any).pre("find", applyDeleteFilter);
-  (schema as any).pre("findOne", applyDeleteFilter);
-  (schema as any).pre("findOneAndUpdate", applyDeleteFilter);
-  (schema as any).pre("countDocuments", applyDeleteFilter);
+  schema.pre("find", applyDeleteFilter);
+  schema.pre("findOne", applyDeleteFilter);
+  schema.pre("findOneAndUpdate", applyDeleteFilter);
+  schema.pre("countDocuments", applyDeleteFilter);
 
   // Add softDelete method to documents
   schema.methods.softDelete = async function (userId?: string) {

@@ -19,21 +19,23 @@ export const authenticate = asyncHandler(
 
     const idToken = authHeader.split("Bearer ")[1];
 
+    let decoded: FirebaseDecodedToken;
     try {
-      const decoded = (await admin
+      decoded = (await admin
         .auth()
         .verifyIdToken(idToken)) as FirebaseDecodedToken;
-      req.firebaseUser = decoded;
-
-      // Attach MongoDB user if exists
-      const dbUser = await User.findOne({ firebaseUid: decoded.uid });
-      req.user = dbUser;
-
-      next();
     } catch (err: any) {
       console.error("Token verification failed:", err.message);
       throw new UnauthorizedError("Invalid token");
     }
+
+    req.firebaseUser = decoded;
+
+    // Attach MongoDB user if exists
+    const dbUser = await User.findOne({ firebaseUid: decoded.uid });
+    req.user = dbUser;
+
+    next();
   },
 );
 

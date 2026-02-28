@@ -91,3 +91,59 @@ export async function updateProfile(
   });
   return res.json();
 }
+
+// ─── Re-exports from new structured API clients ──────────────────────────
+
+export { organizationApi } from "./api/organizations";
+export type {
+  Organization,
+  CreateOrganizationInput,
+  UpdateOrganizationInput,
+} from "./api/organizations";
+
+export { accountApi } from "./api/accounts";
+export type {
+  Account,
+  AccountRootType,
+  AccountType,
+  CreateAccountInput,
+  UpdateAccountInput,
+} from "./api/accounts";
+
+export { contactApi } from "./api/contacts";
+export type {
+  Contact,
+  ContactType,
+  TaxTreatment,
+  ContactPerson,
+  Address as ContactAddress,
+  CreateContactInput,
+  UpdateContactInput,
+  ContactListParams,
+} from "./api/contacts";
+
+export { itemApi } from "./api/items";
+export type {
+  Item,
+  ItemType,
+  ItemGroup,
+  UnitOfMeasurement,
+  CreateItemInput,
+  UpdateItemInput,
+} from "./api/items";
+
+export { currencyApi } from "./api/currencies";
+export type { Currency, ExchangeRate } from "./api/currencies";
+
+export { settingsApi } from "./api/settings";
+export type {
+  Tax,
+  TaxType,
+  PaymentTerms,
+  Warehouse,
+  SalesPerson,
+  PaymentMode,
+  ExpenseCategory,
+  ReportingTag,
+  PriceList,
+} from "./api/settings";

@@ -1,184 +1,222 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   BookOpen,
-  Building2,
-  ChartBar,
-  ClipboardList,
+  ChevronRight,
+  Clock,
   CreditCard,
-  DollarSign,
-  Factory,
-  FileText,
-  LayoutDashboard,
+  FolderOpen,
+  Home,
   Package,
-  Receipt,
-  Settings2,
-  ShieldCheck,
   ShoppingCart,
   Truck,
-  Users,
-  Warehouse,
-  Wrench,
 } from "lucide-react";
-import Image from "next/image";
 
-import { NavMain } from "@/components/nav-main";
-import { NavProjects } from "@/components/nav-projects";
 import { NavUser } from "@/components/nav-user";
+import { OrgSwitcher } from "@/components/org-switcher";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-const data = {
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: LayoutDashboard,
-      isActive: true,
-      items: [],
-    },
-    {
-      title: "Accounts",
-      url: "/accounts",
-      icon: DollarSign,
-      items: [
-        { title: "Chart of Accounts", url: "/accounts/chart-of-accounts" },
-        { title: "Journal Entry", url: "/accounts/journal-entry" },
-        { title: "General Ledger", url: "/accounts/general-ledger" },
-        { title: "Payment Entry", url: "/accounts/payment-entry" },
-        { title: "Cost Center", url: "/accounts/cost-center" },
-        { title: "Budget", url: "/accounts/budget" },
-        { title: "Fiscal Year", url: "/accounts/fiscal-year" },
-      ],
-    },
-    {
-      title: "Selling",
-      url: "/selling",
-      icon: ShoppingCart,
-      items: [
-        { title: "Customer", url: "/selling/customer" },
-        { title: "Quotation", url: "/selling/quotation" },
-        { title: "Sales Order", url: "/selling/sales-order" },
-        { title: "Sales Invoice", url: "/selling/sales-invoice" },
-        { title: "Delivery Note", url: "/selling/delivery-note" },
-        { title: "Sales Analytics", url: "/selling/analytics" },
-      ],
-    },
-    {
-      title: "Buying",
-      url: "/buying",
-      icon: Truck,
-      items: [
-        { title: "Supplier", url: "/buying/supplier" },
-        { title: "Purchase Order", url: "/buying/purchase-order" },
-        { title: "Purchase Invoice", url: "/buying/purchase-invoice" },
-        { title: "Purchase Receipt", url: "/buying/purchase-receipt" },
-        { title: "Supplier Quotation", url: "/buying/supplier-quotation" },
-      ],
-    },
-    {
-      title: "Stock",
-      url: "/stock",
-      icon: Warehouse,
-      items: [
-        { title: "Item", url: "/stock/item" },
-        { title: "Warehouse", url: "/stock/warehouse" },
-        { title: "Stock Entry", url: "/stock/stock-entry" },
-        { title: "Stock Ledger", url: "/stock/stock-ledger" },
-        { title: "Stock Reconciliation", url: "/stock/stock-reconciliation" },
-        { title: "Item Price", url: "/stock/item-price" },
-      ],
-    },
-    {
-      title: "Manufacturing",
-      url: "/manufacturing",
-      icon: Factory,
-      items: [
-        { title: "BOM", url: "/manufacturing/bom" },
-        { title: "Work Order", url: "/manufacturing/work-order" },
-        { title: "Job Card", url: "/manufacturing/job-card" },
-        { title: "Production Plan", url: "/manufacturing/production-plan" },
-      ],
-    },
-    {
-      title: "Reports",
-      url: "/reports",
-      icon: ChartBar,
-      items: [
-        { title: "Profit & Loss", url: "/reports/profit-and-loss" },
-        { title: "Balance Sheet", url: "/reports/balance-sheet" },
-        { title: "Cash Flow", url: "/reports/cash-flow" },
-        { title: "Trial Balance", url: "/reports/trial-balance" },
-        { title: "Accounts Receivable", url: "/reports/accounts-receivable" },
-        { title: "Accounts Payable", url: "/reports/accounts-payable" },
-      ],
-    },
-    {
-      title: "Setup",
-      url: "/setup",
-      icon: Settings2,
-      items: [
-        { title: "Company", url: "/setup/company" },
-        { title: "Currency", url: "/setup/currency" },
-        { title: "Roles & Permissions", url: "/setup/roles" },
-        { title: "Users", url: "/setup/users" },
-        { title: "Print Format", url: "/setup/print-format" },
-        { title: "Naming Series", url: "/setup/naming-series" },
-      ],
-    },
-  ],
-  projects: [
-    { name: "Assets", url: "/assets", icon: Building2 },
-    { name: "Projects", url: "/projects", icon: ClipboardList },
-    { name: "Support", url: "/support", icon: Wrench },
-    { name: "Quality", url: "/quality", icon: ShieldCheck },
-  ],
-};
+// ─── Navigation data ────────────────────────────────────────────────────────
+
+type SubItem = { title: string; url: string };
+type NavItem =
+  | { title: string; url: string; icon: React.ElementType; items?: never }
+  | { title: string; url: string; icon: React.ElementType; items: SubItem[] };
+
+const navItems: NavItem[] = [
+  {
+    title: "Home",
+    url: "/dashboard",
+    icon: Home,
+  },
+  {
+    title: "Items",
+    url: "/items",
+    icon: Package,
+    items: [{ title: "Items", url: "/items" }],
+  },
+  {
+    title: "Sales",
+    url: "/sales",
+    icon: ShoppingCart,
+    items: [
+      { title: "Customers", url: "/sales/customers" },
+      { title: "Quotes", url: "/sales/quotes" },
+      { title: "Sales Orders", url: "/sales/orders" },
+      { title: "Invoices", url: "/sales/invoices" },
+      { title: "Recurring Invoices", url: "/sales/recurring-invoices" },
+      { title: "Delivery Challans", url: "/sales/delivery-challans" },
+      { title: "Payments Received", url: "/sales/payments-received" },
+      { title: "Credit Notes", url: "/sales/credit-notes" },
+    ],
+  },
+  {
+    title: "Purchases",
+    url: "/purchases",
+    icon: Truck,
+    items: [
+      { title: "Vendors", url: "/purchases/vendors" },
+      { title: "Expenses", url: "/purchases/expenses" },
+      { title: "Recurring Expenses", url: "/purchases/recurring-expenses" },
+      { title: "Purchase Orders", url: "/purchases/orders" },
+      { title: "Bills", url: "/purchases/bills" },
+      { title: "Recurring Bills", url: "/purchases/recurring-bills" },
+      { title: "Payments Made", url: "/purchases/payments-made" },
+      { title: "Vendor Credits", url: "/purchases/vendor-credits" },
+    ],
+  },
+  {
+    title: "Time Tracking",
+    url: "/time-tracking",
+    icon: Clock,
+    items: [
+      { title: "Projects", url: "/time-tracking/projects" },
+      { title: "Timesheet", url: "/time-tracking/timesheet" },
+    ],
+  },
+  {
+    title: "Banking",
+    url: "/banking",
+    icon: CreditCard,
+  },
+  {
+    title: "Accountant",
+    url: "/accountant",
+    icon: BookOpen,
+    items: [
+      { title: "Chart of Accounts", url: "/accountant/chart-of-accounts" },
+      { title: "Journal Entries", url: "/accountant/journal-entries" },
+      { title: "Fixed Assets", url: "/accountant/fixed-assets" },
+      { title: "Budgets", url: "/accountant/budgets" },
+      { title: "Currency Adjustments", url: "/accountant/currency-adjustments" },
+    ],
+  },
+  {
+    title: "Reports",
+    url: "/reports",
+    icon: BarChart3,
+  },
+  {
+    title: "Documents",
+    url: "/documents",
+    icon: FolderOpen,
+  },
+];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname();
+
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar collapsible="icon" variant="sidebar" {...props}>
+      {/* ── Header: Org Switcher ── */}
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <a href="/dashboard" className="flex items-center gap-2">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary">
-                  <Image
-                    src="/hailogo.png"
-                    alt="HAI"
-                    width={32}
-                    height={32}
-                    className="object-cover"
-                  />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-bold">HAI ACCOUNTING</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    Accounting System
-                  </span>
-                </div>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <OrgSwitcher />
       </SidebarHeader>
+
+      {/* ── Nav ── */}
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavProjects projects={data.projects} />
+        <SidebarGroup>
+          <SidebarMenu>
+            {navItems.map((item) => {
+              const isActive =
+                pathname === item.url ||
+                (item.url !== "/dashboard" &&
+                  pathname.startsWith(item.url + "/"));
+
+              // Flat item (no sub-menu)
+              if (!item.items || item.items.length === 0) {
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.title}
+                    >
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              }
+
+              // Collapsible item with sub-menu
+              const hasActiveChild = item.items.some(
+                (sub) =>
+                  pathname === sub.url || pathname.startsWith(sub.url + "/")
+              );
+              const defaultOpen = isActive || hasActiveChild;
+
+              return (
+                <Collapsible
+                  key={item.title}
+                  asChild
+                  defaultOpen={defaultOpen}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        tooltip={item.title}
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {item.items.map((sub) => {
+                          const subActive =
+                            pathname === sub.url ||
+                            pathname.startsWith(sub.url + "/");
+                          return (
+                            <SidebarMenuSubItem key={sub.title}>
+                              <SidebarMenuSubButton asChild isActive={subActive}>
+                                <Link href={sub.url}>{sub.title}</Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
       </SidebarContent>
+
+      {/* ── Footer: User ── */}
       <SidebarFooter>
         <NavUser />
       </SidebarFooter>
+
       <SidebarRail />
     </Sidebar>
   );

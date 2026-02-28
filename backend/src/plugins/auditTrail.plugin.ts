@@ -12,7 +12,7 @@ export function auditTrailPlugin(schema: Schema): void {
   });
 
   // Use a pre-save hook; the controller must set `doc.$locals.userId`
-  schema.pre("save", function (next: any) {
+  schema.pre("save", function () {
     const userId = (this as any).$locals?.userId;
     if (userId) {
       if (this.isNew) {
@@ -20,7 +20,6 @@ export function auditTrailPlugin(schema: Schema): void {
       }
       this.set("updatedBy", userId);
     }
-    next();
   });
 }
 
