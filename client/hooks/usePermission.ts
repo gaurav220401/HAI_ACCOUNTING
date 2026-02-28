@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { useAuthContext } from "@/contexts/auth-context";
+import { useAuth } from "@/contexts/auth-context";
 
 /**
  * Zoho Books modules — mirrors the backend ZohoModule union type.
@@ -59,7 +59,7 @@ export function usePermission(
   module: ZohoModule,
   action: PermissionAction,
 ): boolean {
-  const { user } = useAuthContext();
+  const { dbUser: user } = useAuth();
 
   if (!user) return false;
 
@@ -95,7 +95,7 @@ export function usePermission(
  *   if (can("invoices", "create")) { ... }
  */
 export function usePermissions() {
-  const { user } = useAuthContext();
+  const { dbUser: user } = useAuth();
 
   const can = useCallback(
     (module: ZohoModule, action: PermissionAction): boolean => {
