@@ -1,8 +1,8 @@
-# HAI_ACCOUNTING — ERPNext Feature Migration Plan
+# HAI_ACCOUNTING — Zoho Books Feature Implementation Plan
 
 ## Executive Summary
 
-**Goal**: Migrate all ERPNext ERP features (~470 doctypes, ~185 reports, 22 modules) into the HAI_ACCOUNTING project (Next.js 16 + Express 5 + MongoDB + Firebase Auth).
+**Goal**: Build a full-featured cloud accounting software matching **Zoho Books' complete feature set** — covering Receivables, Payables, Banking, Inventory, Projects, Payroll, 70+ Reports, Collaboration Portals, Workflow Automation, and Global Multi-Currency/Multi-Language support — on our Next.js 16 + Express 5 + MongoDB + Firebase Auth stack.
 
 **Current State of HAI_ACCOUNTING**:
 
@@ -11,10 +11,18 @@
 - Next.js 16 frontend with shadcn/ui, Tailwind, Recharts, TanStack Table
 - Only user model exists; zero accounting logic
 
-**ERPNext Scope Being Migrated**:  
-22 modules, ~470 entities, ~185 reports, 15 controller base classes, 30+ scheduled jobs
+**Zoho Books Feature Scope**:
 
-**Architecture Decision**: We are NOT porting ERPNext's Python/Frappe code. We are **re-implementing** all business logic in Node.js/TypeScript using ERPNext as the feature specification. MongoDB replaces MariaDB, and the Frappe ORM is replaced with Mongoose.
+- 12 core modules (Receivables, Payables, Banking, Tax, Inventory, Projects, Payroll, Reports, Collaboration, Automation, Customization, Global)
+- 70+ built-in reports
+- Customer Portal & Vendor Portal
+- Multi-currency (100+ currencies) & Multi-language (25+ languages)
+- Workflow automation engine
+- Fixed asset management with auto-depreciation
+- Budgeting & forecasting
+- Connected banking with auto-reconciliation
+
+**Architecture Decision**: We are building from scratch in Node.js/TypeScript, using Zoho Books as the **feature specification**. No code is being ported — this is a ground-up implementation matching Zoho Books' UX and feature parity.
 
 ---
 
@@ -32,13 +40,16 @@
 | Database     | MongoDB Atlas + Mongoose                         | Already in place                             |
 | Auth         | Firebase Auth (client) + Firebase Admin (server) | Already in place — **no changes**            |
 | Caching      | Redis (add later)                                | For report caching, session data             |
-| Queue        | BullMQ + Redis (add later)                       | For background jobs (repost, reconciliation) |
+| Queue        | BullMQ + Redis (add later)                       | For background jobs, recurring transactions  |
 | PDF          | Puppeteer or @react-pdf/renderer                 | For invoice/report printing                  |
-| File Storage | Firebase Storage or S3                           | For attachments                              |
+| File Storage | Firebase Storage or S3                           | For attachments, document storage            |
 | Search       | MongoDB Atlas Search                             | For full-text search across entities         |
 | Validation   | Zod (shared schemas)                             | Already partially in place                   |
 | State Mgmt   | TanStack Query + Zustand                         | Add for proper server state + client state   |
 | Real-time    | Socket.io                                        | For live notifications, dashboard updates    |
+| i18n         | next-intl or react-i18next                       | Multi-language support (25+ languages)       |
+| Email        | Nodemailer + templates                           | Transactional emails, reminders, digests     |
+| OCR/Scan     | Tesseract.js or cloud OCR API                    | Receipt/document auto-scanning               |
 
 ### Backend Architecture Pattern
 
@@ -47,33 +58,36 @@ backend/src/
 ├── config/              # DB, Firebase, Redis, env configs
 ├── middlewares/          # Auth, validation, error handling, rate limiting
 ├── models/              # Mongoose schemas (organized by module)
-│   ├── accounts/
-│   ├── stock/
-│   ├── selling/
-│   └── ...
+│   ├── receivables/     # Quotes, Invoices, Sales Orders, Credit Notes
+│   ├── payables/        # Bills, Purchase Orders, Expenses, Vendor Credits
+│   ├── banking/         # Bank Accounts, Transactions, Reconciliation
+│   ├── inventory/       # Items, Price Lists, Adjustments, Packages
+│   ├── projects/        # Projects, Tasks, Timesheets
+│   ├── payroll/         # Employees, Pay Runs, Payslips
+│   ├── accountant/      # Chart of Accounts, Journals, Assets, Budgets
+│   └── common/          # Contacts, Currencies, Taxes, Settings
 ├── routes/              # Express routes (organized by module)
-│   ├── accounts/
-│   ├── stock/
-│   └── ...
 ├── controllers/         # Request handlers
-│   ├── accounts/
-│   ├── stock/
-│   └── ...
 ├── services/            # Business logic layer (core engine)
-│   ├── accounts/
-│   │   ├── general-ledger.service.ts
-│   │   ├── tax-calculator.service.ts
-│   │   └── ...
-│   ├── stock/
-│   │   ├── stock-ledger.service.ts
-│   │   ├── valuation.service.ts
-│   │   └── ...
-│   └── ...
+│   ├── receivables/
+│   ├── payables/
+│   ├── banking/
+│   ├── inventory/
+│   ├── projects/
+│   ├── payroll/
+│   ├── accountant/
+│   ├── tax/
+│   └── common/
 ├── engines/             # Cross-cutting engines
-│   ├── taxes-and-totals.engine.ts
-│   ├── status-updater.engine.ts
+│   ├── tax-calculation.engine.ts
+│   ├── currency-exchange.engine.ts
 │   ├── naming-series.engine.ts
-│   └── workflow.engine.ts
+│   ├── workflow.engine.ts
+│   ├── approval.engine.ts
+│   ├── recurring.engine.ts
+│   ├── notification.engine.ts
+│   └── auto-scan.engine.ts
+├── portals/             # Customer & Vendor portal APIs
 ├── jobs/                # Background/scheduled jobs
 ├── utils/               # Shared utilities
 ├── validators/          # Zod schemas (shared with frontend)
@@ -88,52 +102,63 @@ client/
 │   ├── (auth)/                 # Auth pages (login, signup) — EXISTING
 │   ├── (app)/                  # Authenticated app shell
 │   │   ├── dashboard/
-│   │   ├── accounts/
-│   │   │   ├── chart-of-accounts/
-│   │   │   ├── journal-entry/
-│   │   │   ├── payment-entry/
-│   │   │   ├── sales-invoice/
-│   │   │   ├── purchase-invoice/
-│   │   │   └── ...
-│   │   ├── stock/
-│   │   ├── selling/
-│   │   ├── buying/
-│   │   ├── manufacturing/
-│   │   ├── crm/
-│   │   ├── assets/
+│   │   ├── receivables/
+│   │   │   ├── invoices/
+│   │   │   ├── quotes/
+│   │   │   ├── sales-orders/
+│   │   │   ├── credit-notes/
+│   │   │   ├── retainer-invoices/
+│   │   │   └── payment-received/
+│   │   ├── payables/
+│   │   │   ├── bills/
+│   │   │   ├── purchase-orders/
+│   │   │   ├── expenses/
+│   │   │   ├── vendor-credits/
+│   │   │   └── payments-made/
+│   │   ├── banking/
+│   │   ├── inventory/
 │   │   ├── projects/
+│   │   ├── payroll/
+│   │   ├── accountant/
+│   │   │   ├── chart-of-accounts/
+│   │   │   ├── journal-entries/
+│   │   │   ├── fixed-assets/
+│   │   │   ├── budgets/
+│   │   │   └── currency-adjustments/
 │   │   ├── reports/
-│   │   └── setup/
+│   │   ├── settings/
+│   │   └── automation/
+│   ├── portal/                 # Customer & Vendor self-service portals
+│   │   ├── customer/
+│   │   └── vendor/
 │   └── layout.tsx
 ├── components/
 │   ├── ui/                     # shadcn primitives — EXISTING
 │   ├── forms/                  # Reusable form components
 │   ├── tables/                 # Reusable table components
 │   ├── charts/                 # Dashboard chart components
-│   ├── layout/                 # Layout components (sidebar, header, etc.)
+│   ├── layout/                 # Layout components (sidebar, header)
+│   ├── portals/                # Portal-specific components
 │   └── modules/                # Module-specific components
-│       ├── accounts/
-│       ├── stock/
-│       └── ...
 ├── contexts/                   # React contexts — auth EXISTING
-├── hooks/                      # Custom hooks (data fetching, etc.)
+├── hooks/                      # Custom hooks
 ├── lib/                        # Utilities, API client, validators
-│   ├── api/                    # API client organized by module
-│   ├── validators/             # Zod schemas (shared)
-│   └── utils/
-└── stores/                     # Zustand stores (if needed)
+├── stores/                     # Zustand stores
+└── locales/                    # i18n translation files (25+ languages)
 ```
 
 ### MongoDB Schema Design Principles
 
-1. **Company-scoped**: Every document has a `company` field for multi-company support
-2. **Audit trail**: Every document has `createdBy`, `updatedBy`, `createdAt`, `updatedAt`
+1. **Organization-scoped**: Every document has an `organizationId` field for multi-org support
+2. **Audit trail**: Every document has `createdBy`, `updatedBy`, `createdAt`, `updatedAt` — tamper-proof audit log
 3. **Soft delete**: `isDeleted` flag instead of hard deletes on transactional data
-4. **Status workflow**: `docstatus` (0=Draft, 1=Submitted, 2=Cancelled) on transactional documents
-5. **Naming series**: Auto-generated document names (e.g., `SI-2026-00001`)
-6. **Indexing strategy**: Compound indexes on frequently queried fields (company + date + status)
+4. **Status workflow**: `status` field with module-specific statuses (Draft, Sent, Overdue, Paid, Void, etc.)
+5. **Naming series**: Auto-generated document numbers (e.g., `INV-00001`, `QUO-00001`)
+6. **Indexing strategy**: Compound indexes on frequently queried fields (org + date + status)
 7. **Denormalization**: Store frequently accessed names alongside IDs to reduce lookups
-8. **Embedded vs Referenced**: Child table items (invoice items, journal entry accounts) are embedded arrays; master data is referenced
+8. **Embedded vs Referenced**: Line items (invoice items, bill items) are embedded arrays; master data (contacts, items) is referenced
+9. **Multi-currency**: Every monetary field stores amount + currency + exchange rate + base currency amount
+10. **Reporting tags**: Flexible tagging system for divisional/cost-center reporting
 
 ---
 
@@ -152,32 +177,33 @@ client/
 ### 0.2 Shared Validation Layer
 
 - [ ] Create `shared/` or `validators/` directory with Zod schemas
-- [ ] These schemas will be used on both frontend (form validation) and backend (request validation)
+- [ ] Schemas shared on both frontend (form validation) and backend (request validation)
 - [ ] Set up schema export pattern for frontend consumption
 
 ### 0.3 Backend Architecture Setup
 
-- [ ] Create folder structure: `models/`, `routes/`, `controllers/`, `services/`, `engines/`, `jobs/`, `utils/`, `types/`, `validators/`
+- [ ] Create folder structure: `models/`, `routes/`, `controllers/`, `services/`, `engines/`, `portals/`, `jobs/`, `utils/`, `types/`, `validators/`
 - [ ] Implement base service class with common CRUD operations
 - [ ] Implement base controller class with error handling
 - [ ] Create generic validation middleware using Zod
-- [ ] Create generic pagination middleware
-- [ ] Implement error handling middleware (structured error responses)
-- [ ] Add request logging middleware (morgan or pino)
+- [ ] Create generic pagination middleware with sorting and filtering
+- [ ] Implement structured error handling middleware
+- [ ] Add request logging middleware (pino)
 - [ ] Add rate limiting middleware
 
 ### 0.4 Core Mongoose Plugins & Utilities
 
-- [ ] Create `auditTrail` plugin (auto-add `createdBy`, `updatedBy` from `req.user`)
+- [ ] Create `auditTrail` plugin (auto-add `createdBy`, `updatedBy` from `req.user`, tamper-proof log)
 - [ ] Create `softDelete` plugin (`isDeleted`, `deletedAt`, `deletedBy`)
-- [ ] Create `docStatus` plugin (Draft/Submitted/Cancelled workflow with validation)
-- [ ] Create `namingSeries` utility (auto-incrementing document names)
-- [ ] Create `companyScoped` plugin (auto-add `company` field, enforce in queries)
+- [ ] Create `organizationScoped` plugin (auto-add `organizationId`, enforce in queries)
+- [ ] Create `namingSeries` utility (auto-incrementing document numbers per org)
+- [ ] Create `multiCurrency` utility (store amount + currency + exchange rate + base amount)
+- [ ] Create `activityLog` plugin (track all field-level changes for audit trail)
 
 ### 0.5 Frontend State Management Upgrade
 
 - [ ] Install and configure **TanStack Query** for server state
-- [ ] Create API client factory organized by module (`lib/api/accounts.ts`, `lib/api/stock.ts`)
+- [ ] Create API client factory organized by module (`lib/api/receivables.ts`, `lib/api/payables.ts`, etc.)
 - [ ] Create custom hooks pattern: `useQuery` + `useMutation` wrappers per entity
 - [ ] Install **Zustand** for client-side state (sidebar state, filters, UI preferences)
 - [ ] Add optimistic updates pattern for common operations
@@ -185,1268 +211,1939 @@ client/
 ### 0.6 Frontend Reusable Components
 
 - [ ] Build **GenericForm** component (dynamic form rendering from schema)
-- [ ] Build **GenericListView** component (table + filters + pagination + search)
+- [ ] Build **GenericListView** component (table + filters + pagination + search + bulk actions)
 - [ ] Build **GenericDetailView** component (document view with status bar + actions)
-- [ ] Build **ChildTable** component (editable rows for line items — invoice items, etc.)
-- [ ] Build **LinkField** component (searchable select that queries backend for options)
+- [ ] Build **LineItemTable** component (editable rows for invoice/bill line items)
+- [ ] Build **LinkField** / **ContactPicker** component (searchable select for contacts/items)
 - [ ] Build **CurrencyInput** component (formatted number input with currency symbol)
 - [ ] Build **DateRangePicker** component for report filters
-- [ ] Build **StatusBadge** component (Draft, Submitted, Cancelled, Paid, Overdue, etc.)
-- [ ] Build **TreeView** component (for hierarchical data: Chart of Accounts, Item Group, etc.)
-- [ ] Build **PrintView** component (for PDF generation of invoices, reports)
+- [ ] Build **StatusBadge** component (Draft, Sent, Overdue, Paid, Void, Partially Paid, etc.)
+- [ ] Build **TreeView** component (for Chart of Accounts hierarchy)
+- [ ] Build **PrintView** component (for PDF generation of invoices, quotes, reports)
+- [ ] Build **FileUpload** / **DocumentAttachment** component
+- [ ] Build **CommentThread** component (for transaction-level discussion)
+- [ ] Build **ApprovalWorkflow** component (approval status bar + approve/reject actions)
+- [ ] Build **TimerWidget** component (start/stop time tracking for projects)
 
 ### 0.7 Role-Based Access Control (RBAC)
 
 - [ ] Design role model: `Role`, `RolePermission`, `UserRole`
-- [ ] Roles: System Manager, Accounts Manager, Accounts User, Stock Manager, Stock User, Sales Manager, Sales User, Purchase Manager, Purchase User, Manufacturing Manager, Manufacturing User, etc.
-- [ ] Permissions: per-entity (read, write, create, delete, submit, cancel, amend)
-- [ ] Backend middleware: `authorize('Sales Invoice', 'write')`
-- [ ] Frontend: `usePermission('Sales Invoice', 'write')` hook for conditional rendering
+- [ ] Predefined roles: Admin, Accountant, Staff, Time Tracker, Custom Roles
+- [ ] Module-level permissions (read, write, create, delete, approve)
+- [ ] Backend middleware: `authorize('invoices', 'write')`
+- [ ] Frontend: `usePermission('invoices', 'write')` hook for conditional rendering
+- [ ] Custom role builder (Zoho Books supports custom roles with granular module access)
 - [ ] Add `role` field to User model in MongoDB
 
-### 0.8 Multi-Company Foundation
+### 0.8 Multi-Organization Foundation
 
-- [ ] Design Company model (name, abbr, default currency, country, chart of accounts, etc.)
-- [ ] Every transactional and master model gets a `company` field
-- [ ] Company switcher in sidebar/header
-- [ ] Backend: Company context automatically applied to all queries
+- [ ] Design Organization model (name, industry, country, base currency, fiscal year start, tax ID, logo, address)
+- [ ] Organization setup wizard (first-time onboarding)
+- [ ] Every model gets an `organizationId` field
+- [ ] Organization switcher in header (multi-org support like Zoho Books)
+- [ ] Backend: Organization context automatically applied to all queries
+- [ ] Organization settings page (preferences, defaults, branding)
+
+### 0.9 Multi-Language (i18n) Foundation
+
+- [ ] Set up `next-intl` or `react-i18next`
+- [ ] Extract all UI strings into translation files
+- [ ] Support 25+ languages (English, Hindi, Spanish, French, German, Arabic, Chinese, Japanese, etc.)
+- [ ] Per-organization language setting
+- [ ] Per-contact language preference (for sending documents in customer's language)
+- [ ] Transaction document templates with language support
 
 ### Deliverables
 
 - TypeScript backend with proper architecture
-- RBAC system integrated with existing Firebase Auth
-- Reusable frontend components for forms, lists, trees, child tables
+- RBAC system with custom roles integrated with Firebase Auth
+- Reusable frontend components for forms, lists, trees, line items, approvals
 - TanStack Query + Zustand state management
-- Multi-company foundation
-- Mongoose plugins for audit trail, soft delete, doc status, naming series
+- Multi-organization foundation
+- Multi-language (i18n) foundation
+- Mongoose plugins for audit trail, soft delete, activity log, naming series
+- Tamper-proof audit trail system
 
 ---
 
 ## Phase 1: Setup & Master Data (Week 3-5)
 
-> **Goal**: Implement all foundational master data that every other module depends on. This is the ERPNext "Setup" module equivalent.
+> **Goal**: Implement all foundational master data — the backbone of every transaction in the system.
 
-### 1.1 Company Setup
+### 1.1 Organization Setup
 
-- [ ] **Company** model & CRUD (name, abbr, default currency, country, domain, default accounts)
-- [ ] Company creation wizard (first-time setup)
-- [ ] Company settings page
-- [ ] Company-wise default values
+- [ ] **Organization** model & CRUD (name, industry, address, logo, tax ID, base currency, fiscal year start, time zone, date format, number format)
+- [ ] Organization creation wizard (step-by-step onboarding flow)
+- [ ] Organization settings page (general, preferences, branding)
+- [ ] Organization-wise default values (payment terms, tax preferences, etc.)
+- [ ] Opening balances import (migration from existing systems)
 
 ### 1.2 Chart of Accounts
 
-- [ ] **Account** model (name, number, parent, type, root_type [Asset/Liability/Income/Expense/Equity], is_group, company, balance_direction)
-- [ ] **Account Category** model
+- [ ] **Account** model (name, code, parent, type, root_type [Asset/Liability/Equity/Income/Expense], is_group, organization, description)
+- [ ] Pre-built Chart of Accounts templates:
+  - Indian Standard
+  - US GAAP
+  - IFRS
+  - UK Standard
+  - UAE Standard
+  - Custom (blank)
 - [ ] Tree view UI for Chart of Accounts (expandable/collapsible hierarchy)
-- [ ] Import Chart of Accounts templates (Indian, US GAAP, IFRS standard charts)
-- [ ] Add/edit/delete accounts (with validation — can't delete if transactions exist)
+- [ ] Add sub-accounts within any category
+- [ ] Edit/delete accounts (with validation — can't delete if transactions exist)
 - [ ] Account balance display in tree
-- [ ] **Chart of Accounts Importer** — CSV/Excel import
+- [ ] **General Ledger** linked to Chart of Accounts
 
-### 1.3 Fiscal Year & Accounting Period
+### 1.3 Contacts (Customers & Vendors)
 
-- [ ] **Fiscal Year** model (name, start_date, end_date, companies[], is_closed)
-- [ ] **Accounting Period** model (closed doctypes per period)
-- [ ] **Finance Book** model (for parallel books — tax book, GAAP book)
-- [ ] Fiscal year auto-creation
-- [ ] Period closing restrictions
+- [ ] **Contact** model (type [Customer/Vendor/Both], display_name, company_name, email, phone, currency, payment_terms, tax_treatment, tax_id, billing_address, shipping_address, contact_persons[], notes, portal_enabled, language, reporting_tags[])
+- [ ] Contact list view with search, filters, and bulk actions
+- [ ] Contact detail page with full transaction history
+- [ ] Import contacts from CSV/Excel
+- [ ] Merge duplicate contacts
+- [ ] **Contact Person** sub-model (multiple contacts per organization)
+- [ ] Customer-specific fields: credit limit, sales person
+- [ ] Vendor-specific fields: payment terms, TDS category
 
-### 1.4 Currency & Exchange Rates
+### 1.4 Items & Services
 
-- [ ] **Currency** model (name, symbol, fraction, fraction_units, smallest_unit, enabled)
-- [ ] **Currency Exchange** model (from, to, date, rate)
-- [ ] **Currency Exchange Settings** (auto-fetch rates from API)
-- [ ] Multi-currency support foundation in all monetary fields
-
-### 1.5 Customer & Supplier Masters
-
-- [ ] **Customer** model (name, type [Company/Individual], group, territory, default currency, tax ID, credit limits, addresses, contacts)
-- [ ] **Customer Group** model (hierarchical tree)
-- [ ] **Supplier** model (name, type, group, default currency, tax ID, addresses, contacts)
-- [ ] **Supplier Group** model (hierarchical tree)
-- [ ] Customer/Supplier list views with search and filters
-- [ ] Customer/Supplier detail pages
-- [ ] Default accounts per customer/supplier
-
-### 1.6 Item Master
-
-- [ ] **Item** model (code, name, group, UOM, type [Stock/Non-Stock/Service], valuation_method, stock_uom, has_variants, has_serial_no, has_batch_no, is_sales_item, is_purchase_item, etc.)
-- [ ] **Item Group** model (hierarchical tree)
-- [ ] **UOM** model (Unit of Measure) + **UOM Conversion Factor**
-- [ ] **Brand** model
-- [ ] **Manufacturer** model
+- [ ] **Item** model (type [Goods/Service], name, SKU, unit, description, selling_price, cost_price, tax_preference, hsn_sac_code, inventory_tracked, stock_on_hand, reorder_point, preferred_vendor, image, is_active)
+- [ ] **Item Group** model (hierarchical categorization)
 - [ ] Item list view with search and filters
-- [ ] Item detail page with all fields
-- [ ] **Item Price** model (item, price_list, rate, currency, valid_from, valid_to)
-- [ ] **Price List** model (name, currency, buying/selling)
-- [ ] **Item Default** (default warehouse, buying/selling cost center, income/expense account per company)
-- [ ] **Item Tax Template** (tax rates specific to items)
+- [ ] Item detail page with price history, transaction history
+- [ ] Import items from CSV/Excel
+- [ ] **Unit of Measurement** model (nos, kg, hrs, etc.) + custom units
 
-### 1.7 Warehouse Master
+### 1.5 Price Lists
 
-- [ ] **Warehouse** model (name, type, company, parent_warehouse, is_group, account)
-- [ ] **Warehouse Type** model
-- [ ] Tree view for warehouse hierarchy
-- [ ] Warehouse-Account linking
+- [ ] **Price List** model (name, type [Sales/Purchase], currency, items with custom prices)
+- [ ] Create custom price lists with markup/markdown percentages
+- [ ] Associate price lists to contacts or transactions
+- [ ] Effective date ranges for price lists
+- [ ] Bulk price updates
 
-### 1.8 Tax Configuration
+### 1.6 Currency & Exchange Rates
 
-- [ ] **Sales Taxes and Charges Template** (name, company, tax_rows[])
-- [ ] **Purchase Taxes and Charges Template**
-- [ ] **Tax Category** model
-- [ ] **Tax Rule** model (auto-apply tax template based on customer/supplier/item)
-- [ ] **Tax Withholding Category** (TDS/TCS for India etc.)
+- [ ] **Currency** model (code, name, symbol, decimal_places, enabled)
+- [ ] Pre-loaded 100+ world currencies
+- [ ] **Currency Exchange Rate** model (from, to, date, rate)
+- [ ] Auto-fetch exchange rates from API (scheduled daily)
+- [ ] Manual exchange rate entry
+- [ ] Exchange rate history
+
+### 1.7 Tax Configuration
+
+- [ ] **Tax** model (name, rate, type [Tax Group/Simple Tax], tax_authority, is_compound, description)
+- [ ] **Tax Group** model (group of taxes applied together, e.g., CGST + SGST)
+- [ ] **Tax Exemption** model
+- [ ] **Tax Treatment** per contact (taxable, tax exempt, reverse charge, etc.)
+- [ ] GST-specific: CGST, SGST, IGST, Cess rates
+- [ ] **HSN/SAC Code** support on items
+- [ ] Default tax per item / per contact / per organization
+
+### 1.8 Payment Terms
+
+- [ ] **Payment Terms** model (name, days, discount_percentage, discount_days)
+- [ ] Pre-built templates: Net 15, Net 30, Net 45, Net 60, Due on Receipt, Custom
+- [ ] Early payment discount support
+- [ ] Late payment penalty configuration
+- [ ] Default payment terms per contact
 
 ### 1.9 Other Setup Masters
 
-- [ ] **Territory** model (hierarchical tree)
-- [ ] **Sales Person** model (hierarchical tree)
-- [ ] **Sales Partner** model
-- [ ] **Branch** model
-- [ ] **Department** model (hierarchical tree)
-- [ ] **Designation** model
-- [ ] **Cost Center** model (hierarchical tree, company-wise)
-- [ ] **Mode of Payment** model + Mode of Payment Account
-- [ ] **Payment Terms Template** + Payment Term
-- [ ] **Terms and Conditions** model
-- [ ] **Incoterm** model
-- [ ] **Holiday List** model
+- [ ] **Warehouse / Location** model (for inventory tracking)
+- [ ] **Sales Person** model (for assigning to customers/invoices)
+- [ ] **Mode of Payment** model (Cash, Bank Transfer, Credit Card, UPI, Check, etc.)
+- [ ] **Expense Category** model (Travel, Office Supplies, Utilities, etc.)
+- [ ] **Reporting Tag** model (for divisional P&L — cost centers, revenue streams, business areas)
+- [ ] **Custom Fields** engine (add custom fields to any entity)
 
-### 1.10 Settings
+### 1.10 Settings Pages
 
-- [ ] **Accounts Settings** page (global settings for accounts module)
-- [ ] **Stock Settings** page
-- [ ] **Selling Settings** page
-- [ ] **Buying Settings** page
-- [ ] **Global Defaults** page
-
-### 1.11 Naming Series Engine
-
-- [ ] Naming series configuration per doctype
-- [ ] Pattern support: `{prefix}-{YYYY}-{#####}`
-- [ ] Auto-increment with company-level counters
+- [ ] **General Settings** (organization info, fiscal year, date/number format)
+- [ ] **Tax Settings** (default taxes, GST configuration)
+- [ ] **Invoice Settings** (default terms, invoice numbering, auto-reminders)
+- [ ] **Notification Preferences** (email notification toggles)
+- [ ] **Online Payment Settings** (payment gateway configuration)
+- [ ] **Portal Settings** (customer/vendor portal configuration)
+- [ ] **Connected Accounts** (integrations)
 
 ### Deliverables
 
-- All master data entities with full CRUD + UI
-- Tree views for Chart of Accounts, Item Groups, Warehouses, Customer Groups, Supplier Groups, Territories, Cost Centers
-- Company setup wizard
-- Tax configuration system
-- Pricing system (price lists, item prices)
-- All data fully company-scoped
+- Organization setup with onboarding wizard
+- Chart of Accounts with templates and tree UI
+- Contacts (Customer/Vendor) with full CRUD
+- Items & Services with pricing
+- Price Lists with markup/markdown
+- Tax configuration (including GST)
+- Payment terms templates
+- Reporting tags for divisional reports
+- All master data import/export
 
 ---
 
-## Phase 2: Core Accounting Engine (Week 6-10)
+## Phase 2: Receivables — Invoicing & Sales (Week 6-10)
 
-> **Goal**: Implement the General Ledger, Journal Entries, and the foundational accounting engine that all financial transactions flow through.
+> **Goal**: Implement the complete receivables cycle — Quotes → Sales Orders → Invoices → Payments Received → Credit Notes. This is the heart of Zoho Books.
 
-### 2.1 General Ledger Engine
+### 2.1 Quotes (Estimates)
 
-- [ ] **GL Entry** model (account, debit, credit, voucher_type, voucher_no, posting_date, company, cost_center, project, against, party_type, party, finance_book, is_cancelled, fiscal_year)
-- [ ] GL posting service (`makeGLEntries()`) — the core engine that creates balanced double-entry records
-- [ ] Validation: total debits must equal total credits per voucher
-- [ ] Auto-reverse GL entries on cancellation
-- [ ] Party-wise GL entries (customer/supplier sub-ledger)
-- [ ] Cost center allocation
-- [ ] Multi-currency GL entries (with exchange rate, debit/credit in account currency + company currency)
-- [ ] Finance book support (parallel GL entries)
-- [ ] **Account Closing Balance** model (periodic balance snapshots for fast reporting)
+- [ ] **Quote** model (quote_number, customer, items[], taxes[], discount, shipping_charges, adjustment, notes, terms, valid_till, status [Draft/Sent/Accepted/Declined/Expired/Invoiced])
+- [ ] **Quote Item** embedded (item, description, quantity, rate, discount, tax, amount)
+- [ ] Quote form:
+  - Customer selection with auto-fill (address, payment terms, tax)
+  - Item table with real-time tax calculation
+  - Discount (per-line + overall percentage or flat)
+  - Shipping charges
+  - Notes & terms
+  - Custom fields
+- [ ] Professional quote PDF with custom branding (logo, colors, fonts)
+- [ ] Send quote via email from within the app
+- [ ] Quote approval workflow:
+  - **Single-level approval** (one approver)
+  - **Multi-level approval** (sequential approval chain)
+  - Approve/reject with comments
+- [ ] Quote → Sales Order conversion (one-click)
+- [ ] Quote → Invoice conversion (one-click)
+- [ ] **Partial invoicing / Progress Invoicing**: Invoice partial amounts per line item from a quote
+- [ ] Quote expiry tracking with alerts
+- [ ] **Declined Quote** with reason tracking
+- [ ] Quote list view with status filters (Open, Accepted, Declined, Expired, Invoiced)
+- [ ] Duplicate quote functionality
 
-### 2.2 Payment Ledger Engine
+### 2.2 Sales Orders
 
-- [ ] **Payment Ledger Entry** model (tracks outstanding amounts for invoices/payments)
-- [ ] Payment ledger posting on invoice submission
-- [ ] Payment ledger update on payment reconciliation
-- [ ] Outstanding amount tracking per invoice
+- [ ] **Sales Order** model (order_number, customer, items[], taxes[], delivery_date, status [Draft/Confirmed/Closed/Void], invoiced_status [Not Invoiced/Partially Invoiced/Invoiced])
+- [ ] **Sales Order Item** embedded (item, quantity, rate, invoiced_qty, remaining_qty)
+- [ ] Sales Order form (similar to quote form)
+- [ ] Sales Order from Quote (auto-populate)
+- [ ] Sales Order → Invoice conversion (full or partial)
+- [ ] Sales Order → Purchase Order conversion (when stock insufficient — "dropship" workflow)
+- [ ] Track fulfillment status per line item
+- [ ] Sales Order approval workflow (single/multi-level)
+- [ ] Backorder management
+- [ ] Sales Order list view with delivery/invoice status tracking
 
-### 2.3 Journal Entry
+### 2.3 Invoices (Sales Invoices)
 
-- [ ] **Journal Entry** model (voucher_type [Journal Entry, Bank Entry, Cash Entry, Credit Note, Debit Note, Contra Entry, Excise Entry, Write Off Entry, Opening Entry, Depreciation Entry, Exchange Rate Revaluation], posting_date, accounts[], total_debit, total_credit, difference, user_remark, cheque_no, cheque_date)
-- [ ] **Journal Entry Account** child (account, party_type, party, debit, credit, cost_center, project, reference_type, reference_name, exchange_rate)
-- [ ] Journal Entry form with dynamic account rows
-- [ ] Auto-balance detection
-- [ ] Submit/Cancel workflow with GL posting
-- [ ] Quick Entry templates (common journal types)
-- [ ] **Journal Entry Template** for recurring entries
-
-### 2.4 Payment Entry
-
-- [ ] **Payment Entry** model (payment_type [Receive/Pay/Internal Transfer], party_type, party, paid_amount, received_amount, source_exchange_rate, target_exchange_rate, references[], deductions[], mode_of_payment, paid_from, paid_to)
-- [ ] **Payment Entry Reference** child (reference_doctype, reference_name, outstanding_amount, allocated_amount)
-- [ ] **Payment Entry Deduction** child (account, cost_center, amount)
-- [ ] Payment Entry form with:
-  - Party selection → auto-fetch outstanding invoices
-  - Allocate payment against invoices
-  - Multi-currency support
-  - Write-off handling
-  - Bank charges deduction
-- [ ] Submit/Cancel with GL posting + Payment Ledger update
-- [ ] **Advance Payment** support (payment before invoice)
-
-### 2.5 Bank & Cash Account Management
-
-- [ ] **Bank** model + **Bank Account** model
-- [ ] **Bank Account Type** + **Bank Account Subtype**
-- [ ] Bank account reconciliation view
-- [ ] **Bank Transaction** model (imported or manually entered)
-- [ ] **Bank Reconciliation Tool** — match bank transactions to Payment Entries / Journal Entries
-- [ ] **Bank Clearance** tool
-- [ ] **Bank Statement Import** (CSV/OFX/MT940 parsing)
-- [ ] **Bank Guarantee** tracking
-
-### 2.6 Taxes & Totals Engine
-
-- [ ] Port `taxes_and_totals.py` → `taxes-and-totals.engine.ts`
-- [ ] Tax calculation types: On Net Total, On Previous Row Amount, On Previous Row Total, On Item Quantity, Actual
-- [ ] Inclusive/exclusive tax handling
-- [ ] Rounding adjustments
-- [ ] Discount handling (percentage + amount, on grand total + net total)
-- [ ] This engine is shared by: Sales Invoice, Purchase Invoice, Quotation, Sales Order, Purchase Order, Delivery Note, Purchase Receipt
-
-### 2.7 Period Closing
-
-- [ ] **Period Closing Voucher** — close a fiscal period, move P&L balances to retained earnings
-- [ ] **Process Period Closing Voucher** — background processing for large datasets
-- [ ] Prevent transactions in closed periods
-
-### 2.8 Budget Management
-
-- [ ] **Budget** model (company, fiscal_year, budget_against [Cost Center/Project/Account/Department], accounts[])
-- [ ] **Budget Account** child (account, budget_amount, monthly_distribution)
-- [ ] **Monthly Distribution** model (percentage allocation across months)
-- [ ] Budget validation on transaction submission (warn/stop/ignore)
-- [ ] Budget variance tracking
-
-### 2.9 Accounting Dimensions
-
-- [ ] **Accounting Dimension** model (custom dimensions beyond cost center/project)
-- [ ] Auto-add dimension fields to all relevant transactional documents
-- [ ] Dimension-wise filtering in reports
-
-### Deliverables
-
-- Fully functional double-entry General Ledger engine
-- Journal Entry with submit/cancel workflow
-- Payment Entry with invoice allocation
-- Bank reconciliation tools
-- Tax calculation engine
-- Period closing
-- Budget management
-- Accounting dimensions
-- All GL postings validated and balanced
-
----
-
-## Phase 3: Selling Cycle (Week 11-14)
-
-> **Goal**: Implement the complete selling workflow from CRM lead to payment collection.
-
-### 3.1 CRM Foundation
-
-- [ ] **Lead** model (name, email, phone, company, source, status, territory, notes[])
-- [ ] **Opportunity** model (from Lead/Customer, type [Sales/Maintenance], items[], status, sales_stage, probability, expected_closing)
-- [ ] **Sales Stage** model
-- [ ] **Campaign** model
-- [ ] Lead → Opportunity conversion
-- [ ] Lead/Opportunity list views with pipeline stages
-- [ ] **Appointment** scheduling
-- [ ] **Contract** management
-
-### 3.2 Quotation
-
-- [ ] **Quotation** model (quotation_to [Lead/Customer], party, items[], taxes[], valid_till, payment_terms, terms, total, grand_total)
-- [ ] **Quotation Item** child (item, qty, rate, amount, discount, warehouse, delivery_date)
-- [ ] Quotation form with item table + tax calculation (uses Taxes & Totals engine)
-- [ ] Quotation print format (PDF)
-- [ ] Quotation → Sales Order conversion
-- [ ] Quotation expiry tracking
-- [ ] **Lost Quotation** reason tracking
-
-### 3.3 Sales Order
-
-- [ ] **Sales Order** model (customer, items[], taxes[], delivery_date, payment_terms, status [Draft/To Deliver and Bill/To Bill/To Deliver/Completed/Cancelled])
-- [ ] **Sales Order Item** child (item, qty, rate, amount, delivered_qty, billed_qty, warehouse, delivery_date)
-- [ ] Sales Order form with:
-  - Customer selection → auto-fetch default address, taxes, price list
-  - Item table with real-time pricing from Price List
-  - Tax calculation
-  - Payment schedule
-- [ ] Submit/Cancel workflow
-- [ ] Sales Order → Delivery Note conversion
-- [ ] Sales Order → Sales Invoice conversion
-- [ ] Sales Order → Material Request (for items not in stock)
-- [ ] Delivery schedule tracking
-- [ ] **Blanket Order** support (framework agreements)
-
-### 3.4 Delivery Note
-
-- [ ] **Delivery Note** model (customer, items[], posting_date, status [Draft/To Bill/Completed/Cancelled])
-- [ ] **Delivery Note Item** child (item, qty, rate, warehouse, serial_no, batch_no, against_sales_order)
-- [ ] Delivery Note from Sales Order (auto-populate items)
-- [ ] Stock deduction on submit (Stock Ledger Entry creation)
-- [ ] Delivery Note → Sales Invoice link
-- [ ] **Packing Slip** support
-- [ ] **Pick List** (warehouse pick instructions)
-- [ ] **Delivery Trip** (route planning with stops)
-- [ ] **Installation Note** (for items requiring installation)
-
-### 3.5 Sales Invoice
-
-- [ ] **Sales Invoice** model (customer, items[], taxes[], posting_date, due_date, payment_terms, outstanding_amount, paid_amount, status [Draft/Unpaid/Paid/Overdue/Cancelled])
-- [ ] **Sales Invoice Item** child (item, qty, rate, amount, warehouse, serial_no, batch_no, income_account, cost_center, against_sales_order, against_delivery_note)
-- [ ] **Sales Invoice Payment** child (mode_of_payment, amount, account) — for POS
-- [ ] Sales Invoice form:
-  - From Sales Order / Delivery Note (auto-populate)
-  - Or standalone
-  - Tax calculation
-  - Payment terms with due date calculation
-  - Multi-currency support
-- [ ] GL posting on submit:
-  - Debit: Customer (Accounts Receivable)
-  - Credit: Income Account
-  - Credit: Tax Liability Account
-  - Optional: Stock deduction (if "Update Stock" is checked)
-- [ ] Sales Invoice print format (PDF) with company logo, terms, tax breakdown
-- [ ] Credit Note (return invoice) with stock return handling
-- [ ] **Deferred Revenue** posting (recognize revenue over time)
-- [ ] **Invoice Discounting** (factoring)
-- [ ] Recurring Sales Invoice (from Subscription)
-
-### 3.6 Sales Team & Commission
-
-- [ ] **Sales Team** child table (sales_person, contribution %, incentives)
-- [ ] Commission calculation based on sales
-- [ ] **Sales Partner** commission tracking
-
-### 3.7 Selling Reports
-
-- [ ] Sales Register (list of all sales invoices)
-- [ ] Sales Analytics (trends by item/customer/territory/sales person)
-- [ ] Sales Order Analysis (pending, completed, cancelled)
-- [ ] Gross Profit report
-- [ ] Customer Ledger Summary
-- [ ] Accounts Receivable (ageing analysis — current, 30, 60, 90, 120+ days)
-- [ ] Accounts Receivable Summary
-- [ ] Sales Funnel visualization
-- [ ] Delivered Items to be Billed
-- [ ] Quotation Trends
-- [ ] Territory Wise Sales
-- [ ] Sales Person Wise Transaction Summary
-- [ ] Customer Acquisition and Loyalty
-
-### 3.8 Pricing Rules & Discounts
-
-- [ ] **Pricing Rule** engine (auto-apply discounts based on customer/item/qty/amount/date)
-- [ ] **Promotional Scheme** (buy X get Y)
-- [ ] **Coupon Code** support
-- [ ] Margin calculation (on buying rate or valuation rate)
-
-### Deliverables
-
-- Complete CRM: Lead → Opportunity → Quotation pipeline
-- Full Sales Order lifecycle with delivery tracking
-- Delivery Note with stock deduction
-- Sales Invoice with GL posting, credit notes
-- Accounts Receivable ageing
-- All selling reports
-- Pricing rules and discount engine
-
----
-
-## Phase 4: Buying Cycle (Week 15-18)
-
-> **Goal**: Implement the complete purchasing workflow from request to payment.
-
-### 4.1 Purchase Request & Sourcing
-
-- [ ] **Material Request** model (purpose [Purchase/Material Transfer/Material Issue/Manufacturing/Customer Provided], items[], status)
-- [ ] **Request for Quotation (RFQ)** model (suppliers[], items[])
-- [ ] **Supplier Quotation** model (supplier, items[], taxes[])
-- [ ] Supplier Quotation comparison tool
-- [ ] Material Request → RFQ → Supplier Quotation → Purchase Order flow
-
-### 4.2 Purchase Order
-
-- [ ] **Purchase Order** model (supplier, items[], taxes[], schedule_date, payment_terms, status)
-- [ ] **Purchase Order Item** child (item, qty, rate, received_qty, billed_qty, warehouse, schedule_date)
-- [ ] Purchase Order form with:
-  - Supplier selection → auto-fetch defaults
-  - Item table with supplier pricing
-  - Tax calculation (Purchase Taxes)
-  - Payment schedule
-- [ ] PO from Material Request / Supplier Quotation
-- [ ] PO → Purchase Receipt conversion
-- [ ] PO → Purchase Invoice conversion
-
-### 4.3 Purchase Receipt
-
-- [ ] **Purchase Receipt** model (supplier, items[], posting_date, status)
-- [ ] **Purchase Receipt Item** child (item, qty, rate, warehouse, serial_no, batch_no, rejected_qty, rejected_warehouse)
-- [ ] Stock addition on submit (Stock Ledger Entry)
-- [ ] Quality Inspection integration
-- [ ] **Landed Cost Voucher** (add freight, customs, etc. to item cost)
-- [ ] Purchase Receipt → Purchase Invoice link
-
-### 4.4 Purchase Invoice
-
-- [ ] **Purchase Invoice** model (supplier, items[], taxes[], posting_date, due_date, outstanding_amount, status)
-- [ ] **Purchase Invoice Item** child (item, qty, rate, expense_account, cost_center, against_purchase_order, against_purchase_receipt)
-- [ ] GL posting on submit:
-  - Debit: Expense / Stock Account
-  - Credit: Supplier (Accounts Payable)
+- [ ] **Invoice** model (invoice_number, customer, items[], taxes[], discount, shipping_charges, adjustment, notes, terms, due_date, payment_terms, status [Draft/Sent/Partially Paid/Paid/Overdue/Void], amount_due, payment_received, credits_applied, write_off_amount, currency, exchange_rate)
+- [ ] **Invoice Item** embedded (item, description, quantity, rate, discount, tax, amount, hsn_sac_code)
+- [ ] Invoice form:
+  - Customer selection with auto-fill
+  - Item table with real-time tax + total calculation
+  - Discount handling (per-line + overall)
+  - Shipping charges + adjustments
+  - Payment terms with auto-calculated due date
+  - Attach files to invoice
+  - Custom fields
+- [ ] **GL posting on creation/send**:
+  - Debit: Accounts Receivable
+  - Credit: Income Account (per item)
   - Credit/Debit: Tax accounts
-- [ ] Debit Note (purchase return)
-- [ ] **Deferred Expense** posting
-- [ ] Purchase Invoice without Purchase Order (service purchases)
+- [ ] Professional invoice PDF with custom branding
+- [ ] Send invoice via email with PDF attachment
+- [ ] **Payment link in invoice email** (online payment)
+- [ ] **Automated payment reminders**:
+  - Configure reminder intervals (e.g., 3 days before due, on due date, 7 days after, 14 days after)
+  - Auto-send or manual trigger
+- [ ] Invoice approval workflow (single/multi-level)
+- [ ] **Recurring invoices**:
+  - Set frequency (daily/weekly/monthly/yearly/custom)
+  - Auto-create and optionally auto-send
+  - End date or number of occurrences
+- [ ] **Invoice from Sales Order** (full or partial)
+- [ ] **Invoice from Quote** (full or partial / progress invoicing)
+- [ ] **Write-off** small balances
+- [ ] Mark invoice as **Void** (with GL reversal)
+- [ ] **Clone invoice** functionality
+- [ ] Invoice list view with ageing indicators, status filters
+- [ ] **Bulk invoice actions** (send, print, mark as sent, mark as void)
+- [ ] **Invoice payment recording** (record payment directly from invoice)
+- [ ] **Overdue auto-flagging** (scheduled job)
 
-### 4.5 Supplier Management
+### 2.4 Payment Received
 
-- [ ] **Supplier Scorecard** (rating suppliers based on quality, delivery, pricing)
-- [ ] Supplier-wise item pricing history
+- [ ] **Payment Received** model (payment_number, customer, date, amount, payment_mode, reference_number, deposit_to_account, invoices_allocated[], excess_amount, currency, exchange_rate)
+- [ ] **Payment Allocation** embedded (invoice_id, invoice_number, amount_due, payment_allocated)
+- [ ] Payment received form:
+  - Customer selection → auto-fetch unpaid invoices
+  - Allocate payment across one or multiple invoices
+  - Partial payment support
+  - Excess payment → customer credit balance
+  - Multi-currency with exchange rate
+- [ ] GL posting:
+  - Debit: Bank/Cash Account
+  - Credit: Accounts Receivable
+  - Exchange gain/loss if multi-currency
+- [ ] **Online payment integration** (payment gateways: Stripe, Razorpay, PayPal)
+- [ ] Payment received list view
+- [ ] **Refund** functionality (reverse a payment)
+- [ ] **Auto-charge** saved cards for recurring invoices
 
-### 4.6 Buying Reports
+### 2.5 Credit Notes
 
-- [ ] Purchase Register
-- [ ] Purchase Analytics
-- [ ] Purchase Order Analysis
-- [ ] Accounts Payable (ageing analysis)
-- [ ] Accounts Payable Summary
-- [ ] Supplier Ledger Summary
-- [ ] Procurement Tracker
-- [ ] Requested Items to Order and Receive
-- [ ] Items to be Billed (received but not invoiced)
-- [ ] Received Items to be Billed
+- [ ] **Credit Note** model (credit_note_number, customer, items[], taxes[], reason, status [Draft/Open/Closed/Void], remaining_credits)
+- [ ] Credit Note from invoice (return/adjustment)
+- [ ] Standalone credit note
+- [ ] Apply credit note to outstanding invoices
+- [ ] Refund credit note to customer (creates payment record)
+- [ ] GL posting (reverse of invoice)
+- [ ] Credit Note approval workflow
 
-### Deliverables
+### 2.6 Retainer Invoices (Advance Payments)
 
-- Material Request → RFQ → Supplier Quotation → Purchase Order flow
-- Purchase Receipt with stock addition
-- Purchase Invoice with GL posting, debit notes
-- Accounts Payable ageing
-- Landed Cost allocation
-- All buying reports
+- [ ] **Retainer Invoice** model (customer, amount, description, status [Draft/Sent/Paid/Partially Applied/Fully Applied])
+- [ ] Collect advance/retainer payments before project start
+- [ ] Apply retainer towards future invoices
+- [ ] Track unused retainer balance
+- [ ] GL posting: Debit Receivable, Credit Unearned Revenue → transfer to Revenue on application
 
----
+### 2.7 Sales Receipts (Instant Payments)
 
-## Phase 5: Inventory / Stock Management (Week 19-23)
+- [ ] **Sales Receipt** model (customer, items[], taxes[], payment_method, deposit_to) — invoice + payment combined
+- [ ] For walk-in / immediate-payment scenarios
+- [ ] GL posting for both revenue and payment in one go
 
-> **Goal**: Full inventory management with valuation, serial/batch tracking, and stock analytics.
+### 2.8 Customer Statements
 
-### 5.1 Stock Ledger Engine
-
-- [ ] **Stock Ledger Entry** model (item, warehouse, posting_date, actual_qty, valuation_rate, stock_value, voucher_type, voucher_no, incoming_rate, outgoing_rate, qty_after_transaction, stock_value_difference)
-- [ ] Stock ledger posting service (create SLE on every stock movement)
-- [ ] **Bin** model (item + warehouse = current qty, valuation_rate, stock_value, reserved_qty, ordered_qty, projected_qty)
-- [ ] Bin update on every SLE
-
-### 5.2 Inventory Valuation
-
-- [ ] **FIFO** (First In, First Out) valuation with FIFO queue tracking
-- [ ] **Moving Average** valuation
-- [ ] **LIFO** (Last In, First Out) valuation
-- [ ] Valuation rate recalculation on backdated entries
-- [ ] Stock Value = Qty × Valuation Rate per warehouse
-- [ ] **Perpetual Inventory**: Auto GL entries on stock movements (Stock In Hand ↔ COGS/Expense)
-
-### 5.3 Stock Entry (Material Movement)
-
-- [ ] **Stock Entry** model (purpose [Material Receipt/Material Issue/Material Transfer/Manufacture/Repack/Send to Subcontractor], items[], posting_date)
-- [ ] **Stock Entry Type** model (configurable purposes)
-- [ ] Stock Entry form with source/target warehouse per item
-- [ ] Submit → Stock Ledger Entries + GL Entries
-- [ ] Material Transfer between warehouses
-- [ ] Material Issue (consume from warehouse)
-- [ ] Material Receipt (add to warehouse)
-
-### 5.4 Stock Reconciliation
-
-- [ ] **Stock Reconciliation** model (items with current_qty, new_qty, valuation_rate)
-- [ ] Reconciliation creates adjustment SLEs to match physical count
-- [ ] Opening stock entry support
-- [ ] Bulk reconciliation from Excel import
-
-### 5.5 Serial Number & Batch Tracking
-
-- [ ] **Serial No** model (item, warehouse, status, purchase_document, delivery_document, warranty_expiry)
-- [ ] **Batch** model (item, batch_id, expiry_date, manufacturing_date, qty)
-- [ ] **Serial and Batch Bundle** model (group serial/batch selections)
-- [ ] Auto-create serial numbers on purchase receipt
-- [ ] Track serial number throughout lifecycle
-- [ ] Batch-wise FIFO for perishable goods
-- [ ] Batch expiry tracking and alerts
-
-### 5.6 Item Variants
-
-- [ ] **Item Variant** generation from template items
-- [ ] **Item Attribute** model (size, color, material, etc.)
-- [ ] Variant creation based on attribute combinations
-- [ ] Variant-specific pricing and stock tracking
-
-### 5.7 Reorder & Demand Planning
-
-- [ ] **Item Reorder** rules (reorder level, reorder qty, warehouse, material_request_type)
-- [ ] Auto-create Material Requests when stock falls below reorder level (scheduled job)
-- [ ] **Putaway Rule** (auto-assign warehouse for incoming stock)
-
-### 5.8 Quality Inspection
-
-- [ ] **Quality Inspection** model (item, inspection_type [Incoming/Outgoing/In Process], readings[])
-- [ ] **Quality Inspection Template** (standard parameters per item)
-- [ ] Mandatory inspection before acceptance (configurable per item)
-- [ ] Pass/Fail with acceptance criteria
-
-### 5.9 Stock Reports
-
-- [ ] Stock Balance (current qty + value per item per warehouse)
-- [ ] Stock Ledger (all stock movements)
-- [ ] Stock Projected Qty (available + ordered − reserved)
-- [ ] Stock Analytics (trends over time)
-- [ ] Stock Ageing (how long items have been in stock)
-- [ ] Warehouse Wise Stock Balance
-- [ ] Item Price report
-- [ ] Batch Wise Balance History
-- [ ] Serial No Ledger / Status
-- [ ] Stock and Account Value Comparison (reconcile stock value with GL)
-- [ ] COGS by Item Group
-- [ ] Negative Stock report
-- [ ] Slow Moving / Dead Stock report
-
-### 5.10 Stock Pages
-
-- [ ] Stock Balance dashboard page (with filters)
-- [ ] Warehouse Capacity Summary page
+- [ ] Generate **Statement of Account** for any customer (date range)
+- [ ] Email statements to customers
+- [ ] PDF export
+- [ ] Bulk statement generation and emailing
 
 ### Deliverables
 
-- Real-time stock tracking with valuation (FIFO/Moving Average)
-- Serial number and batch tracking
-- Stock Entry for all material movements
-- Stock reconciliation (physical vs system)
-- Perpetual inventory with auto GL posting
-- Item variants
-- Reorder automation
-- Quality inspection
-- All stock reports
+- Complete quotation workflow with approval and progress invoicing
+- Sales Orders with fulfillment tracking
+- Full invoicing with recurring, reminders, online payments
+- Payment received with multi-invoice allocation
+- Credit Notes and Retainer Invoices
+- Customer statements
+- GL posting for all receivable transactions
+- Professional PDF templates with branding
+- Sales approval workflows (single and multi-level)
 
 ---
 
-## Phase 6: Manufacturing (Week 24-28)
+## Phase 3: Payables — Bills & Expenses (Week 11-14)
 
-> **Goal**: Full manufacturing module — BOM, work orders, production planning, job cards.
+> **Goal**: Implement complete payables management — Purchase Orders → Bills → Payments Made → Vendor Credits + Expense Tracking.
 
-### 6.1 Bill of Materials (BOM)
+### 3.1 Purchase Orders
 
-- [ ] **BOM** model (item, quantity, items[] [raw materials with qty, rate], operations[], scrap_items[], is_active, is_default)
-- [ ] **BOM Item** child (item, qty, rate, amount, source_warehouse)
-- [ ] **BOM Operation** child (operation, workstation, time_in_mins, operating_cost)
-- [ ] **BOM Scrap Item** child (item, qty, rate)
-- [ ] Multi-level BOM (BOM within BOM)
-- [ ] BOM cost calculation (raw materials + operations)
-- [ ] BOM comparison tool
-- [ ] BOM Explorer (tree view of multi-level BOM)
-- [ ] **BOM Creator** (visual BOM creation tool)
+- [ ] **Purchase Order** model (po_number, vendor, items[], taxes[], delivery_date, status [Draft/Issued/Closed/Cancelled], billed_status [Unbilled/Partially Billed/Billed])
+- [ ] **Purchase Order Item** embedded (item, quantity, rate, received_qty, billed_qty)
+- [ ] Purchase Order form:
+  - Vendor selection with auto-fill
+  - Item table with pricing
+  - Tax calculation
+  - Expected delivery date
+  - Terms & conditions
+- [ ] **Purchase Order from Sales Order** (to replenish stock for customer orders)
+- [ ] Track delivery and billing status per line item
+- [ ] Purchase Order → Bill conversion
+- [ ] Purchase Order approval workflow (single/multi-level to prevent unauthorized purchases)
+- [ ] Send PO to vendor via email
+- [ ] PO list view with status tracking
+- [ ] **3-Way Matching (BillPay)**: Match Bills ↔ Purchase Orders ↔ Receipts
+  - Flag price mismatches
+  - Flag quantity mismatches
+  - Approve only verified bills for payment
 
-### 6.2 Work Order
+### 3.2 Bills (Vendor Bills / Purchase Invoices)
 
-- [ ] **Work Order** model (item, bom, qty, status [Draft/Not Started/In Progress/Completed/Stopped/Cancelled], required_items[], operations[])
-- [ ] Work Order from Sales Order / Material Request / Production Plan
-- [ ] Material transfer for manufacture (Stock Entry with purpose "Material Transfer for Manufacture")
-- [ ] Material consumption tracking
-- [ ] Finished goods receipt (Stock Entry with purpose "Manufacture")
-- [ ] Work Order completion with actual vs planned tracking
-- [ ] Scrap/wastage recording
-- [ ] **Process Loss** tracking
+- [ ] **Bill** model (bill_number, vendor, vendor_invoice_number, items[], taxes[], due_date, payment_terms, status [Draft/Open/Partially Paid/Paid/Overdue/Void], amount_due, payments_made, credits_applied)
+- [ ] **Bill Item** embedded (item, description, quantity, rate, tax, amount, expense_account)
+- [ ] Bill form:
+  - Vendor selection with auto-fill
+  - Line items with expense account allocation
+  - Tax calculation
+  - Payment terms with due date
+  - Attach vendor invoice document
+- [ ] **Bill from Purchase Order** (auto-populate from PO)
+- [ ] **Bill from vendor portal** (vendor uploads invoice → converted to bill)
+- [ ] GL posting on approval/save:
+  - Debit: Expense / Inventory Account
+  - Credit: Accounts Payable
+  - Tax accounts
+- [ ] Bill approval workflow (single/multi-level)
+- [ ] Recurring bills (for regular vendor expenses)
+- [ ] Bill list view with ageing indicators, status filters
+- [ ] **Overdue auto-flagging** (scheduled job)
+- [ ] Mark bill as Void
 
-### 6.3 Job Card
+### 3.3 Payments Made
 
-- [ ] **Job Card** model (work_order, operation, workstation, time_logs[], items[], status)
-- [ ] Job Card per operation per work order
-- [ ] Time tracking (start/pause/resume/complete)
-- [ ] Workstation scheduling
-- [ ] Job Card completion triggers next operation
+- [ ] **Payment Made** model (payment_number, vendor, date, amount, payment_mode, reference_number, paid_from_account, bills_allocated[], excess_amount)
+- [ ] **Payment Allocation** embedded (bill_id, bill_number, amount_due, payment_allocated)
+- [ ] Payment form:
+  - Vendor selection → auto-fetch unpaid bills
+  - Allocate across one or multiple bills
+  - Partial payment support
+  - Excess payment → vendor credit balance
+  - Multi-currency with exchange rate
+- [ ] GL posting:
+  - Debit: Accounts Payable
+  - Credit: Bank/Cash Account
+- [ ] Payment list view
+- [ ] **Refund from vendor** recording
+- [ ] **Direct bank payment** (connected banking — pay vendor directly from app)
 
-### 6.4 Production Planning
+### 3.4 Vendor Credits
 
-- [ ] **Production Plan** model (from Sales Orders / Material Requests / Forecast)
-- [ ] Generate Work Orders from Production Plan
-- [ ] Generate Material Requests for raw materials
-- [ ] Sub-assembly planning (multi-level)
-- [ ] **Master Production Schedule** (future production planning)
-- [ ] **Sales Forecast** for demand forecasting
+- [ ] **Vendor Credit** model (credit_number, vendor, items[], taxes[], reason, status [Draft/Open/Closed/Void], remaining_credits)
+- [ ] Vendor Credit from Bill (return/adjustment)
+- [ ] Apply vendor credit to outstanding bills
+- [ ] Refund vendor credit
+- [ ] GL posting
+- [ ] Vendor Credit approval workflow
 
-### 6.5 Workstation & Routing
+### 3.5 Expenses
 
-- [ ] **Workstation** model (name, production_capacity, operating_costs, working_hours)
-- [ ] **Workstation Type** model
-- [ ] **Operation** model
-- [ ] **Routing** model (sequence of operations)
-- [ ] Workstation capacity planning
+- [ ] **Expense** model (date, category, amount, tax, vendor, paid_through_account, receipt_image, notes, is_billable, customer, project, status [Draft/Approved/Invoiced/Reimbursed])
+- [ ] **Expense Category** model (name, account)
+- [ ] Expense form with receipt upload
+- [ ] **Auto-scan receipts** (OCR):
+  - Upload receipt image → auto-extract vendor, amount, date, category
+  - Create expense automatically from scan
+- [ ] **Recurring expenses** (set frequency for repeating expenses)
+- [ ] Billable expenses (tag to customer/project → add to invoice)
+- [ ] Expense list view with category/vendor/date filters
+- [ ] Expense → Invoice conversion (bill customer for expenses)
+- [ ] **Mileage tracking** (for travel expenses)
+- [ ] Bulk expense import from CSV
 
-### 6.6 Manufacturing Reports
+### 3.6 Document Management
 
-- [ ] BOM Stock Report (material availability for BOMs)
-- [ ] Production Analytics (output over time)
-- [ ] Work Order Summary
-- [ ] Open / Completed / In Progress Work Orders
-- [ ] Job Card Summary
-- [ ] Work Order Consumed Materials
-- [ ] Downtime Analysis
-- [ ] Cost of Poor Quality
-- [ ] Material Requirements Planning (MRP) report
-
-### 6.7 Plant Floor
-
-- [ ] Visual Plant Floor page (real-time production status)
-- [ ] Downtime Entry tracking
+- [ ] **Document** model (name, folder, file, tags, linked_transaction)
+- [ ] Central document repository
+- [ ] Organize documents in custom folders
+- [ ] Attach receipts/invoices to transactions
+- [ ] Auto-scan documents → create transactions
+- [ ] Search documents by name, tag, folder
+- [ ] Document retention policies
 
 ### Deliverables
 
-- Multi-level BOM with cost calculation
-- Work Order lifecycle with material tracking
-- Job Card-level operation tracking with time logs
-- Production Planning from sales orders and forecasts
-- Workstation and routing management
-- All manufacturing reports
+- Purchase Order lifecycle with 3-way matching (BillPay)
+- Full bill management with recurring and approvals
+- Payment made with multi-bill allocation
+- Vendor Credits
+- Expense tracking with receipt OCR auto-scan
+- Document management system
+- GL posting for all payable transactions
+- Purchase approval workflows
 
 ---
 
-## Phase 7: Financial Reports & Dashboards (Week 29-32)
+## Phase 4: Banking & Reconciliation (Week 15-17)
 
-> **Goal**: Implement all core financial reports and interactive dashboards.
+> **Goal**: Connect bank accounts, auto-import transactions, categorize, match, and reconcile for swift month-end closing.
 
-### 7.1 Core Financial Statements
+### 4.1 Bank Account Management
 
-- [ ] **Profit and Loss Statement** (Income − Expense for a period)
-  - Filters: company, fiscal_year, period, cost_center, project, finance_book
-  - Monthly/quarterly/yearly columns
+- [ ] **Bank Account** model (bank_name, account_number, account_type [Savings/Checking/Credit Card], currency, opening_balance, current_balance, is_primary, account_linked_to [GL account])
+- [ ] Add multiple bank and credit card accounts
+- [ ] Bank account dashboard (balance, recent transactions, reconciliation status)
+
+### 4.2 Bank Feeds (Auto-Import)
+
+- [ ] **Bank Transaction** model (date, description, reference, amount, type [Deposit/Withdrawal], status [Uncategorized/Matched/Categorized/Excluded/Reconciled], matched_transaction)
+- [ ] **Automatic bank feeds** via:
+  - Plaid / Yodlee integration (for auto-fetch)
+  - Bank-specific APIs (partner banks)
+- [ ] **Manual bank statement import**:
+  - CSV import
+  - OFX/QFX format support
+  - MT940 format support
+  - PDF statement parsing (OCR)
+- [ ] Auto-fetch bank feeds on schedule (daily)
+- [ ] Bank transaction list view (all imported transactions)
+
+### 4.3 Transaction Categorization & Matching
+
+- [ ] **Auto-match** imported bank transactions with existing:
+  - Invoices (by amount + date)
+  - Bills (by amount + date)
+  - Payments (by reference number)
+  - Expenses (by amount)
+- [ ] **Manual matching** — select and match bank transaction with one or multiple transactions
+- [ ] **Auto-categorize** using **Bank Rules**:
+  - **Bank Rule** model (conditions [description contains X, amount range, etc.], action [categorize to account, create expense, tag to contact])
+  - Rules auto-apply to new imports
+- [ ] Categorize unmatched transactions:
+  - As an expense (auto-create expense)
+  - As income (auto-create other income)
+  - As transfer between accounts
+  - Manual journal entry
+- [ ] **Exclude** irrelevant transactions (personal transactions in business account)
+- [ ] Bulk categorization actions
+
+### 4.4 Bank Reconciliation
+
+- [ ] Reconciliation workflow:
+  1. Select bank account
+  2. Enter statement ending date and ending balance
+  3. Match/check off reconciled transactions
+  4. View difference (should be zero when complete)
+  5. Complete reconciliation
+- [ ] **Reconciliation summary** (reconciled, unreconciled, difference)
+- [ ] **Auto-reconcile** (one-click match all perfectly matching transactions)
+- [ ] Reconciliation history (view past reconciliations)
+- [ ] **Undo reconciliation** if needed
+- [ ] Month-end closing acceleration
+
+### 4.5 Connected Banking (Advanced)
+
+- [ ] **Live account balance** view (real-time from bank API)
+- [ ] **Direct vendor bill payment** from within the app (ACH/NEFT/IMPS/UPI)
+- [ ] **Payment status tracking** for direct payments
+- [ ] Partner bank integrations (HSBC, Standard Chartered, Kotak, Yes Bank, etc.)
+
+### 4.6 Cash & Petty Cash
+
+- [ ] **Cash Account** tracking
+- [ ] Petty cash management
+- [ ] Cash register for POS-like scenarios
+
+### Deliverables
+
+- Multi-bank account management
+- Auto-import bank feeds (manual + API)
+- Bank Rules for auto-categorization
+- Auto-match and manual match with transactions
+- Full reconciliation workflow
+- Connected banking (balance view + direct payments)
+- Cash management
+
+---
+
+## Phase 5: Tax Compliance (Week 18-20)
+
+> **Goal**: Full tax compliance including GST, e-invoicing, VAT, TDS/TCS — filing-ready returns directly from the app.
+
+### 5.1 GST Foundation (India)
+
+- [ ] **GST Settings** (GSTIN, GST registration type, reverse charge applicability)
+- [ ] Auto-apply GST rates based on:
+  - Place of supply (intra-state → CGST+SGST, inter-state → IGST)
+  - Item HSN/SAC code
+  - Customer GST treatment (registered, unregistered, SEZ, overseas, composition)
+- [ ] GST tax types: CGST, SGST, IGST, Cess
+- [ ] **Reverse Charge Mechanism** support
+- [ ] **Place of Supply** auto-detection
+- [ ] **GST Treatment** per contact (Registered, Unregistered, Consumer, SEZ, Overseas, Composition, UIN)
+- [ ] **GSTIN Validation** against government database
+
+### 5.2 GST Returns & Filing
+
+- [ ] **GSTR-1** report (outward supplies summary)
+  - B2B, B2C Large, B2C Small, Credit/Debit Notes, Exports, HSN Summary
+- [ ] **GSTR-3B** report (monthly return summary)
+- [ ] **Tax Summary** report (tax collected vs paid)
+- [ ] **GST Reconciliation** (match purchase with GSTR-2A/2B from portal)
+- [ ] **File returns directly** to GST portal from the app (GST Suvidha Provider integration)
+- [ ] Track filing status and due dates
+
+### 5.3 GST E-Invoicing
+
+- [ ] Generate **IRN (Invoice Reference Number)** for B2B invoices
+- [ ] Push invoices to **e-invoicing portal (IRP)** individually or in bulk
+- [ ] Auto-generate **QR code** on invoices
+- [ ] E-invoice acknowledgment tracking
+- [ ] Cancel e-invoice support
+
+### 5.4 E-Way Bill
+
+- [ ] **E-Way Bill** generation for goods movement
+- [ ] Auto-generate from invoices / delivery challans
+- [ ] E-Way Bill portal integration
+- [ ] Part A and Part B (transport details)
+
+### 5.5 Invoice Management System (IMS)
+
+- [ ] View inward invoices from GST portal
+- [ ] Accept, reject, or mark as pending for review
+- [ ] Ensure accurate Input Tax Credit (ITC) claims
+- [ ] Reconcile IMS with purchase records
+
+### 5.6 TDS / TCS (India)
+
+- [ ] **TDS Section** configuration (194C, 194J, 194H, etc.)
+- [ ] Auto-deduct TDS on vendor payments
+- [ ] **TCS** collection on sales above threshold
+- [ ] TDS/TCS reports for quarterly filing
+
+### 5.7 Delivery Challan & Bill of Supply
+
+- [ ] **Delivery Challan** (for goods sent on approval, job work, etc.)
+- [ ] **Bill of Supply** (for composition scheme, exempted goods)
+- [ ] **Bill of Entry** (for imports)
+
+### 5.8 VAT (UAE/UK/EU)
+
+- [ ] VAT configuration (standard rate, zero-rated, exempt, reverse charge)
+- [ ] **VAT Return (VAT 201)** for UAE
+- [ ] **Making Tax Digital (MTD)** for UK
+- [ ] **EU VAT MOSS** support
+- [ ] TRN (Tax Registration Number) validation
+
+### 5.9 US Sales Tax
+
+- [ ] State-wise sales tax configuration
+- [ ] **Tax nexus** tracking
+- [ ] Tax-exempt customers and items
+- [ ] **1099 reporting** for contractors/vendors
+
+### 5.10 Tax Reports
+
+- [ ] Tax Summary (tax collected vs tax paid)
+- [ ] Tax Liability report
+- [ ] Input Tax Credit report
+- [ ] HSN Summary
+- [ ] TDS Summary
+- [ ] GSTR-1 / GSTR-3B formatted reports
+- [ ] VAT return formatted reports
+
+### Deliverables
+
+- Complete GST compliance (GSTIN, HSN, place of supply, reverse charge)
+- GSTR-1, GSTR-3B reports and filing
+- E-invoicing with IRN and QR code
+- E-Way Bill generation
+- TDS/TCS support
+- Invoice Management System
+- VAT compliance (UAE/UK)
+- US sales tax
+- All tax reports filing-ready
+
+---
+
+## Phase 6: Inventory & Stock Management (Week 21-24)
+
+> **Goal**: Complete inventory tracking — item management, stock tracking, reorder, adjustments, packages, shipments — matching Zoho Books' inventory module.
+
+### 6.1 Inventory Item Tracking
+
+- [ ] Enable/disable inventory tracking per item
+- [ ] **Stock on Hand** per item per warehouse (real-time)
+- [ ] **Stock movement** on every transaction:
+  - Sales Invoice → reduce stock
+  - Purchase Bill (with item receipt) → increase stock
+  - Manual adjustments → increase/decrease stock
+- [ ] Stock ledger (all movements per item)
+- [ ] Cost of Goods Sold (COGS) auto-calculation
+
+### 6.2 Valuation Methods
+
+- [ ] **FIFO** (First In, First Out) — default
+- [ ] **Weighted Average** valuation
+- [ ] Per-item valuation method selection
+- [ ] Valuation rate recalculation on returns/adjustments
+
+### 6.3 Inventory Adjustments
+
+- [ ] **Inventory Adjustment** model (date, reason, items[], adjustment_account)
+- [ ] Adjust stock quantity (for damage, loss, found items)
+- [ ] Adjust stock value (for revaluation)
+- [ ] GL posting for adjustments
+- [ ] Adjustment history tracking
+
+### 6.4 Composite Items (Kitting / Bundling)
+
+- [ ] **Composite Item** model (finished item + component items with quantities)
+- [ ] Bundle/unbundle composite items
+- [ ] Auto-stock deduction of components when composite item is sold
+- [ ] Track composite item availability based on component stock
+
+### 6.5 Item Groups
+
+- [ ] Hierarchical item groups (categories/subcategories)
+- [ ] Group-level pricing, tax, and reporting
+- [ ] Tree view for item group management
+
+### 6.6 Packages & Shipments
+
+- [ ] **Package** model (sales_order, items[], tracking_number, carrier, weight, dimensions)
+- [ ] Create packages from Sales Orders
+- [ ] **Shipment** tracking (carrier, tracking number, status)
+- [ ] Shipping carrier integrations
+- [ ] **Delivery confirmation** tracking
+- [ ] Shipment list view
+
+### 6.7 Reorder & Stock Alerts
+
+- [ ] **Reorder Point** per item (threshold quantity)
+- [ ] **Reorder alerts** when stock falls below reorder point
+- [ ] Quick action: Create Purchase Order from reorder alert
+- [ ] Preferred vendor auto-selection
+- [ ] Low stock dashboard widget
+
+### 6.8 Warehouses
+
+- [ ] Multiple warehouse support
+- [ ] **Warehouse** model (name, address, is_primary)
+- [ ] Stock tracking per warehouse per item
+- [ ] Inter-warehouse stock transfer
+- [ ] Warehouse-wise stock reports
+
+### 6.9 Bulk Adjustments
+
+- [ ] Bulk inventory import (CSV/Excel)
+- [ ] Bulk quantity adjustment
+- [ ] Bulk price update
+- [ ] Opening stock import
+
+### 6.10 eCommerce Inventory Sync (Future)
+
+- [ ] Integration framework for eCommerce platforms
+- [ ] Sync stock levels with Amazon, Shopify, Etsy, eBay, WooCommerce
+- [ ] Auto-deduct stock on online sales
+- [ ] Multi-channel inventory management
+
+### 6.11 Inventory Reports
+
+- [ ] **Inventory Summary** (current stock, value per item)
+- [ ] **Inventory Valuation Summary** (FIFO/Weighted Average)
+- [ ] **Stock Movement** report (all ins and outs)
+- [ ] **FIFO Cost Lot Tracking**
+- [ ] **Product Sales** report
+- [ ] **Active Items** report
+- [ ] **Warehousing Details** report
+- [ ] **ABC Analysis** (classify items by value/movement)
+
+### Deliverables
+
+- Real-time inventory tracking per item per warehouse
+- FIFO and Weighted Average valuation
+- Inventory adjustments with GL posting
+- Composite items (kitting/bundling)
+- Packages and shipments with tracking
+- Reorder points with alerts
+- Multi-warehouse support
+- All inventory reports
+
+---
+
+## Phase 7: Projects & Timesheets (Week 25-28)
+
+> **Goal**: Project accounting with budgets, tasks, timesheets, billing, and profitability analysis — matching Zoho Books' Projects module.
+
+### 7.1 Projects
+
+- [ ] **Project** model (name, customer, description, billing_method [Fixed Cost/Based on Task Hours/Based on Staff Hours/Based on Project Hours], status [In Progress/On Hold/Completed], start_date, end_date, budget_type, budget_amount, logged_hours, billable_hours, billed_hours)
+- [ ] Project list view (with status, progress, billing summary)
+- [ ] Project detail page:
+  - Overview (summary, status, dates, customer)
+  - Tasks tab
+  - Timesheets tab
+  - Invoices tab
+  - Expenses tab
+  - Comments/activity log
+
+### 7.2 Project Budgeting
+
+- [ ] **Cost Budget** per project (estimated expenses)
+- [ ] **Revenue Budget** per project (estimated income)
+- [ ] Budget types: Total Project Hours, Task-wise Hours, Staff-wise Hours
+- [ ] **Budget vs Actuals** tracking (real-time comparison)
+- [ ] Budget alerts (when approaching or exceeding budget)
+- [ ] Budget version history
+
+### 7.3 Tasks
+
+- [ ] **Task** model (project, name, description, assigned_to, status [Not Started/In Progress/Completed], priority [Low/Medium/High], start_date, end_date, budgeted_hours, logged_hours, billable, rate)
+- [ ] Task list within project
+- [ ] Task assignment to team members
+- [ ] Task dependencies (optional)
+- [ ] Task templates (reuse across projects)
+
+### 7.4 Timesheets & Time Tracking
+
+- [ ] **Timesheet** model (user, entries[])
+- [ ] **Timesheet Entry** embedded (project, task, date, start_time, end_time, duration, notes, is_billable, billing_rate, billing_amount)
+- [ ] **Timer widget** (start/stop/pause time tracking)
+  - Available on web app, mobile app, and as browser extension
+- [ ] Manual time entry
+- [ ] **Timesheet approval workflow**:
+  - Internal approval (manager approves staff timesheets)
+  - Customer approval (client approves hours before billing)
+- [ ] Weekly timesheet view (day-by-day grid)
+- [ ] Overtime tracking
+
+### 7.5 Project Billing
+
+- [ ] **Invoice from Project** (bill customer for time + expenses)
+- [ ] Billing methods:
+  - **Fixed Cost** billing (invoice fixed amount)
+  - **Time & Materials** (invoice based on hours logged + expenses)
+  - **Task-based** (invoice per task completion)
+- [ ] Billable vs non-billable time/expenses
+- [ ] **Project Retainer Invoice** (advance payment for project)
+- [ ] Apply retainer to project invoices
+- [ ] Track billed vs unbilled amounts
+
+### 7.6 Project Expenses
+
+- [ ] Link expenses to projects
+- [ ] Billable project expenses → add to customer invoice
+- [ ] Non-billable expenses → track for profitability analysis
+- [ ] Expense approval within project context
+
+### 7.7 Project Profitability
+
+- [ ] **Project Profitability Report**:
+  - Revenue (invoices + retainers)
+  - Costs (time cost + expenses)
+  - Profit margin per project
+- [ ] Identify high-profit and loss-making projects
+- [ ] Resource utilization analysis
+- [ ] Compare across projects
+
+### 7.8 Project Reports
+
+- [ ] Project Summary
+- [ ] Project Profitability
+- [ ] Budget vs Actuals
+- [ ] Time Entries by Project / Task / Staff
+- [ ] Timesheet Billing Summary
+- [ ] Logged Hours per Staff member
+- [ ] Unbilled Hours/Expenses
+
+### Deliverables
+
+- Full project management (create, track, close)
+- Task management with assignment and tracking
+- Time tracking with timer and manual entry
+- Timesheet approval (internal + customer)
+- Project billing (fixed, time-based, task-based)
+- Project budgeting with budget vs actuals
+- Project profitability analysis
+- All project reports
+
+---
+
+## Phase 8: Core Accounting Engine & Accountant Tools (Week 29-33)
+
+> **Goal**: Double-entry General Ledger, Journal Entries, Fixed Assets, Budgeting, Currency Adjustments, Transaction Locking — everything an accountant needs.
+
+### 8.1 General Ledger Engine
+
+- [ ] **GL Entry** model (account, debit, credit, voucher_type, voucher_no, posting_date, organization, contact_type, contact, currency, exchange_rate, description)
+- [ ] GL posting service — core engine that creates balanced double-entry records
+- [ ] Validation: total debits must equal total credits per voucher
+- [ ] Auto-reverse GL entries on void/cancel
+- [ ] Party-wise GL entries (customer/vendor sub-ledger)
+- [ ] Multi-currency GL entries (with exchange rate, base currency conversion)
+- [ ] GL entries auto-created from: Invoices, Bills, Payments, Expenses, Adjustments, Journals, Depreciation, Payroll
+
+### 8.2 Manual Journal Entries
+
+- [ ] **Journal Entry** model (date, reference, entries[], notes, status [Draft/Published])
+- [ ] **Journal Entry Line** embedded (account, contact, debit, credit, description)
+- [ ] Journal Entry form:
+  - Add multiple debit/credit lines
+  - Auto-balance detection (show difference)
+  - Attach supporting documents
+- [ ] Use cases:
+  - Non-routine adjustments
+  - Asset depreciation
+  - Bad debt write-off
+  - Accrued revenue/expenses
+  - Opening balance entries
+  - Year-end closing entries
+- [ ] Recurring journal entries
+- [ ] Journal entry templates
+
+### 8.3 Fixed Asset Management
+
+- [ ] **Fixed Asset** model (name, asset_number, category, purchase_date, purchase_price, residual_value, useful_life, depreciation_method, current_value, status [Active/Fully Depreciated/Sold/Disposed])
+- [ ] **Asset Category** model (default depreciation method, useful life, accounts)
+- [ ] Depreciation methods:
+  - **Straight Line**
+  - **Declining Balance** (Written Down Value)
+  - **Double Declining Balance**
+  - Custom percentage
+- [ ] **Auto-calculate depreciation** schedule on asset creation
+- [ ] **Auto-post depreciation** journal entries (scheduled monthly/yearly)
+- [ ] **Asset Lifecycle**:
+  - Purchase → Active → Depreciation → Disposal/Sale
+  - Create asset from Purchase Bill
+  - GL posting at every stage
+- [ ] **Asset Disposal** (sale or scrap):
+  - Record sale amount
+  - Calculate gain/loss on disposal
+  - GL entries for disposal
+- [ ] **Asset Reports**:
+  - Fixed Asset Register
+  - Asset Depreciation Schedule
+  - Asset Disposal Report
+  - Asset Summary
+
+### 8.4 Base Currency Adjustments
+
+- [ ] **Currency Adjustment** for foreign currency balances at period end
+- [ ] Calculate unrealized exchange gain/loss per foreign currency account
+- [ ] Auto-create journal entries for exchange differences
+- [ ] Track adjusted vs unadjusted balances
+
+### 8.5 Budgeting
+
+- [ ] **Budget** model (name, fiscal_year, period [Monthly/Quarterly/Annual], accounts[])
+- [ ] **Budget Line** embedded (account, jan, feb, mar, ..., dec, total)
+- [ ] Set budgets for:
+  - Income accounts (revenue targets)
+  - Expense accounts (spending limits)
+  - Any other account
+- [ ] **Budget alerts** (warn when approaching or exceeding budget)
+- [ ] **Budget vs Actuals** report:
+  - Month-by-month comparison
+  - Variance analysis (absolute + percentage)
+  - Dashboard visualization
+
+### 8.6 Transaction Locking (Period Closing)
+
+- [ ] **Transaction Lock** model (lock_date, locked_by, reason)
+- [ ] Lock transactions before a specific date (prevent edits)
+- [ ] Lock for audit/tax filing preparation
+- [ ] Admin override for locked periods
+- [ ] Lock per module or global lock
+
+### 8.7 Opening Balances
+
+- [ ] **Opening Balance** import wizard
+- [ ] Set opening balances for:
+  - All GL accounts
+  - Customer/vendor outstanding invoices
+  - Bank accounts
+  - Inventory
+- [ ] Migration date setting
+- [ ] Validation (trial balance must balance)
+
+### 8.8 Account Closing
+
+- [ ] Year-end closing process
+- [ ] Transfer P&L balances to Retained Earnings
+- [ ] Generate closing journal entries
+- [ ] Lock closed fiscal year
+
+### Deliverables
+
+- Full double-entry General Ledger engine
+- Manual journal entries with templates
+- Fixed asset management with auto-depreciation
+- Base currency adjustments
+- Budgeting with budget vs actuals
+- Transaction locking (period closing)
+- Opening balance import
+- Year-end closing
+
+---
+
+## Phase 9: Reports & Business Intelligence (Week 34-38)
+
+> **Goal**: 70+ built-in reports, custom reports, reporting tags, divisional reports, scheduled reports, and advanced analytics — matching Zoho Books' comprehensive reporting.
+
+### 9.1 Business Financial Reports
+
+- [ ] **Profit and Loss (P&L)** Statement
+  - Date range filter (this month, quarter, year, custom)
+  - Comparison: previous period, previous year, budget
+  - Drill-down to individual transactions
+  - Cash basis vs accrual basis toggle
+- [ ] **Balance Sheet**
+  - Point-in-time snapshot
   - Previous period comparison
-- [ ] **Balance Sheet** (Assets = Liabilities + Equity at a point in time)
-  - Same filters as P&L
-  - Previous period comparison
-- [ ] **Cash Flow Statement** (Operating/Investing/Financing activities)
-  - Indirect method (from P&L + Balance Sheet changes)
-- [ ] **Trial Balance** (all accounts with debit/credit/closing balances)
-  - Filters: company, fiscal year, cost center, project
-  - Opening + Debit + Credit + Closing columns
-- [ ] **Consolidated Financial Statement** (multi-company consolidation)
-- [ ] **Financial Ratios** (current ratio, quick ratio, debt-equity, ROE, etc.)
+  - Drill-down capability
+- [ ] **Cash Flow Statement**
+  - Operating / Investing / Financing activities
+  - Indirect method
+- [ ] **Trial Balance**
+  - Opening + Debit + Credit + Closing
+  - Filter by date range
+- [ ] **Equity / Movement of Equity** report
 
-### 7.2 Ledger Reports
+### 9.2 Sales Reports (Receivables)
 
-- [ ] **General Ledger** (all GL entries with filters — account, party, date range, voucher type)
-- [ ] **Payment Ledger** (all payment ledger entries)
-- [ ] **Trial Balance for Party** (customer/supplier wise)
-- [ ] **Voucher Wise Balance** (balance per voucher — check for unbalanced entries)
+- [ ] Sales by Customer
+- [ ] Sales by Item
+- [ ] Sales by Sales Person
+- [ ] Invoice Details
+- [ ] Sales Order Fulfillment
+- [ ] Quote Conversion Rate
+- [ ] Credit Note Details
+- [ ] Retainer Invoice Summary
+- [ ] Receivable Summary (current, 1-30, 31-60, 61-90, 90+ days)
+- [ ] Receivable Details
+- [ ] Customer Balance Summary
+- [ ] Invoice Ageing Report
+- [ ] Time to Get Paid report
 
-### 7.3 Receivable & Payable Reports
+### 9.3 Purchase Reports (Payables)
 
-- [ ] **Accounts Receivable** with ageing (current, 0-30, 31-60, 61-90, 90+ days)
-- [ ] **Accounts Receivable Summary** (party-wise totals)
-- [ ] **Accounts Payable** with ageing
-- [ ] **Accounts Payable Summary**
-- [ ] Ageing visualization (bar charts)
+- [ ] Purchases by Vendor
+- [ ] Purchases by Item
+- [ ] Bill Details
+- [ ] Purchase Order Details
+- [ ] Vendor Credit Details
+- [ ] Payable Summary (ageing: current, 1-30, 31-60, 61-90, 90+ days)
+- [ ] Payable Details
+- [ ] Vendor Balance Summary
+- [ ] Bill Ageing Report
 
-### 7.4 Tax Reports
+### 9.4 Expense Reports
 
-- [ ] **Tax Withholding Details** (TDS/TCS reports)
-- [ ] **Sales Register** (tax-wise sales summary)
-- [ ] **Purchase Register** (tax-wise purchase summary)
-- [ ] **Item Wise Sales/Purchase Register**
+- [ ] Expenses by Category
+- [ ] Expenses by Employee (Staff)
+- [ ] Expenses by Vendor
+- [ ] Expenses by Project
+- [ ] Expense Details
+- [ ] Billable Expenses Summary
+- [ ] Mileage Report
 
-### 7.5 Budget Reports
+### 9.5 Inventory Reports
 
-- [ ] **Budget Variance Report** (budget vs actual per account/cost center)
-- [ ] Monthly/quarterly breakdown
+- [ ] Inventory Summary (current stock + value)
+- [ ] Inventory Valuation Summary (FIFO / Weighted Average)
+- [ ] Stock Movement Report
+- [ ] FIFO Cost Lot Tracking
+- [ ] Product Sales Report
+- [ ] Active Items
+- [ ] Warehousing Details
+- [ ] ABC Analysis
 
-### 7.6 Analytics Dashboards
+### 9.6 Project Reports
 
-- [ ] **Executive Dashboard** (summary KPIs — revenue, expenses, profit, cash balance, receivables, payables)
-- [ ] **Accounts Dashboard** (incoming/outgoing bills, bank balance, P&L chart)
+- [ ] Project Summary
+- [ ] Project Profitability
+- [ ] Budget vs Actuals
+- [ ] Time Entries by Project / Staff / Task
+- [ ] Timesheet Billing Summary
+- [ ] Unbilled Time and Expenses
+
+### 9.7 Tax Reports
+
+- [ ] Tax Summary
+- [ ] Tax Liability Report
+- [ ] GSTR-1 Report
+- [ ] GSTR-3B Report
+- [ ] HSN Summary
+- [ ] TDS Summary
+- [ ] Sales Tax Summary (US)
+- [ ] VAT Return (UAE/UK)
+
+### 9.8 Payroll Reports
+
+- [ ] Payroll Summary
+- [ ] Employee Pay Summary
+- [ ] Payroll Tax Summary
+- [ ] YTD Earnings Report
+
+### 9.9 Bank & Cash Reports
+
+- [ ] Bank Transaction Report
+- [ ] Reconciliation Summary
+- [ ] Cash Flow Forecast
+- [ ] Bank Balance Trend
+
+### 9.10 Accountant Reports
+
+- [ ] General Ledger
+- [ ] Chart of Accounts Summary
+- [ ] Journal Entry Report
+- [ ] Trial Balance
+- [ ] Day Book (all transactions for a day)
+- [ ] Account Transaction Report
+
+### 9.11 Reporting Tags & Divisional Reports
+
+- [ ] **Reporting Tags** (associate tags with contacts, items, transactions)
+- [ ] **Tag-wise P&L** (profit and loss per tag/division/cost center)
+- [ ] **Tag-wise Balance Sheet**
+- [ ] Multiple simultaneous tags on transactions
+- [ ] Use cases: cost centers, revenue streams, departments, branches, locations
+
+### 9.12 Custom Reports
+
+- [ ] **Custom Report Builder**:
+  - Select base entity (invoices, bills, items, contacts, etc.)
+  - Add/remove columns
+  - Apply filters (date range, status, contact, amount range, etc.)
+  - Group by any field
+  - Aggregate functions (sum, count, average, min, max)
+  - Sort by any column
+- [ ] **Save custom reports** for quick access
+- [ ] **Share reports** with team members with access controls
+
+### 9.13 Report Export & Sharing
+
+- [ ] Export all reports to:
+  - **PDF** (with optional password protection)
+  - **Excel** (XLSX)
+  - **CSV**
+- [ ] **Schedule report emails** (daily, weekly, monthly to select recipients)
+- [ ] **Report dashboard** (pin favorite reports)
+- [ ] **Grant report access** per user role
+
+### 9.14 Advanced Business Intelligence
+
+- [ ] Dashboard with KPI widgets:
+  - Total Revenue (this month/quarter/year)
+  - Total Expenses
+  - Net Profit
+  - Cash in bank
+  - Receivables outstanding
+  - Payables outstanding
+  - Top 5 customers
+  - Top 5 items
   - Revenue trend chart
   - Expense breakdown pie chart
   - Cash flow trend
-  - Receivable/Payable ageing bars
-  - Bank balance timeline
-  - Top customers bar chart
-  - Top items bar chart
-- [ ] **Selling Dashboard** (sales funnel, quotation → order conversion, top customers)
-- [ ] **Buying Dashboard** (purchase trends, top suppliers, pending orders)
-- [ ] **Stock Dashboard** (stock value, warehouse utilization, low stock alerts)
-- [ ] **Manufacturing Dashboard** (production output, downtime, WIP)
-
-### 7.7 Profitability Reports
-
-- [ ] **Gross Profit** (per invoice / per item)
-- [ ] **Profitability Analysis** (by cost center / project / territory)
-- [ ] **Gross and Net Profit Report**
-
-### 7.8 Other Reports
-
-- [ ] **Customer Ledger Summary**
-- [ ] **Supplier Ledger Summary**
-- [ ] **Payment Period Based on Invoice Date**
-- [ ] **Inactive Sales Items**
-- [ ] **Delivered Items to be Billed / Received Items to be Billed**
-
-### 7.9 Report Infrastructure
-
-- [ ] Generic report builder (configurable columns, filters, grouping)
-- [ ] Report export: PDF, Excel, CSV
-- [ ] Report caching (Redis) for heavy reports
-- [ ] Report scheduling (email periodic reports)
-- [ ] Report save/share (custom report configurations)
-- [ ] Drill-down: click a number → see underlying transactions
+  - Receivable/Payable ageing bar chart
+- [ ] Compare across time periods
+- [ ] Drill-down from any chart to underlying data
+- [ ] Custom dashboard creation
 
 ### Deliverables
 
-- All core financial statements (P&L, Balance Sheet, Cash Flow, Trial Balance)
-- General Ledger with full filtering
-- AR/AP ageing reports
-- Interactive dashboards with real-time data
+- 70+ built-in reports across all modules
+- Custom report builder with save/share
+- Reporting tags for divisional P&L
+- Financial statements (P&L, BS, Cash Flow, Trial Balance)
+- Ageing reports (AR/AP)
 - Report export (PDF, Excel, CSV)
-- Report caching and scheduling
+- Scheduled report emails
+- Advanced BI dashboards
 
 ---
 
-## Phase 8: Assets Module (Week 33-35)
+## Phase 10: Payroll (Week 39-42)
 
-> **Goal**: Fixed asset lifecycle management — purchase, depreciation, maintenance, disposal.
+> **Goal**: Integrated payroll processing with tax compliance, pay runs, payslips, and accounting integration.
 
-### 8.1 Asset Master
+### 10.1 Employee Management
 
-- [ ] **Asset** model (name, item, company, location, purchase_date, gross_purchase_amount, available_for_use_date, status [Draft/Submitted/Partially Depreciated/Fully Depreciated/Sold/Scrapped])
-- [ ] **Asset Category** model + **Asset Category Account** (depreciation method, useful life, accounts per company)
-- [ ] Asset creation from Purchase Receipt / Purchase Invoice
-- [ ] **Location** model (hierarchical asset locations)
+- [ ] **Employee** model (name, email, employee_id, department, designation, joining_date, salary_components, bank_details, tax_details [PAN, PF number], leave_balance)
+- [ ] Employee onboarding wizard
+- [ ] Employee list with department/status filters
+- [ ] Employee detail page with pay history
 
-### 8.2 Depreciation
+### 10.2 Salary Components
 
-- [ ] **Asset Depreciation Schedule** model (auto-generated schedule entries)
-- [ ] Depreciation methods: Straight Line, Diminishing Balance, Written Down Value, Double Declining
-- [ ] **Asset Finance Book** (parallel depreciation for tax/GAAP)
-- [ ] Auto-create Journal Entries for depreciation (scheduled job — monthly/yearly)
-- [ ] **Asset Shift Factor** / **Asset Shift Allocation** (multi-shift depreciation)
+- [ ] **Salary Component** model (name, type [Earning/Deduction], calculation [Fixed/Percentage], is_taxable)
+- [ ] Earnings: Basic, HRA, DA, Special Allowance, Bonus, Overtime, Commission
+- [ ] Deductions: PF (Provident Fund), ESI, Professional Tax, TDS, Loan Recovery
+- [ ] Employer contributions: Employer PF, Employer ESI
+- [ ] Flexible component configuration per employee
 
-### 8.3 Asset Transactions
+### 10.3 Salary Structure
 
-- [ ] **Asset Movement** (transfer between locations/custodians)
-- [ ] **Asset Value Adjustment** (impairment / revaluation)
-- [ ] **Asset Repair** (cost tracking, GL posting)
-- [ ] Asset disposal (sale/scrap) with GL entries (gain/loss on disposal)
-- [ ] **Asset Capitalization** (capitalize expense or stock items into assets)
+- [ ] **Salary Structure** model (name, components[], frequency [Monthly/Weekly])
+- [ ] Salary structure templates
+- [ ] Assign salary structure to employees
+- [ ] CTC (Cost to Company) breakdown
 
-### 8.4 Asset Maintenance
+### 10.4 Pay Runs
 
-- [ ] **Asset Maintenance** model (maintenance schedule per asset)
-- [ ] **Asset Maintenance Log** (completed maintenance records)
-- [ ] Maintenance alerts and reminders
+- [ ] **Pay Run** model (period, department, employees[], status [Draft/Processed/Approved/Paid])
+- [ ] Pay run form:
+  - Select period (month/week) and department
+  - Auto-calculate salary for all employees
+  - Review individual payslips
+  - Approve pay run
+  - Process payments (bank transfer / cheque)
+- [ ] **Payslip** model per employee per pay run (earnings[], deductions[], net_pay, gross_pay)
+- [ ] GL posting on pay run approval:
+  - Debit: Salary Expense (per component)
+  - Credit: Bank/Cash Account (net pay)
+  - Credit: Statutory Liability accounts (PF, ESI, TDS)
 
-### 8.5 Asset Reports
+### 10.5 Tax Compliance (Payroll)
 
-- [ ] Fixed Asset Register
-- [ ] Asset Depreciation Ledger
-- [ ] Asset Activity log
+- [ ] **Income Tax** calculation (India: old regime vs new regime)
+- [ ] **TDS** deduction per pay period
+- [ ] **PF** (Provident Fund) calculation and compliance
+- [ ] **ESI** (Employee State Insurance) calculation
+- [ ] **Professional Tax** per state
+- [ ] Tax declaration by employee (investment proofs)
+- [ ] **Form 16** generation (India)
+
+### 10.6 Leave Management
+
+- [ ] **Leave Type** model (Earned Leave, Sick Leave, Casual Leave, etc.)
+- [ ] **Leave Application** model (employee, type, from_date, to_date, status)
+- [ ] Leave balance tracking
+- [ ] Leave approval workflow
+- [ ] Loss of Pay (LOP) calculation for absent days
+
+### 10.7 Reimbursements
+
+- [ ] Employee expense reimbursement via payroll
+- [ ] Reimbursement approval workflow
+- [ ] Include in payslip
+
+### 10.8 Payroll Reports
+
+- [ ] Payroll Summary (organization-wise)
+- [ ] Employee Pay Summary
+- [ ] Payroll Tax Summary
+- [ ] YTD (Year-to-Date) Earnings
+- [ ] Department-wise Payroll
+- [ ] PF/ESI Reports for filing
+- [ ] Bank advice (payment file for bank upload)
 
 ### Deliverables
 
-- Full asset lifecycle (purchase → depreciation → disposal)
-- Multiple depreciation methods
-- Asset maintenance tracking
-- All asset reports
+- Employee management
+- Salary configuration with components
+- Pay run processing with approval
+- Payslip generation
+- Payroll tax compliance (TDS, PF, ESI)
+- Leave management
+- GL posting for payroll
+- All payroll reports
 
 ---
 
-## Phase 9: Projects & Timesheets (Week 36-37)
-
-> **Goal**: Project management, task tracking, timesheet billing.
-
-### 9.1 Projects
-
-- [ ] **Project** model (name, company, status, start_date, end_date, estimated_cost, actual_cost, progress, customer, sales_order)
-- [ ] **Project Template** (reusable project structures with tasks)
-- [ ] **Project Type** model
-- [ ] Project Gantt chart view
-- [ ] Project Kanban view
-- [ ] Project cost tracking (from timesheets, purchase invoices, expenses)
-
-### 9.2 Tasks
-
-- [ ] **Task** model (subject, project, status, priority, start_date, end_date, assigned_to, depends_on[], progress)
-- [ ] **Task Type** model
-- [ ] Task dependencies (Gantt)
-- [ ] Task list, board (Kanban), and calendar views
-
-### 9.3 Timesheets
-
-- [ ] **Timesheet** model (employee, time_logs[])
-- [ ] **Timesheet Detail** (activity_type, from_time, to_time, hours, project, task, billing_rate, billing_amount, costing_rate, costing_amount)
-- [ ] **Activity Type** + **Activity Cost** (rate per activity per employee)
-- [ ] Timesheet → Sales Invoice (bill time to customer)
-- [ ] Timer widget (start/stop time tracking)
-
-### 9.4 Project Reports
-
-- [ ] Project Summary
-- [ ] Daily Timesheet Summary
-- [ ] Delayed Tasks Summary
-- [ ] Timesheet Billing Summary
-- [ ] Project Wise Stock Tracking
-
-### Deliverables
-
-- Project management with Gantt and Kanban views
-- Task dependencies and tracking
-- Timesheet-based billing
-- Project profitability analysis
-
----
-
-## Phase 10: Subcontracting (Week 38-39)
-
-> **Goal**: Manage outsourced manufacturing operations.
-
-### 10.1 Subcontracting
-
-- [ ] **Subcontracting BOM** (BOM for subcontracted items)
-- [ ] **Subcontracting Order** (send to subcontractor with supplied items)
-- [ ] **Subcontracting Receipt** (receive finished goods, deduct supplied materials)
-- [ ] Stock transfer to subcontractor warehouse
-- [ ] Back-to-back stock tracking (raw materials sent vs finished goods received)
-- [ ] **Subcontracting Inward Order** and related items
-
-### Deliverables
-
-- Complete subcontracting workflow
-- Material tracking with subcontractor
-
----
-
-## Phase 11: POS (Point of Sale) (Week 40-41)
-
-> **Goal**: Retail-ready Point of Sale with offline capability.
-
-### 11.1 POS System
-
-- [ ] **POS Profile** (default warehouse, price list, customer, write-off account, payment methods)
-- [ ] **POS Settings** (global POS configuration)
-- [ ] POS page — full-screen retail interface:
-  - Item grid with search, barcode scanning
-  - Cart with quantity adjustment
-  - Customer selection / walk-in
-  - Multiple payment methods (cash, card, UPI, etc.)
-  - Discount application
-  - Print receipt (thermal printer format)
-- [ ] **POS Invoice** (immediate sales invoice with payment)
-- [ ] **POS Opening Entry** (register opening with cash float)
-- [ ] **POS Closing Entry** (end-of-day reconciliation)
-- [ ] **POS Invoice Merge Log** (consolidate POS invoices into summary invoices)
-
-### 11.2 Offline POS
-
-- [ ] Service Worker for offline operation
-- [ ] IndexedDB for offline invoice storage
-- [ ] Sync when back online
-
-### Deliverables
-
-- Full POS interface for retail
-- Cash register management (opening/closing)
-- Offline support with sync
-
----
-
-## Phase 12: Support & Maintenance (Week 42-43)
-
-> **Goal**: Customer support ticketing and maintenance scheduling.
-
-### 12.1 Support
-
-- [ ] **Issue** model (subject, customer, status, priority, issue_type, sla)
-- [ ] **Issue Type** + **Issue Priority**
-- [ ] **Service Level Agreement** model (response time, resolution time per priority)
-- [ ] SLA tracking (time to first response, resolution time, pause on certain statuses)
-- [ ] **Warranty Claim** model
-- [ ] Issue list with SLA indicators
-
-### 12.2 Maintenance
-
-- [ ] **Maintenance Schedule** (recurring maintenance for serial no items)
-- [ ] **Maintenance Visit** (record of completed maintenance)
-- [ ] Auto-schedule based on frequency
-
-### 12.3 Support Reports
-
-- [ ] Issue Analytics
-- [ ] Issue Summary
-- [ ] First Response Time for Issues
-- [ ] Support Hour Distribution
-
-### Deliverables
-
-- Support ticket system with SLA
-- Maintenance scheduling
-- Warranty tracking
-
----
-
-## Phase 13: Subscriptions & Recurring (Week 44-45)
-
-> **Goal**: Subscription billing and recurring document generation.
-
-### 13.1 Subscriptions
-
-- [ ] **Subscription** model (party, plans[], status [Active/Past Due/Cancelled/Unpaid], start_date, current_invoice_start, current_invoice_end)
-- [ ] **Subscription Plan** (item, billing_interval [Day/Week/Month/Year], billing_interval_count, cost)
-- [ ] **Process Subscription** scheduled job (auto-generate invoices)
-- [ ] Trial period support
-- [ ] Proration on plan changes
-- [ ] Cancellation with pro-rated final invoice
-
-### 13.2 Recurring Documents
-
-- [ ] Auto-repeat framework (any document can be set to auto-create periodically)
-- [ ] Email notification on auto-creation
-
-### Deliverables
-
-- Subscription management with auto-invoicing
-- Recurring document creation
-
----
-
-## Phase 14: Advanced Features (Week 46-50)
-
-> **Goal**: Polish, advanced features, integrations.
-
-### 14.1 Payment Reconciliation
-
-- [ ] **Payment Reconciliation** tool (match unallocated payments against invoices)
-- [ ] Auto-match suggestions based on amount/party
-- [ ] Bulk reconciliation
-
-### 14.2 Exchange Rate Revaluation
-
-- [ ] **Exchange Rate Revaluation** (revalue foreign currency balances at period end)
-- [ ] Auto-create Journal Entries for unrealized gain/loss
-
-### 14.3 Share Management
-
-- [ ] **Shareholder** + **Share Transfer** + **Share Type** + **Share Balance**
-
-### 14.4 Loyalty Program
-
-- [ ] **Loyalty Program** with point accumulation and redemption
-- [ ] Points → invoice discount conversion
-
-### 14.5 Dunning
-
-- [ ] **Dunning** letters for overdue invoices
-- [ ] **Dunning Type** (escalation levels)
-- [ ] Auto-generate dunning letters based on overdue days
-
-### 14.6 Shipping Rules
-
-- [ ] **Shipping Rule** (auto-calculate shipping charges based on amount/weight/country)
-
-### 14.7 Quality Management
-
-- [ ] **Quality Goal** / **Quality Action** / **Quality Review** / **Quality Meeting** / **Quality Procedure**
-- [ ] **Non Conformance** tracking
-
-### 14.8 Statement of Accounts
-
-- [ ] **Process Statement of Accounts** (generate and email customer/supplier statements)
-
-### 14.9 Ledger Merge
-
-- [ ] **Ledger Merge** tool (merge duplicate accounts/parties)
-
-### 14.10 Repost Accounting Ledger
-
-- [ ] **Repost Accounting Ledger** (fix GL entries for past transactions)
-
-### Deliverables
-
-- Payment reconciliation
-- Foreign currency revaluation
-- Loyalty programs
-- Dunning
-- Quality management
-- All remaining advanced features
-
----
-
-## Phase 15: Notifications, Scheduling & Background Jobs (Week 51-52)
-
-> **Goal**: Automate routine tasks, send alerts, schedule jobs.
-
-### 15.1 Background Job System
-
-- [ ] Set up **BullMQ** with Redis for job queues
-- [ ] Job types: immediate, scheduled (cron), delayed
-- [ ] Job monitoring dashboard
-
-### 15.2 Scheduled Jobs (from ERPNext hooks.py)
-
-- [ ] **Hourly**: Send daily work summary, sync exchange rates
-- [ ] **Daily**: Process auto-repeat, check reorder level, update outstanding amounts, flag overdue invoices, auto-close SLA, update FIFO queue
-- [ ] **Weekly**: Process deferred accounting
-- [ ] **Monthly**: Auto-depreciation entries, subscription processing
-- [ ] **Cron-specific**: Account closing balance generation, bank reconciliation reminders
-
-### 15.3 Notification System
-
-- [ ] In-app notifications (real-time via Socket.io)
-- [ ] Email notifications (overdue invoices, low stock, SLA breach, etc.)
-- [ ] **Email Digest** (daily/weekly summary email)
-- [ ] Notification preferences per user
-
-### 15.4 Audit Log
-
-- [ ] Track all document changes (who, when, what changed)
-- [ ] Version history for critical documents
-
-### Deliverables
-
-- Background job system with monitoring
-- All scheduled tasks from ERPNext
-- Real-time and email notifications
-- Complete audit logging
-
----
-
-## Phase 16: Printing, PDF & Email (Week 53-54)
-
-> **Goal**: Professional document output.
-
-### 16.1 Print Formats
-
-- [ ] Invoice print (Sales Invoice, Purchase Invoice)
-- [ ] Quotation print
-- [ ] Sales/Purchase Order print
-- [ ] Delivery Note / Purchase Receipt print
-- [ ] Journal Entry / Payment Entry print
-- [ ] Statement of Account
-- [ ] Cheque print template
-- [ ] Custom print format builder
-
-### 16.2 PDF Generation
-
-- [ ] Server-side PDF generation (Puppeteer)
-- [ ] Template system for print layouts
-- [ ] Company letterhead integration
-
-### 16.3 Email
-
-- [ ] Send document via email (invoice to customer, PO to supplier)
+## Phase 11: Collaboration — Customer & Vendor Portals (Week 43-45)
+
+> **Goal**: Self-service portals for customers and vendors + internal team collaboration tools.
+
+### 11.1 Customer Portal
+
+- [ ] **Customer Portal** (dedicated self-service web app)
+- [ ] Customer portal features:
+  - View and accept/decline **Quotes**
+  - Comment/negotiate on quotes (back-and-forth in comments)
+  - View **Invoices** and payment history
+  - Make **online payments** directly
+  - Download invoice/quote PDFs
+  - View **Statements of Account**
+  - View **Project** progress and timesheet details
+  - **Approve timesheets** before billing (customer approval)
+  - Upload documents
+  - Update contact information
+- [ ] Portal branding (organization logo, colors)
+- [ ] Invite customers via email
+- [ ] Customer-specific language preference in portal
+- [ ] Portal permissions (what customers can see/do)
+
+### 11.2 Vendor Portal
+
+- [ ] **Vendor Portal** (dedicated self-service web app)
+- [ ] Vendor portal features:
+  - Receive and view **Purchase Orders**
+  - Track **Bill payment status** (when will they get paid)
+  - Upload **invoices** (auto-convert to Bills in the system)
+  - **Communicate** in real-time (comments on POs/bills)
+  - View payment history
+  - Update vendor information, banking details
+- [ ] Portal branding
+- [ ] Invite vendors via email
+
+### 11.3 Accountant Access
+
+- [ ] **Accountant role** with dedicated permissions
+- [ ] Invite external accountant (separate from team)
+- [ ] Accountant can access:
+  - Chart of Accounts and journal entries
+  - Base currency adjustments
+  - Bank reconciliation
+  - All reports
+  - Transaction locking
+  - Year-end closing
+- [ ] Accountant access from anywhere (cloud-based)
+- [ ] Accountant can manage multiple organizations (practice management)
+
+### 11.4 Team Collaboration
+
+- [ ] **Comments** on any transaction (invoice, bill, quote, etc.)
+- [ ] **@mention** team members in comments
+- [ ] **Task management** for accounting tasks
+- [ ] **Task assignment** with priority and due dates
+- [ ] **Task tagging** (link tasks to contacts, items, transactions)
+- [ ] **Activity feed** (recent changes, assignments, comments)
+- [ ] In-app notifications for mentions, assignments, approvals
+- [ ] Email notifications (configurable)
+
+### 11.5 Communication
+
+- [ ] Send emails directly from transactions (invoices, quotes, POs)
+- [ ] Email tracking (sent, opened, bounced)
 - [ ] Email templates per document type
-- [ ] Attachment handling (PDF + supporting docs)
+- [ ] Built-in comment/discussion on every transaction
 
 ### Deliverables
 
-- Professional print formats for all documents
-- PDF generation and download
-- Email sending with PDF attachments
+- Customer Portal (view, accept, pay, comment)
+- Vendor Portal (receive POs, upload invoices, track payments)
+- Accountant access with full permissions
+- Team collaboration (comments, tasks, mentions)
+- Communication via email from transactions
+- Portal branding and customization
 
 ---
 
-## Phase 17: Import/Export & Data Migration (Week 55-56)
+## Phase 12: Workflow Automation (Week 46-48)
 
-> **Goal**: Data portability and migration tools.
+> **Goal**: Automate repetitive accounting tasks — recurring transactions, auto-conversions, payment reminders, custom workflow triggers.
 
-### 17.1 Import
+### 12.1 Recurring Transactions
 
-- [ ] Generic CSV/Excel import for all master data (customers, suppliers, items, accounts)
-- [ ] Opening balances import (GL, stock)
-- [ ] **Chart of Accounts Importer**
-- [ ] **Opening Invoice Creation Tool** (bulk create opening invoices)
-- [ ] Validation and error reporting during import
+- [ ] **Recurring Invoice** (auto-create invoices on schedule)
+- [ ] **Recurring Bill** (auto-create bills on schedule)
+- [ ] **Recurring Expense** (auto-record recurring expenses)
+- [ ] **Recurring Journal Entry** (auto-post journals)
+- [ ] Configuration: frequency, start/end date, auto-send option
+- [ ] Notification before auto-creation
+- [ ] Recurring transaction management page (view all, pause, resume, stop)
 
-### 17.2 Export
+### 12.2 Auto-Conversion
+
+- [ ] Quote → Invoice auto-conversion on acceptance
+- [ ] Quote → Sales Order auto-conversion
+- [ ] Sales Order → Invoice auto-conversion on fulfillment
+- [ ] Purchase Order → Bill auto-conversion on receipt
+- [ ] Expense → Invoice (billable expense to customer invoice)
+
+### 12.3 Payment Reminders
+
+- [ ] **Automated payment reminders** for overdue invoices
+- [ ] Configure reminder schedule (X days before/after due date)
+- [ ] Customizable reminder email templates
+- [ ] Escalation (multiple reminders at intervals)
+- [ ] Reminder history tracking
+- [ ] Pause reminders per customer/invoice
+
+### 12.4 Auto-Charge
+
+- [ ] **Auto-charge saved cards** for recurring invoices
+- [ ] Payment gateway integration for auto-charge
+- [ ] Failed charge retry logic
+- [ ] Customer notification on charge
+
+### 12.5 Custom Workflow Rules
+
+- [ ] **Workflow Rule** model (trigger, conditions[], actions[])
+- [ ] Triggers:
+  - When a record is created
+  - When a record is edited
+  - When a field is updated
+  - Time-based (e.g., 3 days after due date)
+  - On a specific date field
+- [ ] Conditions: field-based (status = X, amount > Y, customer = Z)
+- [ ] Actions:
+  - **Send email** (to contact, to user, to custom address)
+  - **Send webhook** (POST to external URL)
+  - **Update field** (change status, add tag, etc.)
+  - **Create task** (auto-assign to user)
+  - **Send notification** (in-app)
+- [ ] Workflow rule management page
+- [ ] Workflow execution log
+
+### 12.6 Approval Workflows
+
+- [ ] **Approval Rule** model (entity_type, conditions, approvers[], approval_type [Single/Sequential/Parallel])
+- [ ] All supported entities: Quotes, Invoices, Sales Orders, Bills, Purchase Orders, Credit Notes, Vendor Credits, Expenses
+- [ ] Single-level approval (one approver)
+- [ ] Multi-level approval (sequential chain: Level 1 → Level 2 → Level 3)
+- [ ] Approval delegation (auto-forward if approver unavailable)
+- [ ] Approve/reject with comments
+- [ ] Approval history and audit trail
+
+### 12.7 Scheduled Jobs
+
+- [ ] **Daily**: Flag overdue invoices, send reminders, auto-depreciation, sync exchange rates, process recurring transactions
+- [ ] **Weekly**: Summary reports, bank feed sync
+- [ ] **Monthly**: Process recurring transactions, payroll reminders, budget vs actual alerts
+- [ ] Job monitoring dashboard
+- [ ] Job failure alerts
+
+### Deliverables
+
+- Recurring transactions (invoices, bills, expenses, journals)
+- Auto-conversion between document types
+- Automated payment reminders with escalation
+- Auto-charge for recurring payments
+- Custom workflow rules (trigger → condition → action)
+- Multi-level approval workflows
+- All scheduled jobs
+
+---
+
+## Phase 13: Customization (Week 49-50)
+
+> **Goal**: Allow organizations to customize the system to their unique business needs — custom fields, templates, reports, and processes.
+
+### 13.1 Custom Fields
+
+- [ ] **Custom Field** engine (add custom fields to any entity)
+- [ ] Field types: Text, Number, Dropdown, Date, Checkbox, URL, Email, Phone, Lookup, Multi-select
+- [ ] Custom fields appear in:
+  - Forms (create/edit)
+  - Detail views
+  - List views (optional)
+  - Print templates (optional)
+  - Reports / filters
+- [ ] Custom field validation rules
+- [ ] Required/optional toggle
+- [ ] Default values
+- [ ] Custom field management UI
+
+### 13.2 Custom Templates (Print/Email)
+
+- [ ] **Invoice template** customization (layout, colors, fonts, logo, sections)
+- [ ] **Quote template** customization
+- [ ] **Sales Order / Purchase Order** template customization
+- [ ] **Email template** customization per document type
+- [ ] Template variables (dynamic data placeholders)
+- [ ] Multiple templates per document type
+- [ ] Template preview before sending
+- [ ] HTML/drag-and-drop template editor
+
+### 13.3 Custom Numbering / Naming Series
+
+- [ ] Configure prefix for each document type (INV-, QUO-, SO-, PO-, BILL-, etc.)
+- [ ] Starting number configuration
+- [ ] Pattern support: `{prefix}{YYYY}{MM}{#####}`
+- [ ] Per-organization numbering
+
+### 13.4 Custom Reports (refer Phase 9.12)
+
+- [ ] Custom report builder (from Phase 9)
+- [ ] Save, share, and schedule custom reports
+
+### 13.5 Custom Modules / Preferences
+
+- [ ] Enable/disable modules per organization (e.g., disable Inventory if service-only business)
+- [ ] Custom sidebar navigation order
+- [ ] Custom dashboard widgets
+- [ ] Custom status labels (rename statuses)
+
+### Deliverables
+
+- Custom fields on any entity
+- Custom print/email templates
+- Custom numbering patterns
+- Module enable/disable per organization
+- Template editor (HTML)
+
+---
+
+## Phase 14: Global Features — Multi-Currency & Multi-Language (Week 51-52)
+
+> **Goal**: Full multi-currency and multi-language support for businesses operating globally.
+
+### 14.1 Multi-Currency Transactions
+
+- [ ] Every transaction (invoice, bill, payment, etc.) supports:
+  - Transaction currency (customer's/vendor's currency)
+  - Base currency (organization's currency)
+  - Exchange rate (auto-fetched or manually entered)
+  - Auto-conversion to base currency for GL posting
+- [ ] Realized exchange gain/loss on payments
+- [ ] Unrealized exchange gain/loss (base currency adjustment)
+- [ ] **Currency Exchange Rate** auto-fetch (daily scheduled job)
+- [ ] Exchange rate override per transaction
+- [ ] Multi-currency AR/AP reports
+- [ ] Multi-currency bank accounts
+
+### 14.2 Multi-Language
+
+- [ ] 25+ UI languages:
+  - English, Hindi, Tamil, Telugu, Marathi, Bengali, Gujarati, Kannada
+  - Spanish, French, German, Italian, Portuguese
+  - Arabic, Chinese (Simplified), Chinese (Traditional), Japanese, Korean
+  - Dutch, Swedish, Norwegian, Danish, Finnish
+  - Turkish, Indonesian, Thai, Vietnamese
+- [ ] Per-user language preference (UI language)
+- [ ] Per-organization default language
+- [ ] **Per-contact language preference** (documents sent in their language)
+- [ ] Multi-language transaction PDFs (invoices, quotes, POs in customer's language)
+- [ ] Multi-language email templates
+- [ ] Multi-language customer/vendor portal
+
+### 14.3 Multi-Organization / Multi-Branch
+
+- [ ] Switch between organizations from header
+- [ ] **Consolidated reports** across multiple organizations
+- [ ] Inter-organization transactions
+- [ ] Branch management within organization
+
+### Deliverables
+
+- Full multi-currency support with exchange gain/loss
+- 25+ language support (UI + documents + portals)
+- Per-contact language for outgoing documents
+- Multi-organization with consolidated reporting
+
+---
+
+## Phase 15: Integrations (Week 53-55)
+
+> **Goal**: Connect with payment gateways, third-party apps, and banking partners.
+
+### 15.1 Payment Gateways
+
+- [ ] **Stripe** integration (accept online payments)
+- [ ] **Razorpay** integration (India-focused)
+- [ ] **PayPal** integration
+- [ ] **GoCardless** (direct debit)
+- [ ] Payment link generation on invoices
+- [ ] Auto-record payments on gateway confirmation (webhooks)
+- [ ] Refund processing via gateway
+
+### 15.2 Banking Integrations
+
+- [ ] **Plaid** / **Yodlee** for bank feed aggregation
+- [ ] Partner bank APIs for direct payment (NEFT/RTGS/IMPS/UPI)
+- [ ] Bank file import (CSV, OFX, MT940)
+
+### 15.3 Communication Integrations
+
+- [ ] **Email** (SMTP / SendGrid / Mailgun) for transactional emails
+- [ ] **SMS** notifications (Twilio / MSG91) for payment reminders
+- [ ] **WhatsApp Business** for invoice delivery (optional)
+
+### 15.4 Cloud Storage
+
+- [ ] **Google Drive** integration for document backup
+- [ ] **Dropbox** integration
+- [ ] **OneDrive** integration
+
+### 15.5 eCommerce (Future)
+
+- [ ] **Shopify** order sync
+- [ ] **WooCommerce** order sync
+- [ ] **Amazon** order sync
+- [ ] Auto-create invoices from eCommerce orders
+- [ ] Inventory sync with eCommerce platforms
+
+### 15.6 CRM Integration (Future)
+
+- [ ] Integration with CRM systems
+- [ ] Sync contacts, deals → quotes/invoices
+- [ ] Auto-push financial data to CRM
+
+### 15.7 API & Webhooks
+
+- [ ] **REST API** for all entities (CRUD + list + reports)
+- [ ] API authentication (API keys + OAuth)
+- [ ] Rate limiting per API key
+- [ ] **Webhooks** (push events on create/update/delete to external URLs)
+- [ ] API documentation (Swagger/OpenAPI)
+- [ ] Developer portal
+
+### Deliverables
+
+- Payment gateway integrations (Stripe, Razorpay, PayPal)
+- Banking feed integrations
+- Email/SMS notifications
+- REST API for all entities with docs
+- Webhook system
+- Cloud storage integrations
+
+---
+
+## Phase 16: Security & Privacy (Week 56-57)
+
+> **Goal**: Enterprise-grade security, privacy compliance, and audit controls.
+
+### 16.1 User Roles & Permissions
+
+- [ ] Predefined roles: Admin, Accountant, Accounts Receivable, Accounts Payable, Staff, Time Tracker
+- [ ] **Custom Roles** — define granular module-level permissions
+- [ ] Permissions per module: View, Create, Edit, Delete, Approve, Export
+- [ ] Data-level access control (e.g., see only assigned projects)
+- [ ] Role assignment and management UI
+- [ ] Two-factor authentication (via Firebase Auth)
+
+### 16.2 Audit Trail
+
+- [ ] **Tamper-proof audit trail** for all transactions
+- [ ] Track: who created, who edited, what was changed, when
+- [ ] Field-level change history (old value → new value)
+- [ ] Activity report per user
+- [ ] Activity log per contact / item / transaction
+- [ ] Audit trail cannot be deleted or modified
+- [ ] Export audit trail
+
+### 16.3 Data Privacy (GDPR / HIPAA / PCI)
+
+- [ ] **GDPR compliance**:
+  - Data export on request (right to access)
+  - Data deletion on request (right to be forgotten)
+  - Consent management
+  - Privacy policy acknowledgment
+- [ ] **HIPAA compliance** (for healthcare businesses):
+  - Protected Health Information (PHI) safeguards
+  - Access controls and audit logging
+- [ ] **PCI compliance** (for payment data):
+  - Never store raw card data (use tokenization via payment gateway)
+  - PCI-DSS Self-Assessment readiness
+- [ ] Data encryption at rest (MongoDB Atlas encryption)
+- [ ] Data encryption in transit (TLS/SSL)
+- [ ] Data retention policies
+
+### 16.4 Security Features
+
+- [ ] Input sanitization on all endpoints
+- [ ] Rate limiting per user/IP
+- [ ] CORS configuration
+- [ ] Security headers (Helmet.js)
+- [ ] Dependency vulnerability scanning (npm audit, Snyk)
+- [ ] IP whitelisting (optional)
+- [ ] Session management
+- [ ] Suspicious activity alerts
+
+### Deliverables
+
+- Custom role builder with granular permissions
+- Tamper-proof audit trail
+- GDPR, HIPAA, PCI readiness
+- Enterprise security features
+- Data encryption (at rest + in transit)
+
+---
+
+## Phase 17: Printing, PDF & Email (Week 58-59)
+
+> **Goal**: Professional document output with custom branding.
+
+### 17.1 Print Formats / PDF Templates
+
+- [ ] **Invoice** print template (professional, itemized, with tax breakdown)
+- [ ] **Quote** print template
+- [ ] **Sales Order** / **Purchase Order** print template
+- [ ] **Bill** print template
+- [ ] **Payment Receipt** print template
+- [ ] **Credit Note** / **Vendor Credit** print template
+- [ ] **Delivery Challan** print template
+- [ ] **Customer Statement** print template
+- [ ] **Payslip** print template
+- [ ] **Journal Entry** print template
+- [ ] **Fixed Asset** depreciation schedule print
+- [ ] **Cheque** print template
+
+### 17.2 Template Customization
+
+- [ ] Organization logo and branding on all templates
+- [ ] Custom colors, fonts, footer text
+- [ ] Custom header/footer with address, phone, tax ID
+- [ ] Multiple template designs per document type
+- [ ] Template editor (HTML + CSS with preview)
+
+### 17.3 PDF Generation
+
+- [ ] Server-side PDF generation (Puppeteer or @react-pdf/renderer)
+- [ ] Download PDF from any transaction
+- [ ] Bulk PDF generation (e.g., all invoices for a month)
+- [ ] **Password-protect PDFs** (optional, for sensitive reports)
+
+### 17.4 Email Sending
+
+- [ ] Send any transaction via email with PDF attachment
+- [ ] Customizable email templates per document type
+- [ ] Email tracking (sent, delivered, opened — via SendGrid/Mailgun)
+- [ ] Reply-to handling (route replies back to app)
+- [ ] Batch email sending (e.g., send all overdue reminders at once)
+
+### Deliverables
+
+- Professional print templates for all document types
+- Template customization with branding
+- PDF generation and download (with password protection)
+- Email sending with PDF attachments and tracking
+
+---
+
+## Phase 18: Import/Export & Data Migration (Week 60-61)
+
+> **Goal**: Data portability — import data from other systems, export everything.
+
+### 18.1 Data Import
+
+- [ ] Generic CSV/Excel import for:
+  - Contacts (customers, vendors)
+  - Items & services
+  - Chart of Accounts
+  - Invoices (opening invoices)
+  - Bills (opening bills)
+  - Bank transactions
+  - Expenses
+  - Opening balances
+- [ ] **Import wizard** (map columns, preview, validate, import)
+- [ ] Error reporting during import (row-by-row errors)
+- [ ] Duplicate detection and handling
+- [ ] Import history log
+
+### 18.2 Migration from Other Systems
+
+- [ ] **Tally** import (India-specific)
+- [ ] **QuickBooks** import
+- [ ] **Zoho Books** import (for users switching platforms)
+- [ ] **CSV-based migration** (generic)
+
+### 18.3 Data Export
 
 - [ ] Export any list view to CSV/Excel
-- [ ] Export reports to PDF/Excel
-- [ ] Backup/restore functionality
+- [ ] Export all reports to PDF/Excel/CSV
+- [ ] **Full data export** (all organization data for backup)
+- [ ] GDPR-compliant data export (per user/contact request)
 
-### 17.3 Bank Statement Import
+### 18.4 Bank Statement Import
 
 - [ ] CSV bank statement import
-- [ ] OFX format support
+- [ ] OFX/QFX format support
 - [ ] MT940 format support
+- [ ] PDF bank statement parsing (OCR)
 - [ ] Auto-match imported transactions
 
-### Deliverables
+### 18.5 Backup & Restore
 
-- Bulk data import for all entities
-- Opening balance import
-- Bank statement import with matching
-- Data export capabilities
-
----
-
-## Phase 18: Regional Compliance (Week 57-58)
-
-> **Goal**: Country-specific tax and compliance features.
-
-### 18.1 India
-
-- [ ] GST compliance (CGST, SGST, IGST)
-- [ ] GST tax templates
-- [ ] HSN/SAC codes on items
-- [ ] E-invoicing (IRN generation)
-- [ ] E-way bill
-- [ ] TDS (Tax Deducted at Source) / TCS
-- [ ] GSTR-1 / GSTR-3B reports
-
-### 18.2 UAE
-
-- [ ] VAT (5%) compliance
-- [ ] VAT return (VAT 201)
-- [ ] TRN (Tax Registration Number) validation
-
-### 18.3 US
-
-- [ ] Sales tax handling (state-wise)
-- [ ] 1099 reporting
-
-### 18.4 General
-
-- [ ] Configurable tax regime per company/country
-- [ ] Country-specific default Chart of Accounts
-- [ ] Multi-language support (i18n)
+- [ ] Automated daily backups (MongoDB Atlas)
+- [ ] Manual backup trigger
+- [ ] Point-in-time restore capability
+- [ ] Backup download
 
 ### Deliverables
 
-- India GST compliance
-- UAE VAT compliance
-- US tax basics
-- Regional Chart of Accounts templates
+- Bulk data import for all entities with wizard
+- Migration tools from Tally, QuickBooks
+- Data export (CSV, Excel, PDF)
+- Bank statement import (CSV, OFX, MT940)
+- Backup and restore
 
 ---
 
-## Phase 19: Testing & Quality Assurance (Ongoing, dedicated Week 59-61)
+## Phase 19: Mobile & Cross-Device Access (Week 62-63)
 
-> **Goal**: Comprehensive test coverage.
+> **Goal**: Accounting on the move — responsive web, PWA, and native app readiness.
 
-### 19.1 Backend Tests
+### 19.1 Responsive Web App
 
-- [ ] Unit tests for all services (GL engine, tax calculator, valuation, etc.)
-- [ ] Integration tests for complete workflows (Quote → Order → Delivery → Invoice → Payment)
+- [ ] Fully responsive design for all pages (desktop, tablet, mobile)
+- [ ] Mobile-optimized forms (invoice creation, expense recording)
+- [ ] Mobile-optimized list views with swipe actions
+- [ ] Mobile dashboard with key metrics
+
+### 19.2 Progressive Web App (PWA)
+
+- [ ] **Service Worker** for PWA capabilities
+- [ ] Install prompt (Add to Home Screen)
+- [ ] Offline capability for:
+  - Viewing recent transactions
+  - Creating expense entries (sync when online)
+  - Viewing reports
+- [ ] Push notifications (for reminders, approvals, payments)
+- [ ] Background sync for offline-created data
+
+### 19.3 Mobile Features
+
+- [ ] **Camera receipt capture** → auto-create expense
+- [ ] Timer widget for time tracking (smartphone widget)
+- [ ] Quick actions: Create invoice, Record expense, Record payment
+- [ ] Barcode/QR scanning for inventory items
+- [ ] Mobile-optimized customer/vendor portal
+
+### 19.4 Desktop App (Electron — Future)
+
+- [ ] Electron wrapper for desktop experience
+- [ ] System tray icon with quick actions
+- [ ] Desktop notifications
+- [ ] Keyboard shortcuts
+
+### Deliverables
+
+- Fully responsive web app
+- PWA with offline capability
+- Receipt camera capture
+- Mobile time tracking
+- Quick actions on mobile
+
+---
+
+## Phase 20: Testing & Quality Assurance (Ongoing, dedicated Week 64-66)
+
+> **Goal**: Comprehensive test coverage ensuring reliability.
+
+### 20.1 Backend Tests
+
+- [ ] Unit tests for all services (GL engine, tax calculator, currency conversion, etc.)
+- [ ] Integration tests for complete workflows:
+  - Quote → SO → Invoice → Payment → Reconciliation
+  - PO → Bill → Payment
+  - Expense → Invoice (billable)
+  - Project → Timesheet → Invoice
+  - Payroll → Payslip → Payment
 - [ ] API endpoint tests for all routes
 - [ ] Test fixtures for common scenarios
+- [ ] Tax calculation tests (GST, VAT, Sales Tax)
 
-### 19.2 Frontend Tests
+### 20.2 Frontend Tests
 
 - [ ] Component tests (React Testing Library)
 - [ ] Form validation tests
 - [ ] Report rendering tests
-- [ ] Test utility functions
+- [ ] Portal functionality tests
+- [ ] Responsive design tests
 
-### 19.3 E2E Tests
+### 20.3 E2E Tests
 
 - [ ] Playwright tests for critical user flows:
-  - Create customer → Quotation → SO → DN → SI → Payment → Reconciliation
-  - Create supplier → PO → PR → PI → Payment
-  - Stock Entry → Stock Reconciliation
-  - BOM → Work Order → Job Card → Finished Goods
-  - POS transaction flow
+  - Full receivables cycle
+  - Full payables cycle
+  - Bank reconciliation flow
+  - Project billing flow
+  - Multi-currency transaction
+  - Customer/vendor portal interaction
+  - Approval workflow flows
+  - Recurring transaction processing
+- [ ] Cross-browser testing
 
-### 19.4 Performance Testing
+### 20.4 Performance Testing
 
 - [ ] Load test GL posting with 100K+ entries
 - [ ] Report generation performance with large datasets
+- [ ] Bank reconciliation with 10K+ transactions
 - [ ] Database query optimization
 - [ ] Index optimization
+- [ ] Caching effectiveness testing
+
+### 20.5 Security Testing
+
+- [ ] Penetration testing
+- [ ] OWASP Top 10 compliance check
+- [ ] Authentication/authorization boundary testing
+- [ ] API rate limiting verification
+- [ ] Input sanitization verification
 
 ### Deliverables
 
 - > 80% backend test coverage
 - E2E tests for all critical workflows
 - Performance benchmarks
+- Security audit results
 
 ---
 
-## Phase 20: Deployment, Scaling & DevOps (Week 62-64)
+## Phase 21: Deployment, Scaling & DevOps (Week 67-69)
 
 > **Goal**: Production-ready deployment.
 
-### 20.1 Infrastructure
+### 21.1 Containerization
 
 - [ ] Docker containerization (frontend + backend + Redis)
 - [ ] Docker Compose for local development
-- [ ] CI/CD pipeline (GitHub Actions)
+- [ ] Kubernetes manifests (for production scaling)
+- [ ] Multi-stage Docker builds (optimized images)
+
+### 21.2 CI/CD Pipeline
+
+- [ ] GitHub Actions CI/CD:
+  - Lint → Test → Build → Deploy
+  - Branch protection rules
+  - Automated E2E tests on PR
+  - Staging → Production promotion
 - [ ] Environment management (dev, staging, production)
 
-### 20.2 Database
+### 21.3 Database
 
 - [ ] MongoDB Atlas production cluster setup
 - [ ] Database migration system (versioned schema changes)
-- [ ] Backup strategy (automated daily backups)
+- [ ] Backup strategy (automated daily + point-in-time recovery)
 - [ ] Read replicas for reports (optional)
+- [ ] Indexing strategy for large datasets
 
-### 20.3 Monitoring
+### 21.4 Monitoring & Observability
 
-- [ ] Application monitoring (error tracking — Sentry)
-- [ ] Performance monitoring (APM)
+- [ ] **Sentry** for error tracking
+- [ ] Application Performance Monitoring (APM)
 - [ ] Database query monitoring
-- [ ] Uptime monitoring
-- [ ] Log aggregation
+- [ ] Uptime monitoring (external)
+- [ ] Log aggregation (structured logging with pino)
+- [ ] Custom alerts (error rate spike, slow queries, etc.)
+- [ ] Health check endpoints
 
-### 20.4 Security
+### 21.5 Scaling
 
-- [ ] Input sanitization on all endpoints
-- [ ] Rate limiting per user/IP
-- [ ] CORS configuration
-- [ ] Helmet.js security headers
-- [ ] Dependency vulnerability scanning
-- [ ] Data encryption at rest (MongoDB Atlas)
-- [ ] API key management for integrations
-
-### 20.5 Scaling
-
-- [ ] Horizontal scaling (multiple backend instances behind load balancer)
+- [ ] Horizontal scaling (multiple backend instances + load balancer)
 - [ ] Redis for session/cache clustering
 - [ ] MongoDB Atlas auto-scaling
-- [ ] CDN for frontend static assets
+- [ ] CDN for frontend static assets (Vercel, Cloudflare)
+- [ ] Report generation queue (BullMQ for heavy reports)
+- [ ] WebSocket scaling (Redis pub/sub for multi-instance)
+
+### 21.6 Security Hardening
+
+- [ ] WAF (Web Application Firewall) setup
+- [ ] DDoS protection
+- [ ] SSL/TLS certificate management
+- [ ] Secret management (environment variables, vault)
+- [ ] Regular dependency updates and vulnerability scanning
 
 ### Deliverables
 
 - Docker-based deployment
-- CI/CD pipeline
-- Monitoring and alerting
+- CI/CD pipeline with automated testing
+- Monitoring, alerting, and observability
 - Production security hardening
-- Scaling strategy
+- Horizontal scaling strategy
+- 99.9% uptime target
 
 ---
 
 ## Summary Timeline
 
-| Phase  | Name                           | Duration   | Key Output                                                  |
-| ------ | ------------------------------ | ---------- | ----------------------------------------------------------- |
-| **0**  | Infrastructure & Foundation    | Week 1-2   | TS backend, RBAC, reusable components, state management     |
-| **1**  | Setup & Master Data            | Week 3-5   | Company, CoA, Item, Customer, Supplier, Warehouse, Taxes    |
-| **2**  | Core Accounting Engine         | Week 6-10  | GL, Journal Entry, Payment Entry, Bank, Tax Engine, Budget  |
-| **3**  | Selling Cycle                  | Week 11-14 | CRM, Quotation, SO, DN, Sales Invoice, AR reports           |
-| **4**  | Buying Cycle                   | Week 15-18 | MR, RFQ, SQ, PO, PR, Purchase Invoice, AP reports           |
-| **5**  | Inventory / Stock              | Week 19-23 | Stock Ledger, Valuation, Serial/Batch, Stock Entry, Reports |
-| **6**  | Manufacturing                  | Week 24-28 | BOM, Work Order, Job Card, Production Plan, MRP             |
-| **7**  | Financial Reports & Dashboards | Week 29-32 | P&L, BS, CF, Trial Balance, Ageing, Dashboards              |
-| **8**  | Assets                         | Week 33-35 | Asset lifecycle, depreciation, maintenance                  |
-| **9**  | Projects & Timesheets          | Week 36-37 | Projects, Tasks, Timesheets, billing                        |
-| **10** | Subcontracting                 | Week 38-39 | Subcontracting orders and receipts                          |
-| **11** | POS                            | Week 40-41 | Point of Sale with offline support                          |
-| **12** | Support & Maintenance          | Week 42-43 | Tickets, SLA, warranty, maintenance                         |
-| **13** | Subscriptions                  | Week 44-45 | Subscription billing, recurring documents                   |
-| **14** | Advanced Features              | Week 46-50 | Reconciliation, dunning, loyalty, quality                   |
-| **15** | Notifications & Jobs           | Week 51-52 | Background jobs, scheduled tasks, alerts                    |
-| **16** | Printing & Email               | Week 53-54 | PDF, print formats, email sending                           |
-| **17** | Import/Export                  | Week 55-56 | Data import, bank statements, backups                       |
-| **18** | Regional Compliance            | Week 57-58 | GST, VAT, country-specific features                         |
-| **19** | Testing & QA                   | Week 59-61 | Unit, integration, E2E, performance tests                   |
-| **20** | Deployment & DevOps            | Week 62-64 | Docker, CI/CD, monitoring, security                         |
+| Phase  | Name                              | Duration   | Key Output                                                     |
+| ------ | --------------------------------- | ---------- | -------------------------------------------------------------- |
+| **0**  | Infrastructure & Foundation       | Week 1-2   | TS backend, RBAC, reusable components, i18n, state management  |
+| **1**  | Setup & Master Data               | Week 3-5   | Org, CoA, Contacts, Items, Taxes, Price Lists, Reporting Tags  |
+| **2**  | Receivables                       | Week 6-10  | Quotes, Sales Orders, Invoices, Payments, Credit Notes         |
+| **3**  | Payables                          | Week 11-14 | POs, Bills, Payments Made, Vendor Credits, Expenses, Documents |
+| **4**  | Banking & Reconciliation          | Week 15-17 | Bank feeds, auto-match, reconciliation, connected banking      |
+| **5**  | Tax Compliance                    | Week 18-20 | GST, e-invoicing, GSTR returns, TDS/TCS, VAT, US sales tax    |
+| **6**  | Inventory & Stock                 | Week 21-24 | Item tracking, valuation, adjustments, packages, shipments     |
+| **7**  | Projects & Timesheets             | Week 25-28 | Projects, tasks, timesheets, billing, budgets, profitability   |
+| **8**  | Core Accounting & Accountant      | Week 29-33 | GL, journals, fixed assets, budgets, currency adj, locking     |
+| **9**  | Reports & BI                      | Week 34-38 | 70+ reports, custom reports, dashboards, reporting tags        |
+| **10** | Payroll                           | Week 39-42 | Employees, salary, pay runs, payslips, tax compliance          |
+| **11** | Collaboration & Portals           | Week 43-45 | Customer portal, vendor portal, team collaboration, chat       |
+| **12** | Workflow Automation               | Week 46-48 | Recurring, reminders, auto-charge, workflows, approvals        |
+| **13** | Customization                     | Week 49-50 | Custom fields, templates, numbering, module config             |
+| **14** | Global (Currency & Language)      | Week 51-52 | Multi-currency, 25+ languages, multi-org consolidation         |
+| **15** | Integrations                      | Week 53-55 | Payment gateways, banking, API, webhooks, eCommerce            |
+| **16** | Security & Privacy                | Week 56-57 | Custom roles, audit trail, GDPR, HIPAA, PCI                   |
+| **17** | Printing & Email                  | Week 58-59 | PDF templates, branding, email sending, tracking               |
+| **18** | Import/Export & Migration         | Week 60-61 | Data import, migration tools, bank statements, backup          |
+| **19** | Mobile & Cross-Device             | Week 62-63 | PWA, responsive, receipt capture, offline                      |
+| **20** | Testing & QA                      | Week 64-66 | Unit, integration, E2E, performance, security tests            |
+| **21** | Deployment & DevOps               | Week 67-69 | Docker, CI/CD, monitoring, scaling, security hardening         |
 
-**Total estimated duration: ~64 weeks (16 months)**
+**Total estimated duration: ~69 weeks (17 months)**
+
+---
+
+## Zoho Books Feature ↔ Phase Mapping
+
+| Zoho Books Feature         | Phase(s)      | Notes                                              |
+| -------------------------- | ------------- | -------------------------------------------------- |
+| Receivables                | Phase 2       | Quotes, Invoices, SO, Payments, Credit Notes       |
+| Payables                   | Phase 3       | Bills, POs, Expenses, Vendor Credits, Documents    |
+| Tax Compliance (GST)       | Phase 5       | GST, e-invoicing, GSTR, TDS/TCS, VAT              |
+| Bank Reconciliation        | Phase 4       | Bank feeds, matching, reconciliation               |
+| Inventory                  | Phase 6       | Items, stock, packages, shipments, adjustments     |
+| Projects Accounting        | Phase 7       | Projects, timesheets, billing, budgets             |
+| Payroll                    | Phase 10      | Employees, pay runs, tax compliance                |
+| Reports (70+)              | Phase 9       | All financial, sales, purchase, tax reports        |
+| Collaboration              | Phase 11      | Portals (customer, vendor), team tools             |
+| For Accountants            | Phase 8       | CoA, journals, assets, budgets, locking            |
+| Workflow Automation        | Phase 12      | Recurring, reminders, rules, approvals             |
+| Customization              | Phase 13      | Custom fields, templates, numbering                |
+| Scale Globally             | Phase 14      | Multi-currency, multi-language, multi-org          |
+| Integrations               | Phase 15      | Payment gateways, banks, API, webhooks             |
+| Accounting Across Devices  | Phase 19      | PWA, responsive, mobile receipt capture            |
+| Security & Privacy         | Phase 16      | Roles, audit trail, GDPR, HIPAA, PCI              |
 
 ---
 
@@ -1454,14 +2151,20 @@ client/
 
 1. **Authentication stays untouched**: Firebase Auth (email, Google, phone OTP, magic link) + the existing user model remain as-is. All new modules integrate with the existing auth system.
 
-2. **Phases can overlap**: Phases 1-2 are sequential (foundation), but after Phase 2, many phases can run in parallel with different team members.
+2. **Zoho Books-focused scope**: Unlike ERPNext (full ERP), this plan focuses on **accounting software** features. No Manufacturing, CRM, Support/Helpdesk modules — those are separate products in Zoho's ecosystem (Zoho Inventory, Zoho CRM, Zoho Desk).
 
-3. **Testing is continuous**: While Phase 19 is a dedicated QA phase, tests should be written alongside each phase.
+3. **Phases can overlap**: Phases 0-2 are sequential (foundation), but after Phase 2, many phases can run in parallel with different team members.
 
-4. **Each phase is independently deployable**: The system should be usable after each major phase (especially after Phase 3 — selling — the system can already run a basic business).
+4. **Testing is continuous**: While Phase 20 is a dedicated QA phase, tests should be written alongside each phase.
 
-5. **MongoDB over SQL**: ERPNext uses MariaDB with Frappe ORM. Our MongoDB approach means document-oriented design — embedded child tables, denormalized references, and careful indexing. Some ERPNext patterns (like linked documents) will need adaptation.
+5. **Each phase is independently deployable**: The system should be usable after each major phase (especially after Phase 4 — the system can run a basic invoicing + banking business).
 
-6. **No Frappe dependency**: We are NOT importing any Python/Frappe code. We are using ERPNext as a **specification** and re-implementing in Node.js/TypeScript.
+6. **MongoDB document model**: Embedded line items (invoice items, bill items), referenced master data (contacts, items, accounts). Careful indexing for report performance.
 
-7. **Progressive Enhancement**: Start with core workflows, add advanced features later. A business should be operational after Phase 7 (reports).
+7. **Progressive Enhancement**: Start with core receivables/payables, add advanced features later. A business should be fully operational after Phase 9 (reports).
+
+8. **Zoho Books parity**: The feature list matches Zoho Books' publicly documented features. Where Zoho Books has integrations with other Zoho products (Zoho CRM, Zoho Inventory, Zoho Desk), we provide API/webhook equivalents for third-party integration.
+
+9. **No ERPNext dependency**: This plan does NOT reference ERPNext. It is designed from scratch following Zoho Books' feature specification and UX paradigms.
+
+10. **Customer & Vendor Portals are first-class**: Unlike ERPNext where portals are secondary, Zoho Books treats self-service portals as core features — customer quote acceptance, online payments, vendor invoice uploads, and real-time communication all happen through dedicated portals.
