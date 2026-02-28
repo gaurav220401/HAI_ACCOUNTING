@@ -77,7 +77,7 @@ export const requireRole = (...roles: string[]) => {
     const userRoles = req.user.roles || [];
     const hasRole = roles.some((role) => userRoles.includes(role));
 
-    if (!hasRole && !userRoles.includes("System Manager")) {
+    if (!hasRole && !userRoles.includes("Admin")) {
       throw new ForbiddenError(`Requires one of roles: ${roles.join(", ")}`);
     }
 
@@ -86,10 +86,11 @@ export const requireRole = (...roles: string[]) => {
 };
 
 /**
- * Middleware: Check entity-level permission.
+ * Middleware: Check module-level permission (Zoho Books style).
+ * authorize(module, action) — e.g. authorize("invoices", "create")
  * Must come after authenticate.
  */
-export const authorize = (doctype: string, action: string) => {
+export const authorize = (module: string, action: string) => {
   return async (
     req: AuthenticatedRequest,
     res: Response,
@@ -99,32 +100,36 @@ export const authorize = (doctype: string, action: string) => {
       throw new UnauthorizedError("User not found");
     }
 
-    // System Manager bypasses all permission checks
-    if (req.user.roles?.includes("System Manager")) {
+    // Admin bypasses all permission checks
+    if (req.user.roles?.includes("Admin")) {
       return next();
     }
 
-    // For now, check role-based permissions from the Role model
-    // This will be enhanced in Phase 1 with full permission matrix
     const userRoles = req.user.roles || [];
 
     if (userRoles.length === 0) {
       throw new ForbiddenError(
-        `No roles assigned. Cannot perform ${action} on ${doctype}`,
+        `No roles assigned. Cannot perform ${action} on ${module}`,
       );
     }
 
     // Import Role model dynamically to avoid circular deps
     const Role = (await import("../models/role.model")).default;
-    const rolesWithPermission = await Role.find({
+
+    // Use $elemMatch to properly filter on the permissions sub-array
+    const permittedRoles = await Role.find({
       name: { $in: userRoles },
-      "permissions.doctype": doctype,
-      [`permissions.${action}`]: true,
+      permissions: {
+        $elemMatch: {
+          module,
+          [action]: true,
+        },
+      },
     });
 
-    if (rolesWithPermission.length === 0) {
+    if (permittedRoles.length === 0) {
       throw new ForbiddenError(
-        `Permission denied: cannot ${action} on ${doctype}`,
+        `Permission denied: cannot ${action} on module '${module}'`,
       );
     }
 

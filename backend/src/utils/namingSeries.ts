@@ -6,13 +6,13 @@ const namingSeriesSchema = new Schema<INamingSeries>(
     doctype: { type: String, required: true },
     prefix: { type: String, required: true },
     currentValue: { type: Number, default: 0 },
-    company: { type: Schema.Types.ObjectId, ref: "Company", required: true },
+    organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true },
   },
   { timestamps: true },
 );
 
 namingSeriesSchema.index(
-  { doctype: 1, prefix: 1, company: 1 },
+  { doctype: 1, prefix: 1, organizationId: 1 },
   { unique: true },
 );
 
@@ -37,7 +37,7 @@ const NamingSeriesModel: Model<INamingSeries> = model<INamingSeries>(
 export async function generateName(
   doctype: string,
   pattern: string,
-  companyId: string,
+  organizationId: string,
 ): Promise<string> {
   const now = new Date();
   const year4 = now.getFullYear().toString();
@@ -57,7 +57,7 @@ export async function generateName(
     {
       doctype,
       prefix: resolvedPrefix,
-      company: companyId,
+      organizationId,
     },
     { $inc: { currentValue: 1 } },
     { upsert: true, new: true },
@@ -85,12 +85,12 @@ export async function generateName(
 export async function getCurrentCounter(
   doctype: string,
   prefix: string,
-  companyId: string,
+  organizationId: string,
 ): Promise<number> {
   const series = await NamingSeriesModel.findOne({
     doctype,
     prefix,
-    company: companyId,
+    organizationId,
   });
   return series?.currentValue ?? 0;
 }

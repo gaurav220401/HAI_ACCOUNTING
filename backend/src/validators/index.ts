@@ -23,39 +23,56 @@ export const updateProfileSchema = z.object({
   photoURL: z.string().url().optional().or(z.literal("")),
 });
 
-// ─── Company Validators ────────────────────────────────────────────────
+// ─── Organization Validators ──────────────────────────────────────────
 
-export const createCompanySchema = z.object({
-  name: z.string().trim().min(1, "Company name is required"),
-  abbr: z
-    .string()
-    .trim()
+const ZOHO_MODULES = [
+  "dashboard", "contacts", "items", "invoices", "bills",
+  "estimates", "purchase_orders", "sales_orders", "credit_notes",
+  "vendor_credits", "expenses", "timesheet", "projects", "banking",
+  "accounts", "journals", "reports", "tax", "settings", "users",
+  "payroll", "inventory", "documents",
+] as const;
+
+export const createOrganizationSchema = z.object({
+  name: z.string().trim().min(1, "Organization name is required"),
+  industry: z.string().trim().default("General"),
+  baseCurrency: z.string().trim().length(3).toUpperCase().default("INR"),
+  fiscalYearStart: z.coerce
+    .number()
+    .int()
     .min(1)
-    .max(10, "Abbreviation must be 10 chars or less")
-    .toUpperCase(),
-  defaultCurrency: z.string().default("INR"),
-  country: z.string().default("India"),
-  chartOfAccounts: z.string().default("Standard"),
-  domain: z
-    .enum(["Distribution", "Manufacturing", "Retail", "Services", ""])
-    .default(""),
-  fiscalYearStart: z.string().or(z.date()),
-  fiscalYearEnd: z.string().or(z.date()),
+    .max(12)
+    .default(4), // April
+  country: z.string().trim().default("India"),
+  timezone: z.string().trim().default("Asia/Kolkata"),
+  dateFormat: z.string().trim().default("DD/MM/YYYY"),
+  numberFormat: z.string().trim().default("1,234,567.89"),
+  language: z.string().trim().length(2).toLowerCase().default("en"),
+  taxId: z.string().trim().optional(),
+  logo: z.string().url().optional().or(z.literal("")),
+  address: z
+    .object({
+      street: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      zip: z.string().optional(),
+      country: z.string().optional(),
+    })
+    .optional(),
 });
 
-export const updateCompanySchema = createCompanySchema.partial();
+export const updateOrganizationSchema = createOrganizationSchema.partial();
 
 // ─── Role Validators ───────────────────────────────────────────────────
 
 export const rolePermissionSchema = z.object({
-  doctype: z.string().min(1),
+  module: z.enum(ZOHO_MODULES),
   read: z.boolean().default(false),
   write: z.boolean().default(false),
   create: z.boolean().default(false),
   delete: z.boolean().default(false),
-  submit: z.boolean().default(false),
-  cancel: z.boolean().default(false),
-  amend: z.boolean().default(false),
+  approve: z.boolean().default(false),
+  export: z.boolean().default(false),
 });
 
 export const createRoleSchema = z.object({
@@ -84,7 +101,7 @@ export const paginationQuerySchema = z.object({
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
-export type CreateCompanyInput = z.infer<typeof createCompanySchema>;
-export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>;
+export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;
 export type AssignRolesInput = z.infer<typeof assignRolesSchema>;

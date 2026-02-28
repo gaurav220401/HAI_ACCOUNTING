@@ -4,9 +4,9 @@ export type { PaginatedResponse, ListParams } from "./client";
 export { authApi } from "./auth";
 export type { UserProfile, AuthResponse } from "./auth";
 
-export { companyApi } from "./companies";
+export { organizationApi } from "./organizations";
 export type {
-  Company,
-  CreateCompanyInput,
-  UpdateCompanyInput,
-} from "./companies";
+  Organization,
+  CreateOrganizationInput,
+  UpdateOrganizationInput,
+} from "./organizations";

@@ -14,7 +14,7 @@ export interface UserProfile {
   provider: string;
   profileComplete: boolean;
   roles: string[];
-  activeCompany: string | null;
+  activeOrganization: string | null;
   createdAt: string;
   updatedAt: string;
 }

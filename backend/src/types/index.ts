@@ -30,7 +30,7 @@ export interface IUser extends Document {
   provider: AuthProvider;
   profileComplete: boolean;
   roles: string[];
-  activeCompany?: Types.ObjectId | null;
+  activeOrganization?: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,75 +47,103 @@ export interface IUserResponse {
   provider: AuthProvider;
   profileComplete: boolean;
   roles: string[];
-  activeCompany: Types.ObjectId | null | undefined;
+  activeOrganization: Types.ObjectId | null | undefined;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// ─── Company ────────────────────────────────────────────────────────────
-export interface ICompany extends Document {
+// ─── Organization (replaces Company) ───────────────────────────────────
+export type FiscalYearMonth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+
+export interface IOrganization extends Document {
   _id: Types.ObjectId;
   name: string;
-  abbr: string;
-  defaultCurrency: string;
+  industry: string;
+  baseCurrency: string;
+  fiscalYearStart: FiscalYearMonth; // 1 = Jan, 4 = Apr, etc.
   country: string;
-  chartOfAccounts: string;
-  domain: string;
-  fiscalYearStart: Date;
-  fiscalYearEnd: Date;
-  defaultAccounts: {
-    defaultBankAccount?: Types.ObjectId;
-    defaultCashAccount?: Types.ObjectId;
-    defaultReceivableAccount?: Types.ObjectId;
-    defaultPayableAccount?: Types.ObjectId;
-    defaultIncomeAccount?: Types.ObjectId;
-    defaultExpenseAccount?: Types.ObjectId;
-    roundOffAccount?: Types.ObjectId;
-    writeOffAccount?: Types.ObjectId;
-    exchangeGainLossAccount?: Types.ObjectId;
-    costOfGoodsSoldAccount?: Types.ObjectId;
-    stockReceivedNotBilledAccount?: Types.ObjectId;
-    stockInHandAccount?: Types.ObjectId;
-    retainedEarningsAccount?: Types.ObjectId;
-    depreciationExpenseAccount?: Types.ObjectId;
-    accumulatedDepreciationAccount?: Types.ObjectId;
+  timezone: string;
+  dateFormat: string;            // e.g. "DD/MM/YYYY"
+  numberFormat: string;          // e.g. "1,234,567.89"
+  language: string;              // ISO 639-1 code e.g. "en"
+  taxId?: string;
+  logo?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
   };
-  createdBy: Types.ObjectId;
-  updatedBy: Types.ObjectId;
+  portalSettings?: {
+    enabled: boolean;
+    subdomain?: string;
+  };
+  defaultAccounts?: {
+    bankAccount?: Types.ObjectId;
+    cashAccount?: Types.ObjectId;
+    receivableAccount?: Types.ObjectId;
+    payableAccount?: Types.ObjectId;
+    incomeAccount?: Types.ObjectId;
+    expenseAccount?: Types.ObjectId;
+    roundOffAccount?: Types.ObjectId;
+    exchangeGainLossAccount?: Types.ObjectId;
+    retainedEarningsAccount?: Types.ObjectId;
+  };
   isDeleted: boolean;
   deletedAt?: Date;
   deletedBy?: Types.ObjectId;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// ─── Role & Permission ─────────────────────────────────────────────────
+// ─── Role & Permission (Zoho Books module-based) ───────────────────────
+export type ZohoModule =
+  | "dashboard"
+  | "contacts"
+  | "items"
+  | "invoices"
+  | "bills"
+  | "estimates"
+  | "purchase_orders"
+  | "sales_orders"
+  | "credit_notes"
+  | "vendor_credits"
+  | "expenses"
+  | "timesheet"
+  | "projects"
+  | "banking"
+  | "accounts"
+  | "journals"
+  | "reports"
+  | "tax"
+  | "settings"
+  | "users"
+  | "payroll"
+  | "inventory"
+  | "documents";
+
+export interface IRolePermission {
+  module: ZohoModule;
+  read: boolean;
+  write: boolean;
+  create: boolean;
+  delete: boolean;
+  approve: boolean;
+  export: boolean;
+}
+
 export interface IRole extends Document {
   _id: Types.ObjectId;
   name: string;
   description: string;
   isSystemRole: boolean;
+  organizationId?: Types.ObjectId | null; // null = global system role
   permissions: IRolePermission[];
   createdAt: Date;
   updatedAt: Date;
-}
-
-export interface IRolePermission {
-  doctype: string;
-  read: boolean;
-  write: boolean;
-  create: boolean;
-  delete: boolean;
-  submit: boolean;
-  cancel: boolean;
-  amend: boolean;
-}
-
-// ─── Document Status (for transactional documents) ─────────────────────
-export enum DocStatus {
-  Draft = 0,
-  Submitted = 1,
-  Cancelled = 2,
 }
 
 // ─── Naming Series ─────────────────────────────────────────────────────
@@ -124,14 +152,14 @@ export interface INamingSeries extends Document {
   doctype: string;
   prefix: string;
   currentValue: number;
-  company: Types.ObjectId;
+  organizationId: Types.ObjectId;
 }
 
 // ─── Express Request Extension ─────────────────────────────────────────
 export interface AuthenticatedRequest extends Request {
   firebaseUser?: FirebaseDecodedToken;
   user?: IUser | null;
-  company?: ICompany | null;
+  organization?: IOrganization | null;
 }
 
 // ─── Pagination ────────────────────────────────────────────────────────

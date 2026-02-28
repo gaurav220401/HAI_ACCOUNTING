@@ -40,9 +40,9 @@ const userSchema = new Schema<IUser>(
       type: [String],
       default: [],
     },
-    activeCompany: {
+    activeOrganization: {
       type: Schema.Types.ObjectId,
-      ref: "Company",
+      ref: "Organization",
       default: null,
     },
   },

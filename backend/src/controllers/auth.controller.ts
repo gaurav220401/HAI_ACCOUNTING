@@ -208,7 +208,7 @@ function formatUser(user: IUser): IUserResponse {
     provider: user.provider,
     profileComplete: user.profileComplete,
     roles: user.roles || [],
-    activeCompany: user.activeCompany || null,
+    activeOrganization: user.activeOrganization || null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

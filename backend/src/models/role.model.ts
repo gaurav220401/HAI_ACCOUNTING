@@ -1,16 +1,86 @@
-import { Schema, model, Model } from "mongoose";
-import { IRole } from "../types";
+﻿import { Schema, model, Model, Types } from "mongoose";
+import { IRole, ZohoModule } from "../types";
+
+// All Zoho Books modules
+const ZOHO_MODULES: ZohoModule[] = [
+  "dashboard",
+  "contacts",
+  "items",
+  "invoices",
+  "bills",
+  "estimates",
+  "purchase_orders",
+  "sales_orders",
+  "credit_notes",
+  "vendor_credits",
+  "expenses",
+  "timesheet",
+  "projects",
+  "banking",
+  "accounts",
+  "journals",
+  "reports",
+  "tax",
+  "settings",
+  "users",
+  "payroll",
+  "inventory",
+  "documents",
+];
+
+// Helper to build a permission object
+function perm(
+  module: ZohoModule,
+  opts: Partial<{
+    read: boolean;
+    write: boolean;
+    create: boolean;
+    delete: boolean;
+    approve: boolean;
+    export: boolean;
+  }> = {},
+) {
+  return {
+    module,
+    read: opts.read ?? false,
+    write: opts.write ?? false,
+    create: opts.create ?? false,
+    delete: opts.delete ?? false,
+    approve: opts.approve ?? false,
+    export: opts.export ?? false,
+  };
+}
+
+// Helper: full access to a module
+function fullPerm(module: ZohoModule) {
+  return perm(module, {
+    read: true,
+    write: true,
+    create: true,
+    delete: true,
+    approve: true,
+    export: true,
+  });
+}
+
+// Helper: read-only access to a module
+function readPerm(module: ZohoModule) {
+  return perm(module, { read: true, export: true });
+}
 
 const rolePermissionSchema = new Schema(
   {
-    doctype: { type: String, required: true },
+    module: {
+      type: String,
+      enum: ZOHO_MODULES,
+      required: true,
+    },
     read: { type: Boolean, default: false },
     write: { type: Boolean, default: false },
     create: { type: Boolean, default: false },
     delete: { type: Boolean, default: false },
-    submit: { type: Boolean, default: false },
-    cancel: { type: Boolean, default: false },
-    amend: { type: Boolean, default: false },
+    approve: { type: Boolean, default: false },
+    export: { type: Boolean, default: false },
   },
   { _id: false },
 );
@@ -31,6 +101,11 @@ const roleSchema = new Schema<IRole>(
       type: Boolean,
       default: false,
     },
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+    },
     permissions: {
       type: [rolePermissionSchema],
       default: [],
@@ -42,468 +117,117 @@ const roleSchema = new Schema<IRole>(
 const Role: Model<IRole> = model<IRole>("Role", roleSchema);
 
 /**
- * Seed default system roles.
- * Called once during initial setup.
+ * Seed default Zoho Books-style system roles.
+ * Admin, Accountant, Staff, Time Tracker
  */
 export async function seedDefaultRoles(): Promise<void> {
   const defaultRoles = [
+    // â”€â”€ Admin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {
-      name: "System Manager",
-      description: "Full system access — all permissions on all doctypes",
+      name: "Admin",
+      description:
+        "Full access to all modules â€” organization owner / super user",
       isSystemRole: true,
-      permissions: [], // System Manager bypasses permission checks
+      organizationId: null,
+      permissions: ZOHO_MODULES.map(fullPerm),
     },
+
+    // â”€â”€ Accountant â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {
-      name: "Accounts Manager",
-      description: "Full access to accounting module",
+      name: "Accountant",
+      description:
+        "Full access to financial modules; cannot manage users or settings",
       isSystemRole: true,
+      organizationId: null,
       permissions: [
-        {
-          doctype: "Journal Entry",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Payment Entry",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Sales Invoice",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Purchase Invoice",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Account",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Company",
-          read: true,
-          write: true,
-          create: false,
-          delete: false,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
+        fullPerm("dashboard"),
+        fullPerm("contacts"),
+        fullPerm("items"),
+        fullPerm("invoices"),
+        fullPerm("bills"),
+        fullPerm("estimates"),
+        fullPerm("purchase_orders"),
+        fullPerm("sales_orders"),
+        fullPerm("credit_notes"),
+        fullPerm("vendor_credits"),
+        fullPerm("expenses"),
+        perm("timesheet", { read: true, export: true }),
+        perm("projects", { read: true, export: true }),
+        fullPerm("banking"),
+        fullPerm("accounts"),
+        fullPerm("journals"),
+        fullPerm("reports"),
+        fullPerm("tax"),
+        perm("settings", { read: true }),
+        perm("users", { read: false }),
+        perm("payroll", { read: true, export: true }),
+        fullPerm("inventory"),
+        fullPerm("documents"),
       ],
     },
+
+    // â”€â”€ Staff â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {
-      name: "Accounts User",
-      description: "Basic access to accounting — create and read",
+      name: "Staff",
+      description:
+        "Can create bills, expenses; read-only access to most modules",
       isSystemRole: true,
+      organizationId: null,
       permissions: [
-        {
-          doctype: "Journal Entry",
+        readPerm("dashboard"),
+        readPerm("contacts"),
+        readPerm("items"),
+        perm("invoices", { read: true }),
+        perm("bills", { read: true, write: true, create: true, export: true }),
+        readPerm("estimates"),
+        readPerm("purchase_orders"),
+        readPerm("sales_orders"),
+        perm("credit_notes", { read: true }),
+        perm("vendor_credits", { read: true }),
+        perm("expenses", {
           read: true,
           write: true,
           create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Payment Entry",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Sales Invoice",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Purchase Invoice",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Account",
-          read: true,
-          write: false,
-          create: false,
-          delete: false,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
+          export: true,
+        }),
+        perm("timesheet", { read: true, write: true, create: true }),
+        perm("projects", { read: true }),
+        perm("banking", { read: true }),
+        perm("accounts", { read: true }),
+        perm("journals", { read: true }),
+        readPerm("reports"),
+        perm("tax", { read: true }),
+        perm("settings", {}),
+        perm("users", {}),
+        perm("payroll", {}),
+        perm("inventory", { read: true }),
+        perm("documents", { read: true, create: true }),
       ],
     },
+
+    // â”€â”€ Time Tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     {
-      name: "Stock Manager",
-      description: "Full access to stock/inventory module",
+      name: "Time Tracker",
+      description: "Can only log time and view project timesheets",
       isSystemRole: true,
+      organizationId: null,
       permissions: [
-        {
-          doctype: "Stock Entry",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Delivery Note",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Purchase Receipt",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Item",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Warehouse",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-      ],
-    },
-    {
-      name: "Stock User",
-      description: "Basic access to stock/inventory",
-      isSystemRole: true,
-      permissions: [
-        {
-          doctype: "Stock Entry",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Item",
-          read: true,
-          write: false,
-          create: false,
-          delete: false,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Warehouse",
-          read: true,
-          write: false,
-          create: false,
-          delete: false,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-      ],
-    },
-    {
-      name: "Sales Manager",
-      description: "Full access to selling module",
-      isSystemRole: true,
-      permissions: [
-        {
-          doctype: "Quotation",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Sales Order",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Sales Invoice",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Customer",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-      ],
-    },
-    {
-      name: "Sales User",
-      description: "Basic access to selling",
-      isSystemRole: true,
-      permissions: [
-        {
-          doctype: "Quotation",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Sales Order",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Customer",
-          read: true,
-          write: false,
-          create: true,
-          delete: false,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-      ],
-    },
-    {
-      name: "Purchase Manager",
-      description: "Full access to buying module",
-      isSystemRole: true,
-      permissions: [
-        {
-          doctype: "Purchase Order",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Purchase Invoice",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Supplier",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-      ],
-    },
-    {
-      name: "Purchase User",
-      description: "Basic access to buying",
-      isSystemRole: true,
-      permissions: [
-        {
-          doctype: "Purchase Order",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Supplier",
-          read: true,
-          write: false,
-          create: true,
-          delete: false,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-      ],
-    },
-    {
-      name: "Manufacturing Manager",
-      description: "Full access to manufacturing",
-      isSystemRole: true,
-      permissions: [
-        {
-          doctype: "BOM",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Work Order",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-        {
-          doctype: "Job Card",
-          read: true,
-          write: true,
-          create: true,
-          delete: true,
-          submit: true,
-          cancel: true,
-          amend: true,
-        },
-      ],
-    },
-    {
-      name: "Manufacturing User",
-      description: "Basic access to manufacturing",
-      isSystemRole: true,
-      permissions: [
-        {
-          doctype: "BOM",
-          read: true,
-          write: false,
-          create: false,
-          delete: false,
-          submit: false,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Work Order",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
-        {
-          doctype: "Job Card",
-          read: true,
-          write: true,
-          create: true,
-          delete: false,
-          submit: true,
-          cancel: false,
-          amend: false,
-        },
+        perm("dashboard", { read: true }),
+        perm("timesheet", { read: true, write: true, create: true }),
+        perm("projects", { read: true }),
       ],
     },
   ];
 
   for (const role of defaultRoles) {
     await Role.findOneAndUpdate(
-      { name: role.name },
+      { name: role.name, isSystemRole: true },
       { $setOnInsert: role },
       { upsert: true, new: true },
     );
   }
 
-  console.log("Default roles seeded");
+  console.log("âœ… Default Zoho Books roles seeded: Admin, Accountant, Staff, Time Tracker");
 }
 
 export default Role;
