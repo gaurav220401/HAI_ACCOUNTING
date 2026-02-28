@@ -204,11 +204,35 @@ export interface ServiceResult<T = unknown> {
 
 // ─── 1.2 Chart of Accounts ────────────────────────────────────────────
 export type AccountRootType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+
+/** Asset sub-types */
+export type AssetAccountType =
+  | "Other Asset" | "Other Current Asset" | "Cash" | "Bank"
+  | "Fixed Asset" | "Accounts Receivable" | "Stock"
+  | "Payment Clearing Account" | "Intangible Asset"
+  | "Non Current Asset" | "Deferred Tax Asset";
+
+/** Liability sub-types */
+export type LiabilityAccountType =
+  | "Other Current Liability" | "Credit Card" | "Non Current Liability"
+  | "Other Liability" | "Accounts Payable" | "Overseas Tax Payable"
+  | "Deferred Tax Liability";
+
+/** Equity sub-types */
+export type EquityAccountType = "Equity";
+
+/** Income sub-types */
+export type IncomeAccountType = "Income" | "Other Income";
+
+/** Expense sub-types */
+export type ExpenseAccountType = "Expense" | "Cost Of Goods Sold" | "Other Expense";
+
 export type AccountType =
-  | "Receivable" | "Payable" | "Bank" | "Cash" | "Fixed Asset"
-  | "Current Asset" | "Current Liability" | "Long Term Liability"
-  | "Equity" | "Income" | "Cost of Goods Sold" | "Expense"
-  | "Tax" | "Round Off" | "Other";
+  | AssetAccountType
+  | LiabilityAccountType
+  | EquityAccountType
+  | IncomeAccountType
+  | ExpenseAccountType;
 
 export interface IAccount extends Document {
   _id: Types.ObjectId;

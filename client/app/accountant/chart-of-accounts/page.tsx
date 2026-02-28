@@ -2,142 +2,172 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ChevronDown, Plus, RefreshCw, TreePine } from "lucide-react";
+import {
+  Plus, Settings2, ChevronDown, TreePine, RefreshCw, MoreHorizontal,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
+import { AccountDialog } from "@/components/account-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { accountApi, type Account } from "@/lib/api/accounts";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { accountApi, type Account, type UpdateAccountInput } from "@/lib/api/accounts";
 
-// ─── Build tree from flat list ───────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-function buildTree(accounts: Account[]): Account[] {
-  const map = new Map<string, Account>();
-  accounts.forEach((a) => {
-    map.set(a._id, { ...a, children: [] });
-  });
+type ViewFilter = "Active" | "Inactive" | "All";
 
-  const roots: Account[] = [];
-  map.forEach((a) => {
-    if (!a.parentId || typeof a.parentId !== "string") {
-      roots.push(a);
-    } else {
-      const parent = map.get(a.parentId as string);
-      if (parent) {
-        parent.children = parent.children || [];
-        parent.children.push(a);
-      } else {
-        roots.push(a);
-      }
-    }
-  });
-
-  return roots;
+function parentName(account: Account, map: Map<string, Account>) {
+  if (!account.parentId) return "—";
+  const p = map.get(account.parentId as string);
+  return p ? p.name : "—";
 }
 
-// ─── Account Row ─────────────────────────────────────────────────────────
+// ─── Confirm Delete Modal ─────────────────────────────────────────────────────
 
-const rootColors: Record<string, string> = {
-  Asset: "text-blue-600",
-  Liability: "text-red-600",
-  Equity: "text-purple-600",
-  Income: "text-green-600",
-  Expense: "text-orange-600",
-};
-
-function AccountRow({
+function ConfirmDelete({
   account,
-  depth,
+  onConfirm,
+  onCancel,
 }: {
   account: Account;
-  depth: number;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
-  const [open, setOpen] = useState(depth < 2);
-  const hasChildren = (account.children?.length ?? 0) > 0;
-  const colorClass = rootColors[account.rootType] ?? "text-foreground";
-
   return (
-    <div>
-      <div
-        className="flex items-center gap-2 px-4 py-2 hover:bg-muted/50 cursor-pointer group"
-        style={{ paddingLeft: `${16 + depth * 20}px` }}
-        onClick={() => hasChildren && setOpen((o) => !o)}
-      >
-        {/* Expand icon */}
-        <span className="w-4 shrink-0 text-muted-foreground">
-          {hasChildren ? (
-            open ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )
-          ) : null}
-        </span>
-
-        {/* Name */}
-        <span className={`flex-1 text-sm font-medium ${account.isGroup ? colorClass : "text-foreground"}`}>
-          {account.code && (
-            <span className="mr-2 text-xs text-muted-foreground">{account.code}</span>
-          )}
-          {account.name}
-        </span>
-
-        {/* Type badge */}
-        {account.accountType && (
-          <Badge variant="outline" className="hidden group-hover:inline-flex text-xs">
-            {account.accountType}
-          </Badge>
-        )}
-
-        {/* Opening balance */}
-        {account.openingBalance !== 0 && (
-          <span className="text-xs text-muted-foreground tabular-nums w-28 text-right">
-            ₹{account.openingBalance.toLocaleString("en-IN")}
-          </span>
-        )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-background rounded-xl shadow-xl p-6 max-w-sm w-full space-y-4 border">
+        <h2 className="text-base font-semibold">Delete Account</h2>
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to delete&nbsp;
+          <strong className="text-foreground">{account.name}</strong>? This action cannot be undone.
+        </p>
+        <div className="flex gap-3 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm}>Delete</Button>
+        </div>
       </div>
-
-      {/* Children */}
-      {open && hasChildren && account.children?.map((child) => (
-        <AccountRow key={child._id} account={child} depth={depth + 1} />
-      ))}
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────
+// ─── Row ─────────────────────────────────────────────────────────────────────
+
+function AccountRow({
+  account,
+  accountMap,
+  onEdit,
+  onDelete,
+  onToggleActive,
+}: {
+  account: Account;
+  accountMap: Map<string, Account>;
+  onEdit: (a: Account) => void;
+  onDelete: (a: Account) => void;
+  onToggleActive: (a: Account) => void;
+}) {
+  return (
+    <tr className="group border-b last:border-0 hover:bg-muted/40 transition-colors">
+      {/* Checkbox */}
+      <td className="w-9 px-3 py-2.5 text-center">
+        <input type="checkbox" className="rounded border-muted" />
+      </td>
+
+      {/* Account Name */}
+      <td className="px-3 py-2.5">
+        <span
+          className="text-sm text-primary cursor-pointer hover:underline font-medium"
+          onClick={() => onEdit(account)}
+        >
+          {account.name}
+        </span>
+        {!account.isActive && (
+          <span className="ml-2 text-xs text-muted-foreground">(Inactive)</span>
+        )}
+      </td>
+
+      {/* Account Code */}
+      <td className="px-3 py-2.5 text-sm text-muted-foreground">{account.code || "—"}</td>
+
+      {/* Account Type */}
+      <td className="px-3 py-2.5 text-sm text-foreground">{account.accountType}</td>
+
+      {/* Documents placeholder */}
+      <td className="px-3 py-2.5 text-sm text-muted-foreground">—</td>
+
+      {/* Parent Account */}
+      <td className="px-3 py-2.5 text-sm text-muted-foreground">
+        {parentName(account, accountMap)}
+      </td>
+
+      {/* Gear icon */}
+      <td className="w-12 px-2 py-2.5 text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-muted text-muted-foreground">
+              <Settings2 className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={() => onEdit(account)}>Edit</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onToggleActive(account)}>
+              {account.isActive ? "Mark as Inactive" : "Mark as Active"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => onDelete(account)}
+            >
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </td>
+    </tr>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChartOfAccountsPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
   const { activeOrganization, needsOrgSetup, loading: orgLoading } = useOrganization();
+
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [fetching, setFetching] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("Active");
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Account | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) {
-      router.push("/org-setup");
-    }
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
     if (activeOrganization?._id) fetchAccounts();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrganization?._id]);
 
   async function fetchAccounts() {
-    if (!activeOrganization) return;
     setFetching(true);
     try {
-      const res = await accountApi.list(activeOrganization._id);
+      const res = await accountApi.list();
       setAccounts(res.data ?? []);
     } catch {
       // noop
@@ -147,15 +177,35 @@ export default function ChartOfAccountsPage() {
   }
 
   async function handleSeedTemplate() {
-    if (!activeOrganization) return;
     setSeeding(true);
     try {
-      await accountApi.seedTemplate(activeOrganization._id);
+      await accountApi.seedTemplate();
       await fetchAccounts();
     } finally {
       setSeeding(false);
     }
   }
+
+  async function handleToggleActive(account: Account) {
+    try {
+      const payload: UpdateAccountInput = { isActive: !account.isActive };
+      await accountApi.update(account._id, payload);
+      await fetchAccounts();
+    } catch { /* noop */ }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    try {
+      await accountApi.remove(deleteTarget._id);
+    } catch { /* noop */ } finally {
+      setDeleteTarget(null);
+      await fetchAccounts();
+    }
+  }
+
+  function openCreate() { setEditTarget(null); setDialogOpen(true); }
+  function openEdit(account: Account) { setEditTarget(account); setDialogOpen(true); }
 
   if (loading || orgLoading || !firebaseUser) {
     return (
@@ -165,16 +215,17 @@ export default function ChartOfAccountsPage() {
     );
   }
 
-  const tree = buildTree(accounts);
-
-  // Group roots by rootType
-  const rootGroups = ["Asset", "Liability", "Equity", "Income", "Expense"];
+  const accountMap = new Map(accounts.map((a) => [a._id, a]));
+  const displayed = accounts.filter((a) => {
+    if (viewFilter === "Active") return a.isActive !== false;
+    if (viewFilter === "Inactive") return a.isActive === false;
+    return true;
+  });
 
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        {/* Header */}
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
@@ -184,71 +235,155 @@ export default function ChartOfAccountsPage() {
           }
           actions={
             <>
-              <Button variant="outline" size="sm" onClick={fetchAccounts} disabled={fetching}>
-                <RefreshCw className={`h-4 w-4 mr-1 ${fetching ? "animate-spin" : ""}`} />
+              <Button variant="outline" size="sm" onClick={fetchAccounts} disabled={fetching} className="gap-1.5">
+                <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
               {accounts.length === 0 && (
-                <Button variant="outline" size="sm" onClick={handleSeedTemplate} disabled={seeding}>
-                  <TreePine className="h-4 w-4 mr-1" />
+                <Button variant="outline" size="sm" onClick={handleSeedTemplate} disabled={seeding} className="gap-1.5">
+                  <TreePine className="h-3.5 w-3.5" />
                   {seeding ? "Loading..." : "Load Template"}
                 </Button>
               )}
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-1" />
-                New Account
-              </Button>
             </>
           }
         />
 
-        {/* Content */}
-        <div className="flex flex-1 flex-col p-6 gap-4">
-          <div>
-            <h1 className="text-xl font-bold">Chart of Accounts</h1>
-            <p className="text-sm text-muted-foreground">
-              {accounts.length} accounts across {rootGroups.length} root types
-            </p>
-          </div>
-
+        <div className="flex flex-1 flex-col overflow-hidden">
           {accounts.length === 0 ? (
+            /* Empty state */
             <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-              <TreePine className="h-12 w-12 opacity-40" />
+              <TreePine className="h-12 w-12 opacity-30" />
               <div className="text-center">
-                <p className="font-medium">No accounts yet</p>
-                <p className="text-sm">Load the standard Indian CoA template or create accounts manually.</p>
+                <p className="font-medium text-foreground">No accounts yet</p>
+                <p className="text-sm">Load the standard template or create accounts manually.</p>
               </div>
-              <Button onClick={handleSeedTemplate} disabled={seeding}>
-                {seeding ? "Loading template..." : "Load Standard Template"}
-              </Button>
+              <div className="flex gap-3">
+                <Button onClick={handleSeedTemplate} disabled={seeding} variant="outline">
+                  {seeding ? "Loading..." : "Load Standard Template"}
+                </Button>
+                <Button onClick={openCreate}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  New Account
+                </Button>
+              </div>
             </div>
           ) : (
-            <div className="rounded-lg border overflow-hidden">
-              {/* Column headers */}
-              <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-medium text-muted-foreground">
-                <span className="flex-1">Account Name</span>
-                <span className="w-28 text-right">Opening Balance</span>
+            /* Table */
+            <div className="flex flex-col h-full overflow-hidden">
+              {/* Sub-header */}
+              <div className="flex items-center justify-between px-6 py-3 border-b bg-background">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-1.5 font-semibold text-base hover:text-primary transition-colors">
+                      {viewFilter} Accounts
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-44">
+                    {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
+                      <DropdownMenuItem
+                        key={f}
+                        className={viewFilter === f ? "font-semibold" : ""}
+                        onClick={() => setViewFilter(f)}
+                      >
+                        {f} Accounts
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={openCreate} className="gap-1.5">
+                    <Plus className="h-3.5 w-3.5" />
+                    New
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-8 w-8">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuItem>Sort by</DropdownMenuItem>
+                      <DropdownMenuItem>Import Chart of Accounts</DropdownMenuItem>
+                      <DropdownMenuItem>Export</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
 
-              {/* Root groups */}
-              {rootGroups.map((rootType) => {
-                const roots = tree.filter((a) => a.rootType === rootType);
-                if (roots.length === 0) return null;
-                return (
-                  <div key={rootType}>
-                    <div className={`px-4 py-1.5 bg-muted/30 text-xs font-semibold uppercase tracking-wide ${rootColors[rootType]}`}>
-                      {rootType}s
-                    </div>
-                    {roots.map((a) => (
-                      <AccountRow key={a._id} account={a} depth={0} />
-                    ))}
-                  </div>
-                );
-              })}
+              {/* Scrollable table */}
+              <div className="flex-1 overflow-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
+                    <tr className="border-b">
+                      <th className="w-9 px-3 py-2.5" />
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Account Name
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Account Code
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Account Type
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Documents
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Parent Account Name
+                      </th>
+                      <th className="w-12" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayed.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-16 text-center text-muted-foreground text-sm">
+                          No {viewFilter.toLowerCase()} accounts found.
+                        </td>
+                      </tr>
+                    ) : (
+                      displayed.map((account) => (
+                        <AccountRow
+                          key={account._id}
+                          account={account}
+                          accountMap={accountMap}
+                          onEdit={openEdit}
+                          onDelete={setDeleteTarget}
+                          onToggleActive={handleToggleActive}
+                        />
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Footer count */}
+              <div className="px-6 py-2.5 border-t text-xs text-muted-foreground">
+                {displayed.length} account{displayed.length !== 1 ? "s" : ""}
+              </div>
             </div>
           )}
         </div>
       </SidebarInset>
+
+      <AccountDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSaved={fetchAccounts}
+        editAccount={editTarget}
+        allAccounts={accounts}
+      />
+
+      {deleteTarget && (
+        <ConfirmDelete
+          account={deleteTarget}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </SidebarProvider>
   );
 }
