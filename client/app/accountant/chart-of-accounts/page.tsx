@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Settings2, ChevronDown, TreePine, RefreshCw, MoreHorizontal,
+  Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -12,6 +13,11 @@ import { PageHeader } from "@/components/page-header";
 import { AccountDialog } from "@/components/account-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +30,22 @@ import { accountApi, type Account, type UpdateAccountInput } from "@/lib/api/acc
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ViewFilter = "Active" | "Inactive" | "All";
+type ColumnId = "name" | "code" | "accountType" | "documents" | "parentAccount";
+
+interface ColumnConfig {
+  id: ColumnId;
+  label: string;
+  locked: boolean;   // locked columns can't be hidden (Account Name, Code, Type)
+  visible: boolean;
+}
+
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: "name",          label: "Account Name",        locked: true,  visible: true },
+  { id: "code",          label: "Account Code",        locked: true,  visible: true },
+  { id: "accountType",   label: "Account Type",        locked: true,  visible: true },
+  { id: "documents",     label: "Documents",           locked: false, visible: true },
+  { id: "parentAccount", label: "Parent Account Name", locked: false, visible: true },
+];
 
 function parentName(account: Account, map: Map<string, Account>) {
   if (!account.parentId) return "—";
@@ -31,25 +53,187 @@ function parentName(account: Account, map: Map<string, Account>) {
   return p ? p.name : "—";
 }
 
+// ─── Customize Columns Dialog ─────────────────────────────────────────────────
+
+function CustomizeColumnsDialog({
+  open,
+  onOpenChange,
+  columns,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  columns: ColumnConfig[];
+  onSave: (cols: ColumnConfig[]) => void;
+}) {
+  const [draft, setDraft] = useState<ColumnConfig[]>(columns);
+  const [search, setSearch] = useState("");
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+
+  // Reset draft when opening
+  useEffect(() => {
+    if (open) {
+      setDraft(columns.map((c) => ({ ...c })));
+      setSearch("");
+    }
+  }, [open, columns]);
+
+  const filtered = draft.filter((c) =>
+    c.label.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const visibleCount = draft.filter((c) => c.visible).length;
+
+  function toggleColumn(id: ColumnId) {
+    setDraft((prev) =>
+      prev.map((c) => (c.id === id && !c.locked ? { ...c, visible: !c.visible } : c)),
+    );
+  }
+
+  function handleDragStart(idx: number) {
+    dragItem.current = idx;
+  }
+
+  function handleDragEnter(idx: number) {
+    dragOverItem.current = idx;
+  }
+
+  function handleDragEnd() {
+    if (dragItem.current === null || dragOverItem.current === null) return;
+    const items = [...draft];
+    const [dragged] = items.splice(dragItem.current, 1);
+    items.splice(dragOverItem.current, 0, dragged);
+    setDraft(items);
+    dragItem.current = null;
+    dragOverItem.current = null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center justify-between w-full">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <SlidersHorizontal className="h-4 w-4" />
+              Customize Columns
+            </DialogTitle>
+            <span className="text-sm text-primary font-medium">
+              {visibleCount} of {draft.length} Selected
+            </span>
+          </div>
+        </DialogHeader>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        {/* Column list */}
+        <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
+          {filtered.map((col) => {
+            const realIdx = draft.findIndex((c) => c.id === col.id);
+            return (
+              <div
+                key={col.id}
+                draggable
+                onDragStart={() => handleDragStart(realIdx)}
+                onDragEnter={() => handleDragEnter(realIdx)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => e.preventDefault()}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted/50 cursor-grab active:cursor-grabbing select-none"
+              >
+                <GripVertical className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+                {col.locked ? (
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                ) : (
+                  <Checkbox
+                    checked={col.visible}
+                    onCheckedChange={() => toggleColumn(col.id)}
+                  />
+                )}
+                <span className="text-sm font-medium">{col.label}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button size="sm" onClick={() => onSave(draft)}>Save</Button>
+          <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Bulk Action Toolbar ──────────────────────────────────────────────────────
+
+function BulkActionToolbar({
+  count,
+  onMarkActive,
+  onMarkInactive,
+  onDelete,
+  onClear,
+}: {
+  count: number;
+  onMarkActive: () => void;
+  onMarkInactive: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-6 py-2.5 bg-background border-b">
+      <Button variant="outline" size="sm" onClick={onMarkActive} className="text-xs font-medium">
+        Mark as Active
+      </Button>
+      <Button variant="outline" size="sm" onClick={onMarkInactive} className="text-xs font-medium">
+        Mark as Inactive
+      </Button>
+      <Button variant="outline" size="sm" onClick={onDelete} className="text-xs font-medium">
+        Delete
+      </Button>
+      <span className="text-muted-foreground text-xs">|</span>
+      <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded bg-primary text-primary-foreground text-xs font-bold px-1.5">
+        {count}
+      </span>
+      <span className="text-sm text-muted-foreground">Selected</span>
+
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onClear}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Esc
+          <X className="h-4 w-4 text-destructive" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Confirm Delete Modal ─────────────────────────────────────────────────────
 
 function ConfirmDelete({
-  account,
+  message,
   onConfirm,
   onCancel,
 }: {
-  account: Account;
+  message: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background rounded-xl shadow-xl p-6 max-w-sm w-full space-y-4 border">
-        <h2 className="text-base font-semibold">Delete Account</h2>
-        <p className="text-sm text-muted-foreground">
-          Are you sure you want to delete&nbsp;
-          <strong className="text-foreground">{account.name}</strong>? This action cannot be undone.
-        </p>
+        <h2 className="text-base font-semibold">Delete Account{message.includes("selected") ? "s" : ""}</h2>
+        <p className="text-sm text-muted-foreground">{message}</p>
         <div className="flex gap-3 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
           <Button variant="destructive" size="sm" onClick={onConfirm}>Delete</Button>
@@ -59,54 +243,91 @@ function ConfirmDelete({
   );
 }
 
-// ─── Row ─────────────────────────────────────────────────────────────────────
+// ─── Account Row ───────────────────────────────────────────────────────────────
 
 function AccountRow({
   account,
   accountMap,
+  columns,
+  selected,
+  wrapText,
+  onSelect,
   onEdit,
   onDelete,
   onToggleActive,
 }: {
   account: Account;
   accountMap: Map<string, Account>;
+  columns: ColumnConfig[];
+  selected: boolean;
+  wrapText: boolean;
+  onSelect: (id: string) => void;
   onEdit: (a: Account) => void;
   onDelete: (a: Account) => void;
   onToggleActive: (a: Account) => void;
 }) {
-  return (
-    <tr className="group border-b last:border-0 hover:bg-muted/40 transition-colors">
-      {/* Checkbox */}
-      <td className="w-9 px-3 py-2.5 text-center">
-        <input type="checkbox" className="rounded border-muted" />
-      </td>
+  const visibleCols = columns.filter((c) => c.visible);
+  const cellClass = wrapText
+    ? "px-3 py-2.5 text-sm"
+    : "px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[250px]";
 
-      {/* Account Name */}
-      <td className="px-3 py-2.5">
-        <span
-          className="text-sm text-primary cursor-pointer hover:underline font-medium"
-          onClick={() => onEdit(account)}
-        >
-          {account.name}
-        </span>
-        {!account.isActive && (
-          <span className="ml-2 text-xs text-muted-foreground">(Inactive)</span>
+  return (
+    <tr className={`group border-b last:border-0 hover:bg-muted/40 transition-colors ${selected ? "bg-primary/5" : ""}`}>
+      {/* Lock or Checkbox */}
+      <td className="w-9 px-3 py-2.5 text-center">
+        {account.isSystemAccount ? (
+          <Lock className="h-3.5 w-3.5 text-muted-foreground/50 mx-auto" />
+        ) : (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onSelect(account._id)}
+          />
         )}
       </td>
 
-      {/* Account Code */}
-      <td className="px-3 py-2.5 text-sm text-muted-foreground">{account.code || "—"}</td>
-
-      {/* Account Type */}
-      <td className="px-3 py-2.5 text-sm text-foreground">{account.accountType}</td>
-
-      {/* Documents placeholder */}
-      <td className="px-3 py-2.5 text-sm text-muted-foreground">—</td>
-
-      {/* Parent Account */}
-      <td className="px-3 py-2.5 text-sm text-muted-foreground">
-        {parentName(account, accountMap)}
-      </td>
+      {/* Dynamic visible columns */}
+      {visibleCols.map((col) => {
+        switch (col.id) {
+          case "name":
+            return (
+              <td key={col.id} className={cellClass}>
+                <span
+                  className="text-sm text-primary cursor-pointer hover:underline font-medium"
+                  onClick={() => onEdit(account)}
+                >
+                  {account.name}
+                </span>
+                {!account.isActive && (
+                  <span className="ml-2 text-xs text-muted-foreground">(Inactive)</span>
+                )}
+              </td>
+            );
+          case "code":
+            return (
+              <td key={col.id} className={`${cellClass} text-muted-foreground`}>
+                {account.code || "—"}
+              </td>
+            );
+          case "accountType":
+            return (
+              <td key={col.id} className={`${cellClass} text-foreground`}>
+                {account.accountType}
+              </td>
+            );
+          case "documents":
+            return (
+              <td key={col.id} className={`${cellClass} text-muted-foreground`}>—</td>
+            );
+          case "parentAccount":
+            return (
+              <td key={col.id} className={`${cellClass} text-muted-foreground`}>
+                {parentName(account, accountMap)}
+              </td>
+            );
+          default:
+            return null;
+        }
+      })}
 
       {/* Gear icon */}
       <td className="w-12 px-2 py-2.5 text-right">
@@ -151,6 +372,21 @@ export default function ChartOfAccountsPage() {
   const [editTarget, setEditTarget] = useState<Account | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
 
+  // Bulk selection — only non-system accounts can be selected via checkbox
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Column customization
+  const [columns, setColumns] = useState<ColumnConfig[]>(DEFAULT_COLUMNS);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+
+  // Wrap text toggle
+  const [wrapText, setWrapText] = useState(false);
+
+  // Bulk delete confirmation
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+
+  // ─── Auth guards ─────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
@@ -163,6 +399,8 @@ export default function ChartOfAccountsPage() {
     if (activeOrganization?._id) fetchAccounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrganization?._id]);
+
+  // ─── Data fetching ───────────────────────────────────────────────────
 
   async function fetchAccounts() {
     setFetching(true);
@@ -186,6 +424,8 @@ export default function ChartOfAccountsPage() {
     }
   }
 
+  // ─── Single actions ──────────────────────────────────────────────────
+
   async function handleToggleActive(account: Account) {
     try {
       const payload: UpdateAccountInput = { isActive: !account.isActive };
@@ -204,8 +444,89 @@ export default function ChartOfAccountsPage() {
     }
   }
 
+  // ─── Bulk actions ────────────────────────────────────────────────────
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function bulkMarkActive() {
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) => accountApi.update(id, { isActive: true })),
+      );
+    } catch { /* noop */ } finally {
+      clearSelection();
+      await fetchAccounts();
+    }
+  }
+
+  async function bulkMarkInactive() {
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) => accountApi.update(id, { isActive: false })),
+      );
+    } catch { /* noop */ } finally {
+      clearSelection();
+      await fetchAccounts();
+    }
+  }
+
+  async function bulkDelete() {
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => accountApi.remove(id)));
+    } catch { /* noop */ } finally {
+      clearSelection();
+      setBulkDeleteOpen(false);
+      await fetchAccounts();
+    }
+  }
+
+  // ─── Keyboard shortcut — Esc clears selection ────────────────────────
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && selectedIds.size > 0) {
+        clearSelection();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds.size]);
+
+  // ─── Helpers ─────────────────────────────────────────────────────────
+
   function openCreate() { setEditTarget(null); setDialogOpen(true); }
   function openEdit(account: Account) { setEditTarget(account); setDialogOpen(true); }
+
+  function handleColumnSave(cols: ColumnConfig[]) {
+    setColumns(cols);
+    setCustomizeOpen(false);
+  }
+
+  // ─── Derived ─────────────────────────────────────────────────────────
+
+  const accountMap = useMemo(() => new Map(accounts.map((a) => [a._id, a])), [accounts]);
+
+  const displayed = useMemo(() => {
+    return accounts.filter((a) => {
+      if (viewFilter === "Active") return a.isActive !== false;
+      if (viewFilter === "Inactive") return a.isActive === false;
+      return true;
+    });
+  }, [accounts, viewFilter]);
+
+  const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
+
+  // ─── Loading ─────────────────────────────────────────────────────────
 
   if (loading || orgLoading || !firebaseUser) {
     return (
@@ -214,13 +535,6 @@ export default function ChartOfAccountsPage() {
       </div>
     );
   }
-
-  const accountMap = new Map(accounts.map((a) => [a._id, a]));
-  const displayed = accounts.filter((a) => {
-    if (viewFilter === "Active") return a.isActive !== false;
-    if (viewFilter === "Inactive") return a.isActive === false;
-    return true;
-  });
 
   return (
     <SidebarProvider>
@@ -251,7 +565,7 @@ export default function ChartOfAccountsPage() {
 
         <div className="flex flex-1 flex-col overflow-hidden">
           {accounts.length === 0 ? (
-            /* Empty state */
+            /* ── Empty state ─────────────────────────────────────── */
             <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
               <TreePine className="h-12 w-12 opacity-30" />
               <div className="text-center">
@@ -269,78 +583,114 @@ export default function ChartOfAccountsPage() {
               </div>
             </div>
           ) : (
-            /* Table */
+            /* ── Table layout ────────────────────────────────────── */
             <div className="flex flex-col h-full overflow-hidden">
-              {/* Sub-header */}
-              <div className="flex items-center justify-between px-6 py-3 border-b bg-background">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-1.5 font-semibold text-base hover:text-primary transition-colors">
-                      {viewFilter} Accounts
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-44">
-                    {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
-                      <DropdownMenuItem
-                        key={f}
-                        className={viewFilter === f ? "font-semibold" : ""}
-                        onClick={() => setViewFilter(f)}
-                      >
-                        {f} Accounts
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
 
-                <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={openCreate} className="gap-1.5">
-                    <Plus className="h-3.5 w-3.5" />
-                    New
-                  </Button>
+              {/* Bulk selection toolbar — replaces sub-header when items selected */}
+              {selectedIds.size > 0 ? (
+                <BulkActionToolbar
+                  count={selectedIds.size}
+                  onMarkActive={bulkMarkActive}
+                  onMarkInactive={bulkMarkInactive}
+                  onDelete={() => setBulkDeleteOpen(true)}
+                  onClear={clearSelection}
+                />
+              ) : (
+                /* Sub-header — view filter + actions */
+                <div className="flex items-center justify-between px-6 py-3 border-b bg-background">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
+                      <button className="flex items-center gap-1.5 font-semibold text-base hover:text-primary transition-colors">
+                        {viewFilter} Accounts
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                      <DropdownMenuItem>Sort by</DropdownMenuItem>
-                      <DropdownMenuItem>Import Chart of Accounts</DropdownMenuItem>
-                      <DropdownMenuItem>Export</DropdownMenuItem>
+                    <DropdownMenuContent align="start" className="w-44">
+                      {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
+                        <DropdownMenuItem
+                          key={f}
+                          className={viewFilter === f ? "font-semibold" : ""}
+                          onClick={() => setViewFilter(f)}
+                        >
+                          {f} Accounts
+                        </DropdownMenuItem>
+                      ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
+
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={openCreate} className="gap-1.5">
+                      <Plus className="h-3.5 w-3.5" />
+                      New
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52">
+                        <DropdownMenuItem>Sort by</DropdownMenuItem>
+                        <DropdownMenuItem>Import Chart of Accounts</DropdownMenuItem>
+                        <DropdownMenuItem>Export</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Scrollable table */}
               <div className="flex-1 overflow-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
                     <tr className="border-b">
-                      <th className="w-9 px-3 py-2.5" />
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Account Name
+                      {/* Column-header dropdown trigger */}
+                      <th className="w-9 px-3 py-2.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors">
+                              <SlidersHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-52">
+                            <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
+                              <SlidersHorizontal className="h-4 w-4 mr-2 text-primary" />
+                              Customize Columns
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setWrapText((w) => !w)}>
+                              <WrapText className="h-4 w-4 mr-2" />
+                              {wrapText ? "No Wrap" : "Wrap Text"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Account Code
+
+                      {visibleColumns.map((col) => (
+                        <th
+                          key={col.id}
+                          className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide"
+                        >
+                          <span className="flex items-center gap-1">
+                            {col.label}
+                            {col.id === "accountType" && (
+                              <ChevronsUpDown className="h-3 w-3 text-muted-foreground/60" />
+                            )}
+                          </span>
+                        </th>
+                      ))}
+
+                      {/* Search icon in header */}
+                      <th className="w-12 px-2 py-2.5 text-right">
+                        <button className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors">
+                          <Search className="h-3.5 w-3.5" />
+                        </button>
                       </th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Account Type
-                      </th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Documents
-                      </th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Parent Account Name
-                      </th>
-                      <th className="w-12" />
                     </tr>
                   </thead>
                   <tbody>
                     {displayed.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-16 text-center text-muted-foreground text-sm">
+                        <td colSpan={visibleColumns.length + 2} className="px-6 py-16 text-center text-muted-foreground text-sm">
                           No {viewFilter.toLowerCase()} accounts found.
                         </td>
                       </tr>
@@ -350,6 +700,10 @@ export default function ChartOfAccountsPage() {
                           key={account._id}
                           account={account}
                           accountMap={accountMap}
+                          columns={columns}
+                          selected={selectedIds.has(account._id)}
+                          wrapText={wrapText}
+                          onSelect={toggleSelect}
                           onEdit={openEdit}
                           onDelete={setDeleteTarget}
                           onToggleActive={handleToggleActive}
@@ -369,6 +723,7 @@ export default function ChartOfAccountsPage() {
         </div>
       </SidebarInset>
 
+      {/* Account Dialog (Create / Edit) */}
       <AccountDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -377,11 +732,29 @@ export default function ChartOfAccountsPage() {
         allAccounts={accounts}
       />
 
+      {/* Customize Columns Dialog */}
+      <CustomizeColumnsDialog
+        open={customizeOpen}
+        onOpenChange={setCustomizeOpen}
+        columns={columns}
+        onSave={handleColumnSave}
+      />
+
+      {/* Single delete confirmation */}
       {deleteTarget && (
         <ConfirmDelete
-          account={deleteTarget}
+          message={`Are you sure you want to delete "${deleteTarget.name}"? This action cannot be undone.`}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* Bulk delete confirmation */}
+      {bulkDeleteOpen && (
+        <ConfirmDelete
+          message={`Are you sure you want to delete ${selectedIds.size} selected accounts? This action cannot be undone.`}
+          onConfirm={bulkDelete}
+          onCancel={() => setBulkDeleteOpen(false)}
         />
       )}
     </SidebarProvider>

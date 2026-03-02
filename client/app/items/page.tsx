@@ -150,12 +150,16 @@ export default function ItemsPage() {
                       <TableCell>
                         <Badge variant="outline">{item.itemType}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{item.unit || "—"}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">
-                        {item.salesPrice != null ? `₹${item.salesPrice.toLocaleString("en-IN")}` : "—"}
+                      <TableCell className="text-sm">
+                        {typeof item.unit === "object" && item.unit
+                          ? `${(item.unit as { name: string; abbreviation: string }).name} (${(item.unit as { name: string; abbreviation: string }).abbreviation})`
+                          : "—"}
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
-                        {item.purchasePrice != null ? `₹${item.purchasePrice.toLocaleString("en-IN")}` : "—"}
+                        {item.sellingPrice != null ? `₹${item.sellingPrice.toLocaleString("en-IN")}` : "—"}
+                      </TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">
+                        {item.costPrice != null ? `₹${item.costPrice.toLocaleString("en-IN")}` : "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={item.isActive ? "default" : "secondary"}>
