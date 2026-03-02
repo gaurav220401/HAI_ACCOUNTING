@@ -1,7 +1,7 @@
 import "dotenv/config";
 import http from "http";
 import app from "./app";
-import { connectDB } from "./config/db";
+import { connectDB, syncIndexes } from "./config/db";
 import { seedDefaultRoles } from "./models/role.model";
 
 const PORT = process.env.PORT || 5000;
@@ -10,6 +10,9 @@ const startServer = async (): Promise<void> => {
   try {
     // Connect to MongoDB
     await connectDB();
+
+    // Sync indexes (drops stale non-sparse indexes, etc.)
+    await syncIndexes();
 
     // Seed default roles on startup
     await seedDefaultRoles();
