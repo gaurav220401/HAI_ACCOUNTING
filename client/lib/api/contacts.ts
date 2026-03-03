@@ -150,8 +150,7 @@ export interface ContactListParams extends ListParams {
   type?: ContactType | "All";
   search?: string;
 }
-
-// â”€â”€â”€ GSTIN Lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── GSTIN Lookup ────────────────────────────────────────────────────────
 
 export interface GstinAddress {
   street?: string;
@@ -164,14 +163,18 @@ export interface GstinAddress {
 export interface GstinLookupResult {
   gstin: string;
   companyName: string;
+  legalName: string;
   taxpayerType: string;
   gstinStatus: string;
   pan: string;
   stateCode: string;
   state: string;
   addressType: string;
+  addressString: string;
   address: GstinAddress;
-  additionalAddresses: (GstinAddress & { type?: string })[];
+  additionalAddresses: (GstinAddress & { type?: string; addressString?: string })[];
+  naturalBusinessActivities: string[];
+  companyType: string;
   eInvoiceApplicable: string;
 }
 
@@ -181,7 +184,15 @@ export interface GstinLookupResponse {
   data: GstinLookupResult;
 }
 
-// â”€â”€â”€ API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export interface GstinCaptchaResponse {
+  success: boolean;
+  data: {
+    captchaImage: string;
+    captchaCookie: string;
+  };
+}
+
+// ─── API ────────────────────────────────────────────────────────────────────
 
 export const contactApi = {
   list: (params?: ContactListParams) =>
@@ -205,6 +216,17 @@ export const contactApi = {
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/contacts/${id}`, { method: "DELETE" }),
 
-  lookupGstin: (gstin: string) =>
-    apiFetch<GstinLookupResponse>(`/gstin/${encodeURIComponent(gstin.toUpperCase())}`),
+  /** Fetch a fresh CAPTCHA image + cookie from the GST portal */
+  getGstinCaptcha: () =>
+    apiFetch<GstinCaptchaResponse>("/gstin/captcha"),
+
+  /**
+   * Lookup GSTIN details from the real GST portal.
+   * captcha + captchaCookie come from getGstinCaptcha().
+   */
+  lookupGstin: (gstin: string, captcha: string, captchaCookie: string) =>
+    apiFetch<GstinLookupResponse>("/gstin/lookup", {
+      method: "POST",
+      body: JSON.stringify({ gstin: gstin.toUpperCase(), captcha, captchaCookie }),
+    }),
 };

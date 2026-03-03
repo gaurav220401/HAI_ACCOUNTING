@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Trash2, Copy, ChevronDown, ChevronUp,
-  Upload, FileText, X as XIcon, Loader2, Globe, ExternalLink,
+  Upload, FileText, X as XIcon, Loader2, Globe, ExternalLink, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -177,6 +177,11 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [gstinResult, setGstinResult] = useState<GstinLookupResult | null>(null);
   const [gstinSource, setGstinSource] = useState<"gst-portal" | "local-parse" | null>(null);
   const [selectedAddressIdx, setSelectedAddressIdx] = useState<number>(0);
+  // Captcha
+  const [captchaImage, setCaptchaImage] = useState<string | null>(null);
+  const [captchaCookieState, setCaptchaCookieState] = useState("");
+  const [captchaInput, setCaptchaInput] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
 
   // ── Other Details ────────────────────────────────────────────────────────
   const [gstin, setGstin] = useState(initialData?.gstin ?? "");
@@ -256,28 +261,75 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
   // ── GSTIN Handlers ────────────────────────────────────────────────────────
 
+  async function fetchCaptcha() {
+    setCaptchaLoading(true);
+    setCaptchaImage(null);
+    setCaptchaCookieState("");
+    setCaptchaInput("");
+    try {
+      const res = await (contactApi.getGstinCaptcha() as any);
+      const d = res?.data ?? res;
+      if (d?.captchaImage) {
+        setCaptchaImage(d.captchaImage);
+        setCaptchaCookieState(d.captchaCookie ?? "");
+      } else {
+        toast.error("Failed to load CAPTCHA. Please try again.");
+      }
+    } catch {
+      toast.error("Failed to load CAPTCHA from GST portal.");
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }
+
   function openGstinDialog() {
     setGstinInput(gstin || "");
     setGstinResult(null);
     setGstinSource(null);
     setSelectedAddressIdx(0);
+    setCaptchaInput("");
     setGstinDialogOpen(true);
   }
+
+  // Auto-fetch captcha whenever the dialog opens
+  useEffect(() => {
+    if (gstinDialogOpen) { fetchCaptcha(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gstinDialogOpen]);
 
   async function handleFetchGstin() {
     const val = gstinInput.trim().toUpperCase();
     if (!GSTIN_REGEX.test(val)) {
-      toast.error("Invalid GSTIN format (e.g. 22AAAAA0000A1Z5)");
+      toast.error("Invalid GSTIN format (e.g. 22AAHCH4002M1ZV)");
+      return;
+    }
+    if (!captchaInput.trim()) {
+      toast.error("Please enter the captcha text shown in the image");
       return;
     }
     setGstinFetching(true);
     try {
-      const res = await contactApi.lookupGstin(val);
+      const res = await (contactApi.lookupGstin(val, captchaInput.trim(), captchaCookieState) as any);
+      if (res?.errorCode === "INVALID_CAPTCHA") {
+        toast.error(res.message ?? "Incorrect captcha. Please refresh and try again.");
+        fetchCaptcha();
+        return;
+      }
+      if (res?.errorCode === "INVALID_GSTIN") {
+        toast.error(res.message ?? "GSTIN not found in GST portal.");
+        return;
+      }
       setGstinResult(res.data);
       setGstinSource(res.source);
       setSelectedAddressIdx(0);
     } catch (err: any) {
-      toast.error(err?.message ?? "Failed to fetch GSTIN details");
+      const msg = (err?.message ?? "Failed to fetch GSTIN details") as string;
+      if (msg.toLowerCase().includes("captcha")) {
+        toast.error("Incorrect captcha. Please refresh and try again.");
+        fetchCaptcha();
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setGstinFetching(false);
     }
@@ -1169,41 +1221,91 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
       {/* ══ GSTIN Prefill Dialog ══════════════════════════════════════════════ */}
       <Dialog open={gstinDialogOpen} onOpenChange={setGstinDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Prefill Vendor Details From the GST Portal</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
+
+            {/* GSTIN input */}
             <div className="flex flex-col gap-1.5">
               <Label>
                 GSTIN / UIN <span className="text-destructive">*</span>
               </Label>
-              <div className="flex gap-2">
-                <Input
-                  className="uppercase font-mono tracking-wider"
-                  placeholder="22AAAAA0000A1Z5"
-                  value={gstinInput}
-                  maxLength={15}
-                  onChange={(e) => setGstinInput(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleFetchGstin(); }}
-                />
-                <Button
-                  type="button"
-                  onClick={handleFetchGstin}
-                  disabled={gstinFetching || gstinInput.length < 15}
-                >
-                  {gstinFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fetch"}
-                </Button>
-              </div>
+              <Input
+                className="uppercase font-mono tracking-wider"
+                placeholder="22AAHCH4002M1ZV"
+                value={gstinInput}
+                maxLength={15}
+                onChange={(e) => setGstinInput(e.target.value.toUpperCase())}
+              />
             </div>
 
+            {/* Captcha section */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Captcha <span className="text-destructive">*</span></Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1.5"
+                  onClick={fetchCaptcha}
+                  disabled={captchaLoading}
+                >
+                  <RefreshCw className={`h-3 w-3 ${captchaLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
+
+              {/* Captcha image */}
+              <div className="flex items-center gap-3">
+                <div className="relative flex h-14 w-48 items-center justify-center rounded-md border bg-muted/30 overflow-hidden shrink-0">
+                  {captchaLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  ) : captchaImage ? (
+                    <img src={captchaImage} alt="CAPTCHA" className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Loading…</span>
+                  )}
+                </div>
+                <Input
+                  placeholder="Enter captcha text"
+                  value={captchaInput}
+                  onChange={(e) => setCaptchaInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleFetchGstin(); }}
+                  className="flex-1"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Can&apos;t read the captcha? Click &quot;Refresh&quot; to get a new one.
+              </p>
+            </div>
+
+            {/* Fetch button */}
+            <Button
+              type="button"
+              className="w-full"
+              onClick={handleFetchGstin}
+              disabled={gstinFetching || gstinInput.length < 15 || !captchaInput.trim() || captchaLoading}
+            >
+              {gstinFetching
+                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Fetching…</>
+                : "Fetch Details from GST Portal"}
+            </Button>
+
+            {/* Results */}
             {gstinResult && (
               <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
-                {gstinSource === "local-parse" && (
+                {gstinSource === "local-parse" ? (
                   <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                    GST portal is currently unavailable. Showing locally-extracted data from the GSTIN.
+                    GST portal is currently unavailable. Showing locally-extracted data (PAN + state) from the GSTIN.
                     Please verify company details manually.
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
+                    ✓ Data fetched from the official GST portal
                   </div>
                 )}
 
@@ -1211,13 +1313,16 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   {gstinResult.companyName && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Company Name</p>
-                      <p className="font-medium">{gstinResult.companyName}</p>
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Trade / Company Name</p>
+                      <p className="font-semibold">{gstinResult.companyName}</p>
+                      {gstinResult.legalName && gstinResult.legalName !== gstinResult.companyName && (
+                        <p className="text-xs text-muted-foreground mt-0.5">Legal: {gstinResult.legalName}</p>
+                      )}
                     </div>
                   )}
                   <div>
-                    <p className="text-xs text-muted-foreground">GSTIN / UIN Status</p>
+                    <p className="text-xs text-muted-foreground">GSTIN Status</p>
                     {gstinResult.gstinStatus ? (
                       <Badge
                         variant={gstinResult.gstinStatus.toLowerCase() === "active" ? "default" : "destructive"}
@@ -1225,9 +1330,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
                       >
                         {gstinResult.gstinStatus}
                       </Badge>
-                    ) : (
-                      <p>—</p>
-                    )}
+                    ) : <p className="text-muted-foreground">—</p>}
                   </div>
                   {gstinResult.taxpayerType && (
                     <div>
@@ -1241,10 +1344,22 @@ export function VendorForm({ initialData }: VendorFormProps) {
                       <p className="font-mono">{gstinResult.pan}</p>
                     </div>
                   )}
+                  {gstinResult.companyType && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Constitution</p>
+                      <p>{gstinResult.companyType}</p>
+                    </div>
+                  )}
                   {gstinResult.eInvoiceApplicable && (
                     <div className="col-span-2">
-                      <p className="text-xs text-muted-foreground">e-Invoicing Applicability</p>
+                      <p className="text-xs text-muted-foreground">e-Invoice Applicability</p>
                       <p>{gstinResult.eInvoiceApplicable}</p>
+                    </div>
+                  )}
+                  {gstinResult.naturalBusinessActivities?.length > 0 && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Nature of Business</p>
+                      <p className="text-xs">{gstinResult.naturalBusinessActivities.join(", ")}</p>
                     </div>
                   )}
                 </div>
@@ -1255,14 +1370,16 @@ export function VendorForm({ initialData }: VendorFormProps) {
                   return allAddrs.length > 0 ? (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Available Addresses
+                        Select Address to Prefill
                       </p>
                       {allAddrs.map((addr, idx) => {
                         const addrType = idx === 0
-                          ? (gstinResult.addressType || "Office / Sale Office")
-                          : ((gstinResult.additionalAddresses[idx - 1] as any)?.type ?? "");
-                        const parts = [addr.street, addr.city, addr.state, addr.zip, addr.country]
-                          .filter(Boolean).join(", ");
+                          ? (gstinResult.addressType || "Principal Place of Business")
+                          : ((gstinResult.additionalAddresses[idx - 1] as any)?.type ?? `Address ${idx + 1}`);
+                        // Prefer addressString (full string from portal) over assembled parts
+                        const addrStr = idx === 0
+                          ? (gstinResult.addressString || [addr.street, addr.city, addr.state, addr.zip, addr.country].filter(Boolean).join(", "))
+                          : ((gstinResult.additionalAddresses[idx - 1] as any)?.addressString || [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(", "));
                         return (
                           <label
                             key={idx}
@@ -1278,11 +1395,11 @@ export function VendorForm({ initialData }: VendorFormProps) {
                               value={idx}
                               checked={selectedAddressIdx === idx}
                               onChange={() => setSelectedAddressIdx(idx)}
-                              className="mt-0.5"
+                              className="mt-0.5 shrink-0"
                             />
-                            <div className="text-sm">
+                            <div className="text-sm min-w-0">
                               <p className="font-medium">{addrType}</p>
-                              <p className="text-muted-foreground text-xs mt-0.5">{parts}</p>
+                              <p className="text-muted-foreground text-xs mt-0.5 break-words">{addrStr}</p>
                             </div>
                           </label>
                         );

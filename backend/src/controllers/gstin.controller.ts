@@ -1,175 +1,218 @@
-import { Request, Response } from "express";
+﻿import { Request, Response } from "express";
 import asyncHandler from "../utils/asyncHandler";
 import { ValidationError } from "../utils/errors";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-/** Full 15-character GSTIN regex validation */
 const GSTIN_REGEX =
-  /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  /^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}[1-9A-Za-z]{1}[Zz1-9A-Ja-j]{1}[0-9A-Za-z]{1}$/;
 
-// Maps GST state code (first 2 digits) → Indian state name
+const GST_CAPTCHA_URL = "https://services.gst.gov.in/services/captcha?rnd=";
+const GST_DETAILS_URL = "https://services.gst.gov.in/services/api/search/taxpayerDetails";
+const CAPTCHA_COOKIE_NAME = "CaptchaCookie";
+const INVALID_GST_CODE = "SWEB_9035";
+const INVALID_CAPTCHA_CODE = "SWEB_9000";
+
 const STATE_CODE_MAP: Record<string, string> = {
-  "01": "Jammu and Kashmir",
-  "02": "Himachal Pradesh",
-  "03": "Punjab",
-  "04": "Chandigarh",
-  "05": "Uttarakhand",
-  "06": "Haryana",
-  "07": "Delhi",
-  "08": "Rajasthan",
-  "09": "Uttar Pradesh",
-  "10": "Bihar",
-  "11": "Sikkim",
-  "12": "Arunachal Pradesh",
-  "13": "Nagaland",
-  "14": "Manipur",
-  "15": "Mizoram",
-  "16": "Tripura",
-  "17": "Meghalaya",
-  "18": "Assam",
-  "19": "West Bengal",
-  "20": "Jharkhand",
-  "21": "Odisha",
-  "22": "Chhattisgarh",
-  "23": "Madhya Pradesh",
-  "24": "Gujarat",
-  "25": "Daman and Diu",
-  "26": "Dadra and Nagar Haveli and Daman and Diu",
-  "27": "Maharashtra",
-  "28": "Andhra Pradesh",
-  "29": "Karnataka",
-  "30": "Goa",
-  "31": "Lakshadweep",
-  "32": "Kerala",
-  "33": "Tamil Nadu",
-  "34": "Puducherry",
-  "35": "Andaman and Nicobar Islands",
-  "36": "Telangana",
-  "37": "Andhra Pradesh",
-  "38": "Ladakh",
-  "97": "Other Territory",
-  "99": "Centre Jurisdiction",
+  "01": "Jammu and Kashmir",    "02": "Himachal Pradesh",
+  "03": "Punjab",               "04": "Chandigarh",
+  "05": "Uttarakhand",          "06": "Haryana",
+  "07": "Delhi",                "08": "Rajasthan",
+  "09": "Uttar Pradesh",        "10": "Bihar",
+  "11": "Sikkim",               "12": "Arunachal Pradesh",
+  "13": "Nagaland",             "14": "Manipur",
+  "15": "Mizoram",              "16": "Tripura",
+  "17": "Meghalaya",            "18": "Assam",
+  "19": "West Bengal",          "20": "Jharkhand",
+  "21": "Odisha",               "22": "Chhattisgarh",
+  "23": "Madhya Pradesh",       "24": "Gujarat",
+  "25": "Daman and Diu",        "26": "Dadra and Nagar Haveli and Daman and Diu",
+  "27": "Maharashtra",          "28": "Andhra Pradesh",
+  "29": "Karnataka",            "30": "Goa",
+  "31": "Lakshadweep",          "32": "Kerala",
+  "33": "Tamil Nadu",           "34": "Puducherry",
+  "35": "Andaman and Nicobar Islands", "36": "Telangana",
+  "37": "Andhra Pradesh",       "38": "Ladakh",
+  "97": "Other Territory",      "99": "Centre Jurisdiction",
 };
 
-/** Extract what we can directly from a GSTIN string */
+// ─── Checksum Validation ──────────────────────────────────────────────────────
+
+function validGstCheckSum(gstin: string): boolean {
+  const upper = gstin.trim().toUpperCase();
+  const gstSubstring = upper.substring(0, 14);
+  const cpChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const mod = cpChars.length;
+  let factor = 2, sum = 0;
+  for (let i = gstSubstring.length - 1; i >= 0; i--) {
+    const codePoint = cpChars.indexOf(gstSubstring[i]);
+    if (codePoint < 0) return false;
+    let digit = factor * codePoint;
+    factor = factor === 2 ? 1 : 2;
+    digit = Math.floor(digit / mod) + (digit % mod);
+    sum += digit;
+  }
+  const checkCodePoint = (mod - (sum % mod)) % mod;
+  return (gstSubstring + cpChars[checkCodePoint]) === upper;
+}
+
+function isValidGstin(gstin: string): boolean {
+  const upper = gstin.trim().toUpperCase();
+  return GSTIN_REGEX.test(upper) && validGstCheckSum(upper);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function parseGstinLocally(gstin: string) {
   const stateCode = gstin.substring(0, 2);
-  const pan = gstin.substring(2, 12);
+  return { gstin, pan: gstin.substring(2, 12), stateCode, state: STATE_CODE_MAP[stateCode] ?? "" };
+}
+
+function extractCaptchaCookie(cookieHeader: string | null): string {
+  if (!cookieHeader) return "";
+  const cookies = cookieHeader.split(/,(?=[A-Za-z])/);
+  for (const cookie of cookies) {
+    const parts = cookie.split(";");
+    for (const part of parts) {
+      const [key, ...rest] = part.trim().split("=");
+      if (key === CAPTCHA_COOKIE_NAME && rest.length) return rest.join("=");
+    }
+  }
+  return "";
+}
+
+function normaliseGovResponse(raw: any, gstin: string) {
+  const local = parseGstinLocally(gstin);
+  const pradr = raw.pradr?.addr ?? {};
   return {
-    gstin,
-    pan,
-    stateCode,
-    state: STATE_CODE_MAP[stateCode] ?? "",
+    gstin: (raw.gstin ?? gstin).toUpperCase(),
+    companyName: raw.tradeNam || raw.lgnm || "",
+    legalName: raw.lgnm || "",
+    taxpayerType: raw.dty || "",
+    gstinStatus: raw.sts || "",
+    pan: local.pan,
+    stateCode: local.stateCode,
+    state: pradr.stcd || local.state,
+    addressType: raw.pradr?.ntr || "Principal Place of Business",
+    addressString: raw.pradr?.adr || "",
+    address: {
+      street: [pradr.bnm, pradr.bno, pradr.flno, pradr.st].filter(Boolean).join(", "),
+      city: pradr.loc || pradr.dst || "",
+      state: pradr.stcd || local.state,
+      zip: pradr.pncd || "",
+      country: "India",
+    },
+    additionalAddresses: (raw.adadr ?? []).map((a: any) => ({
+      type: a.ntr || "",
+      addressString: a.adr || "",
+      street: [a.addr?.bnm, a.addr?.bno, a.addr?.flno, a.addr?.st].filter(Boolean).join(", "),
+      city: a.addr?.loc || a.addr?.dst || "",
+      state: a.addr?.stcd || "",
+      zip: a.addr?.pncd || "",
+      country: "India",
+    })),
+    naturalBusinessActivities: (raw.nba ?? []) as string[],
+    companyType: raw.ctb || "",
+    eInvoiceApplicable: raw.einvoiceStatus || "No",
   };
 }
 
-/** Try the free GST Govt search API */
-async function fetchFromGovApi(gstin: string) {
-  const url = `https://api.gst.gov.in/apiservice/search?action=TP&username=Guest&authtoken=undefined&gstin=${gstin}`;
+// ─── Controllers ─────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/gstin/captcha
+ * Fetches a fresh CAPTCHA image from the GST portal.
+ * Returns: { captchaImage: "data:image/png;base64,...", captchaCookie: "..." }
+ */
+export const getCaptcha = asyncHandler(async (_req: Request, res: Response) => {
+  const url = `${GST_CAPTCHA_URL}${Math.random()}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.gst.gov.in/",
-        "Origin": "https://www.gst.gov.in",
+        "Referer": "https://services.gst.gov.in/",
+        "Origin":  "https://services.gst.gov.in",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } finally {
     clearTimeout(timer);
+    if (!response.ok) throw new Error(`GST captcha server responded ${response.status}`);
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const mimeType = response.headers.get("content-type") || "image/png";
+    const rawSetCookie = response.headers.get("set-cookie") ?? "";
+    const captchaCookie = extractCaptchaCookie(rawSetCookie);
+    return res.json({
+      success: true,
+      data: { captchaImage: `data:${mimeType};base64,${base64}`, captchaCookie },
+    });
+  } catch (err: any) {
+    clearTimeout(timer);
+    console.error("[GSTIN captcha] fetch failed:", err?.message);
+    return res.status(502).json({ success: false, message: "Could not reach GST portal. Please try again." });
   }
-}
-
-/** Normalise the raw Govt API response into a clean structure */
-function normaliseGovResponse(raw: any, gstin: string) {
-  const local = parseGstinLocally(gstin);
-
-  // Primary address from the Govt API
-  const pradr = raw.pradr?.addr;
-
-  return {
-    gstin: raw.gstin ?? gstin,
-    companyName: raw.tradeNam ?? raw.lgnm ?? "",
-    taxpayerType: raw.dty ?? "",
-    gstinStatus: raw.sts ?? "",
-    pan: local.pan,
-    stateCode: local.stateCode,
-    state: pradr?.stcd ?? local.state,
-    addressType: raw.pradr?.ntr ?? "",
-    address: {
-      street: [pradr?.bnm, pradr?.bno, pradr?.flno, pradr?.st].filter(Boolean).join(", "),
-      city: pradr?.loc ?? pradr?.dst ?? "",
-      state: pradr?.stcd ?? local.state,
-      zip: pradr?.pncd ?? "",
-      country: "India",
-    },
-    additionalAddresses: (raw.adadr ?? []).map((a: any) => ({
-      type: a.ntr ?? "",
-      street: [a.addr?.bnm, a.addr?.bno, a.addr?.flno, a.addr?.st].filter(Boolean).join(", "),
-      city: a.addr?.loc ?? a.addr?.dst ?? "",
-      state: a.addr?.stcd ?? "",
-      zip: a.addr?.pncd ?? "",
-    })),
-    eInvoiceApplicable: raw.einvoiceStatus ?? "No",
-  };
-}
-
-// ─── Controller ───────────────────────────────────────────────────────────────
+});
 
 /**
- * GET /api/gstin/:gstin
- * Validates the GSTIN and tries to fetch business details from the GST portal.
+ * POST /api/gstin/lookup
+ * Body: { gstin, captcha, captchaCookie }
  */
 export const lookupGstin = asyncHandler(async (req: Request, res: Response) => {
-  const { gstin } = req.params;
-  const normalized = (Array.isArray(gstin) ? gstin[0] : gstin ?? "").trim().toUpperCase();
+  const { gstin: rawGstin, captcha, captchaCookie } = req.body as {
+    gstin?: string; captcha?: string; captchaCookie?: string;
+  };
+  const gstin = (rawGstin ?? "").trim().toUpperCase();
+  if (!gstin) throw new ValidationError("gstin is required");
+  if (!GSTIN_REGEX.test(gstin)) throw new ValidationError("Invalid GSTIN format.");
+  if (!validGstCheckSum(gstin)) throw new ValidationError("Invalid GSTIN — checksum digit does not match.");
 
-  if (!GSTIN_REGEX.test(normalized)) {
-    throw new ValidationError("Invalid GSTIN format. Must be 15 characters: 2 digits + 5 letters + 4 digits + 1 letter + 1 alphanumeric + Z + 1 alphanumeric.");
-  }
-
-  try {
-    const raw: any = await fetchFromGovApi(normalized);
-
-    if (raw && (raw.tradeNam || raw.lgnm)) {
-      return res.json({
-        success: true,
-        source: "gst-portal",
-        data: normaliseGovResponse(raw, normalized),
+  if (captcha && captchaCookie) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      const gstResponse = await fetch(GST_DETAILS_URL, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "Cookie": `${CAPTCHA_COOKIE_NAME}=${captchaCookie}`,
+          "Referer": "https://services.gst.gov.in/",
+          "Origin":  "https://services.gst.gov.in",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+        body: JSON.stringify({ gstin, captcha }),
       });
+      clearTimeout(timer);
+      const raw: any = await gstResponse.json();
+
+      if (raw?.errorCode === INVALID_CAPTCHA_CODE || raw?.message === "Invalid Captcha") {
+        return res.status(400).json({ success: false, errorCode: "INVALID_CAPTCHA", message: "The captcha you entered is incorrect. Please refresh and try again." });
+      }
+      if (raw?.errorCode === INVALID_GST_CODE || raw?.message === "Invalid GSTIN") {
+        return res.status(400).json({ success: false, errorCode: "INVALID_GSTIN", message: "GSTIN not found in the GST portal." });
+      }
+      if (raw?.lgnm || raw?.tradeNam) {
+        return res.json({ success: true, source: "gst-portal", data: normaliseGovResponse(raw, gstin) });
+      }
+      console.warn("[GSTIN] Unexpected portal response:", JSON.stringify(raw).slice(0, 200));
+    } catch (apiErr: any) {
+      console.warn("[GSTIN] Portal call failed:", apiErr?.message ?? apiErr);
     }
-  } catch (apiErr: any) {
-    // Govt API unavailable / blocked — fall through to local parse
-    console.warn("[GSTIN] Govt API failed:", apiErr?.message ?? apiErr);
   }
 
-  // Fallback: return what we can from the GSTIN itself
-  const local = parseGstinLocally(normalized);
+  // Fallback: extract what we can from the GSTIN string itself
+  const local = parseGstinLocally(gstin);
   return res.json({
     success: true,
     source: "local-parse",
     data: {
-      gstin: normalized,
-      companyName: "",
-      taxpayerType: "",
-      gstinStatus: "",
-      pan: local.pan,
-      stateCode: local.stateCode,
-      state: local.state,
-      address: {
-        street: "",
-        city: "",
-        state: local.state,
-        zip: "",
-        country: "India",
-      },
-      additionalAddresses: [],
-      eInvoiceApplicable: "",
+      gstin, companyName: "", legalName: "", taxpayerType: "", gstinStatus: "",
+      pan: local.pan, stateCode: local.stateCode, state: local.state,
+      addressType: "", addressString: "",
+      address: { street: "", city: "", state: local.state, zip: "", country: "India" },
+      additionalAddresses: [], naturalBusinessActivities: [], companyType: "", eInvoiceApplicable: "",
     },
   });
 });
