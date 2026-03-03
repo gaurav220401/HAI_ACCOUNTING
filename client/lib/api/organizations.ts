@@ -9,6 +9,8 @@ import {
 
 export interface Organization {
   _id: string;
+  owner?: string;          // userId of the creator / owner
+  members?: string[];      // userIds of all members
   name: string;
   industry: string;
   baseCurrency: string;
@@ -91,5 +93,19 @@ export const organizationApi = {
     apiFetch<{ data: { organizationId: string; organizationName: string } }>(
       `/organizations/${id}/set-active`,
       { method: "PUT" },
+    ),
+
+  /** Invite a user (by email) to join this organization */
+  addMember: (id: string, email: string) =>
+    apiFetch<{ success: boolean; message: string }>(`/organizations/${id}/members`, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  /** Remove a member from an organization (owner only) */
+  removeMember: (id: string, userId: string) =>
+    apiFetch<{ success: boolean; message: string }>(
+      `/organizations/${id}/members/${userId}`,
+      { method: "DELETE" },
     ),
 };

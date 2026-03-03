@@ -57,6 +57,8 @@ export type FiscalYearMonth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export interface IOrganization extends Document {
   _id: Types.ObjectId;
+  owner?: Types.ObjectId | null;
+  members: Types.ObjectId[];
   name: string;
   industry: string;
   baseCurrency: string;
@@ -306,9 +308,19 @@ export interface IContact extends Document {
   openingBalance?: number;
   taxTreatment: TaxTreatment;
   taxId?: string;      // GSTIN / VAT
+  gstin?: string;      // GSTIN (primary GST number)
   pan?: string;        // PAN number
   tdsCategory?: string;
   msmeRegistered?: boolean;
+  // Extra / social details
+  websiteUrl?: string;
+  department?: string;
+  designation?: string;
+  twitterHandle?: string;
+  skypeName?: string;
+  facebookUrl?: string;
+  // Attached documents
+  documents?: { name: string; url: string; publicId: string; size?: number; mimeType?: string }[];
   // Address
   billingAddress?: {
     attention?: string;

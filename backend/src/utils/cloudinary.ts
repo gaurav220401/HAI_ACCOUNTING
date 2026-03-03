@@ -22,22 +22,24 @@ export interface UploadResult {
 
 /**
  * Upload a file buffer to Cloudinary.
- * @param buffer   - the raw file bytes (from multer memoryStorage)
- * @param folder   - e.g. "items", "contacts", "organization-logos"
- * @param publicId - optional — set to overwrite an existing asset
+ * @param buffer       - the raw file bytes (from multer memoryStorage)
+ * @param folder       - e.g. "items", "contacts", "organization-logos"
+ * @param publicId     - optional — set to overwrite an existing asset
+ * @param resourceType - "image" | "raw" | "video" | "auto" (default: "image")
  */
 export function uploadBuffer(
   buffer: Buffer,
   folder: string,
   publicId?: string,
+  resourceType: "image" | "raw" | "video" | "auto" = "image",
 ): Promise<UploadResult> {
   return new Promise((resolve, reject) => {
     const opts: Record<string, unknown> = {
       folder: `hai/${folder}`,
-      resource_type: "image",
-      transformation: [
-        { quality: "auto", fetch_format: "auto" },
-      ],
+      resource_type: resourceType,
+      ...(resourceType === "image"
+        ? { transformation: [{ quality: "auto", fetch_format: "auto" }] }
+        : {}),
     };
     if (publicId) {
       opts.public_id = publicId;

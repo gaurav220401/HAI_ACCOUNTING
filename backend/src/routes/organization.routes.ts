@@ -25,9 +25,12 @@ router.put(
 );
 router.delete(
   "/:id",
-  requireRole("Admin"),
-  organizationController.remove,
+  organizationController.remove,          // owner-check is inside controller
 );
 router.put("/:id/set-active", organizationController.setActive);
+
+// ── Member management ────────────────────────────────────────────────
+router.post("/:id/members", organizationController.addMember);
+router.delete("/:id/members/:userId", organizationController.removeMember);
 
 export default router;

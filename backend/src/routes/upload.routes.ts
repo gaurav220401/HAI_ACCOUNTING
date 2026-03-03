@@ -20,7 +20,11 @@ router.post(
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     if (!req.file) throw new ValidationError("No file uploaded");
     const folder = (req.query.folder as string) || "general";
-    const result = await uploadBuffer(req.file.buffer, folder);
+    // Use "auto" for document folders so Cloudinary accepts PDFs, XLSX, etc.
+    const resourceType =
+      (req.query.resourceType as "image" | "raw" | "video" | "auto") ??
+      (folder.includes("document") || folder.includes("raw") ? "auto" : "image");
+    const result = await uploadBuffer(req.file.buffer, folder, undefined, resourceType);
     res.status(201).json({ success: true, data: result });
   }),
 );

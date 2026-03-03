@@ -2,17 +2,12 @@ import multer from "multer";
 
 /**
  * Multer middleware using memory storage (buffer).
- * Max 5 MB per file — suitable for product images, logos, etc.
+ * Max 10 MB per file — supports images, PDFs, documents, etc.
  * Reusable across all routes that need file uploads.
  */
 export const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed"));
-    }
-  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  // Accept all file types — the route/controller decides what is valid
+  fileFilter: (_req, _file, cb) => cb(null, true),
 });

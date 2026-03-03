@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Copy } from "lucide-react";
+import {
+  Plus, Trash2, Copy, ChevronDown, ChevronUp,
+  Upload, FileText, X as XIcon, Loader2, Globe, ExternalLink,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -26,11 +30,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 
-import { contactApi, type CreateContactInput, type ContactPerson, type Address, type BankDetail } from "@/lib/api/contacts";
+import {
+  contactApi,
+  type CreateContactInput,
+  type ContactPerson,
+  type Address,
+  type BankDetail,
+  type ContactDocument,
+  type GstinLookupResult,
+} from "@/lib/api/contacts";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
+import { apiFetch } from "@/lib/api/client";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -55,6 +75,10 @@ const INDIAN_STATES = [
   "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
 ];
 
+const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+const MAX_DOCUMENTS = 10;
+const MAX_DOC_SIZE_MB = 10;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface VendorFormProps {
@@ -65,6 +89,7 @@ interface VendorFormProps {
     lastName?: string;
     displayName: string;
     companyName?: string;
+    gstin?: string;
     email?: string;
     phone?: string;
     mobile?: string;
@@ -83,7 +108,25 @@ interface VendorFormProps {
     bankDetails?: BankDetail[];
     reportingTags?: string[];
     notes?: string;
+    // Extra / social
+    websiteUrl?: string;
+    department?: string;
+    designation?: string;
+    twitterHandle?: string;
+    skypeName?: string;
+    facebookUrl?: string;
+    // Documents
+    documents?: ContactDocument[];
   };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatBytes(bytes?: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ─── Empty defaults ───────────────────────────────────────────────────────────
@@ -113,6 +156,7 @@ function deriveDisplayName(salutation: string, firstName: string, lastName: stri
 export function VendorForm({ initialData }: VendorFormProps) {
   const router = useRouter();
   const isEdit = Boolean(initialData?._id);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Primary Contact ──────────────────────────────────────────────────────
   const [salutation, setSalutation] = useState(initialData?.salutation ?? "");
@@ -126,7 +170,16 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [language, setLanguage] = useState(initialData?.language ?? "en");
   const [displayNameManual, setDisplayNameManual] = useState(isEdit);
 
+  // ── GSTIN Prefill Dialog ─────────────────────────────────────────────────
+  const [gstinDialogOpen, setGstinDialogOpen] = useState(false);
+  const [gstinInput, setGstinInput] = useState("");
+  const [gstinFetching, setGstinFetching] = useState(false);
+  const [gstinResult, setGstinResult] = useState<GstinLookupResult | null>(null);
+  const [gstinSource, setGstinSource] = useState<"gst-portal" | "local-parse" | null>(null);
+  const [selectedAddressIdx, setSelectedAddressIdx] = useState<number>(0);
+
   // ── Other Details ────────────────────────────────────────────────────────
+  const [gstin, setGstin] = useState(initialData?.gstin ?? "");
   const [pan, setPan] = useState(initialData?.pan ?? "");
   const [msmeRegistered, setMsmeRegistered] = useState(initialData?.msmeRegistered ?? false);
   const [currency, setCurrency] = useState(initialData?.currency ?? "INR");
@@ -135,6 +188,15 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [paymentTermsId, setPaymentTermsId] = useState(initialData?.paymentTermsId ?? "");
   const [tdsCategory, setTdsCategory] = useState(initialData?.tdsCategory ?? "");
   const [portalEnabled, setPortalEnabled] = useState(initialData?.portalEnabled ?? false);
+
+  // ── "Add more details" ────────────────────────────────────────────────────
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [websiteUrl, setWebsiteUrl] = useState(initialData?.websiteUrl ?? "");
+  const [department, setDepartment] = useState(initialData?.department ?? "");
+  const [designation, setDesignation] = useState(initialData?.designation ?? "");
+  const [twitterHandle, setTwitterHandle] = useState(initialData?.twitterHandle ?? "");
+  const [skypeName, setSkypeName] = useState(initialData?.skypeName ?? "");
+  const [facebookUrl, setFacebookUrl] = useState(initialData?.facebookUrl ?? "");
 
   // ── Address ──────────────────────────────────────────────────────────────
   const [billingAddress, setBillingAddress] = useState<Address>(initialData?.billingAddress ?? emptyAddress());
@@ -147,6 +209,10 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
   // ── Bank Details ─────────────────────────────────────────────────────────
   const [bankDetails, setBankDetails] = useState<BankDetail[]>(initialData?.bankDetails ?? []);
+
+  // ── Documents ────────────────────────────────────────────────────────────
+  const [documents, setDocuments] = useState<ContactDocument[]>(initialData?.documents ?? []);
+  const [documentUploading, setDocumentUploading] = useState(false);
 
   // ── Remarks ──────────────────────────────────────────────────────────────
   const [notes, setNotes] = useState(initialData?.notes ?? "");
@@ -177,6 +243,124 @@ export function VendorForm({ initialData }: VendorFormProps) {
       if (derived) setDisplayName(derived);
     }
   }, [salutation, firstName, lastName, companyName, displayNameManual]);
+
+  // Expand "more details" if any social field is pre-filled (edit mode)
+  useEffect(() => {
+    if (isEdit && (
+      initialData?.websiteUrl || initialData?.department || initialData?.designation ||
+      initialData?.twitterHandle || initialData?.skypeName || initialData?.facebookUrl
+    )) {
+      setShowMoreDetails(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── GSTIN Handlers ────────────────────────────────────────────────────────
+
+  function openGstinDialog() {
+    setGstinInput(gstin || "");
+    setGstinResult(null);
+    setGstinSource(null);
+    setSelectedAddressIdx(0);
+    setGstinDialogOpen(true);
+  }
+
+  async function handleFetchGstin() {
+    const val = gstinInput.trim().toUpperCase();
+    if (!GSTIN_REGEX.test(val)) {
+      toast.error("Invalid GSTIN format (e.g. 22AAAAA0000A1Z5)");
+      return;
+    }
+    setGstinFetching(true);
+    try {
+      const res = await contactApi.lookupGstin(val);
+      setGstinResult(res.data);
+      setGstinSource(res.source);
+      setSelectedAddressIdx(0);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to fetch GSTIN details");
+    } finally {
+      setGstinFetching(false);
+    }
+  }
+
+  function handlePrefillDetails() {
+    if (!gstinResult) return;
+    const allAddresses = [gstinResult.address, ...gstinResult.additionalAddresses];
+    const chosenAddr = allAddresses[selectedAddressIdx] ?? gstinResult.address;
+
+    if (gstinResult.companyName) {
+      setCompanyName(gstinResult.companyName);
+      setDisplayName(gstinResult.companyName);
+      setDisplayNameManual(true);
+    }
+    if (gstinResult.pan) setPan(gstinResult.pan);
+    setGstin(gstinResult.gstin);
+    if (chosenAddr) {
+      setBillingAddress((prev) => ({
+        ...prev,
+        street: chosenAddr.street ?? prev.street,
+        city: chosenAddr.city ?? prev.city,
+        state: chosenAddr.state ?? prev.state,
+        zip: chosenAddr.zip ?? prev.zip,
+        country: chosenAddr.country ?? "India",
+      }));
+    }
+    setGstinDialogOpen(false);
+    toast.success("Vendor details prefilled from GST portal");
+  }
+
+  // ── Document Handlers ─────────────────────────────────────────────────────
+
+  async function handleDocumentUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    if (documents.length + files.length > MAX_DOCUMENTS) {
+      toast.error(`Maximum ${MAX_DOCUMENTS} documents allowed`);
+      return;
+    }
+    const oversized = files.find((f) => f.size > MAX_DOC_SIZE_MB * 1024 * 1024);
+    if (oversized) {
+      toast.error(`"${oversized.name}" exceeds ${MAX_DOC_SIZE_MB}MB limit`);
+      return;
+    }
+
+    setDocumentUploading(true);
+    const uploaded: ContactDocument[] = [];
+    for (const file of files) {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await apiFetch<{ data: { url: string; publicId: string } }>(
+          "/upload?folder=contacts/documents&resourceType=auto",
+          { method: "POST", body: formData },
+        );
+        uploaded.push({
+          name: file.name,
+          url: res.data.url,
+          publicId: res.data.publicId,
+          size: file.size,
+          mimeType: file.type,
+        });
+      } catch {
+        toast.error(`Failed to upload "${file.name}"`);
+      }
+    }
+    if (uploaded.length) {
+      setDocuments((prev) => [...prev, ...uploaded]);
+      toast.success(`${uploaded.length} file(s) uploaded`);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setDocumentUploading(false);
+  }
+
+  async function handleRemoveDocument(idx: number) {
+    const doc = documents[idx];
+    setDocuments((prev) => prev.filter((_, i) => i !== idx));
+    try {
+      await apiFetch(`/upload?publicId=${encodeURIComponent(doc.publicId)}`, { method: "DELETE" });
+    } catch { /* best effort */ }
+  }
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -241,6 +425,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
       lastName,
       displayName: displayName.trim(),
       companyName,
+      gstin: gstin.trim().toUpperCase(),
       email,
       phone,
       mobile,
@@ -258,6 +443,15 @@ export function VendorForm({ initialData }: VendorFormProps) {
       contactPersons: contactPersons.filter((cp) => cp.firstName || cp.lastName || cp.name),
       bankDetails: bankDetails.filter((bd) => bd.bankName || bd.accountNumber),
       notes,
+      // Extra / social
+      websiteUrl,
+      department,
+      designation,
+      twitterHandle,
+      skypeName,
+      facebookUrl,
+      // Documents
+      documents,
     };
 
     setSaving(true);
@@ -290,13 +484,26 @@ export function VendorForm({ initialData }: VendorFormProps) {
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</> : "Save"}
           </Button>
         </div>
       </div>
 
       {/* ── Body ── */}
       <div className="px-6 py-6 max-w-5xl space-y-6">
+
+        {/* ── GSTIN Prefill Banner ── */}
+        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800">
+          <Globe className="h-4 w-4 shrink-0" />
+          <span>Prefill Vendor details from the GST portal using the Vendor&apos;s GSTIN.</span>
+          <button
+            type="button"
+            className="ml-1 font-medium underline underline-offset-2 hover:text-blue-600 flex items-center gap-1"
+            onClick={openGstinDialog}
+          >
+            Prefill <ExternalLink className="h-3 w-3" />
+          </button>
+        </div>
 
         {/* ── Primary Contact & Basic Info ── */}
         <div className="grid gap-4">
@@ -407,26 +614,151 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </SelectContent>
             </Select>
           </div>
+
+          {/* ── "Add more details" toggle ── */}
+          <div>
+            <button
+              type="button"
+              className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+              onClick={() => setShowMoreDetails((v) => !v)}
+            >
+              {showMoreDetails
+                ? <ChevronUp className="h-4 w-4" />
+                : <ChevronDown className="h-4 w-4" />}
+              {showMoreDetails ? "Hide extra details" : "Add more details"}
+            </button>
+
+            {showMoreDetails && (
+              <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4 border rounded-lg p-4 bg-muted/20">
+                {/* Website URL */}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="flex items-center gap-1.5">
+                    <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                    Website URL
+                  </Label>
+                  <Input
+                    placeholder="ex: www.example.com"
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                  />
+                </div>
+
+                {/* Department */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Department</Label>
+                  <Input
+                    placeholder="e.g. Procurement"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                  />
+                </div>
+
+                {/* Designation */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Designation</Label>
+                  <Input
+                    placeholder="e.g. Manager"
+                    value={designation}
+                    onChange={(e) => setDesignation(e.target.value)}
+                  />
+                </div>
+
+                {/* X / Twitter */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>X (Twitter)</Label>
+                  <div className="flex">
+                    <span className="flex items-center px-3 text-sm border border-r-0 rounded-l-md bg-muted text-muted-foreground font-bold">
+                      𝕏
+                    </span>
+                    <Input
+                      className="rounded-l-none"
+                      placeholder="username"
+                      value={twitterHandle}
+                      onChange={(e) => setTwitterHandle(e.target.value)}
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground">https://x.com/</span>
+                </div>
+
+                {/* Skype */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Skype Name / Number</Label>
+                  <div className="flex">
+                    <span className="flex items-center px-3 text-sm border border-r-0 rounded-l-md bg-[#00aff0] text-white font-bold">
+                      S
+                    </span>
+                    <Input
+                      className="rounded-l-none"
+                      placeholder="Skype name or number"
+                      value={skypeName}
+                      onChange={(e) => setSkypeName(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Facebook */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Facebook</Label>
+                  <div className="flex">
+                    <span className="flex items-center px-3 text-sm border border-r-0 rounded-l-md bg-[#1877f2] text-white font-bold">
+                      f
+                    </span>
+                    <Input
+                      className="rounded-l-none"
+                      placeholder="profile URL or username"
+                      value={facebookUrl}
+                      onChange={(e) => setFacebookUrl(e.target.value)}
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground">http://www.facebook.com/</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Tabs ── */}
         <Tabs defaultValue="other-details" className="w-full">
           <TabsList className="border-b w-full justify-start rounded-none bg-transparent px-0 h-auto gap-0">
-            {["other-details", "address", "contact-persons", "bank-details", "reporting-tags", "remarks"].map((t) => (
+            {[
+              { value: "other-details", label: "Other Details" },
+              { value: "address", label: "Address" },
+              { value: "contact-persons", label: "Contact Persons" },
+              { value: "bank-details", label: "Bank Details" },
+              { value: "reporting-tags", label: "Reporting Tags" },
+              { value: "remarks", label: "Remarks" },
+            ].map((t) => (
               <TabsTrigger
-                key={t}
-                value={t}
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent capitalize px-4 pb-2"
+                key={t.value}
+                value={t.value}
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 pb-2"
               >
-                {t.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                {t.label}
               </TabsTrigger>
             ))}
           </TabsList>
 
           {/* ─── Other Details ─────────────────────────────────────────────── */}
           <TabsContent value="other-details" className="pt-6 space-y-4">
-            {/* PAN */}
             <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+              {/* GSTIN */}
+              <div className="flex flex-col gap-1.5">
+                <Label>GSTIN / UIN</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="22AAAAA0000A1Z5"
+                    className="uppercase font-mono"
+                    value={gstin}
+                    maxLength={15}
+                    onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                  />
+                  <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={openGstinDialog}>
+                    Verify &amp; Prefill
+                  </Button>
+                </div>
+              </div>
+
+              {/* PAN */}
               <div className="flex flex-col gap-1.5">
                 <Label>PAN</Label>
                 <Input
@@ -546,6 +878,78 @@ export function VendorForm({ initialData }: VendorFormProps) {
                   </label>
                 </div>
               </div>
+            </div>
+
+            {/* ── Documents Section ── */}
+            <Separator />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">Documents</Label>
+                <span className="text-xs text-muted-foreground">
+                  {documents.length}/{MAX_DOCUMENTS} files · max {MAX_DOC_SIZE_MB}MB each
+                </span>
+              </div>
+
+              {documents.length > 0 && (
+                <div className="space-y-2">
+                  {documents.map((doc, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 rounded-md border px-3 py-2 bg-background"
+                    >
+                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium truncate block hover:underline text-primary"
+                        >
+                          {doc.name}
+                        </a>
+                        {doc.size && (
+                          <span className="text-xs text-muted-foreground">{formatBytes(doc.size)}</span>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                        onClick={() => handleRemoveDocument(idx)}
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={documentUploading || documents.length >= MAX_DOCUMENTS}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {documentUploading
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
+                    : <><Upload className="h-4 w-4 mr-2" />Upload File</>}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  You can upload a maximum of {MAX_DOCUMENTS} files, {MAX_DOC_SIZE_MB}MB each
+                </span>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="*/*"
+                className="hidden"
+                onChange={handleDocumentUpload}
+              />
             </div>
           </TabsContent>
 
@@ -762,6 +1166,142 @@ export function VendorForm({ initialData }: VendorFormProps) {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* ══ GSTIN Prefill Dialog ══════════════════════════════════════════════ */}
+      <Dialog open={gstinDialogOpen} onOpenChange={setGstinDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Prefill Vendor Details From the GST Portal</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>
+                GSTIN / UIN <span className="text-destructive">*</span>
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  className="uppercase font-mono tracking-wider"
+                  placeholder="22AAAAA0000A1Z5"
+                  value={gstinInput}
+                  maxLength={15}
+                  onChange={(e) => setGstinInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleFetchGstin(); }}
+                />
+                <Button
+                  type="button"
+                  onClick={handleFetchGstin}
+                  disabled={gstinFetching || gstinInput.length < 15}
+                >
+                  {gstinFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fetch"}
+                </Button>
+              </div>
+            </div>
+
+            {gstinResult && (
+              <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+                {gstinSource === "local-parse" && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                    GST portal is currently unavailable. Showing locally-extracted data from the GSTIN.
+                    Please verify company details manually.
+                  </div>
+                )}
+
+                <h3 className="font-semibold text-sm">Business Details</h3>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {gstinResult.companyName && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Company Name</p>
+                      <p className="font-medium">{gstinResult.companyName}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-muted-foreground">GSTIN / UIN Status</p>
+                    {gstinResult.gstinStatus ? (
+                      <Badge
+                        variant={gstinResult.gstinStatus.toLowerCase() === "active" ? "default" : "destructive"}
+                        className="capitalize mt-0.5"
+                      >
+                        {gstinResult.gstinStatus}
+                      </Badge>
+                    ) : (
+                      <p>—</p>
+                    )}
+                  </div>
+                  {gstinResult.taxpayerType && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Taxpayer Type</p>
+                      <p>{gstinResult.taxpayerType}</p>
+                    </div>
+                  )}
+                  {gstinResult.pan && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">PAN</p>
+                      <p className="font-mono">{gstinResult.pan}</p>
+                    </div>
+                  )}
+                  {gstinResult.eInvoiceApplicable && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">e-Invoicing Applicability</p>
+                      <p>{gstinResult.eInvoiceApplicable}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Address selection */}
+                {(() => {
+                  const allAddrs = [gstinResult.address, ...gstinResult.additionalAddresses];
+                  return allAddrs.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Available Addresses
+                      </p>
+                      {allAddrs.map((addr, idx) => {
+                        const addrType = idx === 0
+                          ? (gstinResult.addressType || "Office / Sale Office")
+                          : ((gstinResult.additionalAddresses[idx - 1] as any)?.type ?? "");
+                        const parts = [addr.street, addr.city, addr.state, addr.zip, addr.country]
+                          .filter(Boolean).join(", ");
+                        return (
+                          <label
+                            key={idx}
+                            className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
+                              selectedAddressIdx === idx
+                                ? "border-primary bg-primary/5"
+                                : "border-muted hover:bg-muted/30"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="gstin-address"
+                              value={idx}
+                              checked={selectedAddressIdx === idx}
+                              onChange={() => setSelectedAddressIdx(idx)}
+                              className="mt-0.5"
+                            />
+                            <div className="text-sm">
+                              <p className="font-medium">{addrType}</p>
+                              <p className="text-muted-foreground text-xs mt-0.5">{parts}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGstinDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handlePrefillDetails} disabled={!gstinResult}>
+              Prefill Details
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

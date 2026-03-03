@@ -81,9 +81,27 @@ const contactSchema = new Schema<IContact>(
       default: "Taxable",
     },
     taxId: { type: String, default: "" },
+    gstin: { type: String, default: "", uppercase: true, trim: true },
     pan: { type: String, default: "" },
     tdsCategory: { type: String, default: "" },
     msmeRegistered: { type: Boolean, default: false },
+    // Extra / social details
+    websiteUrl: { type: String, default: "" },
+    department: { type: String, default: "" },
+    designation: { type: String, default: "" },
+    twitterHandle: { type: String, default: "" },
+    skypeName: { type: String, default: "" },
+    facebookUrl: { type: String, default: "" },
+    // Attached documents (Cloudinary)
+    documents: [
+      {
+        name: { type: String, required: true },
+        url: { type: String, required: true },
+        publicId: { type: String, required: true },
+        size: { type: Number },
+        mimeType: { type: String },
+      },
+    ],
     // Address
     billingAddress: { type: addressSchema, default: {} },
     shippingAddress: { type: addressSchema, default: {} },

@@ -1,7 +1,7 @@
-import { apiFetch, buildQuery } from "./client";
+﻿import { apiFetch, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
-// ─── Types ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type ContactType = "Customer" | "Vendor" | "Both";
 export type TaxTreatment =
@@ -42,6 +42,14 @@ export interface BankDetail {
   isPrimary?: boolean;
 }
 
+export interface ContactDocument {
+  name: string;
+  url: string;
+  publicId: string;
+  size?: number;
+  mimeType?: string;
+}
+
 export interface Contact {
   _id: string;
   orgId: string;
@@ -67,6 +75,7 @@ export interface Contact {
   openingBalance?: number;
   tdsCategory?: string;
   msmeRegistered?: boolean;
+  currency?: string;
   // Address
   billingAddress?: Address;
   shippingAddress?: Address;
@@ -74,10 +83,18 @@ export interface Contact {
   contactPersons?: ContactPerson[];
   bankDetails?: BankDetail[];
   salesPersonId?: string;
-  currency?: string;
   reportingTags?: string[];
   notes?: string;
   portalEnabled?: boolean;
+  // Extra / social
+  websiteUrl?: string;
+  department?: string;
+  designation?: string;
+  twitterHandle?: string;
+  skypeName?: string;
+  facebookUrl?: string;
+  // Documents
+  documents?: ContactDocument[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -96,7 +113,6 @@ export interface CreateContactInput {
   email?: string;
   phone?: string;
   mobile?: string;
-  website?: string;
   language?: string;
   // Financial
   taxTreatment?: TaxTreatment;
@@ -106,6 +122,7 @@ export interface CreateContactInput {
   openingBalance?: number;
   tdsCategory?: string;
   msmeRegistered?: boolean;
+  currency?: string;
   // Address
   billingAddress?: Address;
   shippingAddress?: Address;
@@ -113,10 +130,18 @@ export interface CreateContactInput {
   contactPersons?: ContactPerson[];
   bankDetails?: BankDetail[];
   salesPersonId?: string;
-  currency?: string;
   reportingTags?: string[];
   notes?: string;
   portalEnabled?: boolean;
+  // Extra / social
+  websiteUrl?: string;
+  department?: string;
+  designation?: string;
+  twitterHandle?: string;
+  skypeName?: string;
+  facebookUrl?: string;
+  // Documents
+  documents?: ContactDocument[];
 }
 
 export type UpdateContactInput = Partial<CreateContactInput>;
@@ -126,7 +151,37 @@ export interface ContactListParams extends ListParams {
   search?: string;
 }
 
-// ─── API ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ GSTIN Lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export interface GstinAddress {
+  street?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+}
+
+export interface GstinLookupResult {
+  gstin: string;
+  companyName: string;
+  taxpayerType: string;
+  gstinStatus: string;
+  pan: string;
+  stateCode: string;
+  state: string;
+  addressType: string;
+  address: GstinAddress;
+  additionalAddresses: (GstinAddress & { type?: string })[];
+  eInvoiceApplicable: string;
+}
+
+export interface GstinLookupResponse {
+  success: boolean;
+  source: "gst-portal" | "local-parse";
+  data: GstinLookupResult;
+}
+
+// â”€â”€â”€ API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const contactApi = {
   list: (params?: ContactListParams) =>
@@ -149,4 +204,7 @@ export const contactApi = {
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/contacts/${id}`, { method: "DELETE" }),
+
+  lookupGstin: (gstin: string) =>
+    apiFetch<GstinLookupResponse>(`/gstin/${encodeURIComponent(gstin.toUpperCase())}`),
 };

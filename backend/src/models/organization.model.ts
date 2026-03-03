@@ -67,6 +67,19 @@ const defaultAccountsSchema = new Schema(
 
 const organizationSchema = new Schema<IOrganization>(
   {
+    // ── Ownership / Membership ─────────────────────────────────────────
+    owner: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    members: {
+      type: [{ type: Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+      index: true,
+    },
+
     // ── Core ──────────────────────────────────────────────────────────────
     name: {
       type: String,
