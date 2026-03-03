@@ -89,9 +89,9 @@ export default function ItemsPage() {
               <Button variant="outline" size="sm" onClick={fetchItems} disabled={fetching}>
                 <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
               </Button>
-              <Button size="sm">
+              <Button size="sm" onClick={() => router.push("/items/new")}>
                 <Plus className="h-4 w-4 mr-1" />
-                New Item
+                New
               </Button>
             </>
           }
@@ -100,7 +100,7 @@ export default function ItemsPage() {
         <div className="flex flex-1 flex-col p-6 gap-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold">Items</h1>
+              <h1 className="text-xl font-bold">All Items</h1>
               <p className="text-sm text-muted-foreground">{filtered.length} items</p>
             </div>
             <Tabs value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
@@ -120,9 +120,9 @@ export default function ItemsPage() {
                 <p className="text-sm">Create your first item to get started.</p>
               </div>
               {!search && (
-                <Button>
+                <Button onClick={() => router.push("/items/new")}>
                   <Plus className="h-4 w-4 mr-1" />
-                  New Item
+                  New
                 </Button>
               )}
             </div>
@@ -134,10 +134,8 @@ export default function ItemsPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>SKU</TableHead>
                     <TableHead>Type</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead className="text-right">Sales Price</TableHead>
-                    <TableHead className="text-right">Purchase Price</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Rate</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -148,17 +146,15 @@ export default function ItemsPage() {
                       <TableCell>
                         <Badge variant="outline">{item.itemType}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{item.unit || "—"}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">
-                        {item.salesPrice != null ? `₹${item.salesPrice.toLocaleString("en-IN")}` : "—"}
+                      <TableCell className="text-sm text-muted-foreground">
+                        {item.description ? (
+                          <span className="line-clamp-1">{item.description}</span>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
-                        {item.purchasePrice != null ? `₹${item.purchasePrice.toLocaleString("en-IN")}` : "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.isActive ? "default" : "secondary"}>
-                          {item.isActive ? "Active" : "Inactive"}
-                        </Badge>
+                        {item.sellingPrice != null ? `₹${item.sellingPrice.toLocaleString("en-IN")}` : "—"}
                       </TableCell>
                     </TableRow>
                   ))}
