@@ -263,41 +263,84 @@ export type TaxTreatment =
   | "Overseas" | "Composition" | "UIN";
 
 export interface IContactPerson {
-  name: string;
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
+  name: string;        // kept for backward compat; derived from firstName + lastName
   email?: string;
-  phone?: string;
+  workPhone?: string;
+  mobile?: string;
+  phone?: string;      // kept for backward compat
   designation?: string;
   isPrimary: boolean;
+}
+
+export interface IBankDetail {
+  bankName?: string;
+  accountNumber?: string;
+  accountHolderName?: string;
+  ifscCode?: string;
+  branchName?: string;
+  upiId?: string;
+  isPrimary?: boolean;
 }
 
 export interface IContact extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
   contactType: ContactType;
+  // Primary contact fields
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
   displayName: string;
   companyName?: string;
   email?: string;
-  phone?: string;
+  phone?: string;      // work phone
+  mobile?: string;
   currency: string;
+  language?: string;
+  // Financial
   paymentTermsId?: Types.ObjectId | null;
+  accountsPayableId?: Types.ObjectId | null;   // Accounts Payable account
+  openingBalance?: number;
   taxTreatment: TaxTreatment;
-  taxId?: string;        // GSTIN / VAT / PAN
+  taxId?: string;      // GSTIN / VAT
+  pan?: string;        // PAN number
+  tdsCategory?: string;
+  msmeRegistered?: boolean;
+  // Address
   billingAddress?: {
-    street?: string; city?: string; state?: string; zip?: string; country?: string;
+    attention?: string;
+    street?: string;
+    street2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+    phone?: string;
+    fax?: string;
   };
   shippingAddress?: {
-    street?: string; city?: string; state?: string; zip?: string; country?: string;
+    attention?: string;
+    street?: string;
+    street2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+    phone?: string;
+    fax?: string;
   };
   contactPersons: IContactPerson[];
+  bankDetails: IBankDetail[];
   notes?: string;
   portalEnabled: boolean;
-  language?: string;
   reportingTags: Types.ObjectId[];
   // Customer-specific
   creditLimit?: number;
   salesPersonId?: Types.ObjectId | null;
-  // Vendor-specific
-  tdsCategory?: string;
+  // Calculated
   outstandingPayable: number;
   outstandingReceivable: number;
   isActive: boolean;

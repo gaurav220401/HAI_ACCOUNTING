@@ -5,21 +5,43 @@ import { softDeletePlugin } from "../plugins";
 
 const addressSchema = new Schema(
   {
+    attention: { type: String, default: "" },
     street: { type: String, default: "" },
+    street2: { type: String, default: "" },
     city: { type: String, default: "" },
     state: { type: String, default: "" },
     zip: { type: String, default: "" },
     country: { type: String, default: "" },
+    phone: { type: String, default: "" },
+    fax: { type: String, default: "" },
   },
   { _id: false },
 );
 
 const contactPersonSchema = new Schema(
   {
+    salutation: { type: String, default: "" },
+    firstName: { type: String, default: "" },
+    lastName: { type: String, default: "" },
     name: { type: String, required: true },
     email: { type: String, default: "" },
-    phone: { type: String, default: "" },
+    workPhone: { type: String, default: "" },
+    mobile: { type: String, default: "" },
+    phone: { type: String, default: "" },   // backward compat alias
     designation: { type: String, default: "" },
+    isPrimary: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
+const bankDetailSchema = new Schema(
+  {
+    bankName: { type: String, default: "" },
+    accountNumber: { type: String, default: "" },
+    accountHolderName: { type: String, default: "" },
+    ifscCode: { type: String, default: "" },
+    branchName: { type: String, default: "" },
+    upiId: { type: String, default: "" },
     isPrimary: { type: Boolean, default: false },
   },
   { _id: false },
@@ -38,30 +60,42 @@ const contactSchema = new Schema<IContact>(
       enum: ["Customer", "Vendor", "Both"],
       required: true,
     },
+    // Primary contact
+    salutation: { type: String, default: "" },
+    firstName: { type: String, default: "" },
+    lastName: { type: String, default: "" },
     displayName: { type: String, required: true, trim: true },
     companyName: { type: String, default: "" },
     email: { type: String, default: "" },
     phone: { type: String, default: "" },
+    mobile: { type: String, default: "" },
     currency: { type: String, required: true, default: "INR" },
+    language: { type: String, default: "en" },
+    // Financial
     paymentTermsId: { type: Schema.Types.ObjectId, ref: "PaymentTerms", default: null },
+    accountsPayableId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
+    openingBalance: { type: Number, default: 0 },
     taxTreatment: {
       type: String,
       enum: ["Taxable", "TaxExempt", "ReverseCharge", "SEZ", "Overseas", "Composition", "UIN"],
       default: "Taxable",
     },
     taxId: { type: String, default: "" },
+    pan: { type: String, default: "" },
+    tdsCategory: { type: String, default: "" },
+    msmeRegistered: { type: Boolean, default: false },
+    // Address
     billingAddress: { type: addressSchema, default: {} },
     shippingAddress: { type: addressSchema, default: {} },
+    // Relations
     contactPersons: { type: [contactPersonSchema], default: [] },
+    bankDetails: { type: [bankDetailSchema], default: [] },
     notes: { type: String, default: "" },
     portalEnabled: { type: Boolean, default: false },
-    language: { type: String, default: "en" },
     reportingTags: [{ type: Schema.Types.ObjectId, ref: "ReportingTag" }],
     // Customer
     creditLimit: { type: Number, default: 0 },
     salesPersonId: { type: Schema.Types.ObjectId, ref: "SalesPerson", default: null },
-    // Vendor
-    tdsCategory: { type: String, default: "" },
     // Calculated
     outstandingPayable: { type: Number, default: 0 },
     outstandingReceivable: { type: Number, default: 0 },
