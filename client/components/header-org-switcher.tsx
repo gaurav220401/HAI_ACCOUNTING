@@ -58,6 +58,8 @@ export function HeaderOrgSwitcher() {
   async function handleSwitch(org: Organization) {
     setOpen(false);
     await switchOrganization(org);
+    // Force the current page to re-render with the new org's data
+    router.refresh();
   }
 
   return (

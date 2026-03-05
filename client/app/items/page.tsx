@@ -21,7 +21,7 @@ import { itemApi, type Item } from "@/lib/api/items";
 export default function ItemsPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   const [items, setItems] = useState<Item[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -38,9 +38,9 @@ export default function ItemsPage() {
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
-    if (firebaseUser && !loading) fetchItems();
+    if (firebaseUser && !loading && activeOrganization?._id) fetchItems();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading]);
+  }, [firebaseUser, loading, activeOrganization?._id]);
 
   async function fetchItems() {
     setFetching(true);
