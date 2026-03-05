@@ -692,31 +692,31 @@ export function VendorForm({ initialData }: VendorFormProps) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex flex-col">
 
       {/* ── Toolbar ── */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background sticky top-0 z-10">
-        <h1 className="text-xl font-semibold">{isEdit ? "Edit Vendor" : "New Vendor"}</h1>
+      <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
+        <h1 className="text-lg font-semibold tracking-tight">{isEdit ? "Edit Vendor" : "New Vendor"}</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push("/purchases/vendors")} disabled={saving}>
+          <Button variant="outline" size="sm" onClick={() => router.push("/purchases/vendors")} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</> : "Save"}
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Saving…</> : "Save"}
           </Button>
         </div>
       </div>
 
       {/* ── Body ── */}
-      <div className="px-6 py-6 max-w-5xl space-y-6">
+      <div className="px-6 py-4 max-w-4xl space-y-4">
 
         {/* ── GSTIN Prefill Banner ── */}
-        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800">
-          <Globe className="h-4 w-4 shrink-0" />
+        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <Globe className="h-3.5 w-3.5 shrink-0" />
           <span>Prefill Vendor details from the GST portal using the Vendor&apos;s GSTIN.</span>
           <button
             type="button"
-            className="ml-1 font-medium underline underline-offset-2 hover:text-blue-600 flex items-center gap-1"
+            className="ml-1 font-semibold underline underline-offset-2 hover:text-blue-600 flex items-center gap-0.5"
             onClick={openGstinDialog}
           >
             Prefill <ExternalLink className="h-3 w-3" />
@@ -724,211 +724,168 @@ export function VendorForm({ initialData }: VendorFormProps) {
         </div>
 
         {/* ── Primary Contact & Basic Info ── */}
-        <div className="grid gap-4">
+        <div className="grid grid-cols-[180px_1fr] items-start gap-x-6 gap-y-3">
 
           {/* Salutation + First Name + Last Name */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Primary Contact</Label>
-            <div className="flex gap-2">
-              <Select value={salutation} onValueChange={setSalutation}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Salutation" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SALUTATIONS.map((s) => (
-                    <SelectItem key={s || "__none"} value={s || "__none"}>
-                      {s || "—"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="First Name"
-                className="flex-1"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-              />
-              <Input
-                placeholder="Last Name"
-                className="flex-1"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
-            </div>
+          <label className="text-sm font-medium text-muted-foreground pt-2">Primary Contact</label>
+          <div className="flex gap-2">
+            <Select value={salutation} onValueChange={setSalutation}>
+              <SelectTrigger className="w-28 h-9">
+                <SelectValue placeholder="Salutation" />
+              </SelectTrigger>
+              <SelectContent>
+                {SALUTATIONS.map((s) => (
+                  <SelectItem key={s || "__none"} value={s || "__none"}>
+                    {s || "—"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="First Name"
+              className="flex-1 h-9"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+            <Input
+              placeholder="Last Name"
+              className="flex-1 h-9"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
           </div>
 
           {/* Company Name */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Company Name</Label>
-            <Input
-              placeholder="Company Name"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-            />
-          </div>
+          <label className="text-sm font-medium text-muted-foreground pt-2">Company Name</label>
+          <Input
+            placeholder="Company Name"
+            className="h-9"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+          />
 
           {/* Display Name */}
-          <div className="flex flex-col gap-1.5">
-            <Label>
-              Display Name <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              placeholder="Select or type to add"
-              value={displayName}
-              onChange={(e) => {
-                setDisplayName(e.target.value);
-                setDisplayNameManual(true);
-              }}
-            />
-          </div>
+          <label className="text-sm font-medium text-muted-foreground pt-2">
+            Display Name <span className="text-destructive">*</span>
+          </label>
+          <Input
+            placeholder="Select or type to add"
+            className="h-9"
+            value={displayName}
+            onChange={(e) => {
+              setDisplayName(e.target.value);
+              setDisplayNameManual(true);
+            }}
+          />
 
           {/* Email */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Email Address</Label>
-            <Input
-              type="email"
-              placeholder="vendor@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
+          <label className="text-sm font-medium text-muted-foreground pt-2">Email Address</label>
+          <Input
+            type="email"
+            placeholder="vendor@example.com"
+            className="h-9"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
 
           {/* Phone */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Phone</Label>
-            <div className="flex gap-2">
-              <div className="flex gap-1">
-                <span className="flex items-center px-3 text-sm border rounded-md bg-muted text-muted-foreground">+91</span>
-                <Input
-                  placeholder="Work Phone"
-                  className="flex-1"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-1">
-                <span className="flex items-center px-3 text-sm border rounded-md bg-muted text-muted-foreground">+91</span>
-                <Input
-                  placeholder="Mobile"
-                  className="flex-1"
-                  value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                />
-              </div>
+          <label className="text-sm font-medium text-muted-foreground pt-2">Phone</label>
+          <div className="flex gap-2">
+            <div className="flex rounded-md border border-input overflow-hidden focus-within:ring-1 focus-within:ring-ring h-9 flex-1">
+              <span className="flex items-center px-2.5 text-xs text-muted-foreground bg-muted border-r border-input select-none">+91</span>
+              <input
+                type="tel"
+                placeholder="Work Phone"
+                className="flex-1 px-2.5 text-sm bg-background outline-none"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+            <div className="flex rounded-md border border-input overflow-hidden focus-within:ring-1 focus-within:ring-ring h-9 flex-1">
+              <span className="flex items-center px-2.5 text-xs text-muted-foreground bg-muted border-r border-input select-none">+91</span>
+              <input
+                type="tel"
+                placeholder="Mobile"
+                className="flex-1 px-2.5 text-sm bg-background outline-none"
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+              />
             </div>
           </div>
 
           {/* Vendor Language */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Vendor Language</Label>
-            <Select value={language} onValueChange={setLanguage}>
-              <SelectTrigger className="w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LANGUAGES.map((l) => (
-                  <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <label className="text-sm font-medium text-muted-foreground pt-2">Vendor Language</label>
+          <Select value={language} onValueChange={setLanguage}>
+            <SelectTrigger className="w-56 h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((l) => (
+                <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* ── "Add more details" toggle ── */}
-          <div>
+          <div className="col-span-2">
             <button
               type="button"
-              className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+              className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
               onClick={() => setShowMoreDetails((v) => !v)}
             >
               {showMoreDetails
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />}
+                ? <ChevronUp className="h-3.5 w-3.5" />
+                : <ChevronDown className="h-3.5 w-3.5" />}
               {showMoreDetails ? "Hide extra details" : "Add more details"}
             </button>
 
             {showMoreDetails && (
-              <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4 border rounded-lg p-4 bg-muted/20">
+              <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 border rounded-lg p-3 bg-muted/20">
                 {/* Website URL */}
-                <div className="flex flex-col gap-1.5">
-                  <Label className="flex items-center gap-1.5">
-                    <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                    Website URL
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs flex items-center gap-1 text-muted-foreground">
+                    <Globe className="h-3 w-3" />Website URL
                   </Label>
-                  <Input
-                    placeholder="ex: www.example.com"
-                    value={websiteUrl}
-                    onChange={(e) => setWebsiteUrl(e.target.value)}
-                  />
+                  <Input className="h-8 text-sm" placeholder="ex: www.example.com" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} />
                 </div>
 
                 {/* Department */}
-                <div className="flex flex-col gap-1.5">
-                  <Label>Department</Label>
-                  <Input
-                    placeholder="e.g. Procurement"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                  />
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Department</Label>
+                  <Input className="h-8 text-sm" placeholder="e.g. Procurement" value={department} onChange={(e) => setDepartment(e.target.value)} />
                 </div>
 
                 {/* Designation */}
-                <div className="flex flex-col gap-1.5">
-                  <Label>Designation</Label>
-                  <Input
-                    placeholder="e.g. Manager"
-                    value={designation}
-                    onChange={(e) => setDesignation(e.target.value)}
-                  />
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Designation</Label>
+                  <Input className="h-8 text-sm" placeholder="e.g. Manager" value={designation} onChange={(e) => setDesignation(e.target.value)} />
                 </div>
 
                 {/* X / Twitter */}
-                <div className="flex flex-col gap-1.5">
-                  <Label>X (Twitter)</Label>
-                  <div className="flex">
-                    <span className="flex items-center px-3 text-sm border border-r-0 rounded-l-md bg-muted text-muted-foreground font-bold">
-                      𝕏
-                    </span>
-                    <Input
-                      className="rounded-l-none"
-                      placeholder="username"
-                      value={twitterHandle}
-                      onChange={(e) => setTwitterHandle(e.target.value)}
-                    />
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">X (Twitter)</Label>
+                  <div className="flex h-8">
+                    <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-muted text-muted-foreground font-bold">𝕏</span>
+                    <Input className="rounded-l-none h-8 text-sm" placeholder="username" value={twitterHandle} onChange={(e) => setTwitterHandle(e.target.value)} />
                   </div>
-                  <span className="text-xs text-muted-foreground">https://x.com/</span>
                 </div>
 
                 {/* Skype */}
-                <div className="flex flex-col gap-1.5">
-                  <Label>Skype Name / Number</Label>
-                  <div className="flex">
-                    <span className="flex items-center px-3 text-sm border border-r-0 rounded-l-md bg-[#00aff0] text-white font-bold">
-                      S
-                    </span>
-                    <Input
-                      className="rounded-l-none"
-                      placeholder="Skype name or number"
-                      value={skypeName}
-                      onChange={(e) => setSkypeName(e.target.value)}
-                    />
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Skype Name / Number</Label>
+                  <div className="flex h-8">
+                    <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-[#00aff0] text-white font-bold">S</span>
+                    <Input className="rounded-l-none h-8 text-sm" placeholder="Skype name or number" value={skypeName} onChange={(e) => setSkypeName(e.target.value)} />
                   </div>
                 </div>
 
                 {/* Facebook */}
-                <div className="flex flex-col gap-1.5">
-                  <Label>Facebook</Label>
-                  <div className="flex">
-                    <span className="flex items-center px-3 text-sm border border-r-0 rounded-l-md bg-[#1877f2] text-white font-bold">
-                      f
-                    </span>
-                    <Input
-                      className="rounded-l-none"
-                      placeholder="profile URL or username"
-                      value={facebookUrl}
-                      onChange={(e) => setFacebookUrl(e.target.value)}
-                    />
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Facebook</Label>
+                  <div className="flex h-8">
+                    <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-[#1877f2] text-white font-bold">f</span>
+                    <Input className="rounded-l-none h-8 text-sm" placeholder="profile URL or username" value={facebookUrl} onChange={(e) => setFacebookUrl(e.target.value)} />
                   </div>
-                  <span className="text-xs text-muted-foreground">http://www.facebook.com/</span>
                 </div>
               </div>
             )}
@@ -949,7 +906,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
               <TabsTrigger
                 key={t.value}
                 value={t.value}
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 pb-2"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 py-1.5 text-sm font-medium"
               >
                 {t.label}
               </TabsTrigger>
@@ -957,30 +914,31 @@ export function VendorForm({ initialData }: VendorFormProps) {
           </TabsList>
 
           {/* ─── Other Details ─────────────────────────────────────────────── */}
-          <TabsContent value="other-details" className="pt-6 space-y-4">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+          <TabsContent value="other-details" className="pt-4 space-y-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
               {/* GSTIN */}
-              <div className="flex flex-col gap-1.5">
-                <Label>GSTIN / UIN</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">GSTIN / UIN</Label>
                 <div className="flex gap-2">
                   <Input
                     placeholder="22AAAAA0000A1Z5"
-                    className="uppercase font-mono"
+                    className="uppercase font-mono h-9 text-sm"
                     value={gstin}
                     maxLength={15}
                     onChange={(e) => setGstin(e.target.value.toUpperCase())}
                   />
-                  <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={openGstinDialog}>
+                  <Button type="button" variant="outline" size="sm" className="shrink-0 h-9" onClick={openGstinDialog}>
                     Verify &amp; Prefill
                   </Button>
                 </div>
               </div>
 
               {/* PAN */}
-              <div className="flex flex-col gap-1.5">
-                <Label>PAN</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">PAN</Label>
                 <Input
                   placeholder="ABCDE1234F"
+                  className="h-9 text-sm"
                   value={pan}
                   onChange={(e) => setPan(e.target.value.toUpperCase())}
                   maxLength={10}
@@ -988,8 +946,8 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
 
               {/* MSME */}
-              <div className="flex flex-col gap-1.5">
-                <Label>MSME Registered?</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">MSME Registered?</Label>
                 <div className="flex items-center gap-2 h-9">
                   <Checkbox
                     id="msme"
@@ -1003,10 +961,10 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
 
               {/* Currency */}
-              <div className="flex flex-col gap-1.5">
-                <Label>Currency</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Currency</Label>
                 <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1018,10 +976,10 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
 
               {/* Accounts Payable */}
-              <div className="flex flex-col gap-1.5">
-                <Label>Accounts Payable</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Accounts Payable</Label>
                 <Select value={accountsPayableId || "__none"} onValueChange={(v) => setAccountsPayableId(v === "__none" ? "" : v)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm">
                     <SelectValue placeholder="Select an account" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1034,16 +992,16 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
 
               {/* Opening Balance */}
-              <div className="flex flex-col gap-1.5">
-                <Label>Opening Balance</Label>
-                <div className="flex gap-1">
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Opening Balance</Label>
+                <div className="flex h-9">
                   <span className="flex items-center px-3 text-sm border rounded-l-md bg-muted text-muted-foreground border-r-0">
                     {currency}
                   </span>
                   <Input
                     type="number"
                     placeholder="0.00"
-                    className="rounded-l-none"
+                    className="rounded-l-none h-9 text-sm"
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                   />
@@ -1051,10 +1009,10 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
 
               {/* Payment Terms */}
-              <div className="flex flex-col gap-1.5">
-                <Label>Payment Terms</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Payment Terms</Label>
                 <Select value={paymentTermsId || "__none"} onValueChange={(v) => setPaymentTermsId(v === "__none" ? "" : v)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm">
                     <SelectValue placeholder="Select payment terms" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1078,10 +1036,10 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
 
               {/* TDS */}
-              <div className="flex flex-col gap-1.5">
-                <Label>TDS</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">TDS</Label>
                 <Select value={tdsCategory || "__none"} onValueChange={(v) => setTdsCategory(v === "__none" ? "" : v)}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm">
                     <SelectValue placeholder="Select TDS category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1105,8 +1063,8 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
 
               {/* Enable Portal */}
-              <div className="flex flex-col gap-1.5">
-                <Label>Enable Portal?</Label>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Enable Portal?</Label>
                 <div className="flex items-center gap-2 h-9">
                   <Checkbox
                     id="portal"
@@ -1122,9 +1080,9 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
             {/* ── Documents Section ── */}
             <Separator />
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">Documents</Label>
+                <Label className="text-sm font-semibold">Documents</Label>
                 <span className="text-xs text-muted-foreground">
                   {documents.length}/{MAX_DOCUMENTS} files · max {MAX_DOC_SIZE_MB}MB each
                 </span>
@@ -1194,18 +1152,18 @@ export function VendorForm({ initialData }: VendorFormProps) {
           </TabsContent>
 
           {/* ─── Address ────────────────────────────────────────────────────── */}
-          <TabsContent value="address" className="pt-6">
-            <div className="grid grid-cols-2 gap-x-10 gap-y-0">
+          <TabsContent value="address" className="pt-4">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-0">
               {/* Billing Address */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-sm">Billing Address</h3>
+              <div className="space-y-3">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Billing Address</h3>
                 <AddressFields address={billingAddress} onChange={updateBilling} />
               </div>
 
               {/* Shipping Address */}
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-sm">Shipping Address</h3>
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Shipping Address</h3>
                   <Button
                     type="button"
                     variant="link"
@@ -1221,17 +1179,13 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </div>
             </div>
 
-            <div className="mt-6 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800 space-y-1">
-              <p className="font-medium">Note:</p>
-              <ul className="list-disc list-inside space-y-0.5 text-xs">
-                <li>Add and manage additional addresses from this Vendors details section.</li>
-                <li>You can customise how vendors&apos; addresses are displayed in transaction PDFs.</li>
-              </ul>
-            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Add and manage additional addresses from the Vendor&apos;s details page.
+            </p>
           </TabsContent>
 
           {/* ─── Contact Persons ─────────────────────────────────────────────── */}
-          <TabsContent value="contact-persons" className="pt-6">
+          <TabsContent value="contact-persons" className="pt-4">
             <div className="rounded-md border overflow-hidden">
               <Table>
                 <TableHeader>
@@ -1346,32 +1300,33 @@ export function VendorForm({ initialData }: VendorFormProps) {
           </TabsContent>
 
           {/* ─── Bank Details ─────────────────────────────────────────────────── */}
-          <TabsContent value="bank-details" className="pt-6 space-y-4">
+          <TabsContent value="bank-details" className="pt-4 space-y-3">
             {bankDetails.length === 0 ? (
               <p className="text-sm text-muted-foreground">No bank details added yet.</p>
             ) : (
               bankDetails.map((bd, idx) => (
-                <div key={idx} className="border rounded-lg p-4 space-y-3 relative">
+                <div key={idx} className="border rounded-lg p-3 space-y-3 relative">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute top-3 right-3 h-7 w-7 text-destructive hover:text-destructive"
+                    className="absolute top-2 right-2 h-7 w-7 text-destructive hover:text-destructive"
                     onClick={() => removeBankDetail(idx)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <Label>Bank Name</Label>
-                      <Input value={bd.bankName ?? ""} onChange={(e) => updateBankDetail(idx, "bankName", e.target.value)} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">Bank Name</Label>
+                      <Input className="h-9 text-sm" value={bd.bankName ?? ""} onChange={(e) => updateBankDetail(idx, "bankName", e.target.value)} />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label>Account Number <span className="text-destructive">*</span></Label>
-                      <Input value={bd.accountNumber ?? ""} onChange={(e) => updateBankDetail(idx, "accountNumber", e.target.value)} />
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">Account Number <span className="text-destructive">*</span></Label>
+                      <Input className="h-9 text-sm" value={bd.accountNumber ?? ""} onChange={(e) => updateBankDetail(idx, "accountNumber", e.target.value)} />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label>Re-enter Account Number <span className="text-destructive">*</span></Label>
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">Re-enter Account Number <span className="text-destructive">*</span></Label>
                       <Input
+                        className={`h-9 text-sm${reenterAccountNumbers[idx] && reenterAccountNumbers[idx] !== bd.accountNumber ? " border-destructive focus-visible:ring-destructive" : ""}`}
                         value={reenterAccountNumbers[idx] ?? ""}
                         onChange={(e) => setReenterAccountNumbers((prev) => {
                           const next = [...prev];
@@ -1379,27 +1334,26 @@ export function VendorForm({ initialData }: VendorFormProps) {
                           return next;
                         })}
                         placeholder="Re-enter account number"
-                        className={reenterAccountNumbers[idx] && reenterAccountNumbers[idx] !== bd.accountNumber ? "border-destructive focus-visible:ring-destructive" : ""}
                       />
                       {reenterAccountNumbers[idx] && reenterAccountNumbers[idx] !== bd.accountNumber && (
                         <p className="text-xs text-destructive">Account numbers do not match</p>
                       )}
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label>Account Holder Name</Label>
-                      <Input value={bd.accountHolderName ?? ""} onChange={(e) => updateBankDetail(idx, "accountHolderName", e.target.value)} />
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">Account Holder Name</Label>
+                      <Input className="h-9 text-sm" value={bd.accountHolderName ?? ""} onChange={(e) => updateBankDetail(idx, "accountHolderName", e.target.value)} />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label>IFSC Code <span className="text-destructive">*</span></Label>
-                      <Input value={bd.ifscCode ?? ""} onChange={(e) => updateBankDetail(idx, "ifscCode", e.target.value.toUpperCase())} />
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">IFSC Code <span className="text-destructive">*</span></Label>
+                      <Input className="h-9 text-sm" value={bd.ifscCode ?? ""} onChange={(e) => updateBankDetail(idx, "ifscCode", e.target.value.toUpperCase())} />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label>Branch Name</Label>
-                      <Input value={bd.branchName ?? ""} onChange={(e) => updateBankDetail(idx, "branchName", e.target.value)} />
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">Branch Name</Label>
+                      <Input className="h-9 text-sm" value={bd.branchName ?? ""} onChange={(e) => updateBankDetail(idx, "branchName", e.target.value)} />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label>UPI ID</Label>
-                      <Input value={bd.upiId ?? ""} onChange={(e) => updateBankDetail(idx, "upiId", e.target.value)} />
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">UPI ID</Label>
+                      <Input className="h-9 text-sm" value={bd.upiId ?? ""} onChange={(e) => updateBankDetail(idx, "upiId", e.target.value)} />
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1434,16 +1388,16 @@ export function VendorForm({ initialData }: VendorFormProps) {
           </TabsContent>
 
           {/* ─── Reporting Tags ───────────────────────────────────────────────── */}
-          <TabsContent value="reporting-tags" className="pt-6">
+          <TabsContent value="reporting-tags" className="pt-4">
             <p className="text-sm text-muted-foreground">
               Reporting tags can be configured in Settings → Reporting Tags.
             </p>
           </TabsContent>
 
           {/* ─── Remarks ─────────────────────────────────────────────────────── */}
-          <TabsContent value="remarks" className="pt-6">
+          <TabsContent value="remarks" className="pt-4">
             <div className="flex flex-col gap-1.5">
-              <Label>Remarks / Notes</Label>
+              <Label className="text-xs text-muted-foreground">Remarks / Notes</Label>
               <Textarea
                 rows={5}
                 placeholder="Add any notes or remarks about this vendor…"
@@ -1819,28 +1773,28 @@ function AddressFields({
   onChange: (field: keyof Address, value: string) => void;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Attention</Label>
-        <Input placeholder="Attention" className="h-8" value={address.attention ?? ""} onChange={(e) => onChange("attention", e.target.value)} />
+    <div className="space-y-2">
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">Attention</Label>
+        <Input placeholder="Attention" className="h-8 text-sm" value={address.attention ?? ""} onChange={(e) => onChange("attention", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Country / Region</Label>
-        <Input placeholder="Country / Region" className="h-8" value={address.country ?? ""} onChange={(e) => onChange("country", e.target.value)} />
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">Country / Region</Label>
+        <Input placeholder="Country / Region" className="h-8 text-sm" value={address.country ?? ""} onChange={(e) => onChange("country", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Address</Label>
-        <Input placeholder="Street 1" className="h-8" value={address.street ?? ""} onChange={(e) => onChange("street", e.target.value)} />
-        <Input placeholder="Street 2" className="h-8 mt-1" value={address.street2 ?? ""} onChange={(e) => onChange("street2", e.target.value)} />
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">Address</Label>
+        <Input placeholder="Street 1" className="h-8 text-sm" value={address.street ?? ""} onChange={(e) => onChange("street", e.target.value)} />
+        <Input placeholder="Street 2" className="h-8 text-sm mt-1" value={address.street2 ?? ""} onChange={(e) => onChange("street2", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">City</Label>
-        <Input placeholder="City" className="h-8" value={address.city ?? ""} onChange={(e) => onChange("city", e.target.value)} />
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">City</Label>
+        <Input placeholder="City" className="h-8 text-sm" value={address.city ?? ""} onChange={(e) => onChange("city", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">State</Label>
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">State</Label>
         <Select value={address.state || "__none"} onValueChange={(v) => onChange("state", v === "__none" ? "" : v)}>
-          <SelectTrigger className="h-8">
+          <SelectTrigger className="h-8 text-sm">
             <SelectValue placeholder="Select or type" />
           </SelectTrigger>
           <SelectContent>
@@ -1851,17 +1805,17 @@ function AddressFields({
           </SelectContent>
         </Select>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Pin Code</Label>
-        <Input placeholder="Pin Code" className="h-8" value={address.zip ?? ""} onChange={(e) => onChange("zip", e.target.value)} />
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">Pin Code</Label>
+        <Input placeholder="Pin Code" className="h-8 text-sm" value={address.zip ?? ""} onChange={(e) => onChange("zip", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Phone</Label>
-        <Input placeholder="Phone" className="h-8" value={address.phone ?? ""} onChange={(e) => onChange("phone", e.target.value)} />
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">Phone</Label>
+        <Input placeholder="Phone" className="h-8 text-sm" value={address.phone ?? ""} onChange={(e) => onChange("phone", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">Fax Number</Label>
-        <Input placeholder="Fax Number" className="h-8" value={address.fax ?? ""} onChange={(e) => onChange("fax", e.target.value)} />
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-xs text-muted-foreground">Fax Number</Label>
+        <Input placeholder="Fax Number" className="h-8 text-sm" value={address.fax ?? ""} onChange={(e) => onChange("fax", e.target.value)} />
       </div>
     </div>
   );
