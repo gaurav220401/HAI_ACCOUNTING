@@ -300,7 +300,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
   async function handleFetchGstin() {
     const val = gstinInput.trim().toUpperCase();
     if (!GSTIN_REGEX.test(val)) {
-      toast.error("Invalid GSTIN format (e.g. 22AAHCH4002M1ZV)");
+      toast.error("Invalid GSTIN format (e.g. 22AAAAA0000A1Z5)");
       return;
     }
     if (!captchaInput.trim()) {
@@ -337,28 +337,60 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
   function handlePrefillDetails() {
     if (!gstinResult) return;
+
     const allAddresses = [gstinResult.address, ...gstinResult.additionalAddresses];
     const chosenAddr = allAddresses[selectedAddressIdx] ?? gstinResult.address;
 
-    if (gstinResult.companyName) {
-      setCompanyName(gstinResult.companyName);
-      setDisplayName(gstinResult.companyName);
+    // ── Basic info ────────────────────────────────────────────────────
+    const name = gstinResult.companyName || gstinResult.legalName;
+    if (name) {
+      setCompanyName(name);
+      setDisplayName(name);
       setDisplayNameManual(true);
     }
-    if (gstinResult.pan) setPan(gstinResult.pan);
+
+    // ── Other Details tab ─────────────────────────────────────────────
     setGstin(gstinResult.gstin);
+    if (gstinResult.pan) setPan(gstinResult.pan);
+
+    // ── Billing Address — fill every sub-field ────────────────────────
     if (chosenAddr) {
       setBillingAddress((prev) => ({
-        ...prev,
-        street: chosenAddr.street ?? prev.street,
-        city: chosenAddr.city ?? prev.city,
-        state: chosenAddr.state ?? prev.state,
-        zip: chosenAddr.zip ?? prev.zip,
-        country: chosenAddr.country ?? "India",
+        attention: chosenAddr.attention || name || prev.attention || "",
+        street:    chosenAddr.street   || prev.street   || "",
+        street2:   chosenAddr.street2  || prev.street2  || "",
+        city:      chosenAddr.city     || prev.city     || "",
+        // Ensure the state value matches one of the INDIAN_STATES list items
+        state:     chosenAddr.state    || gstinResult.state || prev.state || "",
+        zip:       chosenAddr.zip      || prev.zip      || "",
+        country:   chosenAddr.country  || "India",
+        phone:     prev.phone  || "",
+        fax:       prev.fax    || "",
       }));
     }
+
+    // ── Notes: append nature of business if portal gave us that ───────
+    if (gstinResult.naturalBusinessActivities?.length > 0) {
+      const nba = gstinResult.naturalBusinessActivities.join(", ");
+      setNotes((prev) => {
+        const tag = `Nature of Business: ${nba}`;
+        return prev ? `${prev}\n${tag}` : tag;
+      });
+    }
+
     setGstinDialogOpen(false);
-    toast.success("Vendor details prefilled from GST portal");
+
+    // Build a summary of what was filled
+    const filled: string[] = [];
+    if (name) filled.push("Company Name");
+    if (gstinResult.pan) filled.push("PAN");
+    if (chosenAddr?.city || chosenAddr?.state) filled.push("Billing Address");
+    if (gstinResult.naturalBusinessActivities?.length) filled.push("Notes");
+    toast.success(
+      filled.length
+        ? `Prefilled: ${filled.join(", ")}`
+        : "GSTIN verified — no additional data available from portal",
+    );
   }
 
   // ── Document Handlers ─────────────────────────────────────────────────────
@@ -1235,7 +1267,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
               </Label>
               <Input
                 className="uppercase font-mono tracking-wider"
-                placeholder="22AAHCH4002M1ZV"
+                placeholder="22AAAAA0000A1Z5"
                 value={gstinInput}
                 maxLength={15}
                 onChange={(e) => setGstinInput(e.target.value.toUpperCase())}

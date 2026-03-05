@@ -153,7 +153,9 @@ export interface ContactListParams extends ListParams {
 // ─── GSTIN Lookup ────────────────────────────────────────────────────────
 
 export interface GstinAddress {
+  attention?: string;
   street?: string;
+  street2?: string;
   city?: string;
   state?: string;
   zip?: string;
@@ -166,6 +168,8 @@ export interface GstinLookupResult {
   legalName: string;
   taxpayerType: string;
   gstinStatus: string;
+  registrationDate: string;
+  cancellationDate: string;
   pan: string;
   stateCode: string;
   state: string;

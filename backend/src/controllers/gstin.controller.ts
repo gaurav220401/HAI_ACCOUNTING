@@ -84,32 +84,74 @@ function extractCaptchaCookie(cookieHeader: string | null): string {
 function normaliseGovResponse(raw: any, gstin: string) {
   const local = parseGstinLocally(gstin);
   const pradr = raw.pradr?.addr ?? {};
+
+  /**
+   * GST portal address fields:
+   *  bnm  = building name          bno  = building number
+   *  flno = floor number           st   = street name
+   *  loc  = locality / area        dst  = district
+   *  stcd = state name (full)      pncd = pincode
+   */
+  // Improved address parsing: if pradr.adr exists, parse it for best mapping
+  function parseAddressString(addrStr: string) {
+    // Example: "4/B, Cross Street 3, Bhilai Nagar Police Station, Sector 6, Bhilai, Durg, Chhattisgarh, 490006"
+    const parts = addrStr ? addrStr.split(",").map(s => s.trim()) : [];
+    // Heuristic: last part is zip, second last is state, third last is city/district
+    const zip = parts.length > 0 ? parts[parts.length - 1] : "";
+    const state = parts.length > 1 ? parts[parts.length - 2] : "";
+    const city = parts.length > 2 ? parts[parts.length - 3] : "";
+    // Street1: first 2 parts, Street2: next 2 parts, rest is attention
+    const street = parts.slice(0, 2).join(", ");
+    const street2 = parts.slice(2, 4).join(", ");
+    return { street, street2, city, state, zip, country: "India" };
+  }
+
+  // Use GST portal structured fields if present, else parse pradr.adr string
+  function buildAddress(addr: any, addrStr?: string) {
+    if (addr && (addr.bnm || addr.bno || addr.flno || addr.st || addr.loc)) {
+      return {
+        street: [addr.bnm, addr.bno, addr.flno].filter(Boolean).join(", "),
+        street2: [addr.st, addr.loc].filter(Boolean).join(", "),
+        city: addr.dst || addr.loc || "",
+        state: addr.stcd || "",
+        zip: addr.pncd || "",
+        country: "India",
+      };
+    } else if (addrStr) {
+      return parseAddressString(addrStr);
+    } else {
+      return { street: "", street2: "", city: "", state: "", zip: "", country: "India" };
+    }
+  }
+
+  const primaryAddress = buildAddress(pradr, raw.pradr?.adr);
+
   return {
     gstin: (raw.gstin ?? gstin).toUpperCase(),
+    // trade name (preferred) vs legal name
     companyName: raw.tradeNam || raw.lgnm || "",
     legalName: raw.lgnm || "",
     taxpayerType: raw.dty || "",
     gstinStatus: raw.sts || "",
+    registrationDate: raw.rgdt || "",
+    cancellationDate: raw.cxdt || "",
     pan: local.pan,
     stateCode: local.stateCode,
+    // Use state from address if available; else derive from GSTIN code
     state: pradr.stcd || local.state,
     addressType: raw.pradr?.ntr || "Principal Place of Business",
+    // Full joined address string as returned by the portal for display
     addressString: raw.pradr?.adr || "",
+    // Structured address for form filling
     address: {
-      street: [pradr.bnm, pradr.bno, pradr.flno, pradr.st].filter(Boolean).join(", "),
-      city: pradr.loc || pradr.dst || "",
-      state: pradr.stcd || local.state,
-      zip: pradr.pncd || "",
-      country: "India",
+      attention: raw.lgnm || "",   // use legal name as attention
+      ...primaryAddress,
     },
     additionalAddresses: (raw.adadr ?? []).map((a: any) => ({
       type: a.ntr || "",
       addressString: a.adr || "",
-      street: [a.addr?.bnm, a.addr?.bno, a.addr?.flno, a.addr?.st].filter(Boolean).join(", "),
-      city: a.addr?.loc || a.addr?.dst || "",
-      state: a.addr?.stcd || "",
-      zip: a.addr?.pncd || "",
-      country: "India",
+      ...buildAddress(a.addr ?? {}, a.adr),
+      attention: raw.lgnm || "",
     })),
     naturalBusinessActivities: (raw.nba ?? []) as string[],
     companyType: raw.ctb || "",
@@ -194,7 +236,9 @@ export const lookupGstin = asyncHandler(async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, errorCode: "INVALID_GSTIN", message: "GSTIN not found in the GST portal." });
       }
       if (raw?.lgnm || raw?.tradeNam) {
-        return res.json({ success: true, source: "gst-portal", data: normaliseGovResponse(raw, gstin) });
+          // Show full GST portal response in backend console
+          console.log("[GSTIN] Full portal response:", JSON.stringify(raw, null, 2));
+          return res.json({ success: true, source: "gst-portal", data: normaliseGovResponse(raw, gstin) });
       }
       console.warn("[GSTIN] Unexpected portal response:", JSON.stringify(raw).slice(0, 200));
     } catch (apiErr: any) {
@@ -208,11 +252,31 @@ export const lookupGstin = asyncHandler(async (req: Request, res: Response) => {
     success: true,
     source: "local-parse",
     data: {
-      gstin, companyName: "", legalName: "", taxpayerType: "", gstinStatus: "",
-      pan: local.pan, stateCode: local.stateCode, state: local.state,
-      addressType: "", addressString: "",
-      address: { street: "", city: "", state: local.state, zip: "", country: "India" },
-      additionalAddresses: [], naturalBusinessActivities: [], companyType: "", eInvoiceApplicable: "",
+      gstin,
+      companyName: "",
+      legalName: "",
+      taxpayerType: "",
+      gstinStatus: "",
+      registrationDate: "",
+      cancellationDate: "",
+      pan: local.pan,
+      stateCode: local.stateCode,
+      state: local.state,
+      addressType: "",
+      addressString: "",
+      address: {
+        attention: "",
+        street: "",
+        street2: "",
+        city: "",
+        state: local.state,
+        zip: "",
+        country: "India",
+      },
+      additionalAddresses: [],
+      naturalBusinessActivities: [],
+      companyType: "",
+      eInvoiceApplicable: "",
     },
   });
 });
