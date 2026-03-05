@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Plus, Trash2, Copy, ChevronDown, ChevronUp,
   Upload, FileText, X as XIcon, Loader2, Globe, ExternalLink, RefreshCw,
+  Settings, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,7 +50,7 @@ import {
   type GstinLookupResult,
 } from "@/lib/api/contacts";
 import { accountApi, type Account } from "@/lib/api/accounts";
-import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
+import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
 import { apiFetch } from "@/lib/api/client";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -77,6 +78,25 @@ const INDIAN_STATES = [
 
 const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 const MAX_DOCUMENTS = 10;
+
+// Standard Indian TDS categories
+const TDS_CATEGORIES = [
+  { id: "comm-2",         label: "Commission or Brokerage",                    rate: 2    },
+  { id: "comm-r-3.75",   label: "Commission or Brokerage (Reduced)",           rate: 3.75 },
+  { id: "div-10",        label: "Dividend",                                    rate: 10   },
+  { id: "div-r-7.5",     label: "Dividend (Reduced)",                          rate: 7.5  },
+  { id: "int-10",        label: "Other Interest than securities",              rate: 10   },
+  { id: "int-r-7.5",     label: "Other Interest than securities (Reduced)",    rate: 7.5  },
+  { id: "con-oth-2",     label: "Payment of contractors for Others",           rate: 2    },
+  { id: "con-oth-r-1.5", label: "Payment of contractors for Others (Reduced)", rate: 1.5  },
+  { id: "con-ind-1",     label: "Payment of contractors HUF/Indiv",            rate: 1    },
+  { id: "con-ind-r-0.75",label: "Payment of contractors HUF/Indiv (Reduced)", rate: 0.75 },
+  { id: "prof-10",       label: "Professional Fees",                           rate: 10   },
+  { id: "prof-r-7.5",    label: "Professional Fees (Reduced)",                 rate: 7.5  },
+  { id: "rent-10",       label: "Rent on land or furniture etc",               rate: 10   },
+  { id: "rent-r-7.5",    label: "Rent on land or furniture etc (Reduced)",     rate: 7.5  },
+  { id: "tech-2",        label: "Technical Fees (2%)",                         rate: 2    },
+] as const;
 const MAX_DOC_SIZE_MB = 10;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -225,8 +245,68 @@ export function VendorForm({ initialData }: VendorFormProps) {
   // ── Reference data ───────────────────────────────────────────────────────
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [paymentTermsList, setPaymentTermsList] = useState<PaymentTerms[]>([]);
-  const [taxList, setTaxList] = useState<Tax[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // ── Configure Terms dialog ───────────────────────────────────────────────
+  const [configTermsOpen, setConfigTermsOpen] = useState(false);
+  const [termName, setTermName] = useState("");
+  const [termDays, setTermDays] = useState("");
+  const [termType, setTermType] = useState<"net_days" | "end_of_month" | "end_of_next_month">("net_days");
+  const [termAddingNew, setTermAddingNew] = useState(false);
+  const [termSaving, setTermSaving] = useState(false);
+
+  async function refreshTerms() {
+    try { const r = await settingsApi.paymentTerms.list(); setPaymentTermsList(r.data ?? []); } catch {}
+  }
+
+  function openConfigTerms() {
+    setTermName(""); setTermDays(""); setTermType("net_days"); setTermAddingNew(false);
+    setConfigTermsOpen(true);
+  }
+
+  async function handleSaveTerm() {
+    const name = termName.trim();
+    if (!name) { toast.error("Term name is required"); return; }
+    const netDays = termType === "net_days" ? Number(termDays) : 0;
+    if (termType === "net_days" && (isNaN(netDays) || netDays < 0)) {
+      toast.error("Enter valid days (0 or more)"); return;
+    }
+    setTermSaving(true);
+    try {
+      await settingsApi.paymentTerms.create({ name, termType, netDays, discountPercentage: 0, discountDays: 0, isActive: true } as any);
+      toast.success(`“${name}” added`);
+      setTermName(""); setTermDays(""); setTermType("net_days"); setTermAddingNew(false);
+      await refreshTerms();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to save term");
+    } finally { setTermSaving(false); }
+  }
+
+  async function handleDeleteTerm(id: string, name: string) {
+    if (!confirm(`Delete “${name}”?`)) return;
+    try {
+      await settingsApi.paymentTerms.remove(id);
+      toast.success(`“${name}” deleted`);
+      if (paymentTermsId === id) setPaymentTermsId("");
+      await refreshTerms();
+    } catch (e: any) { toast.error(e?.message ?? "Failed to delete"); }
+  }
+
+  async function handleSetDefault(id: string) {
+    try {
+      await settingsApi.paymentTerms.setDefault(id);
+      await refreshTerms();
+      toast.success("Default payment term set");
+    } catch (e: any) { toast.error(e?.message ?? "Failed to update default"); }
+  }
+
+  async function handleUnsetDefault() {
+    try {
+      await settingsApi.paymentTerms.unsetDefault();
+      await refreshTerms();
+      toast.success("Default removed");
+    } catch (e: any) { toast.error(e?.message ?? "Failed to clear default"); }
+  }
 
   // fetch reference data
   useEffect(() => {
@@ -235,9 +315,6 @@ export function VendorForm({ initialData }: VendorFormProps) {
       .catch(() => {});
     settingsApi.paymentTerms.list()
       .then((r) => setPaymentTermsList(r.data ?? []))
-      .catch(() => {});
-    settingsApi.taxes.list()
-      .then((r) => setTaxList(r.data ?? []))
       .catch(() => {});
   }, []);
 
@@ -928,6 +1005,17 @@ export function VendorForm({ initialData }: VendorFormProps) {
                     {paymentTermsList.map((pt) => (
                       <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
                     ))}
+                    <div className="border-t mt-1 pt-1">
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-sm text-primary hover:bg-accent rounded-sm"
+                        onPointerDown={(e) => e.preventDefault()}
+                        onClick={() => openConfigTerms()}
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                        Configure Terms
+                      </button>
+                    </div>
                   </SelectContent>
                 </Select>
               </div>
@@ -937,15 +1025,26 @@ export function VendorForm({ initialData }: VendorFormProps) {
                 <Label>TDS</Label>
                 <Select value={tdsCategory || "__none"} onValueChange={(v) => setTdsCategory(v === "__none" ? "" : v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a Tax" />
+                    <SelectValue placeholder="Select TDS category" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none">— None —</SelectItem>
-                    {taxList.map((t) => (
-                      <SelectItem key={t._id} value={t._id}>{t.name}</SelectItem>
+                    {TDS_CATEGORIES.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.label}&nbsp;
+                        <span className="text-muted-foreground">[{t.rate}%]</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {tdsCategory && tdsCategory !== "__none" && (() => {
+                  const cat = TDS_CATEGORIES.find((c) => c.id === tdsCategory);
+                  return cat ? (
+                    <p className="text-xs text-muted-foreground">
+                      Rate: <span className="font-medium">{cat.rate}%</span> · {cat.label}
+                    </p>
+                  ) : null;
+                })()}
               </div>
 
               {/* Enable Portal */}
@@ -1250,6 +1349,156 @@ export function VendorForm({ initialData }: VendorFormProps) {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* ══ Configure Payment Terms Dialog ════════════════════════════════════ */}
+      <Dialog open={configTermsOpen} onOpenChange={(o) => { setConfigTermsOpen(o); if (!o) { setTermAddingNew(false); setTermName(""); setTermDays(""); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Configure Payment Terms</DialogTitle>
+          </DialogHeader>
+
+          {/* Terms table */}
+          <div className="rounded-md border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="text-xs font-semibold tracking-wide uppercase py-2.5">Term Name</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide uppercase py-2.5 text-right w-36">Number of Days</TableHead>
+                  <TableHead className="w-[200px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paymentTermsList.length === 0 && !termAddingNew && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-6">
+                      No terms yet. Click "+ Add New" to create one.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {paymentTermsList.map((pt) => (
+                  <TableRow key={pt._id} className="group">
+                    <TableCell className="py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        {pt.isPermanent && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        <span className="text-sm">{pt.name}</span>
+                      </div>
+                      {pt.isDefault && (
+                        <Badge variant="secondary" className="ml-5 text-xs py-0">Default</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-2.5 text-right text-sm">
+                      {pt.termType === "net_days" ? pt.netDays : "N/A"}
+                    </TableCell>
+                    <TableCell className="py-2.5">
+                      <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Default toggle */}
+                        {pt.isDefault ? (
+                          <button
+                            type="button"
+                            className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline whitespace-nowrap"
+                            onClick={() => handleUnsetDefault()}
+                          >
+                            Remove as Default
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-sm text-primary hover:underline whitespace-nowrap"
+                            onClick={() => handleSetDefault(pt._id)}
+                          >
+                            Mark as Default
+                          </button>
+                        )}
+                        {/* Delete — hidden for permanent terms */}
+                        {!pt.isPermanent && (
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80"
+                            onClick={() => handleDeleteTerm(pt._id, pt.name)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {/* Inline Add New row */}
+                {termAddingNew && (
+                  <TableRow className="bg-muted/20">
+                    <TableCell className="py-2">
+                      <div className="space-y-1.5">
+                        <Input
+                          autoFocus
+                          className="h-8 text-sm"
+                          placeholder='e.g. "Net 90"'
+                          value={termName}
+                          onChange={(e) => setTermName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveTerm(); if (e.key === "Escape") setTermAddingNew(false); }}
+                        />
+                        <Select value={termType} onValueChange={(v) => setTermType(v as typeof termType)}>
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="net_days">Net Days</SelectItem>
+                            <SelectItem value="end_of_month">Due end of the month</SelectItem>
+                            <SelectItem value="end_of_next_month">Due end of next month</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-2 align-top">
+                      {termType === "net_days" ? (
+                        <Input
+                          className="h-8 text-sm w-24 ml-auto"
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={termDays}
+                          onChange={(e) => setTermDays(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveTerm(); }}
+                        />
+                      ) : (
+                        <span className="text-sm text-muted-foreground flex justify-end pt-1.5">N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-2 align-top">
+                      <div className="flex items-center gap-2 justify-end pt-1">
+                        <Button size="sm" type="button" className="h-7 px-3" onClick={handleSaveTerm} disabled={termSaving}>
+                          {termSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                        </Button>
+                        <Button size="sm" type="button" variant="ghost" className="h-7 px-2" onClick={() => { setTermAddingNew(false); setTermName(""); setTermDays(""); }}>
+                          <XIcon className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Add New button */}
+          {!termAddingNew && (
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 w-fit"
+              onClick={() => { setTermAddingNew(true); setTermName(""); setTermDays(""); setTermType("net_days"); }}
+            >
+              <Plus className="h-4 w-4" />
+              Add New
+            </button>
+          )}
+
+          <DialogFooter className="border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => setConfigTermsOpen(false)}>Cancel</Button>
+            <Button type="button" onClick={() => setConfigTermsOpen(false)}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ══ GSTIN Prefill Dialog ══════════════════════════════════════════════ */}
       <Dialog open={gstinDialogOpen} onOpenChange={setGstinDialogOpen}>

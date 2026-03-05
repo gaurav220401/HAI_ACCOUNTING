@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authenticate } from "../middlewares/auth";
 import {
   taxCRUD, seedTaxes,
-  paymentTermsCRUD, seedPaymentTerms,
+  paymentTermsCRUD, seedPaymentTerms, setDefaultPaymentTerm, unsetDefaultPaymentTerm,
   warehouseCRUD,
   salesPersonCRUD,
   paymentModeCRUD, seedPaymentModes,
@@ -29,6 +29,8 @@ router.post("/payment-terms/seed", seedPaymentTerms);
 router.get("/payment-terms/:id", paymentTermsCRUD.getOne);
 router.patch("/payment-terms/:id", paymentTermsCRUD.update);
 router.delete("/payment-terms/:id", paymentTermsCRUD.remove);
+router.post("/payment-terms/:id/set-default", setDefaultPaymentTerm);
+router.post("/payment-terms/unset-default", unsetDefaultPaymentTerm);
 
 // ── Warehouses ──
 router.get("/warehouses", warehouseCRUD.list);

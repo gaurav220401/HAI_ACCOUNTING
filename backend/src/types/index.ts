@@ -502,11 +502,13 @@ export interface IPaymentTerms extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
   name: string;          // "Net 30", "Due on Receipt"
-  netDays: number;       // 0 = due on receipt
+  termType: "net_days" | "end_of_month" | "end_of_next_month";
+  netDays: number;       // 0 = due on receipt; ignored for end_of_month types
   discountPercentage: number;
   discountDays: number;
   isDefault: boolean;
   isSystemTerm: boolean;
+  isPermanent: boolean;  // true = cannot be deleted or renamed
   createdAt: Date;
   updatedAt: Date;
 }
