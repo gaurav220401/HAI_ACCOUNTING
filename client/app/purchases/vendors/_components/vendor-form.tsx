@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Plus, Trash2, Copy, ChevronDown, ChevronUp,
   Upload, FileText, X as XIcon, Loader2, Globe, ExternalLink, RefreshCw,
-  Settings, Lock,
+  Settings, Lock, Save,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -234,6 +234,11 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
   // ── Bank Details ─────────────────────────────────────────────────────────
   const [bankDetails, setBankDetails] = useState<BankDetail[]>(initialData?.bankDetails ?? []);
+  // parallel array to track "re-enter account number" for each bank entry (not persisted)
+  const [reenterAccountNumbers, setReenterAccountNumbers] = useState<string[]>(
+    () => (initialData?.bankDetails ?? []).map(() => "")
+  );
+  const [sectionSaving, setSectionSaving] = useState(false);
 
   // ── Documents ────────────────────────────────────────────────────────────
   const [documents, setDocuments] = useState<ContactDocument[]>(initialData?.documents ?? []);
@@ -567,19 +572,17 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
   function addBankDetail() {
     setBankDetails((prev) => [...prev, emptyBankDetail()]);
+    setReenterAccountNumbers((prev) => [...prev, ""]);
   }
 
   function removeBankDetail(idx: number) {
     setBankDetails((prev) => prev.filter((_, i) => i !== idx));
+    setReenterAccountNumbers((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  async function handleSave() {
-    if (!displayName.trim()) {
-      toast.error("Display Name is required");
-      return;
-    }
-
-    const payload: CreateContactInput = {
+  // ── Build the full vendor payload ─────────────────────────────────────────
+  function buildPayload(): CreateContactInput {
+    return {
       contactType: "Vendor",
       salutation,
       firstName,
@@ -604,16 +607,70 @@ export function VendorForm({ initialData }: VendorFormProps) {
       contactPersons: contactPersons.filter((cp) => cp.firstName || cp.lastName || cp.name),
       bankDetails: bankDetails.filter((bd) => bd.bankName || bd.accountNumber),
       notes,
-      // Extra / social
       websiteUrl,
       department,
       designation,
       twitterHandle,
       skypeName,
       facebookUrl,
-      // Documents
       documents,
     };
+  }
+
+  // ── Save a single contact-person row ──────────────────────────────────────
+  async function handleSaveContactPerson(idx: number) {
+    if (!isEdit || !initialData?._id) {
+      toast.info("Contact person will be saved when you save the vendor");
+      return;
+    }
+    setSectionSaving(true);
+    try {
+      await contactApi.update(initialData._id, buildPayload());
+      toast.success("Contact person saved");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to save contact person");
+    } finally {
+      setSectionSaving(false);
+    }
+  }
+
+  // ── Save a single bank-detail card ────────────────────────────────────────
+  async function handleSaveBankDetail(idx: number) {
+    if (!isEdit || !initialData?._id) {
+      toast.info("Bank detail will be saved when you save the vendor");
+      return;
+    }
+    const bd = bankDetails[idx];
+    if (bd.accountNumber && reenterAccountNumbers[idx] !== bd.accountNumber) {
+      toast.error("Account numbers do not match");
+      return;
+    }
+    if (!bd.accountNumber) {
+      toast.error("Account Number is required");
+      return;
+    }
+    if (!bd.ifscCode) {
+      toast.error("IFSC Code is required");
+      return;
+    }
+    setSectionSaving(true);
+    try {
+      await contactApi.update(initialData._id, buildPayload());
+      toast.success("Bank detail saved");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to save bank detail");
+    } finally {
+      setSectionSaving(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!displayName.trim()) {
+      toast.error("Display Name is required");
+      return;
+    }
+
+    const payload = buildPayload();
 
     setSaving(true);
     try {
@@ -1185,7 +1242,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
                     <TableHead className="text-xs uppercase font-semibold">Email Address</TableHead>
                     <TableHead className="text-xs uppercase font-semibold">Work Phone</TableHead>
                     <TableHead className="text-xs uppercase font-semibold">Mobile</TableHead>
-                    <TableHead className="w-8" />
+                    <TableHead className="w-24" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1229,28 +1286,48 @@ export function VendorForm({ initialData }: VendorFormProps) {
                         />
                       </TableCell>
                       <TableCell className="py-2 pr-2">
-                        <Input
-                          className="h-8"
-                          value={cp.workPhone ?? ""}
-                          onChange={(e) => updateContactPerson(idx, "workPhone", e.target.value)}
-                        />
+                        <div className="flex h-8 rounded-md border border-input overflow-hidden focus-within:ring-1 focus-within:ring-ring">
+                          <span className="flex items-center px-2 text-xs text-muted-foreground bg-muted border-r border-input select-none whitespace-nowrap">+91</span>
+                          <input
+                            type="tel"
+                            className="flex-1 px-2 text-sm bg-background outline-none"
+                            value={cp.workPhone ?? ""}
+                            onChange={(e) => updateContactPerson(idx, "workPhone", e.target.value)}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="py-2 pr-2">
-                        <Input
-                          className="h-8"
-                          value={cp.mobile ?? ""}
-                          onChange={(e) => updateContactPerson(idx, "mobile", e.target.value)}
-                        />
+                        <div className="flex h-8 rounded-md border border-input overflow-hidden focus-within:ring-1 focus-within:ring-ring">
+                          <span className="flex items-center px-2 text-xs text-muted-foreground bg-muted border-r border-input select-none whitespace-nowrap">+91</span>
+                          <input
+                            type="tel"
+                            className="flex-1 px-2 text-sm bg-background outline-none"
+                            value={cp.mobile ?? ""}
+                            onChange={(e) => updateContactPerson(idx, "mobile", e.target.value)}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="py-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={() => removeContactPerson(idx)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Save contact person"
+                            disabled={sectionSaving}
+                            onClick={() => handleSaveContactPerson(idx)}
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={() => removeContactPerson(idx)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1289,15 +1366,31 @@ export function VendorForm({ initialData }: VendorFormProps) {
                       <Input value={bd.bankName ?? ""} onChange={(e) => updateBankDetail(idx, "bankName", e.target.value)} />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label>Account Number</Label>
+                      <Label>Account Number <span className="text-destructive">*</span></Label>
                       <Input value={bd.accountNumber ?? ""} onChange={(e) => updateBankDetail(idx, "accountNumber", e.target.value)} />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label>Re-enter Account Number <span className="text-destructive">*</span></Label>
+                      <Input
+                        value={reenterAccountNumbers[idx] ?? ""}
+                        onChange={(e) => setReenterAccountNumbers((prev) => {
+                          const next = [...prev];
+                          next[idx] = e.target.value;
+                          return next;
+                        })}
+                        placeholder="Re-enter account number"
+                        className={reenterAccountNumbers[idx] && reenterAccountNumbers[idx] !== bd.accountNumber ? "border-destructive focus-visible:ring-destructive" : ""}
+                      />
+                      {reenterAccountNumbers[idx] && reenterAccountNumbers[idx] !== bd.accountNumber && (
+                        <p className="text-xs text-destructive">Account numbers do not match</p>
+                      )}
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <Label>Account Holder Name</Label>
                       <Input value={bd.accountHolderName ?? ""} onChange={(e) => updateBankDetail(idx, "accountHolderName", e.target.value)} />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label>IFSC Code</Label>
+                      <Label>IFSC Code <span className="text-destructive">*</span></Label>
                       <Input value={bd.ifscCode ?? ""} onChange={(e) => updateBankDetail(idx, "ifscCode", e.target.value.toUpperCase())} />
                     </div>
                     <div className="flex flex-col gap-1.5">
@@ -1309,15 +1402,27 @@ export function VendorForm({ initialData }: VendorFormProps) {
                       <Input value={bd.upiId ?? ""} onChange={(e) => updateBankDetail(idx, "upiId", e.target.value)} />
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id={`primary-bank-${idx}`}
-                      checked={bd.isPrimary ?? false}
-                      onCheckedChange={(v) => updateBankDetail(idx, "isPrimary", Boolean(v))}
-                    />
-                    <label htmlFor={`primary-bank-${idx}`} className="text-sm cursor-pointer">
-                      Primary bank account
-                    </label>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`primary-bank-${idx}`}
+                        checked={bd.isPrimary ?? false}
+                        onCheckedChange={(v) => updateBankDetail(idx, "isPrimary", Boolean(v))}
+                      />
+                      <label htmlFor={`primary-bank-${idx}`} className="text-sm cursor-pointer">
+                        Primary bank account
+                      </label>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={sectionSaving}
+                      onClick={() => handleSaveBankDetail(idx)}
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      Save
+                    </Button>
                   </div>
                 </div>
               ))
