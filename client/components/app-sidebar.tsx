@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Home,
   Package,
+  Settings,
   ShoppingCart,
   Truck,
 } from "lucide-react";
@@ -109,7 +110,10 @@ const navItems: NavItem[] = [
       { title: "Journal Entries", url: "/accountant/journal-entries" },
       { title: "Fixed Assets", url: "/accountant/fixed-assets" },
       { title: "Budgets", url: "/accountant/budgets" },
-      { title: "Currency Adjustments", url: "/accountant/currency-adjustments" },
+      {
+        title: "Currency Adjustments",
+        url: "/accountant/currency-adjustments",
+      },
     ],
   },
   {
@@ -121,6 +125,12 @@ const navItems: NavItem[] = [
     title: "Documents",
     url: "/documents",
     icon: FolderOpen,
+  },
+  {
+    title: "Settings",
+    url: "/settings/email",
+    icon: Settings,
+    items: [{ title: "Email / SMTP", url: "/settings/email" }],
   },
 ];
 
@@ -174,7 +184,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               // Collapsible item with sub-menu
               const hasActiveChild = item.items.some(
                 (sub) =>
-                  pathname === sub.url || pathname.startsWith(sub.url + "/")
+                  pathname === sub.url || pathname.startsWith(sub.url + "/"),
               );
               const defaultOpen = isActive || hasActiveChild;
 
@@ -204,7 +214,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             pathname.startsWith(sub.url + "/");
                           return (
                             <SidebarMenuSubItem key={sub.title}>
-                              <SidebarMenuSubButton asChild isActive={subActive}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={subActive}
+                              >
                                 <Link href={sub.url}>{sub.title}</Link>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>

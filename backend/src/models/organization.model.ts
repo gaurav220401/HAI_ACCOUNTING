@@ -65,6 +65,19 @@ const defaultAccountsSchema = new Schema(
   { _id: false },
 );
 
+const smtpSettingsSchema = new Schema(
+  {
+    host: { type: String, default: "" },
+    port: { type: Number, default: 587 },
+    secure: { type: Boolean, default: false },
+    user: { type: String, default: "" },
+    pass: { type: String, default: "" },
+    fromName: { type: String, default: "" },
+    fromEmail: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
 const organizationSchema = new Schema<IOrganization>(
   {
     // ── Core ──────────────────────────────────────────────────────────────
@@ -150,6 +163,12 @@ const organizationSchema = new Schema<IOrganization>(
     // ── Chart of Accounts (populated by Phase 2) ───────────────────────
     defaultAccounts: {
       type: defaultAccountsSchema,
+      default: () => ({}),
+    },
+
+    // ── SMTP Settings ─────────────────────────────────────────────────
+    smtpSettings: {
+      type: smtpSettingsSchema,
       default: () => ({}),
     },
   },

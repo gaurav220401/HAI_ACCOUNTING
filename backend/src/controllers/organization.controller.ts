@@ -184,3 +184,136 @@ export const setActive = asyncHandler(
     });
   },
 );
+
+/**
+ * GET /api/organizations/:id/smtp-settings
+ * Get SMTP settings for an organization.
+ */
+export const getSmtpSettings = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const org = await Organization.findById(req.params.id).select(
+      "smtpSettings",
+    );
+    if (!org) throw new NotFoundError("Organization");
+
+    // Return settings but mask the password
+    const smtp = org.smtpSettings as any;
+    res.json({
+      success: true,
+      data:
+        smtp ?
+          {
+            host: smtp.host || "",
+            port: smtp.port ?? 587,
+            secure: smtp.secure ?? false,
+            user: smtp.user || "",
+            pass: smtp.pass ? "••••••••" : "",
+            fromName: smtp.fromName || "",
+            fromEmail: smtp.fromEmail || "",
+          }
+        : null,
+    });
+  },
+);
+
+/**
+ * PUT /api/organizations/:id/smtp-settings
+ * Save SMTP settings for an organization.
+ */
+export const updateSmtpSettings = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const org = await Organization.findById(req.params.id);
+    if (!org) throw new NotFoundError("Organization");
+
+    const { host, port, secure, user, pass, fromName, fromEmail } = req.body;
+
+    (org as any).smtpSettings = {
+      host: host ?? "",
+      port: port ?? 587,
+      secure: secure ?? false,
+      user: user ?? "",
+      // Only update password if a real value was provided (not the masked placeholder)
+      pass:
+        pass && pass !== "••••••••" ?
+          pass
+        : ((org as any).smtpSettings?.pass ?? ""),
+      fromName: fromName ?? "",
+      fromEmail: fromEmail ?? "",
+    };
+
+    attachUser(org, req);
+    await org.save();
+
+    res.json({ success: true, message: "SMTP settings saved" });
+  },
+);
+
+/**
+ * POST /api/organizations/:id/smtp-test
+ * Send a test email using the configured SMTP settings.
+ */
+export const testSmtpSettings = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const org = await Organization.findById(req.params.id);
+    if (!org) throw new NotFoundError("Organization");
+
+    const smtp = (org as any).smtpSettings;
+    if (!smtp?.host || !smtp?.user || !smtp?.pass) {
+      throw new ValidationError(
+        "SMTP settings are incomplete. Please configure host, user and password.",
+      );
+    }
+
+    const nodemailer = await import("nodemailer");
+    const transporter = nodemailer.default.createTransport({
+      host: smtp.host,
+      port: smtp.port ?? 587,
+      secure: smtp.secure ?? false,
+      auth: { user: smtp.user, pass: smtp.pass },
+    });
+
+    const testTo = req.body.testEmail || smtp.fromEmail || smtp.user;
+    try {
+      await transporter.sendMail({
+        from: `"${smtp.fromName || org.name}" <${smtp.fromEmail || smtp.user}>`,
+        to: testTo,
+        subject: "HAI Accounting \u2013 SMTP Test",
+        html: "<p>This is a test email from <strong>HAI Accounting</strong>. Your SMTP settings are working correctly.</p>",
+      });
+    } catch (err: any) {
+      // Translate to a friendly ValidationError so the client sees a 400 with a clear message
+      const msg: string = err?.message || "";
+      let friendly = msg;
+
+      if (msg.includes("535") && msg.includes("BadCredentials")) {
+        friendly =
+          "Gmail rejected the password. You must use a Google App Password (not your regular account password). " +
+          "Visit https://myaccount.google.com/apppasswords, generate an App Password for \u201cMail\u201d, and paste it here.";
+      } else if (
+        msg.includes("535") ||
+        msg.includes("Invalid login") ||
+        msg.includes("Authentication")
+      ) {
+        friendly =
+          "SMTP authentication failed. Check your username and password. " +
+          "For Gmail, use an App Password: https://myaccount.google.com/apppasswords";
+      } else if (msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
+        friendly = `Cannot connect to SMTP server. Check host and port. (${msg})`;
+      } else if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
+        friendly =
+          "Connection timed out. Check host, port and firewall settings.";
+      } else if (
+        msg.includes("certificate") ||
+        msg.includes("SSL") ||
+        msg.includes("TLS")
+      ) {
+        friendly =
+          'SSL/TLS error. Try toggling the "Use SSL/TLS" switch or changing the port (587 for STARTTLS, 465 for SSL).';
+      }
+
+      throw new ValidationError(friendly);
+    }
+
+    res.json({ success: true, message: `Test email sent to ${testTo}` });
+  },
+);

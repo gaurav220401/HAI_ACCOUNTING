@@ -90,6 +90,15 @@ export interface IOrganization extends Document {
     exchangeGainLossAccount?: Types.ObjectId;
     retainedEarningsAccount?: Types.ObjectId;
   };
+  smtpSettings?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    pass: string;
+    fromName: string;
+    fromEmail: string;
+  };
   isDeleted: boolean;
   deletedAt?: Date;
   deletedBy?: Types.ObjectId;
@@ -585,6 +594,85 @@ export interface IQuote extends Document {
   status: QuoteStatus;
   emailContacts: string[];
   attachments: string[];
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 2.2 Invoice ───────────────────────────────────────────────────────
+export type InvoiceStatus =
+  | "Draft"
+  | "Sent"
+  | "Viewed"
+  | "Overdue"
+  | "Partially Paid"
+  | "Paid"
+  | "Void";
+
+export type InvoiceTaxType = "TDS" | "TCS" | "none";
+
+export interface IInvoiceItem {
+  _id?: Types.ObjectId;
+  itemId?: Types.ObjectId | null;
+  name: string;
+  description?: string;
+  hsnSacCode?: string;
+  quantity: number;
+  rate: number;
+  discountPercent: number;
+  discountAmount: number;
+  taxId?: Types.ObjectId | null;
+  taxPercent: number;
+  taxAmount: number;
+  amount: number;
+  accountId?: Types.ObjectId | null;
+  projectId?: Types.ObjectId | null;
+}
+
+export interface IInvoiceJournalEntry {
+  account: string;
+  debit: number;
+  credit: number;
+}
+
+export interface IInvoice extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  invoiceNumber: string;
+  referenceNumber?: string;
+  orderNumber?: string;
+  customerId: Types.ObjectId;
+  invoiceDate: Date;
+  dueDate?: Date | null;
+  paymentTermsId?: Types.ObjectId | null;
+  salesPersonId?: Types.ObjectId | null;
+  subject?: string;
+  items: IInvoiceItem[];
+  subTotal: number;
+  discountType: DiscountType;
+  discountValue: number;
+  discountAmount: number;
+  taxType: InvoiceTaxType;
+  taxId?: Types.ObjectId | null;
+  taxAmount: number;
+  adjustmentLabel: string;
+  adjustmentAmount: number;
+  total: number;
+  balanceDue: number;
+  customerNotes: string;
+  termsAndConditions: string;
+  status: InvoiceStatus;
+  emailContacts: string[];
+  attachments: string[];
+  paymentReceived: boolean;
+  isRecurring: boolean;
+  journalEntries?: IInvoiceJournalEntry[];
+  pdfTemplateId?: Types.ObjectId | null;
+  sentAt?: Date | null;
+  paidAt?: Date | null;
   isDeleted: boolean;
   deletedAt?: Date;
   createdBy: Types.ObjectId;

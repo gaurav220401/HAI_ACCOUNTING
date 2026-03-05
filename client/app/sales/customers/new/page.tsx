@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -20,7 +20,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { contactApi, type CreateContactInput, type TaxTreatment } from "@/lib/api/contacts";
+import {
+  contactApi,
+  type CreateContactInput,
+  type TaxTreatment,
+} from "@/lib/api/contacts";
 import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
 
 type CustomerTypeUi = "Business" | "Individual";
@@ -79,22 +83,45 @@ export default function NewCustomerPage() {
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+      router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   const computedDisplayName = useMemo(() => {
     if (customerType === "Business") return companyName.trim();
-    const parts = [salutation, firstName, lastName].map((s) => s.trim()).filter(Boolean);
+    const parts = [salutation, firstName, lastName]
+      .map((s) => s.trim())
+      .filter(Boolean);
     return parts.join(" ").trim();
   }, [customerType, salutation, firstName, lastName, companyName]);
 
+  // Track the last value we auto-set so we can keep following changes without
+  // overwriting what the user manually typed.
+  const lastAutoSet = useRef("");
+
   useEffect(() => {
-    setDisplayName((prev) => (prev.trim() ? prev : computedDisplayName));
+    setDisplayName((prev) => {
+      // Only update if the user hasn't manually edited it away from the last auto value
+      if (prev === lastAutoSet.current || prev === "") {
+        lastAutoSet.current = computedDisplayName;
+        return computedDisplayName;
+      }
+      return prev;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computedDisplayName]);
 
   async function onSave() {
     setError("");
+
+    if (customerType === "Business" && !companyName.trim()) {
+      setError("Company Name is required for a Business customer");
+      return;
+    }
+    if (customerType === "Individual" && !firstName.trim()) {
+      setError("First Name is required for an Individual customer");
+      return;
+    }
 
     const finalDisplayName = displayName.trim() || computedDisplayName;
     if (!finalDisplayName) {
@@ -117,7 +144,8 @@ export default function NewCustomerPage() {
       gstin: gstin.trim() || undefined,
       currency: currency.trim() || undefined,
       paymentTermsId: isObjectId(paymentTermsId) ? paymentTermsId : undefined,
-      openingBalance: openingBalance.trim() ? Number(openingBalance) : undefined,
+      openingBalance:
+        openingBalance.trim() ? Number(openingBalance) : undefined,
       billingAddress: {
         street: billingStreet.trim() || undefined,
         city: billingCity.trim() || undefined,
@@ -130,7 +158,10 @@ export default function NewCustomerPage() {
       language,
     };
 
-    if (payload.openingBalance != null && Number.isNaN(payload.openingBalance)) {
+    if (
+      payload.openingBalance != null &&
+      Number.isNaN(payload.openingBalance)
+    ) {
       setError("Opening Balance must be a number");
       return;
     }
@@ -161,24 +192,37 @@ export default function NewCustomerPage() {
         <PageHeader
           breadcrumb={
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => router.push("/sales/customers")}
-                aria-label="Back">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push("/sales/customers")}
+                aria-label="Back"
+              >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <span className="text-sm text-muted-foreground">
                 Sales <span className="mx-1">/</span>
                 Customers <span className="mx-1">/</span>
-                <span className="font-medium text-foreground">New Customer</span>
+                <span className="font-medium text-foreground">
+                  New Customer
+                </span>
               </span>
             </div>
           }
           actions={
             <>
-              <Button variant="outline" size="sm" onClick={() => router.push("/sales/customers")} disabled={saving}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/sales/customers")}
+                disabled={saving}
+              >
                 Cancel
               </Button>
               <Button size="sm" onClick={onSave} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {saving ?
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                : null}
                 Save
               </Button>
             </>
@@ -188,9 +232,9 @@ export default function NewCustomerPage() {
         <div className="flex flex-1 flex-col p-6 gap-6">
           <div className="max-w-4xl">
             <h1 className="text-xl font-bold">New Customer</h1>
-            {error ? (
+            {error ?
               <p className="mt-2 text-sm text-destructive">{error}</p>
-            ) : null}
+            : null}
 
             <div className="mt-6 grid grid-cols-1 gap-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
@@ -198,7 +242,9 @@ export default function NewCustomerPage() {
                 <div className="md:col-span-9 flex items-center gap-2">
                   <Button
                     type="button"
-                    variant={customerType === "Business" ? "default" : "outline"}
+                    variant={
+                      customerType === "Business" ? "default" : "outline"
+                    }
                     size="sm"
                     onClick={() => setCustomerType("Business")}
                   >
@@ -206,7 +252,9 @@ export default function NewCustomerPage() {
                   </Button>
                   <Button
                     type="button"
-                    variant={customerType === "Individual" ? "default" : "outline"}
+                    variant={
+                      customerType === "Individual" ? "default" : "outline"
+                    }
                     size="sm"
                     onClick={() => setCustomerType("Individual")}
                   >
@@ -216,7 +264,12 @@ export default function NewCustomerPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-                <Label className="md:col-span-3">Primary Contact</Label>
+                <Label className="md:col-span-3">
+                  Primary Contact
+                  {customerType === "Individual" && (
+                    <span className="text-red-500"> *</span>
+                  )}
+                </Label>
                 <div className="md:col-span-9 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <Select value={salutation} onValueChange={setSalutation}>
                     <SelectTrigger>
@@ -229,44 +282,102 @@ export default function NewCustomerPage() {
                       <SelectItem value="Dr.">Dr.</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                  <Input placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                  <Input
+                    placeholder={
+                      customerType === "Individual" ? "First Name *" : (
+                        "First Name"
+                      )
+                    }
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className={
+                      customerType === "Individual" && !firstName.trim() ?
+                        "border-red-300 focus-visible:ring-red-400"
+                      : ""
+                    }
+                  />
+                  <Input
+                    placeholder="Last Name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-3">Company Name</Label>
+                <Label className="md:col-span-3">
+                  Company Name
+                  {customerType === "Business" && (
+                    <span className="text-red-500"> *</span>
+                  )}
+                </Label>
                 <div className="md:col-span-9">
-                  <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className={
+                      customerType === "Business" && !companyName.trim() ?
+                        "border-red-300 focus-visible:ring-red-400"
+                      : ""
+                    }
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-3">Customer Display Name</Label>
                 <div className="md:col-span-9">
-                  <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={computedDisplayName || "Display Name"} />
+                  <Input
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder={computedDisplayName || "Display Name"}
+                  />
+                  {computedDisplayName &&
+                    displayName !== computedDisplayName && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Auto:{" "}
+                        <span className="font-medium">
+                          {computedDisplayName}
+                        </span>
+                      </p>
+                    )}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-3">Customer Email</Label>
                 <div className="md:col-span-9">
-                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-3">Customer Phone</Label>
                 <div className="md:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Input placeholder="Work Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  <Input placeholder="Mobile" value={mobile} onChange={(e) => setMobile(e.target.value)} />
+                  <Input
+                    placeholder="Work Phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Mobile"
+                    value={mobile}
+                    onChange={(e) => setMobile(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
 
             <div className="mt-8">
               <Tabs defaultValue="other" className="w-full">
-                <TabsList variant="line" className="w-full justify-start border-b rounded-none px-0">
+                <TabsList
+                  variant="line"
+                  className="w-full justify-start border-b rounded-none px-0"
+                >
                   <TabsTrigger value="other">Other Details</TabsTrigger>
                   <TabsTrigger value="address">Address</TabsTrigger>
                   <TabsTrigger value="remarks">Remarks</TabsTrigger>
@@ -277,17 +388,28 @@ export default function NewCustomerPage() {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">GST Treatment</Label>
                       <div className="md:col-span-9">
-                        <Select value={taxTreatment} onValueChange={(v) => setTaxTreatment(v as TaxTreatment)}>
+                        <Select
+                          value={taxTreatment}
+                          onValueChange={(v) =>
+                            setTaxTreatment(v as TaxTreatment)
+                          }
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Select a GST treatment" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Taxable">Taxable</SelectItem>
-                            <SelectItem value="TaxExempt">Tax Exempt</SelectItem>
-                            <SelectItem value="ReverseCharge">Reverse Charge</SelectItem>
+                            <SelectItem value="TaxExempt">
+                              Tax Exempt
+                            </SelectItem>
+                            <SelectItem value="ReverseCharge">
+                              Reverse Charge
+                            </SelectItem>
                             <SelectItem value="SEZ">SEZ</SelectItem>
                             <SelectItem value="Overseas">Overseas</SelectItem>
-                            <SelectItem value="Composition">Composition</SelectItem>
+                            <SelectItem value="Composition">
+                              Composition
+                            </SelectItem>
                             <SelectItem value="UIN">UIN</SelectItem>
                           </SelectContent>
                         </Select>
@@ -297,42 +419,61 @@ export default function NewCustomerPage() {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Place Of Supply</Label>
                       <div className="md:col-span-9">
-                        <Input value={placeOfSupply} onChange={(e) => setPlaceOfSupply(e.target.value)} />
+                        <Input
+                          value={placeOfSupply}
+                          onChange={(e) => setPlaceOfSupply(e.target.value)}
+                        />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">PAN</Label>
                       <div className="md:col-span-9">
-                        <Input value={pan} onChange={(e) => setPan(e.target.value)} />
+                        <Input
+                          value={pan}
+                          onChange={(e) => setPan(e.target.value)}
+                        />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">GSTIN</Label>
                       <div className="md:col-span-9">
-                        <Input value={gstin} onChange={(e) => setGstin(e.target.value)} />
+                        <Input
+                          value={gstin}
+                          onChange={(e) => setGstin(e.target.value)}
+                        />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Currency</Label>
                       <div className="md:col-span-9">
-                        <Input value={currency} onChange={(e) => setCurrency(e.target.value)} />
+                        <Input
+                          value={currency}
+                          onChange={(e) => setCurrency(e.target.value)}
+                        />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Opening Balance</Label>
                       <div className="md:col-span-9">
-                        <Input value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0" />
+                        <Input
+                          value={openingBalance}
+                          onChange={(e) => setOpeningBalance(e.target.value)}
+                          placeholder="0"
+                        />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Payment Terms</Label>
                       <div className="md:col-span-9">
-                        <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
+                        <Select
+                          value={paymentTermsId}
+                          onValueChange={setPaymentTermsId}
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Select payment terms" />
                           </SelectTrigger>
@@ -350,15 +491,24 @@ export default function NewCustomerPage() {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Enable Portal?</Label>
                       <div className="md:col-span-9 flex items-center gap-2">
-                        <Checkbox checked={portalEnabled} onCheckedChange={(v) => setPortalEnabled(Boolean(v))} />
-                        <span className="text-sm">Allow portal access for this customer</span>
+                        <Checkbox
+                          checked={portalEnabled}
+                          onCheckedChange={(v) => setPortalEnabled(Boolean(v))}
+                        />
+                        <span className="text-sm">
+                          Allow portal access for this customer
+                        </span>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Portal Language</Label>
                       <div className="md:col-span-9">
-                        <Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="en" />
+                        <Input
+                          value={language}
+                          onChange={(e) => setLanguage(e.target.value)}
+                          placeholder="en"
+                        />
                       </div>
                     </div>
                   </div>
@@ -369,31 +519,46 @@ export default function NewCustomerPage() {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Street</Label>
                       <div className="md:col-span-9">
-                        <Input value={billingStreet} onChange={(e) => setBillingStreet(e.target.value)} />
+                        <Input
+                          value={billingStreet}
+                          onChange={(e) => setBillingStreet(e.target.value)}
+                        />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">City</Label>
                       <div className="md:col-span-9">
-                        <Input value={billingCity} onChange={(e) => setBillingCity(e.target.value)} />
+                        <Input
+                          value={billingCity}
+                          onChange={(e) => setBillingCity(e.target.value)}
+                        />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">State</Label>
                       <div className="md:col-span-9">
-                        <Input value={billingState} onChange={(e) => setBillingState(e.target.value)} />
+                        <Input
+                          value={billingState}
+                          onChange={(e) => setBillingState(e.target.value)}
+                        />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">PIN Code</Label>
                       <div className="md:col-span-9">
-                        <Input value={billingZip} onChange={(e) => setBillingZip(e.target.value)} />
+                        <Input
+                          value={billingZip}
+                          onChange={(e) => setBillingZip(e.target.value)}
+                        />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <Label className="md:col-span-3">Country</Label>
                       <div className="md:col-span-9">
-                        <Input value={billingCountry} onChange={(e) => setBillingCountry(e.target.value)} />
+                        <Input
+                          value={billingCountry}
+                          onChange={(e) => setBillingCountry(e.target.value)}
+                        />
                       </div>
                     </div>
                   </div>
@@ -403,7 +568,11 @@ export default function NewCustomerPage() {
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                     <Label className="md:col-span-3">Remarks</Label>
                     <div className="md:col-span-9">
-                      <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" />
+                      <Input
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Notes"
+                      />
                     </div>
                   </div>
                 </TabsContent>

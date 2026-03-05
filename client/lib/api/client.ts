@@ -44,9 +44,14 @@ export async function apiFetch<T = unknown>(
   const token = await getIdToken();
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
+
+  // Don't force Content-Type for FormData — the browser sets it automatically
+  // with the correct multipart boundary.
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;

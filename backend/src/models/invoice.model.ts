@@ -1,0 +1,118 @@
+import { Schema, model } from "mongoose";
+import { IInvoice } from "../types";
+import { auditTrailPlugin, softDeletePlugin } from "../plugins";
+
+const invoiceItemSchema = new Schema(
+  {
+    itemId: { type: Schema.Types.ObjectId, ref: "Item", default: null },
+    name: { type: String, required: true },
+    description: { type: String, default: "" },
+    hsnSacCode: { type: String, default: "" },
+    quantity: { type: Number, required: true, default: 1 },
+    rate: { type: Number, required: true, default: 0 },
+    discountPercent: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
+    taxPercent: { type: Number, default: 0 },
+    taxAmount: { type: Number, default: 0 },
+    amount: { type: Number, required: true, default: 0 },
+    accountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
+    projectId: { type: Schema.Types.ObjectId, ref: "Project", default: null },
+  },
+  { _id: true },
+);
+
+const invoiceSchema = new Schema<IInvoice>(
+  {
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: "Organization",
+      required: true,
+      index: true,
+    },
+    invoiceNumber: { type: String, required: true },
+    referenceNumber: { type: String, default: "" },
+    orderNumber: { type: String, default: "" },
+    customerId: {
+      type: Schema.Types.ObjectId,
+      ref: "Contact",
+      required: true,
+    },
+    invoiceDate: { type: Date, required: true },
+    dueDate: { type: Date, default: null },
+    paymentTermsId: {
+      type: Schema.Types.ObjectId,
+      ref: "PaymentTerms",
+      default: null,
+    },
+    salesPersonId: {
+      type: Schema.Types.ObjectId,
+      ref: "SalesPerson",
+      default: null,
+    },
+    subject: { type: String, default: "" },
+    items: { type: [invoiceItemSchema], required: true, default: [] },
+    subTotal: { type: Number, default: 0 },
+    discountType: {
+      type: String,
+      enum: ["percent", "amount"],
+      default: "percent",
+    },
+    discountValue: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    taxType: {
+      type: String,
+      enum: ["TDS", "TCS", "none"],
+      default: "none",
+    },
+    taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
+    taxAmount: { type: Number, default: 0 },
+    adjustmentLabel: { type: String, default: "Adjustment" },
+    adjustmentAmount: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
+    balanceDue: { type: Number, default: 0 },
+    customerNotes: { type: String, default: "" },
+    termsAndConditions: { type: String, default: "" },
+    status: {
+      type: String,
+      enum: [
+        "Draft",
+        "Sent",
+        "Viewed",
+        "Overdue",
+        "Partially Paid",
+        "Paid",
+        "Void",
+      ],
+      default: "Draft",
+    },
+    emailContacts: [{ type: String }],
+    attachments: [{ type: String }],
+    paymentReceived: { type: Boolean, default: false },
+    isRecurring: { type: Boolean, default: false },
+    journalEntries: [
+      {
+        account: { type: String, required: true },
+        debit: { type: Number, default: 0 },
+        credit: { type: Number, default: 0 },
+      },
+    ],
+    pdfTemplateId: {
+      type: Schema.Types.ObjectId,
+      ref: "PdfTemplate",
+      default: null,
+    },
+    sentAt: { type: Date, default: null },
+    paidAt: { type: Date, default: null },
+  },
+  { timestamps: true },
+);
+
+invoiceSchema.plugin(auditTrailPlugin);
+invoiceSchema.plugin(softDeletePlugin);
+invoiceSchema.index({ organizationId: 1, invoiceNumber: 1 }, { unique: true });
+invoiceSchema.index({ organizationId: 1, customerId: 1 });
+invoiceSchema.index({ organizationId: 1, status: 1 });
+
+const Invoice = model<IInvoice>("Invoice", invoiceSchema);
+export default Invoice;

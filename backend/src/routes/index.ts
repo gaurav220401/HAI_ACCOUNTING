@@ -9,6 +9,7 @@ import itemRoutes from "./item.routes";
 import currencyRoutes from "./currency.routes";
 import settingsRoutes from "./settings.routes";
 import salesOrderRoutes from "./sales-order.routes";
+import invoiceRoutes from "./invoice.routes";
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use("/items", itemRoutes);
 router.use("/currencies", currencyRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/sales-orders", salesOrderRoutes);
+router.use("/invoices", invoiceRoutes);
 
 export default router;
