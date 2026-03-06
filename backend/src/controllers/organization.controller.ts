@@ -9,6 +9,7 @@ import {
   ValidationError,
   ForbiddenError,
 } from "../utils/errors";
+import { upsertDefaultUnits } from "../utils/defaultUnits"; // auto-seed GST units on org creation
 
 // â”€â”€ Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /** Assert that the calling user is a member of the org, then return it. */
@@ -74,6 +75,9 @@ export const create = asyncHandler(
       req.user.activeOrganization = organization._id;
       await req.user.save();
     }
+
+    // Auto-seed the 13 GST-standard units for every new org — non-fatal
+    upsertDefaultUnits(organization._id).catch(() => {});
 
     res.status(201).json({
       success: true,

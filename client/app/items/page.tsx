@@ -7,7 +7,6 @@ import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
-import { NewItemDialog } from "@/components/new-item-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +26,6 @@ export default function ItemsPage() {
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"All" | "Goods" | "Service">("All");
-  const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -91,7 +89,7 @@ export default function ItemsPage() {
               <Button variant="outline" size="sm" onClick={fetchItems} disabled={fetching}>
                 <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
               </Button>
-              <Button size="sm" onClick={() => setDialogOpen(true)}>
+              <Button size="sm" onClick={() => router.push("/items/new")}>
                 <Plus className="h-4 w-4 mr-1" />
                 New Item
               </Button>
@@ -122,7 +120,7 @@ export default function ItemsPage() {
                 <p className="text-sm">Create your first item to get started.</p>
               </div>
               {!search && (
-                <Button onClick={() => setDialogOpen(true)}>
+                <Button onClick={() => router.push("/items/new")}>
                   <Plus className="h-4 w-4 mr-1" />
                   New Item
                 </Button>
@@ -174,12 +172,6 @@ export default function ItemsPage() {
           )}
         </div>
       </SidebarInset>
-
-      <NewItemDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onCreated={fetchItems}
-      />
     </SidebarProvider>
   );
 }
