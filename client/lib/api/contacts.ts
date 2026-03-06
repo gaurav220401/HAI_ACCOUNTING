@@ -5,8 +5,8 @@ import type { PaginatedResponse, ListParams } from "./client";
 
 export type ContactType = "Customer" | "Vendor" | "Both";
 export type TaxTreatment =
-  | "Registered" | "Unregistered" | "Consumer" | "Overseas"
-  | "SpecialEconomicZone" | "DeemedExport";
+  | "Taxable" | "TaxExempt" | "ReverseCharge" | "SEZ"
+  | "Overseas" | "Composition" | "UIN";
 
 export interface Address {
   attention?: string;
@@ -86,6 +86,7 @@ export interface Contact {
   reportingTags?: string[];
   notes?: string;
   portalEnabled?: boolean;
+  language?: string;
   // Extra / social
   websiteUrl?: string;
   department?: string;
@@ -133,6 +134,7 @@ export interface CreateContactInput {
   reportingTags?: string[];
   notes?: string;
   portalEnabled?: boolean;
+  language?: string;
   // Extra / social
   websiteUrl?: string;
   department?: string;

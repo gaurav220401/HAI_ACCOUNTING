@@ -23,6 +23,13 @@ router.put(
   validate(updateOrganizationSchema),
   organizationController.update,
 );
+router.delete("/:id", requireRole("Admin"), organizationController.remove);
+router.put("/:id/set-active", organizationController.setActive);
+
+// ── SMTP Settings ──
+router.get("/:id/smtp-settings", organizationController.getSmtpSettings);
+router.put("/:id/smtp-settings", organizationController.updateSmtpSettings);
+router.post("/:id/smtp-test", organizationController.testSmtpSettings);
 router.delete(
   "/:id",
   organizationController.remove,          // owner-check is inside controller

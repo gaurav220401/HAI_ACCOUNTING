@@ -1,20 +1,29 @@
 import { Response } from "express";
 import Contact from "../models/contact.model";
+import Organization from "../models/organization.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 
-function orgId(req: AuthenticatedRequest) {
+async function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
-  if (!id) throw new ForbiddenError("No active organization");
-  return id;
+  if (id) return id;
+
+  if (!req.user) throw new ForbiddenError("User not found");
+
+  const firstOrg = await Organization.findOne().select("_id").lean();
+  if (!firstOrg?._id) throw new ForbiddenError("No active organization");
+
+  req.user.activeOrganization = firstOrg._id as any;
+  await req.user.save();
+  return firstOrg._id;
 }
 
 /** GET /api/contacts?type=Customer|Vendor|Both&search=...&page=1&limit=25 */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { type, search, page = 1, limit = 25 } = req.query;
-  const filter: any = { organizationId: orgId(req), isDeleted: false, isActive: true };
+  const filter: any = { organizationId: await orgId(req), isDeleted: false, isActive: true };
   if (type) filter.contactType = type;
   if (search) filter.$or = [
     { displayName: { $regex: search, $options: "i" } },
@@ -38,7 +47,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 
 /** GET /api/contacts/:id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const contact = await Contact.findOne({ _id: req.params.id, organizationId: orgId(req) })
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) })
     .populate("paymentTermsId salesPersonId reportingTags");
   if (!contact) throw new NotFoundError("Contact");
   res.json({ success: true, data: contact });
@@ -50,7 +59,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!displayName) throw new ValidationError("displayName is required");
   if (!contactType) throw new ValidationError("contactType is required");
 
-  const contact = new Contact({ organizationId: orgId(req), ...req.body });
+  const contact = new Contact({ organizationId: await orgId(req), ...req.body });
   attachUser(contact, req);
   await contact.save();
   res.status(201).json({ success: true, data: contact });
@@ -58,7 +67,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** PATCH /api/contacts/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const contact = await Contact.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
   if (!contact) throw new NotFoundError("Contact");
 
   const allowed = [
@@ -82,7 +91,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** DELETE /api/contacts/:id */
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const contact = await Contact.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
   if (!contact) throw new NotFoundError("Contact");
   contact.isDeleted = true;
   contact.deletedAt = new Date();

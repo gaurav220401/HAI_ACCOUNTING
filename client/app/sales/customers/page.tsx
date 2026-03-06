@@ -91,7 +91,7 @@ export default function CustomersPage() {
               <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching}>
                 <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
               </Button>
-              <Button size="sm">
+              <Button size="sm" onClick={() => router.push("/sales/customers/new")}>
                 <Plus className="h-4 w-4 mr-1" />
                 New Customer
               </Button>
@@ -113,7 +113,7 @@ export default function CustomersPage() {
                 <p className="text-sm">Add your first customer to get started.</p>
               </div>
               {!search && (
-                <Button>
+                <Button onClick={() => router.push("/sales/customers/new")}>
                   <Plus className="h-4 w-4 mr-1" />
                   New Customer
                 </Button>
@@ -135,7 +135,11 @@ export default function CustomersPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((c) => (
-                    <TableRow key={c._id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow
+                      key={c._id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => router.push(`/sales/customers/${c._id}`)}
+                    >
                       <TableCell className="font-medium">{c.displayName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{c.companyName || "—"}</TableCell>
                       <TableCell className="text-sm">{c.email || "—"}</TableCell>

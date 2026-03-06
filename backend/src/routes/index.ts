@@ -8,6 +8,8 @@ import contactRoutes from "./contact.routes";
 import itemRoutes from "./item.routes";
 import currencyRoutes from "./currency.routes";
 import settingsRoutes from "./settings.routes";
+import salesOrderRoutes from "./sales-order.routes";
+import invoiceRoutes from "./invoice.routes";
 import uploadRoutes from "./upload.routes";
 import gstinRoutes from "./gstin.routes";
 
@@ -22,6 +24,8 @@ router.use("/contacts", contactRoutes);
 router.use("/items", itemRoutes);
 router.use("/currencies", currencyRoutes);
 router.use("/settings", settingsRoutes);
+router.use("/sales-orders", salesOrderRoutes);
+router.use("/invoices", invoiceRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/gstin", gstinRoutes);
 

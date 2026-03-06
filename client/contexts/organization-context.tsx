@@ -74,6 +74,15 @@ export function OrganizationProvider({
 
       setActiveOrg(matched);
       if (matched) {
+        // Ensure backend also has an active org, otherwise API calls that rely on it
+        // (e.g. contacts/customers) will fail with "No active organization".
+        if (!activeId) {
+          try {
+            await organizationApi.setActive(matched._id);
+          } catch {
+            // best-effort
+          }
+        }
         setActiveOrganization({
           id: matched._id,
           name: matched.name,

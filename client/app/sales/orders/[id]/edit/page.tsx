@@ -1,0 +1,619 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Loader2, Plus, Trash2, MoreHorizontal, FileText, Download } from "lucide-react";
+
+import { useAuth } from "@/contexts/auth-context";
+import { useOrganization } from "@/contexts/organization-context";
+
+import { AppSidebar } from "@/components/app-sidebar";
+import { PageHeader } from "@/components/page-header";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { contactApi, type Contact } from "@/lib/api/contacts";
+import { itemApi, type Item } from "@/lib/api/items";
+import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
+import { salesOrderApi, type CreateSalesOrderInput, type SalesOrder } from "@/lib/api/sales-orders";
+
+type LineItemUi = {
+  id: string;
+  itemId: string;
+  description: string;
+  quantity: string;
+  rate: string;
+  discount: string;
+  amount: number;
+};
+
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export default function EditSalesOrderPage() {
+  const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const id = params?.id;
+
+  const { firebaseUser, loading } = useAuth();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+
+  const [saving, setSaving] = useState(false);
+  const [loadingOrder, setLoadingOrder] = useState(true);
+  
+  const [order, setOrder] = useState<SalesOrder | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
+
+  const [formData, setFormData] = useState({
+    customerId: "",
+    salesOrderNumber: "",
+    reference: "",
+    orderDate: todayISO(),
+    expectedShipmentDate: "",
+    paymentTermsId: "",
+    deliveryMethod: "",
+    salesPersonId: "",
+    shippingCharges: "0",
+    adjustment: "0",
+    notes: "",
+    terms: "",
+  });
+
+  const [lineItems, setLineItems] = useState<LineItemUi[]>([
+    { id: "1", itemId: "", description: "", quantity: "1", rate: "0", discount: "0", amount: 0 },
+  ]);
+
+  useEffect(() => {
+    if (!loading && !firebaseUser) router.push("/login");
+  }, [loading, firebaseUser, router]);
+
+  useEffect(() => {
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+  }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
+
+  useEffect(() => {
+    if (firebaseUser && !loading && !orgLoading && activeOrganization) {
+      void fetchInitialData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firebaseUser, loading, orgLoading, activeOrganization]);
+
+  async function fetchInitialData() {
+    try {
+      const [contactsRes, itemsRes, termsRes, orderRes] = await Promise.all([
+        contactApi.list({ page: 1, limit: 100 }),
+        itemApi.list({ page: 1, limit: 100 }),
+        settingsApi.getPaymentTerms(),
+        id ? salesOrderApi.getById(id) : null,
+      ]);
+
+      setContacts(contactsRes.data ?? []);
+      setItems(itemsRes.data ?? []);
+      setPaymentTerms(termsRes.data ?? []);
+
+      if (orderRes?.data) {
+        const orderData = orderRes.data;
+        setOrder(orderData);
+        setFormData({
+          customerId: orderData.customerId?._id || orderData.customerId || "",
+          salesOrderNumber: orderData.salesOrderNumber || "",
+          reference: orderData.reference || "",
+          orderDate: orderData.orderDate?.split("T")[0] || todayISO(),
+          expectedShipmentDate: orderData.expectedShipmentDate?.split("T")[0] || "",
+          paymentTermsId: orderData.paymentTermsId?._id || orderData.paymentTermsId || "",
+          deliveryMethod: orderData.deliveryMethod || "",
+          salesPersonId: orderData.salesPersonId?._id || orderData.salesPersonId || "",
+          shippingCharges: String(orderData.shippingCharges || 0),
+          adjustment: String(orderData.adjustment || 0),
+          notes: orderData.notes || "",
+          terms: orderData.terms || "",
+        });
+
+        if (orderData.lineItems?.length) {
+          const formattedItems = orderData.lineItems.map((li: any, idx: number) => ({
+            id: String(idx + 1),
+            itemId: li.itemId?._id || li.itemId || "",
+            description: li.description || "",
+            quantity: String(li.quantity || 1),
+            rate: String(li.rate || 0),
+            discount: String(li.discount || 0),
+            amount: li.amount || 0,
+          }));
+          setLineItems(formattedItems.length > 0 ? formattedItems : [{ id: "1", itemId: "", description: "", quantity: "1", rate: "0", discount: "0", amount: 0 }]);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoadingOrder(false);
+    }
+  }
+
+  function updateLineItem(id: string, field: keyof LineItemUi, value: string) {
+    setLineItems((prev) =>
+      prev.map((li) => {
+        if (li.id === id) {
+          const updated = { ...li, [field]: value };
+          if (field === "quantity" || field === "rate" || field === "discount") {
+            const qty = Number(updated.quantity) || 0;
+            const rate = Number(updated.rate) || 0;
+            const discount = Number(updated.discount) || 0;
+            updated.amount = qty * rate * (1 - discount / 100);
+          }
+          return updated;
+        }
+        return li;
+      })
+    );
+  }
+
+  function addLineItem() {
+    const newId = String(Math.max(...lineItems.map((li) => Number(li.id))) + 1);
+    setLineItems((prev) => [
+      ...prev,
+      { id: newId, itemId: "", description: "", quantity: "1", rate: "0", discount: "0", amount: 0 },
+    ]);
+  }
+
+  function removeLineItem(id: string) {
+    if (lineItems.length > 1) {
+      setLineItems((prev) => prev.filter((li) => li.id !== id));
+    }
+  }
+
+  const totals = useMemo(() => {
+    const subTotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
+    const shipping = Number(formData.shippingCharges) || 0;
+    const adjustment = Number(formData.adjustment) || 0;
+    const total = subTotal + shipping + adjustment;
+    return { subTotal, shipping, adjustment, total };
+  }, [lineItems, formData.shippingCharges, formData.adjustment]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!order) return;
+
+    setSaving(true);
+    try {
+      const submitData: CreateSalesOrderInput = {
+        customerId: formData.customerId,
+        salesOrderNumber: formData.salesOrderNumber,
+        reference: formData.reference || undefined,
+        orderDate: formData.orderDate,
+        expectedShipmentDate: formData.expectedShipmentDate || undefined,
+        paymentTermsId: formData.paymentTermsId || undefined,
+        deliveryMethod: formData.deliveryMethod || undefined,
+        salesPersonId: formData.salesPersonId || undefined,
+        lineItems: lineItems
+          .filter((li) => li.itemId && li.quantity && li.rate)
+          .map((li) => ({
+            itemId: li.itemId,
+            description: li.description || undefined,
+            quantity: Number(li.quantity),
+            rate: Number(li.rate),
+            discount: Number(li.discount) || undefined,
+            amount: li.amount,
+          })),
+        shippingCharges: Number(formData.shippingCharges) || 0,
+        adjustment: Number(formData.adjustment) || 0,
+        notes: formData.notes || undefined,
+        terms: formData.terms || undefined,
+      };
+
+      await salesOrderApi.update(order._id, submitData);
+      router.push(`/sales/orders/${order._id}`);
+    } catch (error) {
+      console.error("Error updating sales order:", error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleConvertToInvoice() {
+    if (!order) return;
+    try {
+      const result = await salesOrderApi.convertToInvoice(order._id);
+      router.push(`/sales/invoices/${(result as any).data?._id}`);
+    } catch (_err) {
+      // noop
+    }
+  }
+
+  async function handleDelete() {
+    if (!order) return;
+    try {
+      await salesOrderApi.remove(order._id);
+      router.push("/sales/orders");
+    } catch (_err) {
+      // noop
+    }
+  }
+
+  function handleDownloadPDF() {
+    // placeholder for sales order PDF
+  }
+
+  if (loading || orgLoading || !firebaseUser) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (loadingOrder || orgLoading || !activeOrganization) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="text-sm text-muted-foreground">Sales order not found.</div>
+      </div>
+    );
+  }
+
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <PageHeader
+          breadcrumb={
+            <span className="text-sm text-muted-foreground">
+              Sales <span className="mx-1">/</span>
+              Sales Orders <span className="mx-1">/</span>
+              <span className="font-medium text-foreground">Edit {order.salesOrderNumber}</span>
+            </span>
+          }
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={() => router.back()}>
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back
+              </Button>
+              <Button size="sm" onClick={handleConvertToInvoice}>
+                <FileText className="h-4 w-4 mr-1" />
+                Convert to Invoice
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon-sm" aria-label="More">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleDownloadPDF}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          }
+        />
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="customerId">Customer *</Label>
+              <Select value={formData.customerId} onValueChange={(v) => setFormData((prev) => ({ ...prev, customerId: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {contacts.map((c) => (
+                    <SelectItem key={c._id} value={c._id}>
+                      {c.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="salesOrderNumber">Sales Order # *</Label>
+              <Input
+                id="salesOrderNumber"
+                value={formData.salesOrderNumber}
+                onChange={(e) => setFormData((prev) => ({ ...prev, salesOrderNumber: e.target.value }))}
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="reference">Reference #</Label>
+              <Input
+                id="reference"
+                value={formData.reference}
+                onChange={(e) => setFormData((prev) => ({ ...prev, reference: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="orderDate">Order Date *</Label>
+              <Input
+                id="orderDate"
+                type="date"
+                value={formData.orderDate}
+                onChange={(e) => setFormData((prev) => ({ ...prev, orderDate: e.target.value }))}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="expectedShipmentDate">Expected Shipment Date</Label>
+              <Input
+                id="expectedShipmentDate"
+                type="date"
+                value={formData.expectedShipmentDate}
+                onChange={(e) => setFormData((prev) => ({ ...prev, expectedShipmentDate: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="paymentTermsId">Payment Terms</Label>
+              <Select value={formData.paymentTermsId} onValueChange={(v) => setFormData((prev) => ({ ...prev, paymentTermsId: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment terms" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentTerms.map((pt) => (
+                    <SelectItem key={pt._id} value={pt._id}>
+                      {pt.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="deliveryMethod">Delivery Method</Label>
+              <Input
+                id="deliveryMethod"
+                value={formData.deliveryMethod}
+                onChange={(e) => setFormData((prev) => ({ ...prev, deliveryMethod: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="salesPersonId">Sales Person</Label>
+              <Select value={formData.salesPersonId} onValueChange={(v) => setFormData((prev) => ({ ...prev, salesPersonId: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select sales person" />
+                </SelectTrigger>
+                <SelectContent>
+                  {contacts.map((c) => (
+                    <SelectItem key={c._id} value={c._id}>
+                      {c.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Line Items</h3>
+              <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add Item
+              </Button>
+            </div>
+
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="w-24">Quantity</TableHead>
+                    <TableHead className="w-24">Rate</TableHead>
+                    <TableHead className="w-24">Discount %</TableHead>
+                    <TableHead className="w-24 text-right">Amount</TableHead>
+                    <TableHead className="w-16"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lineItems.map((li) => (
+                    <TableRow key={li.id}>
+                      <TableCell>
+                        <Select value={li.itemId} onValueChange={(v) => updateLineItem(li.id, "itemId", v)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select item" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {items.map((item) => (
+                              <SelectItem key={item._id} value={item._id}>
+                                {item.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={li.description}
+                          onChange={(e) => updateLineItem(li.id, "description", e.target.value)}
+                          placeholder="Description"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={li.quantity}
+                          onChange={(e) => updateLineItem(li.id, "quantity", e.target.value)}
+                          min="0"
+                          step="0.01"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={li.rate}
+                          onChange={(e) => updateLineItem(li.id, "rate", e.target.value)}
+                          min="0"
+                          step="0.01"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={li.discount}
+                          onChange={(e) => updateLineItem(li.id, "discount", e.target.value)}
+                          min="0"
+                          max="100"
+                          step="0.01"
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        ₹{li.amount.toLocaleString("en-IN")}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          onClick={() => removeLineItem(li.id)}
+                          disabled={lineItems.length === 1}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="shippingCharges">Shipping Charges</Label>
+              <Input
+                id="shippingCharges"
+                type="number"
+                value={formData.shippingCharges}
+                onChange={(e) => setFormData((prev) => ({ ...prev, shippingCharges: e.target.value }))}
+                min="0"
+                step="0.01"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="adjustment">Adjustment</Label>
+              <Input
+                id="adjustment"
+                type="number"
+                value={formData.adjustment}
+                onChange={(e) => setFormData((prev) => ({ ...prev, adjustment: e.target.value }))}
+                step="0.01"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Sub Total:</span>
+                <span>₹{totals.subTotal.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Shipping:</span>
+                <span>₹{totals.shipping.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Adjustment:</span>
+                <span>₹{totals.adjustment.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between font-semibold">
+                <span>Total:</span>
+                <span>₹{totals.total.toLocaleString("en-IN")}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="notes">Notes</Label>
+              <textarea
+                id="notes"
+                className="w-full min-h-24 p-2 border rounded-md"
+                value={formData.notes}
+                onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="Add any notes or special instructions..."
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="terms">Terms and Conditions</Label>
+              <textarea
+                id="terms"
+                className="w-full min-h-24 p-2 border rounded-md"
+                value={formData.terms}
+                onChange={(e) => setFormData((prev) => ({ ...prev, terms: e.target.value }))}
+                placeholder="Add terms and conditions..."
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 pt-4">
+            <Button type="submit" disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
