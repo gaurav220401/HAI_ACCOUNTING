@@ -4,28 +4,32 @@ import type { PaginatedResponse, ListParams } from "./client";
 // ─── Types ──────────────────────────────────────────────────────────────
 
 export type ItemType = "Goods" | "Service";
-export type TaxPreference = "Taxable" | "TaxExempt";
+export type TaxPreference = "Taxable" | "NonTaxable" | "Exempt";
 
 export interface Item {
   _id: string;
-  orgId: string;
+  organizationId: string;
   name: string;
   sku?: string;
   itemType: ItemType;
-  unit?: any;
-  itemGroupId?: string;
+  unit?: UnitOfMeasurement | string | null;
+  itemGroupId?: ItemGroup | string | null;
   description?: string;
-  sellingPrice?: number;
-  costPrice?: number;
-  salesAccountId?: string;
-  purchaseAccountId?: string;
-  taxPreference?: TaxPreference;
-  taxId?: any;
-  openingStock?: number;
-  openingStockRate?: number;
+  sellingPrice: number;
+  sellingDescription?: string;
+  costPrice: number;
+  purchaseDescription?: string;
+  salesAccountId?: string | null;
+  purchaseAccountId?: string | null;
+  taxPreference: TaxPreference;
+  taxId?: string | null;
+  hsnSacCode?: string;
+  inventoryTracked: boolean;
+  stockOnHand: number;
   reorderPoint?: number;
-  preferredVendorId?: string;
-  warehouseId?: string;
+  preferredVendorId?: string | null;
+  warehouseId?: string | null;
+  image?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -39,16 +43,20 @@ export interface CreateItemInput {
   itemGroupId?: string;
   description?: string;
   sellingPrice?: number;
+  sellingDescription?: string;
   costPrice?: number;
+  purchaseDescription?: string;
   salesAccountId?: string;
   purchaseAccountId?: string;
   taxPreference?: TaxPreference;
   taxId?: string;
-  openingStock?: number;
-  openingStockRate?: number;
+  hsnSacCode?: string;
+  inventoryTracked?: boolean;
+  stockOnHand?: number;
   reorderPoint?: number;
   preferredVendorId?: string;
   warehouseId?: string;
+  image?: string;
 }
 
 export type UpdateItemInput = Partial<CreateItemInput>;
@@ -132,4 +140,7 @@ export const itemApi = {
 
   seedUnits: () =>
     apiFetch<{ message: string }>("/items/units/seed", { method: "POST" }),
+
+  clone: (id: string) =>
+    apiFetch<{ data: Item }>(`/items/${id}/clone`, { method: "POST" }),
 };

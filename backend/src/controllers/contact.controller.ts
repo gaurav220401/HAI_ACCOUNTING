@@ -71,11 +71,17 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!contact) throw new NotFoundError("Contact");
 
   const allowed = [
-    "displayName", "companyName", "email", "phone", "currency",
-    "paymentTermsId", "taxTreatment", "taxId", "billingAddress",
-    "shippingAddress", "contactPersons", "notes", "portalEnabled",
-    "language", "reportingTags", "creditLimit", "salesPersonId",
-    "tdsCategory", "isActive", "contactType",
+    "displayName", "companyName", "email", "phone", "mobile", "currency",
+    "salutation", "firstName", "lastName", "language",
+    "paymentTermsId", "accountsPayableId", "openingBalance",
+    "taxTreatment", "taxId", "gstin", "pan", "tdsCategory", "msmeRegistered",
+    "billingAddress", "shippingAddress",
+    "contactPersons", "bankDetails",
+    "notes", "portalEnabled",
+    "reportingTags", "creditLimit", "salesPersonId",
+    "isActive", "contactType",
+    "websiteUrl", "department", "designation", "twitterHandle", "skypeName", "facebookUrl",
+    "documents",
   ];
   allowed.forEach((f) => { if (req.body[f] !== undefined) (contact as any)[f] = req.body[f]; });
   attachUser(contact, req);

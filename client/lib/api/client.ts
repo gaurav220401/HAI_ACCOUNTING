@@ -46,7 +46,12 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const token = await getIdToken();
 
+  // When the body is FormData, do NOT set Content-Type — the browser will
+  // automatically add the correct multipart/form-data boundary.
+  const isFormData = options.body instanceof FormData;
+
   const headers: Record<string, string> = {
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers as Record<string, string>),
   };
 

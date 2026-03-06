@@ -30,5 +30,14 @@ router.put("/:id/set-active", organizationController.setActive);
 router.get("/:id/smtp-settings", organizationController.getSmtpSettings);
 router.put("/:id/smtp-settings", organizationController.updateSmtpSettings);
 router.post("/:id/smtp-test", organizationController.testSmtpSettings);
+router.delete(
+  "/:id",
+  organizationController.remove,          // owner-check is inside controller
+);
+router.put("/:id/set-active", organizationController.setActive);
+
+// ── Member management ────────────────────────────────────────────────
+router.post("/:id/members", organizationController.addMember);
+router.delete("/:id/members/:userId", organizationController.removeMember);
 
 export default router;

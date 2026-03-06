@@ -22,10 +22,21 @@ const accountSchema = new Schema<IAccount>(
     accountType: {
       type: String,
       enum: [
-        "Receivable", "Payable", "Bank", "Cash", "Fixed Asset",
-        "Current Asset", "Current Liability", "Long Term Liability",
-        "Equity", "Income", "Cost of Goods Sold", "Expense",
-        "Tax", "Round Off", "Other",
+        // Asset
+        "Other Asset", "Other Current Asset", "Cash", "Bank",
+        "Fixed Asset", "Accounts Receivable", "Stock",
+        "Payment Clearing Account", "Intangible Asset",
+        "Non Current Asset", "Deferred Tax Asset",
+        // Liability
+        "Other Current Liability", "Credit Card", "Non Current Liability",
+        "Other Liability", "Accounts Payable", "Overseas Tax Payable",
+        "Deferred Tax Liability",
+        // Equity
+        "Equity",
+        // Income
+        "Income", "Other Income",
+        // Expense
+        "Expense", "Cost Of Goods Sold", "Other Expense",
       ] as AccountType[],
       required: true,
     },

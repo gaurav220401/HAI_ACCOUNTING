@@ -1,4 +1,4 @@
-import { Response } from "express";
+﻿import { Response } from "express";
 import Organization from "../models/organization.model";
 import User from "../models/user.model";
 import asyncHandler from "../utils/asyncHandler";
@@ -9,13 +9,26 @@ import {
   ValidationError,
   ForbiddenError,
 } from "../utils/errors";
+import { upsertDefaultUnits } from "../utils/defaultUnits"; // auto-seed GST units on org creation
+
+// â”€â”€ Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/** Assert that the calling user is a member of the org, then return it. */
+async function requireMembership(orgId: string, req: AuthenticatedRequest) {
+  const userId = req.user?._id;
+  if (!userId) throw new ForbiddenError("Not authenticated");
+  const org = await Organization.findOne({ _id: orgId, members: userId });
+  if (!org) throw new NotFoundError("Organization");
+  return org;
+}
 
 /**
  * POST /api/organizations
- * Create a new organization.
+ * Create a new organization (any authenticated user).
  */
 export const create = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user) throw new ForbiddenError("Not authenticated");
+
     const {
       name,
       industry,
@@ -31,7 +44,7 @@ export const create = asyncHandler(
       address,
     } = req.body;
 
-    // Check for duplicate name
+    // Each org name must be globally unique
     const existing = await Organization.findOne({ name });
     if (existing) {
       throw new ValidationError(`Organization "${name}" already exists`);
@@ -50,16 +63,21 @@ export const create = asyncHandler(
       taxId,
       logo,
       address,
+      owner: req.user._id,
+      members: [req.user._id],   // creator is automatically the first member
     });
 
     attachUser(organization, req);
     await organization.save();
 
-    // Set as active org for the creating user if they don't have one
-    if (req.user && !req.user.activeOrganization) {
+    // Set as active org for the creating user if they don't have one yet
+    if (!req.user.activeOrganization) {
       req.user.activeOrganization = organization._id;
       await req.user.save();
     }
+
+    // Auto-seed the 13 GST-standard units for every new org — non-fatal
+    upsertDefaultUnits(organization._id).catch(() => {});
 
     res.status(201).json({
       success: true,
@@ -71,37 +89,34 @@ export const create = asyncHandler(
 
 /**
  * GET /api/organizations
- * List all organizations (admin only in production; open during bootstrap).
+ * List ONLY the organizations the calling user is a member of.
  */
 export const list = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const organizations = await Organization.find().sort({ name: 1 });
+    if (!req.user) throw new ForbiddenError("Not authenticated");
+    const organizations = await Organization.find({ members: req.user._id }).sort({ name: 1 });
     res.json({ success: true, data: organizations });
   },
 );
 
 /**
  * GET /api/organizations/:id
+ * Only accessible if the calling user is a member.
  */
 export const getById = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const organization = await Organization.findById(req.params.id);
-    if (!organization) {
-      throw new NotFoundError("Organization");
-    }
+    const organization = await requireMembership(String(req.params.id), req);
     res.json({ success: true, data: organization });
   },
 );
 
 /**
  * PUT /api/organizations/:id
+ * Only members can update (owner / member â€“ you can tighten to owner only later).
  */
 export const update = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const organization = await Organization.findById(req.params.id);
-    if (!organization) {
-      throw new NotFoundError("Organization");
-    }
+    const organization = await requireMembership(String(req.params.id), req);
 
     const allowedFields = [
       "name",
@@ -139,15 +154,22 @@ export const update = asyncHandler(
 
 /**
  * DELETE /api/organizations/:id (soft delete)
+ * Only the owner (or Admin role) may delete.
  */
 export const remove = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const organization = await Organization.findById(req.params.id);
-    if (!organization) {
-      throw new NotFoundError("Organization");
+    if (!req.user) throw new ForbiddenError("Not authenticated");
+
+    const organization = await Organization.findById(String(req.params.id));
+    if (!organization) throw new NotFoundError("Organization");
+
+    const isOwner = organization.owner?.toString() === req.user._id.toString();
+    const isAdmin = req.user.roles?.includes("Admin");
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenError("Only the organization owner can delete it");
     }
 
-    await (organization as any).softDelete(req.user?._id?.toString());
+    await (organization as any).softDelete(req.user._id.toString());
 
     res.json({
       success: true,
@@ -158,18 +180,14 @@ export const remove = asyncHandler(
 
 /**
  * PUT /api/organizations/:id/set-active
- * Set this organization as the user's active organization.
+ * Switch active org â€“ only if the calling user is already a member.
  */
 export const setActive = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const organization = await Organization.findById(req.params.id);
-    if (!organization) {
-      throw new NotFoundError("Organization");
-    }
+    if (!req.user) throw new ForbiddenError("Not authenticated");
 
-    if (!req.user) {
-      throw new ForbiddenError("User not found");
-    }
+    // requireMembership ensures the user belongs to this org
+    const organization = await requireMembership(String(req.params.id), req);
 
     req.user.activeOrganization = organization._id;
     await req.user.save();

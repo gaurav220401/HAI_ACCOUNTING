@@ -19,7 +19,7 @@ import { contactApi, type Contact } from "@/lib/api/contacts";
 export default function VendorsPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -34,9 +34,9 @@ export default function VendorsPage() {
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
-    if (firebaseUser && !loading) fetchContacts();
+    if (firebaseUser && !loading && activeOrganization?._id) fetchContacts();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading]);
+  }, [firebaseUser, loading, activeOrganization?._id]);
 
   async function fetchContacts() {
     setFetching(true);
@@ -91,7 +91,7 @@ export default function VendorsPage() {
               <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching}>
                 <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
               </Button>
-              <Button size="sm">
+              <Button size="sm" onClick={() => router.push("/purchases/vendors/new")}>
                 <Plus className="h-4 w-4 mr-1" />
                 New Vendor
               </Button>
@@ -113,7 +113,7 @@ export default function VendorsPage() {
                 <p className="text-sm">Add your first vendor to get started.</p>
               </div>
               {!search && (
-                <Button>
+                <Button onClick={() => router.push("/purchases/vendors/new")}>
                   <Plus className="h-4 w-4 mr-1" />
                   New Vendor
                 </Button>
@@ -135,7 +135,7 @@ export default function VendorsPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((c) => (
-                    <TableRow key={c._id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow key={c._id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/purchases/vendors/${c._id}`)}>
                       <TableCell className="font-medium">{c.displayName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{c.companyName || "—"}</TableCell>
                       <TableCell className="text-sm">{c.email || "—"}</TableCell>

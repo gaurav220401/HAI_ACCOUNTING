@@ -10,11 +10,17 @@ const paymentTermsSchema = new Schema<IPaymentTerms>(
       index: true,
     },
     name: { type: String, required: true, trim: true },
+    termType: {
+      type: String,
+      enum: ["net_days", "end_of_month", "end_of_next_month"],
+      default: "net_days",
+    },
     netDays: { type: Number, default: 0 },
     discountPercentage: { type: Number, default: 0 },
     discountDays: { type: Number, default: 0 },
     isDefault: { type: Boolean, default: false },
     isSystemTerm: { type: Boolean, default: false },
+    isPermanent: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

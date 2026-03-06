@@ -26,6 +26,7 @@ export type {
   ContactType,
   TaxTreatment,
   ContactPerson,
+  BankDetail,
   Address,
   CreateContactInput,
   UpdateContactInput,
