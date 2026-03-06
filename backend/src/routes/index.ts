@@ -8,6 +8,8 @@ import contactRoutes from "./contact.routes";
 import itemRoutes from "./item.routes";
 import currencyRoutes from "./currency.routes";
 import settingsRoutes from "./settings.routes";
+import uploadRoutes from "./upload.routes";
+import gstinRoutes from "./gstin.routes";
 
 const router = Router();
 
@@ -20,5 +22,7 @@ router.use("/contacts", contactRoutes);
 router.use("/items", itemRoutes);
 router.use("/currencies", currencyRoutes);
 router.use("/settings", settingsRoutes);
+router.use("/upload", uploadRoutes);
+router.use("/gstin", gstinRoutes);
 
 export default router;

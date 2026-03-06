@@ -101,29 +101,87 @@ export const seedTaxes = asyncHandler(async (req: AuthenticatedRequest, res: Res
 
 // ─── Payment Terms ─────────────────────────────────────────────────────────
 
-export const paymentTermsCRUD = makeCRUD(PaymentTerms, "Payment Terms", [
-  "name", "netDays", "discountPercentage", "discountDays", "isDefault",
-]);
+export const paymentTermsCRUD = {
+  list: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const terms = await PaymentTerms.find({ organizationId: orgId(req) }).sort({ createdAt: 1 }).lean();
+    res.json({ success: true, data: terms });
+  }),
+  getOne: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const item = await PaymentTerms.findOne({ _id: req.params.id, organizationId: orgId(req) });
+    if (!item) throw new NotFoundError("Payment Terms");
+    res.json({ success: true, data: item });
+  }),
+  create: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.body.name) throw new ValidationError("name is required");
+    const item = await PaymentTerms.create({ organizationId: orgId(req), ...req.body, isPermanent: false });
+    res.status(201).json({ success: true, data: item });
+  }),
+  update: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const item = await PaymentTerms.findOne({ _id: req.params.id, organizationId: orgId(req) });
+    if (!item) throw new NotFoundError("Payment Terms");
+    if (item.isPermanent) throw new ForbiddenError("This term is locked and cannot be edited");
+    const allowed = ["name", "termType", "netDays", "discountPercentage", "discountDays", "isDefault"];
+    allowed.forEach((f) => { if (req.body[f] !== undefined) (item as any)[f] = req.body[f]; });
+    await item.save();
+    res.json({ success: true, data: item });
+  }),
+  remove: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const item = await PaymentTerms.findOne({ _id: req.params.id, organizationId: orgId(req) });
+    if (!item) throw new NotFoundError("Payment Terms");
+    if (item.isPermanent) throw new ForbiddenError("This term is locked and cannot be deleted");
+    await item.deleteOne();
+    res.json({ success: true, message: "Payment term deleted" });
+  }),
+};
 
 export const seedPaymentTerms = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization = orgId(req);
-  const existing = await PaymentTerms.countDocuments({ organizationId: organization });
-  if (existing > 0) return res.json({ success: true, message: "Payment terms already exist" });
 
-  const terms = [
-    { name: "Due on Receipt", netDays: 0, discountPercentage: 0, discountDays: 0, isDefault: true },
-    { name: "Net 15", netDays: 15, discountPercentage: 0, discountDays: 0 },
-    { name: "Net 30", netDays: 30, discountPercentage: 0, discountDays: 0 },
-    { name: "Net 45", netDays: 45, discountPercentage: 0, discountDays: 0 },
-    { name: "Net 60", netDays: 60, discountPercentage: 0, discountDays: 0 },
-    { name: "Net 90", netDays: 90, discountPercentage: 0, discountDays: 0 },
-    { name: "2/10 Net 30", netDays: 30, discountPercentage: 2, discountDays: 10 },
+  // Always upsert the two permanent (locked) terms — every org must have them
+  const permanentTerms = [
+    { name: "Due end of next month", termType: "end_of_next_month", netDays: 0, discountPercentage: 0, discountDays: 0, isSystemTerm: true, isPermanent: true },
+    { name: "Due end of the month",  termType: "end_of_month",      netDays: 0, discountPercentage: 0, discountDays: 0, isSystemTerm: true, isPermanent: true },
   ];
+  for (const t of permanentTerms) {
+    await PaymentTerms.updateOne(
+      { organizationId: organization, name: t.name },
+      { $setOnInsert: { organizationId: organization, ...t } },
+      { upsert: true }
+    );
+  }
 
-  await PaymentTerms.insertMany(
-    terms.map((t) => ({ organizationId: organization, ...t, isSystemTerm: true }))
+  // Only add the editable defaults if the org has none yet
+  const nonPermanentCount = await PaymentTerms.countDocuments({ organizationId: organization, isPermanent: false });
+  if (nonPermanentCount === 0) {
+    const editableTerms = [
+      { name: "Due on Receipt", termType: "net_days", netDays: 0,  isDefault: true,  isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+      { name: "Net 15",         termType: "net_days", netDays: 15, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+      { name: "Net 30",         termType: "net_days", netDays: 30, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+      { name: "Net 45",         termType: "net_days", netDays: 45, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+      { name: "Net 60",         termType: "net_days", netDays: 60, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+    ];
+    await PaymentTerms.insertMany(editableTerms.map((t) => ({ organizationId: organization, ...t })));
+  }
+  res.status(201).json({ success: true, message: "Payment terms seeded" });
+});
+
+export const setDefaultPaymentTerm = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organization = orgId(req);
+  const { id } = req.params;
+  await PaymentTerms.updateMany({ organizationId: organization }, { isDefault: false });
+  const updated = await PaymentTerms.findOneAndUpdate(
+    { _id: id, organizationId: organization },
+    { isDefault: true },
+    { new: true }
   );
-  res.status(201).json({ success: true, message: "Default payment terms created" });
+  if (!updated) return res.status(404).json({ success: false, message: "Term not found" });
+  res.json({ success: true, data: updated });
+});
+
+export const unsetDefaultPaymentTerm = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organization = orgId(req);
+  await PaymentTerms.updateMany({ organizationId: organization }, { isDefault: false });
+  res.json({ success: true, message: "Default cleared" });
 });
 
 // ─── Warehouse ─────────────────────────────────────────────────────────────

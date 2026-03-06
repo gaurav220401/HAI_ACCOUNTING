@@ -3,27 +3,42 @@ import { apiFetch } from "./client";
 // ─── Types ──────────────────────────────────────────────────────────────
 
 export type AccountRootType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+
+export type AssetAccountType =
+  | "Other Asset" | "Other Current Asset" | "Cash" | "Bank"
+  | "Fixed Asset" | "Accounts Receivable" | "Stock"
+  | "Payment Clearing Account" | "Intangible Asset"
+  | "Non Current Asset" | "Deferred Tax Asset";
+
+export type LiabilityAccountType =
+  | "Other Current Liability" | "Credit Card" | "Non Current Liability"
+  | "Other Liability" | "Accounts Payable" | "Overseas Tax Payable"
+  | "Deferred Tax Liability";
+
+export type EquityAccountType = "Equity";
+export type IncomeAccountType = "Income" | "Other Income";
+export type ExpenseAccountType = "Expense" | "Cost Of Goods Sold" | "Other Expense";
+
 export type AccountType =
-  | "Bank" | "Cash" | "AccountReceivable" | "AccountPayable"
-  | "Tax" | "FixedAsset" | "WIPAsset" | "StockAsset"
-  | "ExpenseAccount" | "DirectExpense" | "IndirectExpense"
-  | "IncomeAccount" | "DirectIncome" | "IndirectIncome"
-  | "Equity" | "RoundingAdjustment";
+  | AssetAccountType | LiabilityAccountType | EquityAccountType
+  | IncomeAccountType | ExpenseAccountType;
+
+/** Accounts grouped by accountType — returned by /for-item */
+export type GroupedAccounts = Record<string, Account[]>;
 
 export interface Account {
   _id: string;
-  orgId: string;
+  organizationId: string;
   name: string;
   code?: string;
   rootType: AccountRootType;
-  accountType?: AccountType;
-  parentId?: string | Account;
+  accountType: AccountType;
+  parentId?: string | null;
   description?: string;
-  isBankAccount: boolean;
   isGroup: boolean;
-  isSystem: boolean;
+  isSystemAccount: boolean;
   isActive: boolean;
-  openingBalance: number;
+  balance: number;
   currency?: string;
   createdAt: string;
   updatedAt: string;
@@ -34,22 +49,35 @@ export interface CreateAccountInput {
   name: string;
   code?: string;
   rootType: AccountRootType;
-  accountType?: AccountType;
+  accountType: AccountType;
   parentId?: string;
   description?: string;
-  isBankAccount?: boolean;
   isGroup?: boolean;
-  openingBalance?: number;
   currency?: string;
 }
 
-export type UpdateAccountInput = Partial<CreateAccountInput>;
+export type UpdateAccountInput = Partial<CreateAccountInput> & { isActive?: boolean; accountType?: AccountType; rootType?: AccountRootType };
 
 // ─── API ────────────────────────────────────────────────────────────────
 
 export const accountApi = {
-  list: (orgId: string) =>
-    apiFetch<{ data: Account[] }>(`/accounts?orgId=${orgId}`),
+  /** Flat list, supports ?rootType=Income,Expense&excludeGroups=true */
+  list: (params?: { rootType?: string; accountType?: string; excludeGroups?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.rootType) qs.set("rootType", params.rootType);
+    if (params?.accountType) qs.set("accountType", params.accountType);
+    if (params?.excludeGroups) qs.set("excludeGroups", "true");
+    const q = qs.toString();
+    return apiFetch<{ data: Account[] }>(`/accounts${q ? `?${q}` : ""}`);
+  },
+
+  /**
+   * Returns accounts grouped by accountType for item form dropdowns.
+   * section = "sales" → Income accounts
+   * section = "purchase" → Expense accounts
+   */
+  listForItem: (section: "sales" | "purchase") =>
+    apiFetch<{ data: GroupedAccounts }>(`/accounts/for-item?section=${section}`),
 
   create: (data: CreateAccountInput) =>
     apiFetch<{ data: Account }>("/accounts", {
@@ -66,9 +94,8 @@ export const accountApi = {
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/accounts/${id}`, { method: "DELETE" }),
 
-  seedTemplate: (orgId: string) =>
-    apiFetch<{ data: Account[]; message: string }>("/accounts/seed-template", {
+  seedTemplate: () =>
+    apiFetch<{ message: string }>("/accounts/seed-template", {
       method: "POST",
-      body: JSON.stringify({ orgId }),
     }),
 };

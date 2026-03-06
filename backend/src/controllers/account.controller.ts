@@ -1,6 +1,6 @@
 import { Response } from "express";
 import Account from "../models/account.model";
-import { AuthenticatedRequest } from "../types";
+import { AuthenticatedRequest, AccountType } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
@@ -15,12 +15,49 @@ function orgId(req: AuthenticatedRequest) {
 
 // ─── Controllers ───────────────────────────────────────────────────────────
 
-/** GET /api/accounts  — return full tree for the active org */
+/** GET /api/accounts  — return flat list for the active org (supports ?rootType=Income,Expense) */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const accounts = await Account.find({ organizationId: orgId(req), isDeleted: false })
-    .sort({ name: 1 })
-    .lean();
+  const filter: Record<string, unknown> = { organizationId: orgId(req), isDeleted: false };
+  if (req.query.rootType) {
+    const types = (req.query.rootType as string).split(",").map((t) => t.trim());
+    filter.rootType = { $in: types };
+  }
+  if (req.query.accountType) {
+    const types = (req.query.accountType as string).split(",").map((t) => t.trim());
+    filter.accountType = { $in: types };
+  }
+  if (req.query.excludeGroups === "true") filter.isGroup = false;
+  const accounts = await Account.find(filter).sort({ name: 1 }).lean();
   res.json({ success: true, data: accounts });
+});
+
+/**
+ * GET /api/accounts/for-item?section=sales|purchase
+ * Returns accounts grouped by accountType for use in item form dropdowns.
+ * sales   → rootType Income
+ * purchase → rootType Expense (Cost Of Goods Sold + Expense)
+ */
+export const listForItem = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const section = (req.query.section as string) ?? "sales";
+  const rootTypes = section === "purchase" ? ["Expense"] : ["Income"];
+  const accounts = await Account.find({
+    organizationId: orgId(req),
+    isDeleted: false,
+    isGroup: false,
+    rootType: { $in: rootTypes },
+  })
+    .sort({ accountType: 1, name: 1 })
+    .lean();
+
+  // Group by accountType for frontend grouped dropdowns
+  const grouped: Record<string, typeof accounts> = {};
+  for (const acc of accounts) {
+    const key = acc.accountType;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(acc);
+  }
+
+  res.json({ success: true, data: grouped });
 });
 
 /** POST /api/accounts */
@@ -47,10 +84,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const account = await Account.findOne({ _id: req.params.id, organizationId: orgId(req) });
   if (!account) throw new NotFoundError("Account");
-  if (account.isSystemAccount && (req.body.name || req.body.accountType || req.body.rootType))
-    throw new ValidationError("Cannot modify core fields of a system account");
 
-  const fields = ["name", "code", "description", "currency", "isActive", "isGroup", "parentId"];
+  const fields = ["name", "code", "description", "currency", "isActive", "isGroup", "parentId", "accountType", "rootType"];
   fields.forEach((f) => { if (req.body[f] !== undefined) (account as any)[f] = req.body[f]; });
 
   attachUser(account, req);
@@ -62,7 +97,6 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const account = await Account.findOne({ _id: req.params.id, organizationId: orgId(req) });
   if (!account) throw new NotFoundError("Account");
-  if (account.isSystemAccount) throw new ValidationError("Cannot delete a system account");
 
   // Check for child accounts
   const hasChildren = await Account.exists({ parentId: account._id, isDeleted: false });
@@ -75,93 +109,121 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   res.json({ success: true, message: "Account deleted" });
 });
 
-/** POST /api/accounts/seed-template — seed standard Indian CoA */
+/** POST /api/accounts/seed-template — seed standard Indian CoA (Zoho Books style) */
 export const seedTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization = orgId(req);
   const existing = await Account.countDocuments({ organizationId: organization });
   if (existing > 0) throw new ValidationError("Chart of Accounts already exists for this organization");
 
-  const template = getIndianCoATemplate(organization.toString());
-  const accountMap = new Map<string, any>();
+  const template = getIndianCoATemplate();
 
   for (const node of template) {
-    const parent = node.parentKey ? accountMap.get(node.parentKey) : null;
     const account = new Account({
       organizationId: organization,
       name: node.name,
-      code: node.code,
       rootType: node.rootType,
       accountType: node.accountType,
-      isGroup: node.isGroup,
+      isGroup: false,
       isSystemAccount: true,
-      parentId: parent?._id ?? null,
+      parentId: null,
+      description: node.description ?? "",
     });
     attachUser(account, req);
     await account.save();
-    if (node.key) accountMap.set(node.key, account);
   }
 
   res.status(201).json({ success: true, message: "Chart of Accounts seeded with Indian Standard template" });
 });
 
-// ─── Indian Standard CoA Template ─────────────────────────────────────────
+// ─── Indian Standard CoA Template (Zoho Books style — flat, no parent groups) ──
 
-function getIndianCoATemplate(orgId: string) {
-  return [
-    // Root groups
-    { key: "assets", name: "Assets", code: "1000", rootType: "Asset", accountType: "Current Asset", isGroup: true, parentKey: null },
-    { key: "liabilities", name: "Liabilities", code: "2000", rootType: "Liability", accountType: "Current Liability", isGroup: true, parentKey: null },
-    { key: "equity", name: "Equity", code: "3000", rootType: "Equity", accountType: "Equity", isGroup: true, parentKey: null },
-    { key: "income", name: "Income", code: "4000", rootType: "Income", accountType: "Income", isGroup: true, parentKey: null },
-    { key: "expenses", name: "Expenses", code: "5000", rootType: "Expense", accountType: "Expense", isGroup: true, parentKey: null },
+function getIndianCoATemplate() {
+  type TemplateNode = {
+    name: string;
+    rootType: "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+    accountType: AccountType;
+    description?: string;
+  };
 
-    // Assets
-    { key: "current_assets", name: "Current Assets", code: "1100", rootType: "Asset", accountType: "Current Asset", isGroup: true, parentKey: "assets" },
-    { key: "bank", name: "Bank Accounts", code: "1110", rootType: "Asset", accountType: "Bank", isGroup: true, parentKey: "current_assets" },
-    { key: "cash", name: "Cash in Hand", code: "1120", rootType: "Asset", accountType: "Cash", isGroup: false, parentKey: "current_assets" },
-    { key: "receivable", name: "Accounts Receivable", code: "1130", rootType: "Asset", accountType: "Receivable", isGroup: false, parentKey: "current_assets" },
-    { key: "prepaid", name: "Prepaid Expenses", code: "1140", rootType: "Asset", accountType: "Current Asset", isGroup: false, parentKey: "current_assets" },
-    { key: "tax_assets", name: "Tax Assets", code: "1150", rootType: "Asset", accountType: "Current Asset", isGroup: true, parentKey: "current_assets" },
-    { key: "cgst_input", name: "CGST Input Tax Credit", code: "1151", rootType: "Asset", accountType: "Tax", isGroup: false, parentKey: "tax_assets" },
-    { key: "sgst_input", name: "SGST Input Tax Credit", code: "1152", rootType: "Asset", accountType: "Tax", isGroup: false, parentKey: "tax_assets" },
-    { key: "igst_input", name: "IGST Input Tax Credit", code: "1153", rootType: "Asset", accountType: "Tax", isGroup: false, parentKey: "tax_assets" },
-    { key: "fixed_assets", name: "Fixed Assets", code: "1200", rootType: "Asset", accountType: "Fixed Asset", isGroup: true, parentKey: "assets" },
-    { key: "furniture", name: "Furniture & Fixtures", code: "1210", rootType: "Asset", accountType: "Fixed Asset", isGroup: false, parentKey: "fixed_assets" },
-    { key: "equipment", name: "Office Equipment", code: "1220", rootType: "Asset", accountType: "Fixed Asset", isGroup: false, parentKey: "fixed_assets" },
-    { key: "computers", name: "Computers & Peripherals", code: "1230", rootType: "Asset", accountType: "Fixed Asset", isGroup: false, parentKey: "fixed_assets" },
+  const t: TemplateNode[] = [
+    // ── ASSETS ────────────────────────────────────────────────────────
+    { name: "Employee Advance",         rootType: "Asset", accountType: "Other Current Asset",      description: "Advances paid to employees for business purposes." },
+    { name: "Prepaid Expenses",         rootType: "Asset", accountType: "Other Current Asset",      description: "Expenses paid in advance for future periods." },
+    { name: "TDS Receivable",           rootType: "Asset", accountType: "Other Current Asset",      description: "Tax deducted at source receivable from the government." },
+    { name: "Advance Tax",              rootType: "Asset", accountType: "Other Current Asset",      description: "Any tax which is paid in advance is recorded into the advance tax account. This advance tax payment could be a quarterly, half yearly or yearly payment." },
+    { name: "Petty Cash",               rootType: "Asset", accountType: "Cash",                     description: "Small amount of cash kept for minor expenses." },
+    { name: "Undeposited Funds",        rootType: "Asset", accountType: "Cash",                     description: "Payments received but not yet deposited to the bank." },
+    { name: "Accounts Receivable",      rootType: "Asset", accountType: "Accounts Receivable",      description: "The amount of money your customers owe you for goods or services rendered." },
+    { name: "Furniture and Equipment",  rootType: "Asset", accountType: "Fixed Asset",              description: "Furniture, fixtures, and equipment owned by the business." },
+    { name: "Inventory Asset",          rootType: "Asset", accountType: "Stock",                    description: "Value of goods held in inventory/stock." },
 
-    // Liabilities
-    { key: "current_liab", name: "Current Liabilities", code: "2100", rootType: "Liability", accountType: "Current Liability", isGroup: true, parentKey: "liabilities" },
-    { key: "payable", name: "Accounts Payable", code: "2110", rootType: "Liability", accountType: "Payable", isGroup: false, parentKey: "current_liab" },
-    { key: "tax_liab", name: "Tax Liabilities", code: "2120", rootType: "Liability", accountType: "Tax", isGroup: true, parentKey: "current_liab" },
-    { key: "cgst_output", name: "CGST Payable", code: "2121", rootType: "Liability", accountType: "Tax", isGroup: false, parentKey: "tax_liab" },
-    { key: "sgst_output", name: "SGST Payable", code: "2122", rootType: "Liability", accountType: "Tax", isGroup: false, parentKey: "tax_liab" },
-    { key: "igst_output", name: "IGST Payable", code: "2123", rootType: "Liability", accountType: "Tax", isGroup: false, parentKey: "tax_liab" },
-    { key: "tds_payable", name: "TDS Payable", code: "2124", rootType: "Liability", accountType: "Tax", isGroup: false, parentKey: "tax_liab" },
-    { key: "salaries_payable", name: "Salaries Payable", code: "2130", rootType: "Liability", accountType: "Current Liability", isGroup: false, parentKey: "current_liab" },
-    { key: "longterm_liab", name: "Long Term Liabilities", code: "2200", rootType: "Liability", accountType: "Long Term Liability", isGroup: true, parentKey: "liabilities" },
+    // ── LIABILITIES ────────────────────────────────────────────────────
+    { name: "Tax Payable",                  rootType: "Liability", accountType: "Other Current Liability", description: "Taxes owed to the government that are due within a year." },
+    { name: "Employee Reimbursements",      rootType: "Liability", accountType: "Other Current Liability", description: "Amounts owed to employees for expenses they incurred on behalf of the business." },
+    { name: "Opening Balance Adjustments",  rootType: "Liability", accountType: "Other Current Liability", description: "Adjustments made to opening balances during migration." },
+    { name: "Unearned Revenue",             rootType: "Liability", accountType: "Other Current Liability", description: "Revenue received in advance for goods or services not yet delivered." },
+    { name: "TDS Payable",                  rootType: "Liability", accountType: "Other Current Liability", description: "Tax deducted at source payable to the government." },
+    { name: "Accounts Payable",             rootType: "Liability", accountType: "Accounts Payable",       description: "The amount of money you owe to your vendors for goods or services received." },
+    { name: "Mortgages",                    rootType: "Liability", accountType: "Non Current Liability",  description: "Long-term loans secured by property or real estate." },
+    { name: "Construction Loans",           rootType: "Liability", accountType: "Non Current Liability",  description: "Short-term or interim loans to finance construction projects." },
+    { name: "Dimension Adjustments",        rootType: "Liability", accountType: "Other Liability",        description: "Adjustments related to reporting dimensions." },
 
-    // Equity
-    { key: "capital", name: "Capital Account", code: "3100", rootType: "Equity", accountType: "Equity", isGroup: false, parentKey: "equity" },
-    { key: "retained", name: "Retained Earnings", code: "3200", rootType: "Equity", accountType: "Equity", isGroup: false, parentKey: "equity" },
+    // ── EQUITY ─────────────────────────────────────────────────────────
+    { name: "Retained Earnings",        rootType: "Equity", accountType: "Equity", description: "Accumulated net income retained in the business after dividends." },
+    { name: "Drawings",                 rootType: "Equity", accountType: "Equity", description: "Amounts withdrawn by the owner for personal use." },
+    { name: "Investments",              rootType: "Equity", accountType: "Equity", description: "Capital invested into the business by owners or partners." },
+    { name: "Distributions",            rootType: "Equity", accountType: "Equity", description: "Payments or distributions made to shareholders or partners." },
+    { name: "Dividends Paid",           rootType: "Equity", accountType: "Equity", description: "Dividends distributed to shareholders." },
+    { name: "Owner's Equity",           rootType: "Equity", accountType: "Equity", description: "The owner's total investment and earnings in the business." },
+    { name: "Opening Balance Offset",   rootType: "Equity", accountType: "Equity", description: "Used to offset opening balance differences during setup." },
+    { name: "Capital Stock",            rootType: "Equity", accountType: "Equity", description: "Shares of stock issued to shareholders representing ownership." },
 
-    // Income
-    { key: "sales_income", name: "Sales Revenue", code: "4100", rootType: "Income", accountType: "Income", isGroup: false, parentKey: "income" },
-    { key: "service_income", name: "Service Revenue", code: "4200", rootType: "Income", accountType: "Income", isGroup: false, parentKey: "income" },
-    { key: "other_income", name: "Other Income", code: "4300", rootType: "Income", accountType: "Income", isGroup: false, parentKey: "income" },
-    { key: "interest_income", name: "Interest Received", code: "4310", rootType: "Income", accountType: "Income", isGroup: false, parentKey: "other_income" },
+    // ── INCOME ─────────────────────────────────────────────────────────
+    { name: "Shipping Charge",          rootType: "Income", accountType: "Income", description: "Revenue from shipping and delivery charges." },
+    { name: "Sales",                    rootType: "Income", accountType: "Income", description: "Revenue from sale of goods or services." },
+    { name: "General Income",           rootType: "Income", accountType: "Income", description: "General income from primary business activities." },
+    { name: "Interest Income",          rootType: "Income", accountType: "Income", description: "Income earned from interest on deposits or investments." },
+    { name: "Other Charges",            rootType: "Income", accountType: "Income", description: "Miscellaneous charges and fees collected." },
+    { name: "Late Fee Income",          rootType: "Income", accountType: "Income", description: "Income from late payment fees charged to customers." },
+    { name: "Discount",                 rootType: "Income", accountType: "Income", description: "Discounts given on sales." },
 
-    // Expenses
-    { key: "cogs", name: "Cost of Goods Sold", code: "5100", rootType: "Expense", accountType: "Cost of Goods Sold", isGroup: false, parentKey: "expenses" },
-    { key: "salary_exp", name: "Salaries & Wages", code: "5200", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "rent", name: "Rent", code: "5300", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "utilities", name: "Utilities", code: "5400", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "travel", name: "Travel & Conveyance", code: "5500", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "office_supplies", name: "Office Supplies", code: "5600", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "depreciation", name: "Depreciation", code: "5700", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "bank_charges", name: "Bank Charges", code: "5800", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "professional_fees", name: "Professional Fees", code: "5900", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "miscellaneous", name: "Miscellaneous Expenses", code: "5990", rootType: "Expense", accountType: "Expense", isGroup: false, parentKey: "expenses" },
-    { key: "roundoff", name: "Round Off", code: "5999", rootType: "Expense", accountType: "Round Off", isGroup: false, parentKey: "expenses" },
+    // ── EXPENSE ────────────────────────────────────────────────────────
+    { name: "Purchase Discounts",              rootType: "Expense", accountType: "Expense", description: "Discounts received on purchases from vendors." },
+    { name: "Depreciation And Amortisation",   rootType: "Expense", accountType: "Expense", description: "Reduction in value of tangible and intangible assets over time." },
+    { name: "Transportation Expense",          rootType: "Expense", accountType: "Expense", description: "Costs of transporting goods or employees." },
+    { name: "Merchandise",                     rootType: "Expense", accountType: "Expense", description: "Cost of goods purchased for resale." },
+    { name: "Uncategorized",                   rootType: "Expense", accountType: "Expense", description: "Expenses that have not been classified yet." },
+    { name: "Raw Materials And Consumables",   rootType: "Expense", accountType: "Expense", description: "Cost of raw materials and consumable supplies." },
+    { name: "Contract Assets",                 rootType: "Expense", accountType: "Expense", description: "Expenses incurred on contract-based assets." },
+    { name: "Rent Expense",                    rootType: "Expense", accountType: "Expense", description: "Rent paid for office, warehouse, or other business premises." },
+    { name: "Office Supplies",                 rootType: "Expense", accountType: "Expense", description: "Cost of stationery, office supplies, and consumables." },
+    { name: "Advertising And Marketing",       rootType: "Expense", accountType: "Expense", description: "Costs related to advertising, promotions, and marketing campaigns." },
+    { name: "Bank Fees and Charges",           rootType: "Expense", accountType: "Expense", description: "Fees charged by banks for account maintenance and transactions." },
+    { name: "Credit Card Charges",             rootType: "Expense", accountType: "Expense", description: "Fees charged for credit card processing and transactions." },
+    { name: "Travel Expense",                  rootType: "Expense", accountType: "Expense", description: "Costs for business travel including airfare, lodging, and transport." },
+    { name: "Telephone Expense",               rootType: "Expense", accountType: "Expense", description: "Costs for telephone and mobile communication." },
+    { name: "Automobile Expense",              rootType: "Expense", accountType: "Expense", description: "Costs related to company vehicles including fuel, insurance, and maintenance." },
+    { name: "IT and Internet Expenses",        rootType: "Expense", accountType: "Expense", description: "Costs for internet services, software subscriptions, and IT support." },
+    { name: "Janitorial Expense",              rootType: "Expense", accountType: "Expense", description: "Costs for cleaning and janitorial services." },
+    { name: "Postage",                         rootType: "Expense", accountType: "Expense", description: "Costs of mailing and courier services." },
+    { name: "Bad Debt",                        rootType: "Expense", accountType: "Expense", description: "Amounts owed by customers that are unlikely to be collected." },
+    { name: "Printing and Stationery",         rootType: "Expense", accountType: "Expense", description: "Costs of printing, stationery, and office supplies." },
+    { name: "Salaries and Employee Wages",     rootType: "Expense", accountType: "Expense", description: "Wages and salaries paid to employees." },
+    { name: "Meals and Entertainment",         rootType: "Expense", accountType: "Expense", description: "Costs for business meals and entertainment." },
+    { name: "Depreciation Expense",            rootType: "Expense", accountType: "Expense", description: "Periodic reduction in value of fixed assets." },
+    { name: "Consultant Expense",              rootType: "Expense", accountType: "Expense", description: "Fees paid to external consultants and advisors." },
+    { name: "Repairs and Maintenance",         rootType: "Expense", accountType: "Expense", description: "Costs of repairing and maintaining business assets." },
+    { name: "Other Expenses",                  rootType: "Expense", accountType: "Expense", description: "Miscellaneous business expenses." },
+    { name: "Lodging",                         rootType: "Expense", accountType: "Expense", description: "Costs for hotel and accommodation during business trips." },
+    // Cost Of Goods Sold
+    { name: "Cost of Goods Sold",              rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Direct costs attributable to the production of goods sold." },
+    { name: "Labor",                           rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Labor costs directly related to production." },
+    { name: "Materials",                       rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Cost of raw materials used in production." },
+    { name: "Subcontractor",                   rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Payments to subcontractors for production work." },
+    { name: "Job Costing",                     rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Costs allocated to specific jobs or projects." },
+    // Other Expense
+    { name: "Exchange Gain or Loss",           rootType: "Expense", accountType: "Other Expense",      description: "Gains or losses due to foreign currency exchange rate fluctuations." },
   ];
+
+  return t;
 }

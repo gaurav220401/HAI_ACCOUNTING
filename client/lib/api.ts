@@ -106,6 +106,11 @@ export type {
   Account,
   AccountRootType,
   AccountType,
+  AssetAccountType,
+  LiabilityAccountType,
+  IncomeAccountType,
+  ExpenseAccountType,
+  GroupedAccounts,
   CreateAccountInput,
   UpdateAccountInput,
 } from "./api/accounts";

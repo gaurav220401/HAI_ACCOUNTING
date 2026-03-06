@@ -21,9 +21,13 @@ export interface PaymentTerms {
   _id: string;
   orgId: string;
   name: string;
-  days: number;
-  isDefault?: boolean;
-  description?: string;
+  termType: "net_days" | "end_of_month" | "end_of_next_month";
+  netDays: number;
+  discountPercentage: number;
+  discountDays: number;
+  isDefault: boolean;
+  isSystemTerm: boolean;
+  isPermanent: boolean;  // cannot be deleted or renamed
   isActive: boolean;
   createdAt: string;
 }
@@ -115,6 +119,10 @@ export const settingsApi = {
   paymentTerms: {
     ...makeCrud<PaymentTerms>("/settings/payment-terms"),
     seed: () => apiFetch<{ message: string }>("/settings/payment-terms/seed", { method: "POST" }),
+    setDefault: (id: string) =>
+      apiFetch<{ data: PaymentTerms }>(`/settings/payment-terms/${id}/set-default`, { method: "POST" }),
+    unsetDefault: () =>
+      apiFetch<{ success: boolean }>("/settings/payment-terms/unset-default", { method: "POST" }),
   },
 
   warehouses: makeCrud<Warehouse>("/settings/warehouses"),

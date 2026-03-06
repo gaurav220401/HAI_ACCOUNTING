@@ -57,6 +57,8 @@ export type FiscalYearMonth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export interface IOrganization extends Document {
   _id: Types.ObjectId;
+  owner?: Types.ObjectId | null;
+  members: Types.ObjectId[];
   name: string;
   industry: string;
   baseCurrency: string;
@@ -204,11 +206,35 @@ export interface ServiceResult<T = unknown> {
 
 // ─── 1.2 Chart of Accounts ────────────────────────────────────────────
 export type AccountRootType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+
+/** Asset sub-types */
+export type AssetAccountType =
+  | "Other Asset" | "Other Current Asset" | "Cash" | "Bank"
+  | "Fixed Asset" | "Accounts Receivable" | "Stock"
+  | "Payment Clearing Account" | "Intangible Asset"
+  | "Non Current Asset" | "Deferred Tax Asset";
+
+/** Liability sub-types */
+export type LiabilityAccountType =
+  | "Other Current Liability" | "Credit Card" | "Non Current Liability"
+  | "Other Liability" | "Accounts Payable" | "Overseas Tax Payable"
+  | "Deferred Tax Liability";
+
+/** Equity sub-types */
+export type EquityAccountType = "Equity";
+
+/** Income sub-types */
+export type IncomeAccountType = "Income" | "Other Income";
+
+/** Expense sub-types */
+export type ExpenseAccountType = "Expense" | "Cost Of Goods Sold" | "Other Expense";
+
 export type AccountType =
-  | "Receivable" | "Payable" | "Bank" | "Cash" | "Fixed Asset"
-  | "Current Asset" | "Current Liability" | "Long Term Liability"
-  | "Equity" | "Income" | "Cost of Goods Sold" | "Expense"
-  | "Tax" | "Round Off" | "Other";
+  | AssetAccountType
+  | LiabilityAccountType
+  | EquityAccountType
+  | IncomeAccountType
+  | ExpenseAccountType;
 
 export interface IAccount extends Document {
   _id: Types.ObjectId;
@@ -239,41 +265,94 @@ export type TaxTreatment =
   | "Overseas" | "Composition" | "UIN";
 
 export interface IContactPerson {
-  name: string;
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
+  name: string;        // kept for backward compat; derived from firstName + lastName
   email?: string;
-  phone?: string;
+  workPhone?: string;
+  mobile?: string;
+  phone?: string;      // kept for backward compat
   designation?: string;
   isPrimary: boolean;
+}
+
+export interface IBankDetail {
+  bankName?: string;
+  accountNumber?: string;
+  accountHolderName?: string;
+  ifscCode?: string;
+  branchName?: string;
+  upiId?: string;
+  isPrimary?: boolean;
 }
 
 export interface IContact extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
   contactType: ContactType;
+  // Primary contact fields
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
   displayName: string;
   companyName?: string;
   email?: string;
-  phone?: string;
+  phone?: string;      // work phone
+  mobile?: string;
   currency: string;
+  language?: string;
+  // Financial
   paymentTermsId?: Types.ObjectId | null;
+  accountsPayableId?: Types.ObjectId | null;   // Accounts Payable account
+  openingBalance?: number;
   taxTreatment: TaxTreatment;
-  taxId?: string;        // GSTIN / VAT / PAN
+  taxId?: string;      // GSTIN / VAT
+  gstin?: string;      // GSTIN (primary GST number)
+  pan?: string;        // PAN number
+  tdsCategory?: string;
+  msmeRegistered?: boolean;
+  // Extra / social details
+  websiteUrl?: string;
+  department?: string;
+  designation?: string;
+  twitterHandle?: string;
+  skypeName?: string;
+  facebookUrl?: string;
+  // Attached documents
+  documents?: { name: string; url: string; publicId: string; size?: number; mimeType?: string }[];
+  // Address
   billingAddress?: {
-    street?: string; city?: string; state?: string; zip?: string; country?: string;
+    attention?: string;
+    street?: string;
+    street2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+    phone?: string;
+    fax?: string;
   };
   shippingAddress?: {
-    street?: string; city?: string; state?: string; zip?: string; country?: string;
+    attention?: string;
+    street?: string;
+    street2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+    phone?: string;
+    fax?: string;
   };
   contactPersons: IContactPerson[];
+  bankDetails: IBankDetail[];
   notes?: string;
   portalEnabled: boolean;
-  language?: string;
   reportingTags: Types.ObjectId[];
   // Customer-specific
   creditLimit?: number;
   salesPersonId?: Types.ObjectId | null;
-  // Vendor-specific
-  tdsCategory?: string;
+  // Calculated
   outstandingPayable: number;
   outstandingReceivable: number;
   isActive: boolean;
@@ -423,11 +502,13 @@ export interface IPaymentTerms extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
   name: string;          // "Net 30", "Due on Receipt"
-  netDays: number;       // 0 = due on receipt
+  termType: "net_days" | "end_of_month" | "end_of_next_month";
+  netDays: number;       // 0 = due on receipt; ignored for end_of_month types
   discountPercentage: number;
   discountDays: number;
   isDefault: boolean;
   isSystemTerm: boolean;
+  isPermanent: boolean;  // true = cannot be deleted or renamed
   createdAt: Date;
   updatedAt: Date;
 }

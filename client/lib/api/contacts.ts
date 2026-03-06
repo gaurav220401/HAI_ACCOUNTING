@@ -1,7 +1,7 @@
-import { apiFetch, buildQuery } from "./client";
+﻿import { apiFetch, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
-// ─── Types ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type ContactType = "Customer" | "Vendor" | "Both";
 export type TaxTreatment =
@@ -9,25 +9,55 @@ export type TaxTreatment =
   | "SpecialEconomicZone" | "DeemedExport";
 
 export interface Address {
+  attention?: string;
   street?: string;
+  street2?: string;
   city?: string;
   state?: string;
   zip?: string;
   country?: string;
+  phone?: string;
+  fax?: string;
 }
 
 export interface ContactPerson {
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
   name: string;
   email?: string;
-  phone?: string;
+  workPhone?: string;
+  mobile?: string;
   designation?: string;
   isPrimary?: boolean;
+}
+
+export interface BankDetail {
+  bankName?: string;
+  accountNumber?: string;
+  accountHolderName?: string;
+  ifscCode?: string;
+  branchName?: string;
+  upiId?: string;
+  isPrimary?: boolean;
+}
+
+export interface ContactDocument {
+  name: string;
+  url: string;
+  publicId: string;
+  size?: number;
+  mimeType?: string;
 }
 
 export interface Contact {
   _id: string;
   orgId: string;
   contactType: ContactType;
+  // Primary contact
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
   displayName: string;
   companyName?: string;
   gstin?: string;
@@ -36,17 +66,35 @@ export interface Contact {
   phone?: string;
   mobile?: string;
   website?: string;
+  language?: string;
+  // Financial
   taxTreatment?: TaxTreatment;
   placeOfSupply?: string;
+  paymentTermsId?: string;
+  accountsPayableId?: string;
+  openingBalance?: number;
+  tdsCategory?: string;
+  msmeRegistered?: boolean;
+  currency?: string;
+  // Address
   billingAddress?: Address;
   shippingAddress?: Address;
+  // Relations
   contactPersons?: ContactPerson[];
-  openingBalance?: number;
-  paymentTermsId?: string;
+  bankDetails?: BankDetail[];
   salesPersonId?: string;
-  currency?: string;
   reportingTags?: string[];
   notes?: string;
+  portalEnabled?: boolean;
+  // Extra / social
+  websiteUrl?: string;
+  department?: string;
+  designation?: string;
+  twitterHandle?: string;
+  skypeName?: string;
+  facebookUrl?: string;
+  // Documents
+  documents?: ContactDocument[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -54,6 +102,10 @@ export interface Contact {
 
 export interface CreateContactInput {
   contactType: ContactType;
+  // Primary contact
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
   displayName: string;
   companyName?: string;
   gstin?: string;
@@ -61,18 +113,35 @@ export interface CreateContactInput {
   email?: string;
   phone?: string;
   mobile?: string;
-  website?: string;
+  language?: string;
+  // Financial
   taxTreatment?: TaxTreatment;
   placeOfSupply?: string;
+  paymentTermsId?: string;
+  accountsPayableId?: string;
+  openingBalance?: number;
+  tdsCategory?: string;
+  msmeRegistered?: boolean;
+  currency?: string;
+  // Address
   billingAddress?: Address;
   shippingAddress?: Address;
+  // Relations
   contactPersons?: ContactPerson[];
-  openingBalance?: number;
-  paymentTermsId?: string;
+  bankDetails?: BankDetail[];
   salesPersonId?: string;
-  currency?: string;
   reportingTags?: string[];
   notes?: string;
+  portalEnabled?: boolean;
+  // Extra / social
+  websiteUrl?: string;
+  department?: string;
+  designation?: string;
+  twitterHandle?: string;
+  skypeName?: string;
+  facebookUrl?: string;
+  // Documents
+  documents?: ContactDocument[];
 }
 
 export type UpdateContactInput = Partial<CreateContactInput>;
@@ -81,8 +150,53 @@ export interface ContactListParams extends ListParams {
   type?: ContactType | "All";
   search?: string;
 }
+// ─── GSTIN Lookup ────────────────────────────────────────────────────────
 
-// ─── API ────────────────────────────────────────────────────────────────
+export interface GstinAddress {
+  attention?: string;
+  street?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+}
+
+export interface GstinLookupResult {
+  gstin: string;
+  companyName: string;
+  legalName: string;
+  taxpayerType: string;
+  gstinStatus: string;
+  registrationDate: string;
+  cancellationDate: string;
+  pan: string;
+  stateCode: string;
+  state: string;
+  addressType: string;
+  addressString: string;
+  address: GstinAddress;
+  additionalAddresses: (GstinAddress & { type?: string; addressString?: string })[];
+  naturalBusinessActivities: string[];
+  companyType: string;
+  eInvoiceApplicable: string;
+}
+
+export interface GstinLookupResponse {
+  success: boolean;
+  source: "gst-portal" | "local-parse";
+  data: GstinLookupResult;
+}
+
+export interface GstinCaptchaResponse {
+  success: boolean;
+  data: {
+    captchaImage: string;
+    captchaCookie: string;
+  };
+}
+
+// ─── API ────────────────────────────────────────────────────────────────────
 
 export const contactApi = {
   list: (params?: ContactListParams) =>
@@ -105,4 +219,18 @@ export const contactApi = {
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/contacts/${id}`, { method: "DELETE" }),
+
+  /** Fetch a fresh CAPTCHA image + cookie from the GST portal */
+  getGstinCaptcha: () =>
+    apiFetch<GstinCaptchaResponse>("/gstin/captcha"),
+
+  /**
+   * Lookup GSTIN details from the real GST portal.
+   * captcha + captchaCookie come from getGstinCaptcha().
+   */
+  lookupGstin: (gstin: string, captcha: string, captchaCookie: string) =>
+    apiFetch<GstinLookupResponse>("/gstin/lookup", {
+      method: "POST",
+      body: JSON.stringify({ gstin: gstin.toUpperCase(), captcha, captchaCookie }),
+    }),
 };

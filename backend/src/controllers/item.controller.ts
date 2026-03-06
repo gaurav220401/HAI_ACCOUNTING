@@ -6,6 +6,7 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import { upsertDefaultUnits } from "../utils/defaultUnits"; // GST defaults
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -139,29 +140,8 @@ export const deleteUnit = asyncHandler(async (req: AuthenticatedRequest, res: Re
   res.json({ success: true, message: "Unit deleted" });
 });
 
-/** Seed standard units for a new org */
+/** Seed the 13 GST-standard units for an org (safe to call repeatedly — uses upsert) */
 export const seedUnits = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const organization = orgId(req);
-  const existing = await UnitOfMeasurement.countDocuments({ organizationId: organization });
-  if (existing > 0) return res.json({ success: true, message: "Units already exist" });
-
-  const defaults = [
-    { name: "Numbers", abbreviation: "nos" },
-    { name: "Kilogram", abbreviation: "kg" },
-    { name: "Gram", abbreviation: "g" },
-    { name: "Litre", abbreviation: "L" },
-    { name: "Millilitre", abbreviation: "mL" },
-    { name: "Metre", abbreviation: "m" },
-    { name: "Centimetre", abbreviation: "cm" },
-    { name: "Hour", abbreviation: "hr" },
-    { name: "Minute", abbreviation: "min" },
-    { name: "Day", abbreviation: "day" },
-    { name: "Box", abbreviation: "box" },
-    { name: "Pair", abbreviation: "pair" },
-    { name: "Pack", abbreviation: "pack" },
-  ];
-  await UnitOfMeasurement.insertMany(
-    defaults.map((u) => ({ organizationId: organization, ...u, isSystemUnit: true }))
-  );
-  res.status(201).json({ success: true, message: "Default units created" });
+  await upsertDefaultUnits(orgId(req));
+  res.status(201).json({ success: true, message: "Default units seeded" });
 });
