@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
+import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,6 +179,9 @@ export default function ItemsPage() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col overflow-hidden h-svh">
+
+        {/* ── Main header with org switcher ── */}
+        <PageHeader breadcrumb={<span className="text-sm font-medium">Items</span>} />
 
         {/* ── Shared top bar ── */}
         <div className="flex items-center gap-3 px-6 py-3 border-b bg-background shrink-0">
