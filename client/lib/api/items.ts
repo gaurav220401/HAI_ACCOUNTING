@@ -140,4 +140,7 @@ export const itemApi = {
 
   seedUnits: () =>
     apiFetch<{ message: string }>("/items/units/seed", { method: "POST" }),
+
+  clone: (id: string) =>
+    apiFetch<{ data: Item }>(`/items/${id}/clone`, { method: "POST" }),
 };
