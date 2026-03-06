@@ -1,6 +1,9 @@
 import { auth } from "../firebase";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_URL =
+  typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+    : "/api";
 
 /**
  * Get the current user's Firebase ID token.

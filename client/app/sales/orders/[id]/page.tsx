@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Plus, Search, RefreshCw, MoreHorizontal, Pencil } from "lucide-react";
+import { Plus, Search, RefreshCw, MoreHorizontal, Pencil, FileText, Trash2, Download } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -15,6 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { salesOrderApi, type SalesOrder, type SalesOrderStatus } from "@/lib/api/sales-orders";
 
@@ -100,6 +107,36 @@ export default function SalesOrderDetailsPage() {
 
   function openOrder(o: SalesOrder) {
     router.push(`/sales/orders/${o._id}`);
+  }
+
+  async function handleConvertToInvoice() {
+    if (!active) return;
+    try {
+      const result = await salesOrderApi.convertToInvoice(active._id);
+      alert("Sales order converted to invoice successfully");
+      // Navigate to the newly created invoice
+      router.push(`/sales/invoices/${result.data._id}`);
+    } catch (error) {
+      alert("Failed to convert sales order to invoice");
+    }
+  }
+
+  async function handleDelete() {
+    if (!active) return;
+    if (!confirm("Are you sure you want to delete this sales order?")) return;
+    try {
+      await salesOrderApi.remove(active._id);
+      alert("Sales order deleted successfully");
+      router.push("/sales/orders");
+    } catch (error) {
+      alert("Failed to delete sales order");
+    }
+  }
+
+  function handleDownloadPDF() {
+    if (!active) return;
+    // TODO: Implement PDF download functionality
+    alert("PDF download functionality will be available soon");
   }
 
   if (loading || orgLoading || !firebaseUser) {
@@ -213,14 +250,32 @@ export default function SalesOrderDetailsPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => router.push(`/sales/orders/${active._id}/edit`)}>
                       <Pencil className="h-4 w-4 mr-1" />
                       Edit
                     </Button>
-                    <Button size="sm">Convert to Invoice</Button>
-                    <Button variant="outline" size="icon-sm" aria-label="More">
-                      <MoreHorizontal className="h-4 w-4" />
+                    <Button size="sm" onClick={handleConvertToInvoice} disabled={active.status === "INVOICED" || active.status === "PARTIALLY_INVOICED"}>
+                      <FileText className="h-4 w-4 mr-1" />
+                      Convert to Invoice
                     </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon-sm" aria-label="More">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleDownloadPDF}>
+                          <Download className="h-4 w-4 mr-2" />
+                          Download PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 

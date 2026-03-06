@@ -219,7 +219,11 @@ export function OrgSetupForm() {
       await refreshOrganizations();
       router.push("/dashboard");
     } catch (err: any) {
-      toast.error(err?.message ?? "Failed to create organization");
+      const msg =
+        err?.name === "TypeError"
+          ? "Cannot reach the server. Please try again."
+          : err?.message ?? "Failed to create organization";
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

@@ -55,7 +55,7 @@ const navItems: NavItem[] = [
     title: "Items",
     url: "/items",
     icon: Package,
-    items: [{ title: "Items", url: "/items" }],
+    items: [],
   },
   {
     title: "Sales",
@@ -167,11 +167,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               if (!item.items || item.items.length === 0) {
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      tooltip={item.title}
-                    >
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
                       <Link href={item.url}>
                         <item.icon />
                         <span>{item.title}</span>

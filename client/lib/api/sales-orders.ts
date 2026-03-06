@@ -86,4 +86,10 @@ export const salesOrderApi = {
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/sales-orders/${id}`, { method: "DELETE" }),
+
+  convertToInvoice: (id: string, dueDate?: string) =>
+    apiFetch<{ data: any }>(`/sales-orders/${id}/convert-to-invoice`, {
+      method: "POST",
+      body: JSON.stringify(dueDate ? { dueDate } : {}),
+    }),
 };

@@ -56,6 +56,7 @@ import {
   type Invoice,
   type InvoiceStatus,
 } from "@/lib/api/invoices";
+import { payUApi, type PayUConfig } from "@/lib/api/payu";
 import { toast } from "sonner";
 
 const statusColor: Record<InvoiceStatus, string> = {
@@ -497,6 +498,8 @@ export default function InvoiceDetailPage() {
   const [fetching, setFetching] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [payUConfig, setPayUConfig] = useState<PayUConfig | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   useEffect(() => {
@@ -509,7 +512,10 @@ export default function InvoiceDetailPage() {
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
-    if (firebaseUser && !loading && id) fetchInvoice();
+    if (firebaseUser && !loading && id) {
+      fetchInvoice();
+      fetchPayUConfig();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, id]);
 
@@ -522,6 +528,15 @@ export default function InvoiceDetailPage() {
       // noop
     } finally {
       setFetching(false);
+    }
+  }
+
+  async function fetchPayUConfig() {
+    try {
+      const res = await payUApi.getConfig();
+      setPayUConfig(res.data);
+    } catch {
+      // PayU not configured
     }
   }
 
@@ -549,6 +564,33 @@ export default function InvoiceDetailPage() {
       toast.error(e.message || "Action failed");
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function handlePayUPayment() {
+    if (!invoice) return;
+    
+    // Get customer details
+    const custName = customerName(invoice.customerId);
+    const custEmail = customerEmail(invoice.customerId);
+    
+    // Simple prompt for customer phone (in production, you'd have a proper modal)
+    const customerPhone = prompt("Enter customer phone number:", "9999999999");
+    if (!customerPhone) return;
+
+    setPaymentLoading(true);
+    try {
+      const res = await payUApi.initiatePayment({
+        invoiceId: invoice._id,
+        customerPhone,
+      });
+      
+      // Redirect to PayU checkout
+      window.location.href = res.data.checkoutUrl;
+    } catch (e: any) {
+      toast.error(e.message || "Payment initiation failed");
+    } finally {
+      setPaymentLoading(false);
     }
   }
 
@@ -676,11 +718,56 @@ export default function InvoiceDetailPage() {
                 </div>
               )}
 
+              {/* PayU Payment Section */}
+              {invoice.status !== "Paid" && invoice.status !== "Void" && (
+                <div className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-sm">Pay Online</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Get paid instantly with secure online payment
+                      </p>
+                    </div>
+                    {payUConfig && payUConfig.isActive ? (
+                      <Button 
+                        size="sm" 
+                        onClick={handlePayUPayment}
+                        disabled={paymentLoading}
+                        className="bg-orange-500 hover:bg-orange-600"
+                      >
+                        {paymentLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="h-4 w-4 mr-1" />
+                            Pay with PayU
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" disabled>
+                        <Settings className="h-4 w-4 mr-1" />
+                        PayU Not Configured
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {!payUConfig && (
+                    <div className="text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded p-2">
+                      PayU payment gateway is not configured. Contact your administrator to set up PayU integration.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Payment gateway tip */}
               <div className="text-sm text-muted-foreground">
-                Get paid faster by{" "}
+                Want to accept other payment methods?{" "}
                 <button className="text-blue-600 hover:underline">
-                  setting up payment gateways
+                  configure payment gateways
                 </button>{" "}
                 or{" "}
                 <button className="text-blue-600 hover:underline">
