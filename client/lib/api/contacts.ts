@@ -86,7 +86,6 @@ export interface Contact {
   reportingTags?: string[];
   notes?: string;
   portalEnabled?: boolean;
-  language?: string;
   // Extra / social
   websiteUrl?: string;
   department?: string;
@@ -134,7 +133,6 @@ export interface CreateContactInput {
   reportingTags?: string[];
   notes?: string;
   portalEnabled?: boolean;
-  language?: string;
   // Extra / social
   websiteUrl?: string;
   department?: string;

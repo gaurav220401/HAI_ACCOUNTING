@@ -214,28 +214,6 @@ export interface ServiceResult<T = unknown> {
 // ═══════════════════════════════════════════════════════════════════════
 
 // ─── 1.2 Chart of Accounts ────────────────────────────────────────────
-export type AccountRootType =
-  | "Asset"
-  | "Liability"
-  | "Equity"
-  | "Income"
-  | "Expense";
-export type AccountType =
-  | "Receivable"
-  | "Payable"
-  | "Bank"
-  | "Cash"
-  | "Fixed Asset"
-  | "Current Asset"
-  | "Current Liability"
-  | "Long Term Liability"
-  | "Equity"
-  | "Income"
-  | "Cost of Goods Sold"
-  | "Expense"
-  | "Tax"
-  | "Round Off"
-  | "Other";
 export type AccountRootType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
 
 /** Asset sub-types */
@@ -344,9 +322,6 @@ export interface IContact extends Document {
   openingBalance?: number;
   taxTreatment: TaxTreatment;
   taxId?: string; // GSTIN / VAT / PAN
-  billingAddress?: {
-    street?: string;
-  taxId?: string;      // GSTIN / VAT
   gstin?: string;      // GSTIN (primary GST number)
   pan?: string;        // PAN number
   tdsCategory?: string;
@@ -369,11 +344,6 @@ export interface IContact extends Document {
     state?: string;
     zip?: string;
     country?: string;
-  };
-  shippingAddress?: {
-    street?: string;
-    phone?: string;
-    fax?: string;
   };
   shippingAddress?: {
     attention?: string;
@@ -543,8 +513,6 @@ export interface ITax extends Document {
 export interface IPaymentTerms extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
-  name: string; // "Net 30", "Due on Receipt"
-  netDays: number; // 0 = due on receipt
   name: string;          // "Net 30", "Due on Receipt"
   termType: "net_days" | "end_of_month" | "end_of_next_month";
   netDays: number;       // 0 = due on receipt; ignored for end_of_month types

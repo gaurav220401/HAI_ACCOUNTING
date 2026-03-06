@@ -114,7 +114,7 @@ export default function EditSalesOrderPage() {
       const [contactsRes, itemsRes, termsRes, orderRes] = await Promise.all([
         contactApi.list({ page: 1, limit: 100 }),
         itemApi.list({ page: 1, limit: 100 }),
-        settingsApi.getPaymentTerms(),
+        settingsApi.paymentTerms.list(),
         id ? salesOrderApi.getById(id) : null,
       ]);
 

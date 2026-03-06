@@ -32,7 +32,7 @@ export default function PayUSettingsPage() {
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
   const [config, setConfig] = useState<PayUConfig | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [configLoading, setConfigLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
 
@@ -63,7 +63,7 @@ export default function PayUSettingsPage() {
   }, [firebaseUser, loading]);
 
   async function fetchConfig() {
-    setLoading(true);
+    setConfigLoading(true);
     try {
       const res = await payUApi.getConfig();
       if (res.data) {
@@ -81,7 +81,7 @@ export default function PayUSettingsPage() {
     } catch (error) {
       console.error("Error fetching PayU config:", error);
     } finally {
-      setLoading(false);
+      setConfigLoading(false);
     }
   }
 
@@ -112,7 +112,7 @@ export default function PayUSettingsPage() {
     // TODO: Implement actual connection test
   }
 
-  if (loading || orgLoading || !firebaseUser) {
+  if (loading || orgLoading || configLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />

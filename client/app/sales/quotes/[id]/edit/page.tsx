@@ -215,7 +215,7 @@ export default function EditQuotePage() {
               itemId: item._id,
               name: item.name,
               description: item.description || "",
-              rate: item.salesPrice || 0,
+              rate: item.sellingPrice || 0,
             }
           : l,
         ),

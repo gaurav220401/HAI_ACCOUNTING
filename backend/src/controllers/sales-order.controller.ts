@@ -47,7 +47,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 
 /** GET /api/sales-orders/:id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) })
+  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) } as any)
     .populate("customerId paymentTermsId salesPersonId lineItems.itemId lineItems.taxId");
   if (!order) throw new NotFoundError("Sales Order");
   res.json({ success: true, data: order });
@@ -89,7 +89,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** PATCH /api/sales-orders/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) } as any);
   if (!order) throw new NotFoundError("Sales Order");
 
   const allowed = [
@@ -132,7 +132,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** DELETE /api/sales-orders/:id */
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) } as any);
   if (!order) throw new NotFoundError("Sales Order");
 
   (order as any).isDeleted = true;

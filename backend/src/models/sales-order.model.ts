@@ -1,4 +1,4 @@
-import { Schema, model } from "mongoose";
+import { Schema, model, Document } from "mongoose";
 import { auditTrailPlugin, softDeletePlugin } from "../plugins";
 
 export type SalesOrderStatus =
@@ -19,7 +19,7 @@ export interface ISalesOrderLineItem {
   amount: number;
 }
 
-export interface ISalesOrder {
+export interface ISalesOrder extends Document {
   organizationId: Schema.Types.ObjectId;
   customerId: Schema.Types.ObjectId;
   salesOrderNumber: string;

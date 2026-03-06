@@ -335,3 +335,50 @@ export const testSmtpSettings = asyncHandler(
     res.json({ success: true, message: `Test email sent to ${testTo}` });
   },
 );
+
+/**
+ * POST /api/organizations/:id/members
+ * Add a user (by email or userId) to an org's member list.
+ */
+export const addMember = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const org = await requireMembership(req.params.id as string, req);
+    const { userId } = req.body;
+    if (!userId) throw new ValidationError("userId is required");
+
+    const user = await User.findById(userId);
+    if (!user) throw new NotFoundError("User");
+
+    const alreadyMember = org.members?.some(
+      (m: any) => m.toString() === userId,
+    );
+    if (alreadyMember) {
+      return res.json({ success: true, message: "Already a member" });
+    }
+
+    org.members = [...(org.members ?? []), user._id] as any;
+    await org.save();
+    res.json({ success: true, data: org });
+  },
+);
+
+/**
+ * DELETE /api/organizations/:id/members/:userId
+ * Remove a member from an org (owner cannot be removed).
+ */
+export const removeMember = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const org = await requireMembership(req.params.id as string, req);
+    const { userId } = req.params;
+
+    if (org.owner?.toString() === userId) {
+      throw new ForbiddenError("Cannot remove the owner of an organization");
+    }
+
+    org.members = (org.members ?? []).filter(
+      (m: any) => m.toString() !== userId,
+    ) as any;
+    await org.save();
+    res.json({ success: true, data: org });
+  },
+);

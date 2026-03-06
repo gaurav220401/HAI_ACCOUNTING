@@ -1313,7 +1313,7 @@ export default function NewInvoicePage() {
                   const pt = paymentTermsList.find((p) => p._id === v);
                   if (pt) {
                     const due = new Date(invoiceDate);
-                    due.setDate(due.getDate() + pt.days);
+                    due.setDate(due.getDate() + (pt.netDays ?? 0));
                     setDueDate(due.toISOString().slice(0, 10));
                   }
                 }}
