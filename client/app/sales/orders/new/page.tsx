@@ -60,7 +60,7 @@ function genSoNumber() {
 export default function NewSalesOrderPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   const [customers, setCustomers] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -104,7 +104,7 @@ export default function NewSalesOrderPage() {
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
-    if (!firebaseUser || loading) return;
+    if (!firebaseUser || loading || orgLoading || !activeOrganization) return;
 
     contactApi
       .list({ type: "Customer", page: 1, limit: 200 })
@@ -120,7 +120,7 @@ export default function NewSalesOrderPage() {
       .list()
       .then((res) => setPaymentTerms(res.data ?? []))
       .catch(() => setPaymentTerms([]));
-  }, [firebaseUser, loading]);
+  }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   const totals = useMemo(() => {
     const subTotal = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
@@ -267,18 +267,44 @@ export default function NewSalesOrderPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Customer Name*</Label>
+                <Label className="md:col-span-4">Customer Name <span className="text-red-500">*</span></Label>
                 <div className="md:col-span-8">
-                  <Select value={customerId} onValueChange={setCustomerId}>
+                  <Select
+                    value={customerId || undefined}
+                    onValueChange={(v) => {
+                      if (v === "__add_new") {
+                        router.push("/sales/customers/new");
+                        return;
+                      }
+                      setCustomerId(v);
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select or add a customer" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((c) => (
-                        <SelectItem key={c._id} value={c._id}>
-                          {c.displayName}
+                    <SelectContent position="popper">
+                      <SelectItem value="__add_new">
+                        <span className="text-blue-600 font-medium">
+                          + Add a customer
+                        </span>
+                      </SelectItem>
+                      {customers.length === 0 && (
+                        <SelectItem value="__empty" disabled>
+                          No customers found
                         </SelectItem>
-                      ))}
+                      )}
+                      {customers.map((c) => (
+                         <SelectItem key={c._id} value={c._id}>
+                           <div className="flex flex-col">
+                             <span className="font-medium">{c.displayName}</span>
+                             {c.companyName && (
+                               <span className="text-xs text-muted-foreground">
+                                 {c.companyName}
+                               </span>
+                             )}
+                           </div>
+                         </SelectItem>
+                       ))}
                     </SelectContent>
                   </Select>
                 </div>

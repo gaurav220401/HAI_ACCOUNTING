@@ -80,7 +80,7 @@ function newLine(): LineItem {
 export default function NewQuotePage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   // Master data
   const [customers, setCustomers] = useState<Contact[]>([]);
@@ -118,24 +118,26 @@ export default function NewQuotePage() {
 
   // Load master data
   useEffect(() => {
-    if (!firebaseUser || loading) return;
-    Promise.all([
-      contactApi.list({ type: "Customer" as any, page: 1, limit: 500 }),
+    if (!firebaseUser || loading || orgLoading || !activeOrganization) return;
+    Promise.allSettled([
+      contactApi.list({ type: "Customer", page: 1, limit: 500 }),
       itemApi.list({ page: 1, limit: 500 }),
       settingsApi.salesPersons.list(),
       settingsApi.taxes.list(),
       quoteApi.getNextNumber(),
     ])
-      .then(([c, i, sp, tx, nn]) => {
-        setCustomers(c.data ?? []);
-        setItems(i.data ?? []);
-        setSalesPersons(sp.data ?? []);
-        setTaxes(tx.data ?? []);
-        setQuoteNumber(nn.data?.quoteNumber ?? "QT-000001");
+      .then((results) => {
+        const [c, i, sp, tx, nn] = results;
+        if (c.status === "fulfilled") setCustomers(c.value.data ?? []);
+        if (i.status === "fulfilled") setItems(i.value.data ?? []);
+        if (sp.status === "fulfilled") setSalesPersons(sp.value.data ?? []);
+        if (tx.status === "fulfilled") setTaxes(tx.value.data ?? []);
+        if (nn.status === "fulfilled")
+          setQuoteNumber(nn.value.data?.quoteNumber ?? "QT-000001");
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading]);
+  }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -298,19 +300,45 @@ export default function NewQuotePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5">
             {/* Customer Name */}
             <div className="space-y-1.5">
-              <Label className="text-red-600">
+              <Label>
                 Customer Name<span className="text-red-500">*</span>
               </Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
+              <Select
+                value={customerId || undefined}
+                onValueChange={(v) => {
+                  if (v === "__add_new") {
+                    router.push("/sales/customers/new");
+                    return;
+                  }
+                  setCustomerId(v);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select or add a customer" />
                 </SelectTrigger>
-                <SelectContent>
-                  {customers.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      {c.displayName}
+                <SelectContent position="popper">
+                  <SelectItem value="__add_new">
+                    <span className="text-blue-600 font-medium">
+                      + Add a customer
+                    </span>
+                  </SelectItem>
+                  {customers.length === 0 && (
+                    <SelectItem value="__empty" disabled>
+                      No customers found
                     </SelectItem>
-                  ))}
+                  )}
+                  {customers.map((c) => (
+                     <SelectItem key={c._id} value={c._id}>
+                       <div className="flex flex-col">
+                         <span className="font-medium">{c.displayName}</span>
+                         {c.companyName && (
+                           <span className="text-xs text-muted-foreground">
+                             {c.companyName}
+                           </span>
+                         )}
+                       </div>
+                     </SelectItem>
+                   ))}
                 </SelectContent>
               </Select>
             </div>

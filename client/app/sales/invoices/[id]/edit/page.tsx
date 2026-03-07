@@ -103,7 +103,7 @@ export default function EditInvoicePage() {
   const id = params.id as string;
 
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -148,74 +148,85 @@ export default function EditInvoicePage() {
 
   // Fetch invoice + master data
   useEffect(() => {
-    if (!firebaseUser || loading || !id) return;
+    if (!firebaseUser || loading || orgLoading || !activeOrganization || !id) return;
     setFetching(true);
     Promise.all([
       invoiceApi.getById(id),
-      contactApi.list({ type: "Customer" as any, page: 1, limit: 500 }),
+      contactApi.list({ type: "Customer", page: 1, limit: 500 }),
       itemApi.list({ page: 1, limit: 500 }),
       settingsApi.salesPersons.list(),
       settingsApi.taxes.list(),
       settingsApi.paymentTerms.list(),
     ])
-      .then(([inv, c, i, sp, tx, pt]) => {
-        const data = inv.data;
-        setInvoice(data);
-        setCustomers(c.data ?? []);
-        setItems(i.data ?? []);
-        setSalesPersons(sp.data ?? []);
-        setTaxes(tx.data ?? []);
-        setPaymentTermsList(pt.data ?? []);
+      .then(([ir, cr, itr, spr, txr, ptr]) => {
+        const inv = ir.data;
+        setInvoice(inv);
+        setCustomers(cr.data ?? []);
+        setItems(itr.data ?? []);
+        setSalesPersons(spr.data ?? []);
+        setTaxes(txr.data ?? []);
+        setPaymentTermsList(ptr.data ?? []);
 
         // Populate form
         setCustomerId(
-          typeof data.customerId === "string" ?
-            data.customerId
-          : data.customerId?._id || "",
+          typeof inv.customerId === "string" ?
+            inv.customerId
+          : inv.customerId?._id || "",
         );
-        setInvoiceNumber(data.invoiceNumber);
-        setOrderNumber(data.orderNumber || "");
-        setInvoiceDate(data.invoiceDate?.slice(0, 10) || "");
-        setDueDate(data.dueDate?.slice(0, 10) || "");
-        setPaymentTermsId(data.paymentTermsId || "");
+        setInvoiceNumber(inv.invoiceNumber);
+        setOrderNumber(inv.orderNumber || "");
+        setInvoiceDate(inv.invoiceDate?.slice(0, 10) || "");
+        setDueDate(inv.dueDate?.slice(0, 10) || "");
+        setPaymentTermsId(
+          typeof inv.paymentTermsId === "string" ?
+            inv.paymentTermsId
+          : inv.paymentTermsId?._id || "",
+        );
         setSalesPersonId(
-          typeof data.salesPersonId === "string" ?
-            data.salesPersonId
-          : (data.salesPersonId as any)?._id || "",
+          typeof inv.salesPersonId === "string" ?
+            inv.salesPersonId
+          : inv.salesPersonId?._id || "",
         );
-        setSubject(data.subject || "");
-        setDiscountType(data.discountType || "percent");
-        setDiscountValue(data.discountValue || 0);
-        setTaxType(data.taxType || "TDS");
-        setTotalTaxId(data.taxId || "");
-        setAdjustmentLabel(data.adjustmentLabel || "Adjustment");
-        setAdjustmentAmount(data.adjustmentAmount || 0);
-        setCustomerNotes(data.customerNotes || "");
-        setTermsAndConditions(data.termsAndConditions || "");
+        setSubject(inv.subject || "");
+        setDiscountType(inv.discountType || "percent");
+        setDiscountValue(inv.discountValue || 0);
+        setTaxType(inv.taxType || "none");
+        setTotalTaxId(
+          typeof inv.taxId === "string" ? inv.taxId : inv.taxId?._id || "",
+        );
+        setAdjustmentLabel(inv.adjustmentLabel || "Adjustment");
+        setAdjustmentAmount(inv.adjustmentAmount || 0);
+        setCustomerNotes(inv.customerNotes || "");
+        setTermsAndConditions(inv.termsAndConditions || "");
 
-        // Populate lines
-        if (data.items.length > 0) {
+        if (inv.items && inv.items.length > 0) {
           setLines(
-            data.items.map((item, idx) => ({
-              key: idx + 1,
-              itemId: (item.itemId as string) || "",
-              name: item.name,
-              description: item.description || "",
-              hsnSacCode: item.hsnSacCode || "",
-              quantity: item.quantity,
-              rate: item.rate,
-              discountPercent: item.discountPercent || 0,
-              taxId: (item.taxId as string) || "",
-              taxPercent: item.taxPercent || 0,
-              accountId: (item.accountId as string) || "",
+            inv.items.map((it: any) => ({
+              key: lineKeyCounter++,
+              itemId:
+                typeof it.itemId === "string" ? it.itemId : it.itemId?._id || "",
+              name: it.name,
+              description: it.description || "",
+              hsnSacCode: it.hsnSacCode || "",
+              quantity: it.quantity || 1,
+              rate: it.rate || 0,
+              discountPercent: it.discountPercent || 0,
+              taxId: typeof it.taxId === "string" ? it.taxId : it.taxId?._id || "",
+              taxPercent: it.taxPercent || 0,
+              accountId:
+                typeof it.accountId === "string" ?
+                  it.accountId
+                : it.accountId?._id || "",
             })),
           );
         }
       })
-      .catch(() => {})
+      .catch((e) => {
+        toast.error(e.message || "Failed to fetch invoice data");
+      })
       .finally(() => setFetching(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading, id]);
+  }, [firebaseUser, loading, orgLoading, activeOrganization, id]);
 
   const updateLine = useCallback(
     (key: number, field: keyof LineItem, value: any) => {

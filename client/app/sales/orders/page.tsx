@@ -169,7 +169,16 @@ export default function SalesOrdersPage() {
                       {o.total != null ? `₹${Number(o.total).toLocaleString("en-IN")}` : "—"}
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/30" />
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          o.status === "INVOICED" || o.status === "CLOSED"
+                            ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                            : o.status === "PARTIALLY_INVOICED"
+                            ? "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
+                            : "bg-muted-foreground/30"
+                        }`}
+                        title={o.status}
+                      />
                     </TableCell>
                     <TableCell className="text-center">
                       <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/30" />

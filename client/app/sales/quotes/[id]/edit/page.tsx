@@ -75,7 +75,7 @@ export default function EditQuotePage() {
   const id = params.id as string;
 
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   // Master data
   const [customers, setCustomers] = useState<Contact[]>([]);
@@ -118,7 +118,7 @@ export default function EditQuotePage() {
 
   // Fetch quote + master data
   useEffect(() => {
-    if (!firebaseUser || loading || !id) return;
+    if (!firebaseUser || loading || orgLoading || !activeOrganization || !id) return;
     setFetching(true);
     Promise.all([
       quoteApi.getById(id),
@@ -148,35 +148,31 @@ export default function EditQuotePage() {
           : q.salesPersonId?._id || "",
         );
         setSubject(q.subject || "");
-        setDiscountType(q.discountType);
-        setDiscountValue(q.discountValue);
-        setTaxType(q.taxType);
-        setTotalTaxId(q.taxId || "");
-        setAdjustmentLabel(q.adjustmentLabel);
-        setAdjustmentAmount(q.adjustmentAmount);
-        setCustomerNotes(q.customerNotes);
-        setTermsAndConditions(q.termsAndConditions);
+        setDiscountType(q.discountType || "percent");
+        setDiscountValue(q.discountValue || 0);
+        setTaxType(q.taxType || "none");
+        setTotalTaxId(
+          typeof q.taxId === "string" ? q.taxId : q.taxId?._id || "",
+        );
+        setAdjustmentLabel(q.adjustmentLabel || "Adjustment");
+        setAdjustmentAmount(q.adjustmentAmount || 0);
+        setCustomerNotes(q.customerNotes || "");
+        setTermsAndConditions(q.termsAndConditions || "");
 
-        // Populate lines
-        if (q.items?.length) {
+        if (q.items && q.items.length > 0) {
           setLines(
-            q.items.map((item, idx) => ({
-              key: idx + 1,
+            q.items.map((it: any) => ({
+              key: lineKeyCounter++,
               itemId:
-                typeof item.itemId === "string" ?
-                  item.itemId
-                : (item.itemId as any)?._id || "",
-              name: item.name,
-              description: item.description || "",
-              hsnSacCode: item.hsnSacCode || "",
-              quantity: item.quantity,
-              rate: item.rate,
-              discountPercent: item.discountPercent,
-              taxId:
-                typeof item.taxId === "string" ?
-                  item.taxId
-                : (item.taxId as any)?._id || "",
-              taxPercent: item.taxPercent,
+                typeof it.itemId === "string" ? it.itemId : it.itemId?._id || "",
+              name: it.name,
+              description: it.description || "",
+              hsnSacCode: it.hsnSacCode || "",
+              quantity: it.quantity || 1,
+              rate: it.rate || 0,
+              discountPercent: it.discountPercent || 0,
+              taxId: typeof it.taxId === "string" ? it.taxId : it.taxId?._id || "",
+              taxPercent: it.taxPercent || 0,
             })),
           );
         }
@@ -184,7 +180,7 @@ export default function EditQuotePage() {
       .catch(() => {})
       .finally(() => setFetching(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading, id]);
+  }, [firebaseUser, loading, orgLoading, activeOrganization, id]);
 
   // Line helpers
   const updateLine = useCallback(
