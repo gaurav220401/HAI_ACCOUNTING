@@ -289,8 +289,8 @@ export default function EditInvoicePage() {
         customerId,
         invoiceDate,
         dueDate: dueDate || null,
-        paymentTermsId: paymentTermsId || null,
-        salesPersonId: salesPersonId || null,
+        paymentTermsId: paymentTermsId === "__receipt" || !paymentTermsId ? null : paymentTermsId,
+        salesPersonId: salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())

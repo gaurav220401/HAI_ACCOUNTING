@@ -220,7 +220,7 @@ export default function NewQuotePage() {
         customerId,
         quoteDate,
         expiryDate: expiryDate || null,
-        salesPersonId: salesPersonId || null,
+        salesPersonId: salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())
