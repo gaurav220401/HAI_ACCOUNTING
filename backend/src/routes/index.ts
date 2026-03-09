@@ -12,6 +12,7 @@ import salesOrderRoutes from "./sales-order.routes";
 import invoiceRoutes from "./invoice.routes";
 import uploadRoutes from "./upload.routes";
 import gstinRoutes from "./gstin.routes";
+import expenseRoutes from "./expense.routes";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/sales-orders", salesOrderRoutes);
 router.use("/invoices", invoiceRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/gstin", gstinRoutes);
+router.use("/expenses", expenseRoutes);
 
 export default router;
