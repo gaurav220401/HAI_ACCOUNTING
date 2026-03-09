@@ -1,5 +1,6 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { auditTrailPlugin, softDeletePlugin } from "../plugins";
+import { Counter } from "./counter.model";
 
 export type ExpenseType = "Regular" | "Mileage";
 export type MileageCalcMethod = "DistanceTravelled" | "OdometerReading";
@@ -17,6 +18,7 @@ export interface IExpenseLineItem {
 
 export interface IExpense extends Document {
   organizationId: Types.ObjectId;
+  expenseNumber: string;
   expenseType: ExpenseType;
   // Regular expense
   expenseAccountId?: Types.ObjectId | null;
@@ -69,6 +71,7 @@ const lineItemSchema = new Schema<IExpenseLineItem>(
 const expenseSchema = new Schema<IExpense>(
   {
     organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
+    expenseNumber: { type: String, unique: true, sparse: true },
     expenseType: { type: String, enum: ["Regular", "Mileage"], default: "Regular" },
     // Regular
     expenseAccountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
@@ -104,6 +107,19 @@ const expenseSchema = new Schema<IExpense>(
 
 expenseSchema.plugin(auditTrailPlugin);
 expenseSchema.index({ organizationId: 1, date: -1 });
+expenseSchema.index({ expenseNumber: 1 }, { unique: true, sparse: true });
+
+// Auto-generate expenseNumber before first save
+expenseSchema.pre("save", async function () {
+  if (this.isNew && !this.expenseNumber) {
+    const counter = await Counter.findByIdAndUpdate(
+      `expense-${this.organizationId}`,
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true },
+    );
+    this.expenseNumber = `EXP-${String(counter!.seq).padStart(4, "0")}`;
+  }
+});
 
 const Expense = model<IExpense>("Expense", expenseSchema);
 export default Expense;
