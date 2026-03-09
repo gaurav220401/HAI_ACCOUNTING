@@ -40,9 +40,16 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
   });
 });
 
-/** GET /api/expenses/:id */
+/** GET /api/expenses/:id  — accepts both expenseNumber (EXP-0001) and MongoDB _id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const expense = await Expense.findOne({ _id: req.params.id, organizationId: orgId(req) })
+  const param = String(req.params.id);
+  // Detect expenseNumber pattern vs ObjectId
+  const isExpNum = /^EXP-\d{4,}$/i.test(param);
+  const query = isExpNum
+    ? { expenseNumber: param.toUpperCase(), organizationId: orgId(req) }
+    : { _id: param, organizationId: orgId(req) };
+
+  const expense = await Expense.findOne(query)
     .populate("expenseAccountId paidThroughAccountId vendorId customerId taxId lineItems.expenseAccountId");
   if (!expense) throw new NotFoundError("Expense");
   res.json({ success: true, data: expense });
@@ -85,7 +92,13 @@ export const bulkCreate = asyncHandler(async (req: AuthenticatedRequest, res: Re
 
 /** PATCH /api/expenses/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const expense = await Expense.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const param = String(req.params.id);
+  const isExpNum = /^EXP-\d{4,}$/i.test(param);
+  const query = isExpNum
+    ? { expenseNumber: param.toUpperCase(), organizationId: orgId(req) }
+    : { _id: param, organizationId: orgId(req) };
+
+  const expense = await Expense.findOne(query);
   if (!expense) throw new NotFoundError("Expense");
 
   const allowed = [
@@ -107,7 +120,13 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** DELETE /api/expenses/:id */
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const expense = await Expense.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const param = String(req.params.id);
+  const isExpNum = /^EXP-\d{4,}$/i.test(param);
+  const query = isExpNum
+    ? { expenseNumber: param.toUpperCase(), organizationId: orgId(req) }
+    : { _id: param, organizationId: orgId(req) };
+
+  const expense = await Expense.findOne(query);
   if (!expense) throw new NotFoundError("Expense");
 
   expense.isDeleted = true;

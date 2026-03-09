@@ -20,6 +20,7 @@ export interface ExpenseLineItem {
 
 export interface Expense {
   _id: string;
+  expenseNumber: string;   // e.g. EXP-0001
   organizationId: string;
   expenseType: ExpenseType;
   expenseAccountId?: string | { _id: string; name: string } | null;
@@ -40,6 +41,7 @@ export interface Expense {
   isBillable: boolean;
   taxId?: string | null;
   employeeId?: string | null;
+  projectId?: string | null;
   receiptUrls?: string[];
   status: ExpenseStatus;
   isActive: boolean;
@@ -63,6 +65,7 @@ export interface CreateExpenseInput {
   isBillable?: boolean;
   taxId?: string | null;
   employeeId?: string | null;
+  projectId?: string | null;
   receiptUrls?: string[];
   status?: ExpenseStatus;
   // Mileage fields
@@ -86,8 +89,9 @@ export const expenseApi = {
   list: (params?: ExpenseListParams) =>
     apiFetch<PaginatedResponse<Expense>>(`/expenses${buildQuery(params || {})}`),
 
-  getById: (id: string) =>
-    apiFetch<{ data: Expense }>(`/expenses/${id}`),
+  /** Accepts both expenseNumber (EXP-0001) and MongoDB _id */
+  getById: (idOrNumber: string) =>
+    apiFetch<{ data: Expense }>(`/expenses/${idOrNumber}`),
 
   create: (data: CreateExpenseInput) =>
     apiFetch<{ data: Expense }>("/expenses", {
