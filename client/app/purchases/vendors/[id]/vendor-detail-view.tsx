@@ -1611,9 +1611,12 @@ interface VendorDetailViewProps {
   vendor: Contact;
   onVendorUpdate: (v: Contact) => void;
   onClose?: () => void;
+  initialTab?: string;
 }
 
-export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClose }: VendorDetailViewProps) {
+const TMPL_KEY = (id: string) => `stmt-tmpl-config-${id}`;
+
+export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClose, initialTab }: VendorDetailViewProps) {
   const router = useRouter();
 
   const [vendor, setVendor] = useState<Contact>(initialVendor);
@@ -1636,7 +1639,13 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(() => {
+    // In standalone mode (no split-panel close button), read the tab from the URL
+    if (!onClose && typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("tab") ?? initialTab ?? "overview";
+    }
+    return initialTab ?? "overview";
+  });
 
   const [stmtStart, setStmtStart] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [stmtEnd, setStmtEnd] = useState(new Date());
@@ -1644,8 +1653,6 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   // Statement customization
   const [templateConfig, setTemplateConfig] = useState<TemplateConfig>(DEFAULT_TEMPLATE_CONFIG);
   const [templateOpen, setTemplateOpen] = useState(false);
-  const [editTemplateOpen, setEditTemplateOpen] = useState(false);
-  const [editTemplateWarnOpen, setEditTemplateWarnOpen] = useState(false);
   const [logoAddressOpen, setLogoAddressOpen] = useState(false);
 
   // Org logo/address (local state, loaded from activeOrganization context)
@@ -1664,8 +1671,47 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
     setComments(initialVendor.comments ?? []);
     setExpenses([]);
     setActivityEvents([]);
-    setActiveTab("overview");
+    if (onClose) setActiveTab("overview"); // reset tab only in split-panel
   }, [initialVendor._id]);
+
+  // Guard: prevent the save effect from overwriting localStorage before the load effect has run
+  const hasLoadedConfigRef = useRef(false);
+
+  // Load template config from localStorage on mount (or when vendor changes)
+  useEffect(() => {
+    if (!initialVendor._id) return;
+    hasLoadedConfigRef.current = false; // reset on vendor change
+    try {
+      const stored = localStorage.getItem(TMPL_KEY(initialVendor._id));
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<TemplateConfig>;
+        setTemplateConfig((prev) => ({ ...prev, ...parsed, margins: { ...prev.margins, ...(parsed.margins ?? {}) } }));
+      }
+    } catch { /* ignore */ }
+    hasLoadedConfigRef.current = true;
+  }, [initialVendor._id]);
+
+  // Also reload from localStorage whenever the statement tab becomes active.
+  // This ensures that changes saved in the edit-template page are picked up
+  // even if the component was cached and did not fully remount.
+  useEffect(() => {
+    if (activeTab !== "statement" || !vendor._id) return;
+    try {
+      const stored = localStorage.getItem(TMPL_KEY(vendor._id));
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<TemplateConfig>;
+        setTemplateConfig((prev) => ({ ...prev, ...parsed, margins: { ...prev.margins, ...(parsed.margins ?? {}) } }));
+      }
+    } catch { /* ignore */ }
+  }, [activeTab, vendor._id]);
+
+  // Save template config to localStorage — only after initial load to avoid overwriting with defaults
+  useEffect(() => {
+    if (!vendor._id || !hasLoadedConfigRef.current) return;
+    try {
+      localStorage.setItem(TMPL_KEY(vendor._id), JSON.stringify(templateConfig));
+    } catch { /* ignore */ }
+  }, [templateConfig, vendor._id]);
 
   useEffect(() => {
     if (!vendor._id) return;
@@ -1858,7 +1904,16 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
       </div>
 
       {/* â”€â”€ Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
+      <Tabs
+        value={activeTab}
+        onValueChange={(tab) => {
+          setActiveTab(tab);
+          if (!onClose) {
+            router.replace(`/purchases/vendors/${vendor._id}?tab=${tab}`, { scroll: false });
+          }
+        }}
+        className="flex flex-col flex-1 overflow-hidden"
+      >
         <TabsList className="shrink-0 w-full justify-start rounded-none border-b bg-transparent px-5 h-10">
           {[
             { value: "overview", label: "Overview" },
@@ -2404,7 +2459,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                 <DropdownMenuItem onClick={() => setTemplateOpen(true)}>
                   <Layout className="h-3.5 w-3.5 mr-2" />Change Template
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setEditTemplateWarnOpen(true)}>
+                <DropdownMenuItem onClick={() => router.push(`/purchases/vendors/${vendor._id}/edit-template`)}>
                   <Palette className="h-3.5 w-3.5 mr-2" />Edit Template
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -2418,164 +2473,187 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
           {/* A4 Preview */}
           <div className="flex-1 overflow-y-auto bg-gray-100 print:bg-white print:overflow-visible py-6 px-4 print:p-0">
             <div
-              className="statement-print-area bg-white mx-auto shadow-sm print:shadow-none"
+              className="statement-print-area bg-white mx-auto shadow-sm print:shadow-none flex flex-col"
               style={{
                 width: templateConfig.paperSize === "A5" ? "148mm" : templateConfig.paperSize === "Letter" ? "216mm" : "210mm",
                 minHeight: templateConfig.paperSize === "A5" ? "210mm" : templateConfig.paperSize === "Letter" ? "279mm" : "297mm",
-                padding: `${templateConfig.margins.top}in ${templateConfig.margins.right}in ${templateConfig.margins.bottom}in ${templateConfig.margins.left}in`,
                 fontFamily: templateConfig.fontFamily,
                 fontSize: `${templateConfig.fontSize}pt`,
+                backgroundColor: templateConfig.backgroundColor,
               }}
             >
-              {/* Org + Statement title */}
-              <div className="flex justify-between items-start mb-6">
-                <div className="flex items-start gap-3 max-w-[55%]">
-                  {orgLogo && templateConfig.showOrgLogo && (
-                    <img
-                      src={orgLogo}
-                      alt={orgName}
-                      className="object-contain shrink-0"
-                      style={{ height: `${templateConfig.orgLogoSize}px`, width: "auto" }}
-                    />
-                  )}
-                  {templateConfig.showOrgName && (
-                    <div>
-                      <p
-                        className="font-bold leading-tight"
-                        style={{ color: templateConfig.orgNameColor, fontSize: `${templateConfig.orgNameFontSize}pt` }}
-                      >
+              {/* ── Main content (flex-1 pushes footer to bottom) ── */}
+              <div style={{ flex: 1, padding: `${templateConfig.margins.top}in ${templateConfig.margins.right}in 0 ${templateConfig.margins.left}in` }}>
+
+                {/* Row 1: Logo (left) | Org name+address (right) */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+                  <div style={{ maxWidth: "45%" }}>
+                    {templateConfig.showOrgLogo && orgLogo && (
+                      <img
+                        src={orgLogo}
+                        alt={orgName}
+                        style={{ height: `${templateConfig.orgLogoSize}px`, width: "auto", objectFit: "contain", display: "block" }}
+                      />
+                    )}
+                    {templateConfig.showOrgLogo && !orgLogo && (
+                      <div style={{
+                        width: `${templateConfig.orgLogoSize}px`, height: `${templateConfig.orgLogoSize}px`,
+                        border: "2px dashed #d1d5db", borderRadius: "6px",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        backgroundColor: "#f9fafb",
+                      }}>
+                        <span style={{ fontSize: "7pt", color: "#9ca3af", textAlign: "center", padding: "4px" }}>Logo</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "right", maxWidth: "50%" }}>
+                    {templateConfig.showOrgName && (
+                      <p style={{ fontWeight: "700", color: templateConfig.orgNameColor, fontSize: `${templateConfig.orgNameFontSize}pt`, margin: 0, lineHeight: 1.3 }}>
                         {orgName}
                       </p>
-                      {templateConfig.showOrgAddress && orgAddress && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {[orgAddress.street, orgAddress.street2, orgAddress.city, orgAddress.state, orgAddress.zip]
-                            .filter(Boolean).join(", ")}
-                        </p>
-                      )}
-                      {templateConfig.showOrgAddress && orgAddress?.phone && (
-                        <p className="text-xs text-gray-500">Ph: {orgAddress.phone}</p>
-                      )}
-                    </div>
-                  )}
+                    )}
+                    {templateConfig.showOrgAddress && orgAddress && (
+                      <>
+                        {(orgAddress.city || orgAddress.state) && (
+                          <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>
+                            {[orgAddress.city, orgAddress.state].filter(Boolean).join(", ")}
+                          </p>
+                        )}
+                        {orgAddress.zip && (
+                          <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>{orgAddress.zip}</p>
+                        )}
+                        {orgAddress.street && (
+                          <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>{orgAddress.street}</p>
+                        )}
+                        {orgAddress.phone && (
+                          <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>Ph: {orgAddress.phone}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
-                  {templateConfig.showDocTitle && (
-                    <h1
-                      className="font-bold"
-                      style={{ color: templateConfig.docTitleFontColor, fontSize: `${templateConfig.docTitleFontSize}pt` }}
-                    >
-                      {templateConfig.docTitle}
-                    </h1>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">
-                    Period: {format(stmtStart, "dd/MM/yyyy")} &mdash; {format(stmtEnd, "dd/MM/yyyy")}
-                  </p>
+
+                {/* Row 2: "To" vendor (left) | Statement title + period (right) */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+                  <div style={{ maxWidth: "50%" }}>
+                    {templateConfig.showBillTo && (
+                      <p style={{ fontSize: "8pt", fontWeight: "600", color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 3px" }}>
+                        {templateConfig.billToLabel}
+                      </p>
+                    )}
+                    <p style={{ fontWeight: "600", color: templateConfig.vendorNameFontColor, fontSize: `${templateConfig.vendorNameFontSize}pt`, margin: 0, lineHeight: 1.35 }}>
+                      {vendor.displayName}
+                    </p>
+                    {vendor.companyName && vendor.companyName !== vendor.displayName && (
+                      <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>{vendor.companyName}</p>
+                    )}
+                    {vendor.billingAddress && addressLines(vendor.billingAddress) && (
+                      <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>{addressLines(vendor.billingAddress)}</p>
+                    )}
+                    {vendor.email && (
+                      <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>{vendor.email}</p>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "right", maxWidth: "48%" }}>
+                    {templateConfig.showDocTitle && (
+                      <h1 style={{ fontWeight: "700", color: templateConfig.docTitleFontColor, fontSize: `${templateConfig.docTitleFontSize}pt`, margin: 0, lineHeight: 1.2 }}>
+                        {templateConfig.docTitle}
+                      </h1>
+                    )}
+                    <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "4px 0 0" }}>
+                      {format(stmtStart, "dd/MM/yyyy")} To {format(stmtEnd, "dd/MM/yyyy")}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div style={{ borderTop: `2px solid ${templateConfig.tableHeaderBgColor}`, marginBottom: "16px" }} />
+
+                {/* Account Summary */}
+                {templateConfig.showAccountSummary && (
+                  <div style={{ marginBottom: "18px" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: templateConfig.tableHeaderBgColor, color: templateConfig.tableHeaderFontColor }}>
+                          <th colSpan={2} style={{ padding: "6px 10px", textAlign: "left", fontWeight: "600", fontSize: `${templateConfig.tableHeaderFontSize}pt` }}>
+                            {templateConfig.accountSummaryLabel}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {([
+                          [templateConfig.showOpeningBalance, templateConfig.openingBalanceLabel, stmt.openingBalance],
+                          [templateConfig.showInvoicedAmount, templateConfig.invoicedAmountLabel, stmt.totalBilled],
+                          [templateConfig.showAmountPaid, templateConfig.amountPaidLabel, stmt.totalPaid],
+                          [templateConfig.showBalanceDue, templateConfig.balanceDueLabel, stmt.balanceDue],
+                        ] as [boolean, string, number][]).filter(([show]) => show).map(([, label, value], i) => (
+                          <tr key={String(label)} style={{ backgroundColor: i % 2 === 0 ? templateConfig.evenRowColor : templateConfig.oddRowColor }}>
+                            <td style={{ padding: "5px 10px", color: "#4b5563", width: "60%" }}>{label as string}</td>
+                            <td style={{ padding: "5px 10px", fontWeight: "500", textAlign: "right" }}>{fmt(value as number, vendor.currency ?? "INR")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Transactions table */}
+                <div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: templateConfig.tableHeaderBgColor, color: templateConfig.tableHeaderFontColor, fontSize: `${templateConfig.tableHeaderFontSize}pt` }}>
+                        {templateConfig.colDate && <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: "600" }}>{templateConfig.dateLabel}</th>}
+                        {templateConfig.colTransactionType && <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: "600" }}>{templateConfig.transactionTypeLabel}</th>}
+                        {templateConfig.colTransactionDetails && <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: "600" }}>{templateConfig.transactionDetailsLabel}</th>}
+                        {templateConfig.colAmount && <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: "600" }}>{templateConfig.amountLabel}</th>}
+                        {templateConfig.colPayments && <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: "600" }}>{templateConfig.paymentsLabel}</th>}
+                        {templateConfig.colBalance && <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: "600" }}>{templateConfig.balanceLabel}</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stmt.rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ padding: "20px", textAlign: "center", color: "#9ca3af" }}>No transactions in this period</td>
+                        </tr>
+                      ) : stmt.rows.map((row, i) => (
+                        <tr
+                          key={i}
+                          style={{
+                            backgroundColor: i === 0 ? "transparent" : (i % 2 === 0 ? templateConfig.evenRowColor : templateConfig.oddRowColor),
+                            fontStyle: i === 0 ? "italic" : "normal",
+                            color: i === 0 ? "#6b7280" : "inherit",
+                          }}
+                        >
+                          {templateConfig.colDate && <td style={{ padding: "5px 10px" }}>{row.date}</td>}
+                          {templateConfig.colTransactionType && <td style={{ padding: "5px 10px" }}>{row.type}</td>}
+                          {templateConfig.colTransactionDetails && <td style={{ padding: "5px 10px", fontFamily: "monospace", fontSize: "8.5pt" }}>{row.details}</td>}
+                          {templateConfig.colAmount && <td style={{ padding: "5px 10px", textAlign: "right" }}>{row.amount > 0 ? fmt(row.amount, vendor.currency ?? "INR") : "—"}</td>}
+                          {templateConfig.colPayments && <td style={{ padding: "5px 10px", textAlign: "right" }}>{row.payments > 0 ? fmt(row.payments, vendor.currency ?? "INR") : "—"}</td>}
+                          {templateConfig.colBalance && <td style={{ padding: "5px 10px", textAlign: "right", fontWeight: "500" }}>{fmt(row.balance, vendor.currency ?? "INR")}</td>}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ fontWeight: "700", borderTop: `2px solid ${templateConfig.tableHeaderBgColor}` }}>
+                        <td colSpan={5} style={{ padding: "7px 10px", textAlign: "right" }}>{templateConfig.balanceDueLabel}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "right" }}>{fmt(stmt.balanceDue, vendor.currency ?? "INR")}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               </div>
 
-              <div className="border-t-2 mb-5" style={{ borderColor: templateConfig.tableHeaderBgColor }} />
-
-              {/* To: vendor */}
-              <div className="mb-5">
-                {templateConfig.showBillTo && (
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
-                    {templateConfig.billToLabel}
-                  </p>
+              {/* ── Footer (pinned to bottom of paper) ── */}
+              <div style={{ padding: `8px ${templateConfig.margins.right}in ${templateConfig.margins.bottom}in ${templateConfig.margins.left}in` }}>
+                {templateConfig.showFooter && (
+                  <>
+                    <div style={{ borderTop: "1px solid #d1d5db", marginBottom: "6px" }} />
+                    <p style={{ fontSize: `${templateConfig.footerFontSize}pt`, color: templateConfig.footerFontColor, textAlign: "center", margin: 0 }}>
+                      {templateConfig.footerCustomContent || "This is a computer-generated statement."}
+                    </p>
+                  </>
                 )}
-                <p
-                  className="font-semibold"
-                  style={{ color: templateConfig.vendorNameFontColor, fontSize: `${templateConfig.vendorNameFontSize}pt` }}
-                >
-                  {vendor.displayName}
-                </p>
-                {vendor.companyName && vendor.companyName !== vendor.displayName && (
-                  <p className="text-xs text-gray-500">{vendor.companyName}</p>
-                )}
-                {vendor.billingAddress && addressLines(vendor.billingAddress) && (
-                  <p className="text-xs text-gray-500 mt-0.5">{addressLines(vendor.billingAddress)}</p>
-                )}
-                {vendor.email && <p className="text-xs text-gray-500">{vendor.email}</p>}
               </div>
-
-              {/* Account Summary */}
-              {templateConfig.showAccountSummary && (
-              <div className="mb-5">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  {templateConfig.accountSummaryLabel}
-                </p>
-                <table className="w-full border-collapse text-xs">
-                  <tbody>
-                    {([
-                      [templateConfig.showOpeningBalance, templateConfig.openingBalanceLabel, stmt.openingBalance],
-                      [templateConfig.showInvoicedAmount, templateConfig.invoicedAmountLabel, stmt.totalBilled],
-                      [templateConfig.showAmountPaid, templateConfig.amountPaidLabel, stmt.totalPaid],
-                      [templateConfig.showBalanceDue, templateConfig.balanceDueLabel, stmt.balanceDue],
-                    ] as [boolean, string, number][]).filter(([show]) => show).map(([, label, value], i) => (
-                      <tr key={label} style={{ backgroundColor: i % 2 === 0 ? templateConfig.evenRowColor : templateConfig.oddRowColor }}>
-                        <td className="py-1.5 px-3 text-gray-600 w-48">{label}</td>
-                        <td className="py-1.5 px-3 font-medium text-right">{fmt(value, vendor.currency ?? "INR")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              )}
-
-              {/* Transactions table */}
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Transactions</p>
-                <table className="w-full border-collapse text-xs">
-                  <thead>
-                    <tr style={{
-                      backgroundColor: templateConfig.tableHeaderBgColor,
-                      color: templateConfig.tableHeaderFontColor,
-                      fontSize: `${templateConfig.tableHeaderFontSize}pt`,
-                    }}>
-                      {templateConfig.colDate && <th className="py-2 px-3 text-left font-semibold">{templateConfig.dateLabel}</th>}
-                      {templateConfig.colTransactionType && <th className="py-2 px-3 text-left font-semibold">{templateConfig.transactionTypeLabel}</th>}
-                      {templateConfig.colTransactionDetails && <th className="py-2 px-3 text-left font-semibold">{templateConfig.transactionDetailsLabel}</th>}
-                      {templateConfig.colAmount && <th className="py-2 px-3 text-right font-semibold">{templateConfig.amountLabel}</th>}
-                      {templateConfig.colPayments && <th className="py-2 px-3 text-right font-semibold">{templateConfig.paymentsLabel}</th>}
-                      {templateConfig.colBalance && <th className="py-2 px-3 text-right font-semibold">{templateConfig.balanceLabel}</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stmt.rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-6 text-center text-gray-400">No transactions in this period</td>
-                      </tr>
-                    ) : stmt.rows.map((row, i) => (
-                      <tr
-                        key={i}
-                        className={i === 0 ? "italic text-gray-500" : undefined}
-                        style={i > 0 ? { backgroundColor: i % 2 === 0 ? templateConfig.evenRowColor : templateConfig.oddRowColor } : undefined}
-                      >
-                        {templateConfig.colDate && <td className="py-1.5 px-3">{row.date}</td>}
-                        {templateConfig.colTransactionType && <td className="py-1.5 px-3">{row.type}</td>}
-                        {templateConfig.colTransactionDetails && <td className="py-1.5 px-3 font-mono">{row.details}</td>}
-                        {templateConfig.colAmount && <td className="py-1.5 px-3 text-right">{row.amount > 0 ? fmt(row.amount, vendor.currency ?? "INR") : "\u2014"}</td>}
-                        {templateConfig.colPayments && <td className="py-1.5 px-3 text-right">{row.payments > 0 ? fmt(row.payments, vendor.currency ?? "INR") : "\u2014"}</td>}
-                        {templateConfig.colBalance && <td className="py-1.5 px-3 text-right font-medium">{fmt(row.balance, vendor.currency ?? "INR")}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="font-semibold border-t-2" style={{ borderColor: templateConfig.tableHeaderBgColor }}>
-                      <td colSpan={5} className="py-2 px-3 text-right">{templateConfig.balanceDueLabel}</td>
-                      <td className="py-2 px-3 text-right">{fmt(stmt.balanceDue, vendor.currency ?? "INR")}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              {templateConfig.showFooter && templateConfig.footerCustomContent && (
-                <div
-                  className="mt-8 pt-3 border-t text-center"
-                  style={{ fontSize: `${templateConfig.footerFontSize}pt`, color: templateConfig.footerFontColor }}
-                >
-                  {templateConfig.footerCustomContent}
-                </div>
-              )}
             </div>
           </div>
         </TabsContent>
@@ -2595,37 +2673,11 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
       />
 
       {/* Statement dialogs */}
-
-      {/* Warning before opening Edit Template */}
-      <Dialog open={editTemplateWarnOpen} onOpenChange={setEditTemplateWarnOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Edit Template</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Editing this template will apply your changes to all the vendors that have this template associated.
-            Do you want to proceed?
-          </p>
-          <DialogFooter className="gap-2 mt-2">
-            <Button variant="outline" size="sm" onClick={() => setEditTemplateWarnOpen(false)}>Cancel</Button>
-            <Button size="sm" onClick={() => { setEditTemplateWarnOpen(false); setEditTemplateOpen(true); }}>
-              Proceed
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <ChooseTemplateDialog
         open={templateOpen}
         onClose={() => setTemplateOpen(false)}
         selected={templateConfig.templateId}
         onSelect={(id) => setTemplateConfig((prev) => ({ ...prev, templateId: id }))}
-      />
-      <EditTemplatePanel
-        open={editTemplateOpen}
-        onClose={() => setEditTemplateOpen(false)}
-        config={templateConfig}
-        onChange={setTemplateConfig}
       />
       {activeOrganization && (
         <LogoAddressDialog
