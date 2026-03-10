@@ -1,5 +1,6 @@
 import { Response } from "express";
 import Contact from "../models/contact.model";
+import Expense from "../models/expense.model";
 import Organization from "../models/organization.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
@@ -98,4 +99,76 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   attachUser(contact, req);
   await contact.save();
   res.json({ success: true, message: "Contact deleted" });
+});
+
+/** POST /api/contacts/:id/comments */
+export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
+  if (!contact) throw new NotFoundError("Contact");
+  const { text } = req.body;
+  if (!text?.trim()) throw new ValidationError("Comment text is required");
+
+  const userName = req.user?.name ?? req.user?.email ?? "Unknown";
+  const userId = req.user?._id ?? null;
+
+  (contact as any).comments.push({ text: text.trim(), userId, userName, createdAt: new Date() });
+  await contact.save();
+  res.status(201).json({ success: true, data: (contact as any).comments });
+});
+
+/** GET /api/contacts/:id/activity */
+export const getActivity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = await orgId(req);
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: oid })
+    .populate("createdBy", "name email");
+  if (!contact) throw new NotFoundError("Contact");
+
+  const expenses = await Expense.find({
+    vendorId: contact._id,
+    organizationId: oid,
+    isDeleted: { $ne: true },
+  })
+    .populate("createdBy", "name email")
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  type ActivityEvent = {
+    type: string;
+    timestamp: string;
+    description: string;
+    amount?: number;
+    currency?: string;
+    ref?: string;
+    userName?: string;
+  };
+
+  const events: ActivityEvent[] = [];
+
+  const contactCreator = (contact as any).createdBy;
+  const contactCreatorName: string = contactCreator?.name ?? contactCreator?.email ?? "Unknown";
+
+  events.push({
+    type: "contact_created",
+    timestamp: (contact as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
+    description: `Vendor "${contact.displayName}" was created`,
+    userName: contactCreatorName,
+  });
+
+  for (const exp of expenses) {
+    const creator = (exp as any).createdBy;
+    const creatorName: string = creator?.name ?? creator?.email ?? "Unknown";
+    events.push({
+      type: "expense_added",
+      timestamp: (exp as any).createdAt?.toISOString?.() ?? exp.date,
+      description: `Expense ${(exp as any).expenseNumber} added`,
+      amount: exp.amount,
+      currency: (exp as any).currency,
+      ref: (exp as any).expenseNumber,
+      userName: creatorName,
+    });
+  }
+
+  events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  res.json({ success: true, data: events });
 });

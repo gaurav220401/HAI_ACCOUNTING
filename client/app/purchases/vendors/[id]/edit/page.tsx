@@ -7,10 +7,10 @@ import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { VendorDetailView } from "./vendor-detail-view";
+import { VendorForm } from "../../_components/vendor-form";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 
-export default function VendorDetailPage() {
+export default function VendorEditPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const { firebaseUser, loading } = useAuth();
@@ -54,10 +54,7 @@ export default function VendorDetailPage() {
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-2">
         <p className="text-lg font-medium">Vendor not found</p>
-        <button
-          className="text-sm text-primary underline"
-          onClick={() => router.push("/purchases/vendors")}
-        >
+        <button className="text-sm text-primary underline" onClick={() => router.push("/purchases/vendors")}>
           Back to Vendors
         </button>
       </div>
@@ -74,18 +71,16 @@ export default function VendorDetailPage() {
               Purchases <span className="mx-1">/</span>
               <a href="/purchases/vendors" className="hover:text-foreground transition-colors">Vendors</a>
               <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">{vendor?.displayName ?? "Vendor Detail"}</span>
+              <a href={`/purchases/vendors/${params?.id}`} className="hover:text-foreground transition-colors">
+                {vendor?.displayName ?? "Vendor"}
+              </a>
+              <span className="mx-1">/</span>
+              <span className="font-medium text-foreground">Edit</span>
             </span>
           }
         />
-        {vendor && (
-          <VendorDetailView
-            vendor={vendor}
-            onVendorUpdate={(updated) => setVendor(updated)}
-          />
-        )}
+        {vendor && <VendorForm initialData={{ ...vendor, _id: vendor._id }} />}
       </SidebarInset>
     </SidebarProvider>
   );
 }
-
