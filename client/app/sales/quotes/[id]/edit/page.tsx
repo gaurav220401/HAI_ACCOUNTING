@@ -45,6 +45,17 @@ interface LineItem {
   taxPercent: number;
 }
 
+type RefValue = string | { _id: string } | null | undefined;
+
+function getRefId(value: RefValue): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : value._id;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function calcLineAmount(l: LineItem) {
   const lineTotal = l.quantity * l.rate;
   const discAmt = (lineTotal * l.discountPercent) / 100;
@@ -122,7 +133,7 @@ export default function EditQuotePage() {
     setFetching(true);
     Promise.all([
       quoteApi.getById(id),
-      contactApi.list({ type: "Customer" as any, page: 1, limit: 500 }),
+      contactApi.list({ type: "Customer", page: 1, limit: 500 }),
       itemApi.list({ page: 1, limit: 500 }),
       settingsApi.salesPersons.list(),
       settingsApi.taxes.list(),
@@ -142,18 +153,12 @@ export default function EditQuotePage() {
         setReferenceNumber(q.referenceNumber || "");
         setQuoteDate(q.quoteDate?.slice(0, 10) || "");
         setExpiryDate(q.expiryDate?.slice(0, 10) || "");
-        setSalesPersonId(
-          typeof q.salesPersonId === "string" ?
-            q.salesPersonId
-          : q.salesPersonId?._id || "",
-        );
+        setSalesPersonId(getRefId(q.salesPersonId));
         setSubject(q.subject || "");
         setDiscountType(q.discountType || "percent");
         setDiscountValue(q.discountValue || 0);
         setTaxType(q.taxType || "none");
-        setTotalTaxId(
-          typeof q.taxId === "string" ? q.taxId : q.taxId?._id || "",
-        );
+        setTotalTaxId(getRefId(q.taxId));
         setAdjustmentLabel(q.adjustmentLabel || "Adjustment");
         setAdjustmentAmount(q.adjustmentAmount || 0);
         setCustomerNotes(q.customerNotes || "");
@@ -161,17 +166,16 @@ export default function EditQuotePage() {
 
         if (q.items && q.items.length > 0) {
           setLines(
-            q.items.map((it: any) => ({
+            q.items.map((it: Quote["items"][number]) => ({
               key: lineKeyCounter++,
-              itemId:
-                typeof it.itemId === "string" ? it.itemId : it.itemId?._id || "",
+              itemId: getRefId(it.itemId),
               name: it.name,
               description: it.description || "",
               hsnSacCode: it.hsnSacCode || "",
               quantity: it.quantity || 1,
               rate: it.rate || 0,
               discountPercent: it.discountPercent || 0,
-              taxId: typeof it.taxId === "string" ? it.taxId : it.taxId?._id || "",
+              taxId: getRefId(it.taxId),
               taxPercent: it.taxPercent || 0,
             })),
           );
@@ -184,7 +188,7 @@ export default function EditQuotePage() {
 
   // Line helpers
   const updateLine = useCallback(
-    (key: number, field: keyof LineItem, value: any) => {
+    <K extends keyof LineItem>(key: number, field: K, value: LineItem[K]) => {
       setLines((prev) =>
         prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)),
       );
@@ -271,8 +275,8 @@ export default function EditQuotePage() {
       };
       await quoteApi.update(id, payload);
       router.push(`/sales/quotes/${id}`);
-    } catch (e: any) {
-      alert(e.message || "Failed to save quote");
+    } catch (error: unknown) {
+      alert(getErrorMessage(error, "Failed to save quote"));
     } finally {
       setSaving(false);
     }
@@ -412,17 +416,17 @@ export default function EditQuotePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[240px]">
+                    <TableHead className="min-w-60">
                       ITEM DETAILS
                     </TableHead>
-                    <TableHead className="w-[100px] text-right">
+                    <TableHead className="w-25 text-right">
                       QUANTITY
                     </TableHead>
-                    <TableHead className="w-[120px] text-right">RATE</TableHead>
-                    <TableHead className="w-[100px] text-right">
+                    <TableHead className="w-30 text-right">RATE</TableHead>
+                    <TableHead className="w-25 text-right">
                       DISCOUNT %
                     </TableHead>
-                    <TableHead className="w-[120px] text-right">
+                    <TableHead className="w-30 text-right">
                       AMOUNT
                     </TableHead>
                     <TableHead className="w-10" />
@@ -555,7 +559,7 @@ export default function EditQuotePage() {
               <div className="space-y-1.5">
                 <Label>Customer Notes</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-20 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                 />
@@ -563,7 +567,7 @@ export default function EditQuotePage() {
               <div className="space-y-1.5">
                 <Label>Terms & Conditions</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[100px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-25 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="Enter your terms and conditions"
                   value={termsAndConditions}
                   onChange={(e) => setTermsAndConditions(e.target.value)}

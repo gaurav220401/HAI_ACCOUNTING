@@ -24,6 +24,11 @@ import {
 
 import { salesOrderApi, type SalesOrder, type SalesOrderStatus } from "@/lib/api/sales-orders";
 
+function getCustomerName(customer: SalesOrder["customerId"] | null | undefined): string {
+  if (!customer || typeof customer === "string") return "";
+  return customer.displayName || customer.companyName || "";
+}
+
 function formatDate(d: string) {
   try {
     const dt = new Date(d);
@@ -78,7 +83,7 @@ export default function SalesOrdersPage() {
     if (!search.trim()) return orders;
     const q = search.toLowerCase();
     return orders.filter((o) => {
-      const custName = String((o as any).customerId?.displayName || "").toLowerCase();
+      const custName = getCustomerName(o.customerId).toLowerCase();
       return (
         o.salesOrderNumber.toLowerCase().includes(q) ||
         (o.reference || "").toLowerCase().includes(q) ||
@@ -160,7 +165,7 @@ export default function SalesOrdersPage() {
                     <TableCell className="font-medium text-primary">{o.salesOrderNumber}</TableCell>
                     <TableCell className="text-sm">{o.reference || "—"}</TableCell>
                     <TableCell className="text-sm">
-                      {(o as any).customerId?.displayName || "—"}
+                      {getCustomerName(o.customerId) || "—"}
                     </TableCell>
                     <TableCell>
                       <Badge variant={statusBadgeVariant(o.status)}>{o.status}</Badge>

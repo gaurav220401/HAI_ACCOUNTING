@@ -72,6 +72,17 @@ interface LineItem {
   accountId: string;
 }
 
+type RefValue = string | { _id: string } | null | undefined;
+
+function getRefId(value: RefValue): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : value._id;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function calcLineAmount(l: LineItem) {
   const lineTotal = l.quantity * l.rate;
   const discAmt = (lineTotal * l.discountPercent) / 100;
@@ -168,32 +179,18 @@ export default function EditInvoicePage() {
         setPaymentTermsList(ptr.data ?? []);
 
         // Populate form
-        setCustomerId(
-          typeof inv.customerId === "string" ?
-            inv.customerId
-          : inv.customerId?._id || "",
-        );
+        setCustomerId(getRefId(inv.customerId));
         setInvoiceNumber(inv.invoiceNumber);
         setOrderNumber(inv.orderNumber || "");
         setInvoiceDate(inv.invoiceDate?.slice(0, 10) || "");
         setDueDate(inv.dueDate?.slice(0, 10) || "");
-        setPaymentTermsId(
-          typeof inv.paymentTermsId === "string" ?
-            inv.paymentTermsId
-          : inv.paymentTermsId?._id || "",
-        );
-        setSalesPersonId(
-          typeof inv.salesPersonId === "string" ?
-            inv.salesPersonId
-          : inv.salesPersonId?._id || "",
-        );
+        setPaymentTermsId(getRefId(inv.paymentTermsId));
+        setSalesPersonId(getRefId(inv.salesPersonId));
         setSubject(inv.subject || "");
         setDiscountType(inv.discountType || "percent");
         setDiscountValue(inv.discountValue || 0);
         setTaxType(inv.taxType || "none");
-        setTotalTaxId(
-          typeof inv.taxId === "string" ? inv.taxId : inv.taxId?._id || "",
-        );
+        setTotalTaxId(getRefId(inv.taxId));
         setAdjustmentLabel(inv.adjustmentLabel || "Adjustment");
         setAdjustmentAmount(inv.adjustmentAmount || 0);
         setCustomerNotes(inv.customerNotes || "");
@@ -201,35 +198,31 @@ export default function EditInvoicePage() {
 
         if (inv.items && inv.items.length > 0) {
           setLines(
-            inv.items.map((it: any) => ({
+            inv.items.map((it: Invoice["items"][number]) => ({
               key: lineKeyCounter++,
-              itemId:
-                typeof it.itemId === "string" ? it.itemId : it.itemId?._id || "",
+              itemId: getRefId(it.itemId),
               name: it.name,
               description: it.description || "",
               hsnSacCode: it.hsnSacCode || "",
               quantity: it.quantity || 1,
               rate: it.rate || 0,
               discountPercent: it.discountPercent || 0,
-              taxId: typeof it.taxId === "string" ? it.taxId : it.taxId?._id || "",
+              taxId: getRefId(it.taxId),
               taxPercent: it.taxPercent || 0,
-              accountId:
-                typeof it.accountId === "string" ?
-                  it.accountId
-                : it.accountId?._id || "",
+              accountId: getRefId(it.accountId),
             })),
           );
         }
       })
-      .catch((e) => {
-        toast.error(e.message || "Failed to fetch invoice data");
+      .catch((error: unknown) => {
+        toast.error(getErrorMessage(error, "Failed to fetch invoice data"));
       })
       .finally(() => setFetching(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, orgLoading, activeOrganization, id]);
 
   const updateLine = useCallback(
-    (key: number, field: keyof LineItem, value: any) => {
+    <K extends keyof LineItem>(key: number, field: K, value: LineItem[K]) => {
       setLines((prev) =>
         prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)),
       );
@@ -318,8 +311,8 @@ export default function EditInvoicePage() {
       };
       await invoiceApi.update(id, payload);
       router.push(`/sales/invoices/${id}`);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update invoice");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update invoice"));
     } finally {
       setSaving(false);
     }
@@ -524,15 +517,15 @@ export default function EditInvoicePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[240px]">
+                    <TableHead className="min-w-60">
                       ITEM DETAILS
                     </TableHead>
-                    <TableHead className="w-[100px] text-right">QTY</TableHead>
-                    <TableHead className="w-[120px] text-right">RATE</TableHead>
-                    <TableHead className="w-[100px] text-right">
+                    <TableHead className="w-25 text-right">QTY</TableHead>
+                    <TableHead className="w-30 text-right">RATE</TableHead>
+                    <TableHead className="w-25 text-right">
                       DISC %
                     </TableHead>
-                    <TableHead className="w-[120px] text-right">
+                    <TableHead className="w-30 text-right">
                       AMOUNT
                     </TableHead>
                     <TableHead className="w-10" />
@@ -662,7 +655,7 @@ export default function EditInvoicePage() {
               <div className="space-y-1.5">
                 <Label>Customer Notes</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-20 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                 />
@@ -670,7 +663,7 @@ export default function EditInvoicePage() {
               <div className="space-y-1.5">
                 <Label>Terms &amp; Conditions</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[100px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-25 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="Enter terms and conditions"
                   value={termsAndConditions}
                   onChange={(e) => setTermsAndConditions(e.target.value)}

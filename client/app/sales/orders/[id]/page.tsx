@@ -27,6 +27,29 @@ import { salesOrderApi, type SalesOrder, type SalesOrderStatus } from "@/lib/api
 
 type TabKey = "overview";
 
+function getCustomerName(
+  customer: SalesOrder["customerId"] | null | undefined,
+): string {
+  if (!customer || typeof customer === "string") return "";
+  return customer.displayName || customer.companyName || "";
+}
+
+function getPaymentTermsName(
+  paymentTerms: SalesOrder["paymentTermsId"] | null | undefined,
+): string {
+  if (!paymentTerms || typeof paymentTerms === "string") return "";
+  return paymentTerms.name || "";
+}
+
+function getLineItemName(lineItem: SalesOrder["lineItems"][number]): string {
+  if (!lineItem.itemId || typeof lineItem.itemId === "string") return "";
+  return lineItem.itemId.name || "";
+}
+
+function getConvertedInvoiceId(value: { _id?: string; invoiceId?: string } | undefined) {
+  return value?.invoiceId || value?._id || "";
+}
+
 function formatDate(d?: string | null) {
   if (!d) return "—";
   try {
@@ -96,7 +119,7 @@ export default function SalesOrderDetailsPage() {
     return orders.filter((o) => {
       if (!search.trim()) return true;
       const q = search.toLowerCase();
-      const custName = String((o as any).customerId?.displayName || "").toLowerCase();
+      const custName = getCustomerName(o.customerId).toLowerCase();
       return (
         o.salesOrderNumber.toLowerCase().includes(q) ||
         (o.reference || "").toLowerCase().includes(q) ||
@@ -113,10 +136,12 @@ export default function SalesOrderDetailsPage() {
     if (!active) return;
     try {
       const result = await salesOrderApi.convertToInvoice(active._id);
+      const invoiceId = getConvertedInvoiceId(result.data);
       alert("Sales order converted to invoice successfully");
-      // Navigate to the newly created invoice
-      router.push(`/sales/invoices/${result.data._id}`);
-    } catch (error) {
+      if (invoiceId) {
+        router.push(`/sales/invoices/${invoiceId}`);
+      }
+    } catch {
       alert("Failed to convert sales order to invoice");
     }
   }
@@ -218,7 +243,7 @@ export default function SalesOrderDetailsPage() {
                       </Badge>
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground truncate">
-                      {(o as any).customerId?.displayName || "—"}
+                      {getCustomerName(o.customerId) || "—"}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground tabular-nums">
                       {o.total != null ? `₹${Number(o.total).toLocaleString("en-IN")}` : "—"}
@@ -242,7 +267,7 @@ export default function SalesOrderDetailsPage() {
                   <div>
                     <h1 className="text-2xl font-bold">{active.salesOrderNumber}</h1>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                      <span>{(active as any).customerId?.displayName || "—"}</span>
+                      <span>{getCustomerName(active.customerId) || "—"}</span>
                       <span>{formatDate(active.orderDate)}</span>
                       {active.reference ? <span>Ref {active.reference}</span> : null}
                       <Badge variant={statusVariant(active.status)}>{active.status}</Badge>
@@ -310,7 +335,7 @@ export default function SalesOrderDetailsPage() {
                                 <div>{formatDate(active.expectedShipmentDate || null)}</div>
 
                                 <div className="text-muted-foreground">Payment Terms</div>
-                                <div>{(active as any).paymentTermsId?.name || "—"}</div>
+                                <div>{getPaymentTermsName(active.paymentTermsId) || "—"}</div>
 
                                 <div className="text-muted-foreground">Delivery Method</div>
                                 <div>{active.deliveryMethod || "—"}</div>
@@ -358,13 +383,13 @@ export default function SalesOrderDetailsPage() {
                               <CardTitle className="text-sm">Items</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              {(active as any).lineItems?.length ? (
+                              {active.lineItems.length ? (
                                 <div className="space-y-3">
-                                  {(active as any).lineItems.map((li: any, idx: number) => (
+                                  {active.lineItems.map((li, idx: number) => (
                                     <div key={idx} className="flex items-start justify-between gap-4">
                                       <div>
                                         <div className="text-sm font-medium">
-                                          {li.itemId?.name || "Item"}
+                                          {getLineItemName(li) || "Item"}
                                         </div>
                                         <div className="text-xs text-muted-foreground">
                                           Qty {li.quantity} x ₹{Number(li.rate || 0).toLocaleString("en-IN")}

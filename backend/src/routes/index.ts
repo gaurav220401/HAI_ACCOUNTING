@@ -11,6 +11,7 @@ import settingsRoutes from "./settings.routes";
 import quoteRoutes from "./quote.routes";
 import salesOrderRoutes from "./sales-order.routes";
 import invoiceRoutes from "./invoice.routes";
+import recurringInvoiceRoutes from "./recurring-invoice.routes";
 import uploadRoutes from "./upload.routes";
 import gstinRoutes from "./gstin.routes";
 
@@ -28,6 +29,7 @@ router.use("/settings", settingsRoutes);
 router.use("/quotes", quoteRoutes);
 router.use("/sales-orders", salesOrderRoutes);
 router.use("/invoices", invoiceRoutes);
+router.use("/recurring-invoices", recurringInvoiceRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/gstin", gstinRoutes);
 

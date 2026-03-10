@@ -51,6 +51,17 @@ type LineItemUi = {
   amount: number;
 };
 
+type RefValue = string | { _id: string } | null | undefined;
+
+function getRefId(value: RefValue): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : value._id;
+}
+
+function getConvertedInvoiceId(value: { _id?: string; invoiceId?: string } | undefined) {
+  return value?.invoiceId || value?._id || "";
+}
+
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -126,14 +137,14 @@ export default function EditSalesOrderPage() {
         const orderData = orderRes.data;
         setOrder(orderData);
         setFormData({
-          customerId: orderData.customerId?._id || orderData.customerId || "",
+          customerId: getRefId(orderData.customerId),
           salesOrderNumber: orderData.salesOrderNumber || "",
           reference: orderData.reference || "",
           orderDate: orderData.orderDate?.split("T")[0] || todayISO(),
           expectedShipmentDate: orderData.expectedShipmentDate?.split("T")[0] || "",
-          paymentTermsId: orderData.paymentTermsId?._id || orderData.paymentTermsId || "",
+          paymentTermsId: getRefId(orderData.paymentTermsId),
           deliveryMethod: orderData.deliveryMethod || "",
-          salesPersonId: orderData.salesPersonId?._id || orderData.salesPersonId || "",
+          salesPersonId: getRefId(orderData.salesPersonId),
           shippingCharges: String(orderData.shippingCharges || 0),
           adjustment: String(orderData.adjustment || 0),
           notes: orderData.notes || "",
@@ -141,9 +152,9 @@ export default function EditSalesOrderPage() {
         });
 
         if (orderData.lineItems?.length) {
-          const formattedItems = orderData.lineItems.map((li: any, idx: number) => ({
+          const formattedItems = orderData.lineItems.map((li, idx: number) => ({
             id: String(idx + 1),
-            itemId: li.itemId?._id || li.itemId || "",
+            itemId: getRefId(li.itemId),
             description: li.description || "",
             quantity: String(li.quantity || 1),
             rate: String(li.rate || 0),
@@ -244,7 +255,10 @@ export default function EditSalesOrderPage() {
     if (!order) return;
     try {
       const result = await salesOrderApi.convertToInvoice(order._id);
-      router.push(`/sales/invoices/${(result as any).data?._id}`);
+      const invoiceId = getConvertedInvoiceId(result.data);
+      if (invoiceId) {
+        router.push(`/sales/invoices/${invoiceId}`);
+      }
     } catch (_err) {
       // noop
     }
