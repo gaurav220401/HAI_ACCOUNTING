@@ -63,11 +63,12 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
-import {
-  contactApi, type Contact, type ContactPerson, type BankDetail, type ContactComment,
+import { contactApi, type Contact, type ContactPerson, type BankDetail, type ContactComment,
   type ActivityEvent,
 } from "@/lib/api/contacts";
 import { expenseApi, type Expense } from "@/lib/api/expenses";
+import { smtpApi } from "@/lib/api/smtp";
+import * as XLSX from "xlsx";
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1639,13 +1640,16 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState(() => {
-    // In standalone mode (no split-panel close button), read the tab from the URL
+  const [activeTab, setActiveTab] = useState(initialTab ?? "overview");
+
+  // In standalone mode, read the ?tab= param from URL after mount (avoids SSR window issues)
+  useEffect(() => {
     if (!onClose && typeof window !== "undefined") {
-      return new URLSearchParams(window.location.search).get("tab") ?? initialTab ?? "overview";
+      const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
+      if (tabFromUrl) setActiveTab(tabFromUrl);
     }
-    return initialTab ?? "overview";
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [stmtStart, setStmtStart] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [stmtEnd, setStmtEnd] = useState(new Date());
@@ -1674,21 +1678,33 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
     if (onClose) setActiveTab("overview"); // reset tab only in split-panel
   }, [initialVendor._id]);
 
-  // Guard: prevent the save effect from overwriting localStorage before the load effect has run
+  // Guard: prevent the save effect from overwriting localStorage before the load effect has run.
+  // IMPORTANT: hasLoadedConfigRef is set to true INSIDE the setTemplateConfig callback so it
+  // only becomes true on the re-render AFTER the loaded config is applied — not on the same
+  // render where save effect would fire with the stale DEFAULT config.
   const hasLoadedConfigRef = useRef(false);
 
   // Load template config from localStorage on mount (or when vendor changes)
   useEffect(() => {
     if (!initialVendor._id) return;
-    hasLoadedConfigRef.current = false; // reset on vendor change
+    hasLoadedConfigRef.current = false; // block saving until load is processed
     try {
       const stored = localStorage.getItem(TMPL_KEY(initialVendor._id));
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<TemplateConfig>;
-        setTemplateConfig((prev) => ({ ...prev, ...parsed, margins: { ...prev.margins, ...(parsed.margins ?? {}) } }));
+        // Set hasLoadedConfigRef INSIDE the functional update — it runs during React's
+        // next render (before effects), so save effect on that re-render will see true.
+        setTemplateConfig((prev) => {
+          hasLoadedConfigRef.current = true;
+          return { ...prev, ...parsed, margins: { ...prev.margins, ...(parsed.margins ?? {}) } };
+        });
+      } else {
+        // No stored config — safe to allow saving immediately (DEFAULT is correct)
+        hasLoadedConfigRef.current = true;
       }
-    } catch { /* ignore */ }
-    hasLoadedConfigRef.current = true;
+    } catch {
+      hasLoadedConfigRef.current = true;
+    }
   }, [initialVendor._id]);
 
   // Also reload from localStorage whenever the statement tab becomes active.
@@ -1814,6 +1830,109 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   // â”€â”€ Derived display values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const primaryContact = vendor.contactPersons?.find((p) => p.isPrimary) ?? vendor.contactPersons?.[0];
   const stmt = computeStatement(expenses, vendor.openingBalance ?? 0, stmtStart, stmtEnd);
+
+  // ── Email dialog state ────────────────────────────────────────────────────
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [smtpConfigured, setSmtpConfigured] = useState<boolean | null>(null);
+
+  async function openEmailDialog() {
+    const vendorEmail = vendor.email ?? vendor.contactPersons?.find((p) => p.isPrimary)?.email ?? vendor.contactPersons?.[0]?.email ?? "";
+    setEmailTo(vendorEmail);
+    setEmailSubject(`Statement of Accounts - ${vendor.displayName}`);
+    setEmailBody(`Dear ${vendor.displayName},\n\nPlease find your statement of accounts from ${format(stmtStart, "dd/MM/yyyy")} to ${format(stmtEnd, "dd/MM/yyyy")}.\n\nKind regards,\n${orgName}`);
+    setEmailDialogOpen(true);
+    if (smtpConfigured === null && activeOrganization?._id) {
+      try {
+        const res = await smtpApi.get(activeOrganization._id);
+        const s = (res as any)?.data;
+        setSmtpConfigured(!!(s?.host && s?.user && s?.pass));
+      } catch { setSmtpConfigured(false); }
+    }
+  }
+
+  async function handleSendEmail() {
+    if (!emailTo.trim()) { toast.error("Please enter a recipient email"); return; }
+    if (!activeOrganization?._id) return;
+    setEmailSending(true);
+    try {
+      await apiFetch(`/organizations/${activeOrganization._id}/send-email`, {
+        method: "POST",
+        body: JSON.stringify({ to: emailTo, subject: emailSubject, body: emailBody, vendorName: vendor.displayName }),
+      });
+      toast.success("Statement emailed successfully");
+      setEmailDialogOpen(false);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to send email");
+    } finally {
+      setEmailSending(false);
+    }
+  }
+
+  function handlePrint() {
+    const el = document.querySelector(".statement-print-area") as HTMLElement | null;
+    if (!el) { window.print(); return; }
+    const win = window.open("", "_blank", "width=900,height=750");
+    if (!win) { window.print(); return; }
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
+      <title>Statement - ${vendor.displayName}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #f3f4f6; font-family: ${templateConfig.fontFamily}; }
+        .statement-print-area { display: flex !important; flex-direction: column !important;
+          background: white; margin: 0 auto; }
+        table { border-collapse: collapse; width: 100%; }
+        img { max-width: 100%; display: block; }
+        @page { size: A4 portrait; margin: 0; }
+        @media print { body { background: white; } .statement-print-area { box-shadow: none !important; } }
+      </style>
+      </head><body>${el.outerHTML}</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 600);
+  }
+
+  function handlePDF() {
+    handlePrint(); // user selects "Save as PDF" in print dialog
+  }
+
+  function handleXLS() {
+    const currency = vendor.currency ?? "INR";
+    const fmtAmt = (v: number) =>
+      new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: 2 }).format(v);
+    const orgShortName = (orgName || "ORG").split(" ")[0];
+    const dateRange = `From ${format(stmtStart, "dd/MM/yyyy")} To ${format(stmtEnd, "dd/MM/yyyy")}`;
+
+    const wsData: (string | number)[][] = [
+      [orgShortName, orgName, "Vendor Statement", dateRange, "", ""],
+      [],
+      [templateConfig.accountSummaryLabel, "", "", "", "", ""],
+      [templateConfig.openingBalanceLabel, fmtAmt(stmt.openingBalance), "", "", "", ""],
+      [templateConfig.invoicedAmountLabel, fmtAmt(stmt.totalBilled), "", "", "", ""],
+      [templateConfig.amountPaidLabel, fmtAmt(stmt.totalPaid), "", "", "", ""],
+      [templateConfig.balanceDueLabel, fmtAmt(stmt.balanceDue), "", "", "", ""],
+      [],
+      [
+        templateConfig.dateLabel,
+        templateConfig.transactionTypeLabel,
+        templateConfig.transactionDetailsLabel,
+        templateConfig.amountLabel,
+        templateConfig.paymentsLabel,
+        templateConfig.balanceLabel,
+      ],
+      ...stmt.rows.map((r) => [r.date, r.type, r.details ?? "", r.amount, r.payments, r.balance] as (string | number)[]),
+      ["", templateConfig.balanceDueLabel, "", "", "", fmtAmt(stmt.balanceDue)],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = [{ wch: 14 }, { wch: 32 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Statement");
+    XLSX.writeFile(wb, `${vendor.displayName}_statement.xlsx`);
+  }
 
   const langMap: Record<string, string> = {
     en: "English", hi: "Hindi", bn: "Bengali", ta: "Tamil",
@@ -2437,16 +2556,16 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => window.print()}>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handlePrint}>
               <Printer className="h-3.5 w-3.5 mr-1.5" />Print
             </Button>
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => window.print()}>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handlePDF}>
               <Download className="h-3.5 w-3.5 mr-1.5" />PDF
             </Button>
-            <Button variant="outline" size="sm" className="h-8 text-xs" disabled>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleXLS}>
               <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />XLS
             </Button>
-            <Button variant="outline" size="sm" className="h-8 text-xs" disabled>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openEmailDialog}>
               <Send className="h-3.5 w-3.5 mr-1.5" />Email
             </Button>
             <DropdownMenu>
@@ -2697,6 +2816,66 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
           }}
         />
       )}
+
+      {/* ── Email Dialog ── */}
+      <Dialog open={emailDialogOpen} onOpenChange={(o) => !emailSending && setEmailDialogOpen(o)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Email Statement</DialogTitle>
+          </DialogHeader>
+          {smtpConfigured === false ? (
+            <div className="py-4 text-center space-y-3">
+              <AlertCircle className="h-10 w-10 mx-auto text-orange-500" />
+              <p className="text-sm font-medium">Email not configured</p>
+              <p className="text-xs text-muted-foreground">
+                Set up your SMTP settings in <strong>Settings → Email</strong> to send emails.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => { setEmailDialogOpen(false); router.push("/settings?tab=email"); }}>
+                Go to Email Settings
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-1">
+              <div>
+                <Label className="text-xs">To</Label>
+                <Input
+                  className="mt-1 h-8 text-sm"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  placeholder="vendor@example.com"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Subject</Label>
+                <Input
+                  className="mt-1 h-8 text-sm"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Message</Label>
+                <Textarea
+                  className="mt-1 text-sm resize-none"
+                  rows={5}
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          {smtpConfigured !== false && (
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setEmailDialogOpen(false)} disabled={emailSending}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSendEmail} disabled={emailSending}>
+                {emailSending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Sending…</> : <><Send className="h-3.5 w-3.5 mr-1.5" />Send</>}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
