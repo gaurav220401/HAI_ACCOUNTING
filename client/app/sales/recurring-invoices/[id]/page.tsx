@@ -25,10 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
   Table,
   TableBody,
@@ -149,7 +146,9 @@ export default function RecurringInvoiceDetailPage() {
     }
   }, [firebaseUser, loading, id, fetchProfile]);
 
-  async function handleAction(action: "pause" | "resume" | "stop" | "delete" | "run") {
+  async function handleAction(
+    action: "pause" | "resume" | "stop" | "delete" | "run",
+  ) {
     if (!profile) return;
 
     setActionLoading(true);
@@ -197,7 +196,9 @@ export default function RecurringInvoiceDetailPage() {
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
-          <div className="flex flex-1 items-center justify-center">Profile not found.</div>
+          <div className="flex flex-1 items-center justify-center">
+            Profile not found.
+          </div>
         </SidebarInset>
       </SidebarProvider>
     );
@@ -213,15 +214,24 @@ export default function RecurringInvoiceDetailPage() {
           breadcrumb={
             <span className="text-sm text-muted-foreground">
               Sales <span className="mx-1">/</span>
-              <button className="hover:underline" onClick={() => router.push("/sales/recurring-invoices")}>
+              <button
+                className="hover:underline"
+                onClick={() => router.push("/sales/recurring-invoices")}
+              >
                 Recurring Invoices
               </button>
               <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">{profile.profileName}</span>
+              <span className="font-medium text-foreground">
+                {profile.profileName}
+              </span>
             </span>
           }
           actions={
-            <Button variant="ghost" size="sm" onClick={() => router.push("/sales/recurring-invoices")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push("/sales/recurring-invoices")}
+            >
               <ArrowLeft className="mr-1 h-4 w-4" />
               Back
             </Button>
@@ -232,53 +242,83 @@ export default function RecurringInvoiceDetailPage() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-semibold tracking-tight">{profile.profileName}</h1>
-                <Badge variant="outline" className={STATUS_STYLES[profile.status]}>
+                <h1 className="text-3xl font-semibold tracking-tight">
+                  {profile.profileName}
+                </h1>
+                <Badge
+                  variant="outline"
+                  className={STATUS_STYLES[profile.status]}
+                >
                   {profile.status}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {customerName(profile.customerId)} · {formatCurrency(profile.total)} · {FREQUENCY_LABELS[profile.frequency]}
+                {customerName(profile.customerId)} ·{" "}
+                {formatCurrency(profile.total)} ·{" "}
+                {FREQUENCY_LABELS[profile.frequency]}
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                onClick={() => router.push(`/sales/recurring-invoices/${profile._id}/edit`)}
+                onClick={() =>
+                  router.push(`/sales/recurring-invoices/${profile._id}/edit`)
+                }
               >
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit
               </Button>
-              {profile.status !== "completed" && profile.status !== "stopped" ? (
-                <Button onClick={() => void handleAction("run")} disabled={actionLoading}>
-                  {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              {profile.status !== "completed" && profile.status !== "stopped" ?
+                <Button
+                  onClick={() => void handleAction("run")}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ?
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Plus className="mr-2 h-4 w-4" />}
                   Create Invoice
                 </Button>
-              ) : null}
-              {profile.status === "active" ? (
-                <Button variant="outline" onClick={() => void handleAction("pause")} disabled={actionLoading}>
+              : null}
+              {profile.status === "active" ?
+                <Button
+                  variant="outline"
+                  onClick={() => void handleAction("pause")}
+                  disabled={actionLoading}
+                >
                   <Pause className="mr-2 h-4 w-4" />
                   Pause
                 </Button>
-              ) : null}
-              {profile.status === "paused" ? (
-                <Button variant="outline" onClick={() => void handleAction("resume")} disabled={actionLoading}>
+              : null}
+              {profile.status === "paused" ?
+                <Button
+                  variant="outline"
+                  onClick={() => void handleAction("resume")}
+                  disabled={actionLoading}
+                >
                   <Play className="mr-2 h-4 w-4" />
                   Resume
                 </Button>
-              ) : null}
-              {profile.status !== "stopped" && profile.status !== "completed" ? (
-                <Button variant="outline" onClick={() => void handleAction("stop")} disabled={actionLoading}>
+              : null}
+              {profile.status !== "stopped" && profile.status !== "completed" ?
+                <Button
+                  variant="outline"
+                  onClick={() => void handleAction("stop")}
+                  disabled={actionLoading}
+                >
                   <Square className="mr-2 h-4 w-4" />
                   Stop
                 </Button>
-              ) : null}
+              : null}
               <Button variant="outline" onClick={() => void fetchProfile()}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Refresh
               </Button>
-              <Button variant="outline" className="text-destructive" onClick={() => void handleAction("delete")}>
+              <Button
+                variant="outline"
+                className="text-destructive"
+                onClick={() => void handleAction("delete")}
+              >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete
               </Button>
@@ -316,7 +356,9 @@ export default function RecurringInvoiceDetailPage() {
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="next-invoice">Next Invoice</TabsTrigger>
-              <TabsTrigger value="recent-activities">Recent Activities</TabsTrigger>
+              <TabsTrigger value="recent-activities">
+                Recent Activities
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4">
@@ -327,32 +369,54 @@ export default function RecurringInvoiceDetailPage() {
                   </CardHeader>
                   <CardContent className="space-y-4 text-sm">
                     <div>
-                      <div className="font-medium">{customerName(profile.customerId)}</div>
-                      <div className="text-muted-foreground">{customerEmail(profile.customerId)}</div>
+                      <div className="font-medium">
+                        {customerName(profile.customerId)}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {customerEmail(profile.customerId)}
+                      </div>
                     </div>
                     <div className="grid gap-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Start Date</span>
+                        <span className="text-muted-foreground">
+                          Start Date
+                        </span>
                         <span>{formatDate(profile.startDate)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">End Date</span>
-                        <span>{profile.neverExpires ? "Never expires" : formatDate(profile.endDate)}</span>
+                        <span>
+                          {profile.neverExpires ?
+                            "Never expires"
+                          : formatDate(profile.endDate)}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Payment Terms</span>
+                        <span className="text-muted-foreground">
+                          Payment Terms
+                        </span>
                         <span>{paymentTermsLabel(profile.paymentTermsId)}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Salesperson</span>
+                        <span className="text-muted-foreground">
+                          Salesperson
+                        </span>
                         <span>{salesPersonLabel(profile.salesPersonId)}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Delivery Mode</span>
-                        <span>{profile.deliveryMode === "send" ? "Auto-send" : "Draft"}</span>
+                        <span className="text-muted-foreground">
+                          Delivery Mode
+                        </span>
+                        <span>
+                          {profile.deliveryMode === "send" ?
+                            "Auto-send"
+                          : "Draft"}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Last Invoice</span>
+                        <span className="text-muted-foreground">
+                          Last Invoice
+                        </span>
                         <span>{formatDate(profile.lastRunDate)}</span>
                       </div>
                     </div>
@@ -367,19 +431,20 @@ export default function RecurringInvoiceDetailPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {generatedInvoices.length === 0 ? (
+                    {generatedInvoices.length === 0 ?
                       <div className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
                         No child invoices have been generated yet.
                       </div>
-                    ) : (
-                      <div className="overflow-x-auto rounded-lg border">
+                    : <div className="overflow-x-auto rounded-lg border">
                         <Table>
                           <TableHeader>
                             <TableRow>
                               <TableHead>Invoice</TableHead>
                               <TableHead>Date</TableHead>
                               <TableHead>Status</TableHead>
-                              <TableHead className="text-right">Amount</TableHead>
+                              <TableHead className="text-right">
+                                Amount
+                              </TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -387,12 +452,16 @@ export default function RecurringInvoiceDetailPage() {
                               <TableRow
                                 key={invoice._id}
                                 className="cursor-pointer hover:bg-muted/40"
-                                onClick={() => router.push(`/sales/invoices/${invoice._id}`)}
+                                onClick={() =>
+                                  router.push(`/sales/invoices/${invoice._id}`)
+                                }
                               >
                                 <TableCell className="font-medium text-blue-700">
                                   {invoice.invoiceNumber}
                                 </TableCell>
-                                <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
+                                <TableCell>
+                                  {formatDate(invoice.invoiceDate)}
+                                </TableCell>
                                 <TableCell>{invoice.status}</TableCell>
                                 <TableCell className="text-right">
                                   {formatCurrency(invoice.total)}
@@ -402,7 +471,7 @@ export default function RecurringInvoiceDetailPage() {
                           </TableBody>
                         </Table>
                       </div>
-                    )}
+                    }
                   </CardContent>
                 </Card>
               </div>
@@ -413,26 +482,43 @@ export default function RecurringInvoiceDetailPage() {
                 <CardHeader>
                   <CardTitle>Next Invoice Preview</CardTitle>
                   <CardDescription>
-                    Preview of the template that will be used on the next scheduled run.
+                    Preview of the template that will be used on the next
+                    scheduled run.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <div>
-                      <div className="text-sm text-muted-foreground">Customer</div>
-                      <div className="font-medium">{customerName(profile.customerId)}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Customer
+                      </div>
+                      <div className="font-medium">
+                        {customerName(profile.customerId)}
+                      </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Invoice Date</div>
-                      <div className="font-medium">{formatDate(profile.nextRunDate)}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Invoice Date
+                      </div>
+                      <div className="font-medium">
+                        {formatDate(profile.nextRunDate)}
+                      </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Payment Terms</div>
-                      <div className="font-medium">{paymentTermsLabel(profile.paymentTermsId)}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Payment Terms
+                      </div>
+                      <div className="font-medium">
+                        {paymentTermsLabel(profile.paymentTermsId)}
+                      </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Frequency</div>
-                      <div className="font-medium">{FREQUENCY_LABELS[profile.frequency]}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Frequency
+                      </div>
+                      <div className="font-medium">
+                        {FREQUENCY_LABELS[profile.frequency]}
+                      </div>
                     </div>
                   </div>
 
@@ -448,16 +534,22 @@ export default function RecurringInvoiceDetailPage() {
                       </TableHeader>
                       <TableBody>
                         {profile.items.map((item) => (
-                          <TableRow key={item._id || `${item.name}-${item.quantity}`}>
+                          <TableRow
+                            key={item._id || `${item.name}-${item.quantity}`}
+                          >
                             <TableCell>
                               <div className="font-medium">{item.name}</div>
-                              {item.description ? (
-                                <div className="text-xs text-muted-foreground">{item.description}</div>
-                              ) : null}
+                              {item.description ?
+                                <div className="text-xs text-muted-foreground">
+                                  {item.description}
+                                </div>
+                              : null}
                             </TableCell>
                             <TableCell>{item.quantity}</TableCell>
                             <TableCell>{formatCurrency(item.rate)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(item.amount)}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -467,13 +559,17 @@ export default function RecurringInvoiceDetailPage() {
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
                     <div className="space-y-4">
                       <div>
-                        <div className="text-sm font-medium">Customer Notes</div>
+                        <div className="text-sm font-medium">
+                          Customer Notes
+                        </div>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {profile.customerNotes || "-"}
                         </p>
                       </div>
                       <div>
-                        <div className="text-sm font-medium">Terms and Conditions</div>
+                        <div className="text-sm font-medium">
+                          Terms and Conditions
+                        </div>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {profile.termsAndConditions || "-"}
                         </p>
@@ -483,11 +579,15 @@ export default function RecurringInvoiceDetailPage() {
                     <Card>
                       <CardContent className="space-y-3 pt-6 text-sm">
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Subtotal</span>
+                          <span className="text-muted-foreground">
+                            Subtotal
+                          </span>
                           <span>{formatCurrency(profile.subTotal)}</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Discount</span>
+                          <span className="text-muted-foreground">
+                            Discount
+                          </span>
                           <span>{formatCurrency(profile.discountAmount)}</span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -495,8 +595,12 @@ export default function RecurringInvoiceDetailPage() {
                           <span>{formatCurrency(profile.taxAmount)}</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Adjustment</span>
-                          <span>{formatCurrency(profile.adjustmentAmount)}</span>
+                          <span className="text-muted-foreground">
+                            Adjustment
+                          </span>
+                          <span>
+                            {formatCurrency(profile.adjustmentAmount)}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between font-semibold">
                           <span>Total</span>
@@ -514,7 +618,8 @@ export default function RecurringInvoiceDetailPage() {
                 <CardHeader>
                   <CardTitle>Recent Activities</CardTitle>
                   <CardDescription>
-                    Schedule changes and generated invoice events for this profile.
+                    Schedule changes and generated invoice events for this
+                    profile.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -523,18 +628,23 @@ export default function RecurringInvoiceDetailPage() {
                       .slice()
                       .reverse()
                       .map((activity) => (
-                        <div key={`${activity.createdAt}-${activity.message}`} className="rounded-lg border px-4 py-3">
-                          <div className="text-sm font-medium">{activityLabel(activity)}</div>
+                        <div
+                          key={`${activity.createdAt}-${activity.message}`}
+                          className="rounded-lg border px-4 py-3"
+                        >
+                          <div className="text-sm font-medium">
+                            {activityLabel(activity)}
+                          </div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {formatDate(activity.createdAt)}
                           </div>
                         </div>
                       ))}
-                    {profile.recentActivities.length === 0 ? (
+                    {profile.recentActivities.length === 0 ?
                       <div className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
                         No activities recorded yet.
                       </div>
-                    ) : null}
+                    : null}
                   </div>
                 </CardContent>
               </Card>

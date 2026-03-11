@@ -114,7 +114,11 @@ export default function EditInvoicePage() {
   const id = params.id as string;
 
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -159,7 +163,8 @@ export default function EditInvoicePage() {
 
   // Fetch invoice + master data
   useEffect(() => {
-    if (!firebaseUser || loading || orgLoading || !activeOrganization || !id) return;
+    if (!firebaseUser || loading || orgLoading || !activeOrganization || !id)
+      return;
     setFetching(true);
     Promise.all([
       invoiceApi.getById(id),
@@ -282,8 +287,12 @@ export default function EditInvoicePage() {
         customerId,
         invoiceDate,
         dueDate: dueDate || null,
-        paymentTermsId: paymentTermsId === "__receipt" || !paymentTermsId ? null : paymentTermsId,
-        salesPersonId: salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
+        paymentTermsId:
+          paymentTermsId === "__receipt" || !paymentTermsId ?
+            null
+          : paymentTermsId,
+        salesPersonId:
+          salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())
@@ -517,17 +526,11 @@ export default function EditInvoicePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-60">
-                      ITEM DETAILS
-                    </TableHead>
+                    <TableHead className="min-w-60">ITEM DETAILS</TableHead>
                     <TableHead className="w-25 text-right">QTY</TableHead>
                     <TableHead className="w-30 text-right">RATE</TableHead>
-                    <TableHead className="w-25 text-right">
-                      DISC %
-                    </TableHead>
-                    <TableHead className="w-30 text-right">
-                      AMOUNT
-                    </TableHead>
+                    <TableHead className="w-25 text-right">DISC %</TableHead>
+                    <TableHead className="w-30 text-right">AMOUNT</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>

@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import { MoreHorizontal, Plus, RefreshCw, Search } from "lucide-react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
@@ -27,10 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
   Table,
   TableBody,
@@ -104,9 +96,9 @@ export default function RecurringInvoicesPage() {
   const [profiles, setProfiles] = useState<RecurringInvoice[]>([]);
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RecurringInvoiceStatus | "All">(
-    "All",
-  );
+  const [statusFilter, setStatusFilter] = useState<
+    RecurringInvoiceStatus | "All"
+  >("All");
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -183,7 +175,12 @@ export default function RecurringInvoicesPage() {
   const filteredProfiles = profiles.filter((profile) => {
     const value = search.trim().toLowerCase();
     if (!value) return true;
-    return [profile.profileName, profile.referenceNumber, profile.orderNumber, customerName(profile.customerId)]
+    return [
+      profile.profileName,
+      profile.referenceNumber,
+      profile.orderNumber,
+      customerName(profile.customerId),
+    ]
       .filter(Boolean)
       .some((entry) => String(entry).toLowerCase().includes(value));
   });
@@ -196,7 +193,9 @@ export default function RecurringInvoicesPage() {
           breadcrumb={
             <span className="text-sm text-muted-foreground">
               Sales <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Recurring Invoices</span>
+              <span className="font-medium text-foreground">
+                Recurring Invoices
+              </span>
             </span>
           }
           actions={
@@ -210,10 +209,19 @@ export default function RecurringInvoicesPage() {
                   className="h-9 pl-8"
                 />
               </div>
-              <Button variant="outline" size="sm" onClick={() => void fetchProfiles()}>
-                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void fetchProfiles()}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`}
+                />
               </Button>
-              <Button size="sm" onClick={() => router.push("/sales/recurring-invoices/new")}>
+              <Button
+                size="sm"
+                onClick={() => router.push("/sales/recurring-invoices/new")}
+              >
                 <Plus className="mr-1 h-4 w-4" />
                 New
               </Button>
@@ -224,9 +232,12 @@ export default function RecurringInvoicesPage() {
         <div className="flex flex-1 flex-col gap-4 p-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Recurring Invoices</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Recurring Invoices
+              </h1>
               <p className="text-sm text-muted-foreground">
-                Automate invoice generation on weekly, 10-day, 15-day, or monthly schedules.
+                Automate invoice generation on weekly, 10-day, 15-day, or
+                monthly schedules.
               </p>
             </div>
 
@@ -249,18 +260,24 @@ export default function RecurringInvoicesPage() {
             </Select>
           </div>
 
-          {filteredProfiles.length === 0 ? (
+          {filteredProfiles.length === 0 ?
             <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed py-20 text-center">
               <div className="max-w-xl space-y-3">
-                <h2 className="text-xl font-semibold">Create. Schedule. Repeat.</h2>
+                <h2 className="text-xl font-semibold">
+                  Create. Schedule. Repeat.
+                </h2>
                 <p className="text-sm text-muted-foreground">
-                  Create recurring profiles that generate invoices automatically and keep your billing cadence on track.
+                  Create recurring profiles that generate invoices automatically
+                  and keep your billing cadence on track.
                 </p>
-                <Button onClick={() => router.push("/sales/recurring-invoices/new")}>Create New Recurring Invoice</Button>
+                <Button
+                  onClick={() => router.push("/sales/recurring-invoices/new")}
+                >
+                  Create New Recurring Invoice
+                </Button>
               </div>
             </div>
-          ) : (
-            <div className="overflow-hidden rounded-xl border">
+          : <div className="overflow-hidden rounded-xl border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -279,17 +296,24 @@ export default function RecurringInvoicesPage() {
                     <TableRow
                       key={profile._id}
                       className="cursor-pointer hover:bg-muted/40"
-                      onClick={() => router.push(`/sales/recurring-invoices/${profile._id}`)}
+                      onClick={() =>
+                        router.push(`/sales/recurring-invoices/${profile._id}`)
+                      }
                     >
                       <TableCell>{customerName(profile.customerId)}</TableCell>
                       <TableCell className="font-medium text-blue-700">
                         {profile.profileName}
                       </TableCell>
-                      <TableCell>{FREQUENCY_LABELS[profile.frequency]}</TableCell>
+                      <TableCell>
+                        {FREQUENCY_LABELS[profile.frequency]}
+                      </TableCell>
                       <TableCell>{formatDate(profile.lastRunDate)}</TableCell>
                       <TableCell>{formatDate(profile.nextRunDate)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={STATUS_STYLES[profile.status]}>
+                        <Badge
+                          variant="outline"
+                          className={STATUS_STYLES[profile.status]}
+                        >
                           {profile.status}
                         </Badge>
                       </TableCell>
@@ -304,32 +328,62 @@ export default function RecurringInvoicesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => router.push(`/sales/recurring-invoices/${profile._id}`)}>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                router.push(
+                                  `/sales/recurring-invoices/${profile._id}`,
+                                )
+                              }
+                            >
                               View profile
                             </DropdownMenuItem>
-                            {profile.status !== "completed" && profile.status !== "stopped" ? (
-                              <DropdownMenuItem onClick={() => void handleAction("run", profile)}>
+                            {(
+                              profile.status !== "completed" &&
+                              profile.status !== "stopped"
+                            ) ?
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  void handleAction("run", profile)
+                                }
+                              >
                                 Create invoice now
                               </DropdownMenuItem>
-                            ) : null}
-                            {profile.status === "active" ? (
-                              <DropdownMenuItem onClick={() => void handleAction("pause", profile)}>
+                            : null}
+                            {profile.status === "active" ?
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  void handleAction("pause", profile)
+                                }
+                              >
                                 Pause
                               </DropdownMenuItem>
-                            ) : null}
-                            {profile.status === "paused" ? (
-                              <DropdownMenuItem onClick={() => void handleAction("resume", profile)}>
+                            : null}
+                            {profile.status === "paused" ?
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  void handleAction("resume", profile)
+                                }
+                              >
                                 Resume
                               </DropdownMenuItem>
-                            ) : null}
-                            {profile.status !== "stopped" && profile.status !== "completed" ? (
-                              <DropdownMenuItem onClick={() => void handleAction("stop", profile)}>
+                            : null}
+                            {(
+                              profile.status !== "stopped" &&
+                              profile.status !== "completed"
+                            ) ?
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  void handleAction("stop", profile)
+                                }
+                              >
                                 Stop
                               </DropdownMenuItem>
-                            ) : null}
+                            : null}
                             <DropdownMenuItem
                               className="text-destructive"
-                              onClick={() => void handleAction("delete", profile)}
+                              onClick={() =>
+                                void handleAction("delete", profile)
+                              }
                             >
                               Delete
                             </DropdownMenuItem>
@@ -341,7 +395,7 @@ export default function RecurringInvoicesPage() {
                 </TableBody>
               </Table>
             </div>
-          )}
+          }
         </div>
       </SidebarInset>
     </SidebarProvider>

@@ -86,7 +86,11 @@ export default function EditQuotePage() {
   const id = params.id as string;
 
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   // Master data
   const [customers, setCustomers] = useState<Contact[]>([]);
@@ -129,7 +133,8 @@ export default function EditQuotePage() {
 
   // Fetch quote + master data
   useEffect(() => {
-    if (!firebaseUser || loading || orgLoading || !activeOrganization || !id) return;
+    if (!firebaseUser || loading || orgLoading || !activeOrganization || !id)
+      return;
     setFetching(true);
     Promise.all([
       quoteApi.getById(id),
@@ -248,7 +253,8 @@ export default function EditQuotePage() {
         customerId,
         quoteDate,
         expiryDate: expiryDate || null,
-        salesPersonId: salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
+        salesPersonId:
+          salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())
@@ -416,19 +422,13 @@ export default function EditQuotePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-60">
-                      ITEM DETAILS
-                    </TableHead>
-                    <TableHead className="w-25 text-right">
-                      QUANTITY
-                    </TableHead>
+                    <TableHead className="min-w-60">ITEM DETAILS</TableHead>
+                    <TableHead className="w-25 text-right">QUANTITY</TableHead>
                     <TableHead className="w-30 text-right">RATE</TableHead>
                     <TableHead className="w-25 text-right">
                       DISCOUNT %
                     </TableHead>
-                    <TableHead className="w-30 text-right">
-                      AMOUNT
-                    </TableHead>
+                    <TableHead className="w-30 text-right">AMOUNT</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>

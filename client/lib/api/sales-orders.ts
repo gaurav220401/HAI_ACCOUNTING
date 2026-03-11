@@ -95,9 +95,12 @@ export interface SalesOrderListParams extends ListParams {
 
 export const salesOrderApi = {
   list: (params?: SalesOrderListParams) =>
-    apiFetch<PaginatedResponse<SalesOrder>>(`/sales-orders${buildQuery(params || {})}`),
+    apiFetch<PaginatedResponse<SalesOrder>>(
+      `/sales-orders${buildQuery(params || {})}`,
+    ),
 
-  getById: (id: string) => apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}`),
+  getById: (id: string) =>
+    apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}`),
 
   create: (data: CreateSalesOrderInput) =>
     apiFetch<{ data: SalesOrder }>("/sales-orders", {
@@ -118,8 +121,8 @@ export const salesOrderApi = {
     apiFetch<{ data: SalesOrderConvertToInvoiceResponse }>(
       `/sales-orders/${id}/convert-to-invoice`,
       {
-      method: "POST",
-      body: JSON.stringify(dueDate ? { dueDate } : {}),
+        method: "POST",
+        body: JSON.stringify(dueDate ? { dueDate } : {}),
       },
     ),
 };

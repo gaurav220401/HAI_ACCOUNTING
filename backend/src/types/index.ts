@@ -214,19 +214,35 @@ export interface ServiceResult<T = unknown> {
 // ═══════════════════════════════════════════════════════════════════════
 
 // ─── 1.2 Chart of Accounts ────────────────────────────────────────────
-export type AccountRootType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+export type AccountRootType =
+  | "Asset"
+  | "Liability"
+  | "Equity"
+  | "Income"
+  | "Expense";
 
 /** Asset sub-types */
 export type AssetAccountType =
-  | "Other Asset" | "Other Current Asset" | "Cash" | "Bank"
-  | "Fixed Asset" | "Accounts Receivable" | "Stock"
-  | "Payment Clearing Account" | "Intangible Asset"
-  | "Non Current Asset" | "Deferred Tax Asset";
+  | "Other Asset"
+  | "Other Current Asset"
+  | "Cash"
+  | "Bank"
+  | "Fixed Asset"
+  | "Accounts Receivable"
+  | "Stock"
+  | "Payment Clearing Account"
+  | "Intangible Asset"
+  | "Non Current Asset"
+  | "Deferred Tax Asset";
 
 /** Liability sub-types */
 export type LiabilityAccountType =
-  | "Other Current Liability" | "Credit Card" | "Non Current Liability"
-  | "Other Liability" | "Accounts Payable" | "Overseas Tax Payable"
+  | "Other Current Liability"
+  | "Credit Card"
+  | "Non Current Liability"
+  | "Other Liability"
+  | "Accounts Payable"
+  | "Overseas Tax Payable"
   | "Deferred Tax Liability";
 
 /** Equity sub-types */
@@ -236,7 +252,10 @@ export type EquityAccountType = "Equity";
 export type IncomeAccountType = "Income" | "Other Income";
 
 /** Expense sub-types */
-export type ExpenseAccountType = "Expense" | "Cost Of Goods Sold" | "Other Expense";
+export type ExpenseAccountType =
+  | "Expense"
+  | "Cost Of Goods Sold"
+  | "Other Expense";
 
 export type AccountType =
   | AssetAccountType
@@ -282,11 +301,11 @@ export interface IContactPerson {
   salutation?: string;
   firstName?: string;
   lastName?: string;
-  name: string;        // kept for backward compat; derived from firstName + lastName
+  name: string; // kept for backward compat; derived from firstName + lastName
   email?: string;
   workPhone?: string;
   mobile?: string;
-  phone?: string;      // kept for backward compat
+  phone?: string; // kept for backward compat
   designation?: string;
   isPrimary: boolean;
 }
@@ -312,18 +331,18 @@ export interface IContact extends Document {
   displayName: string;
   companyName?: string;
   email?: string;
-  phone?: string;      // work phone
+  phone?: string; // work phone
   mobile?: string;
   currency: string;
   language?: string;
   // Financial
   paymentTermsId?: Types.ObjectId | null;
-  accountsPayableId?: Types.ObjectId | null;   // Accounts Payable account
+  accountsPayableId?: Types.ObjectId | null; // Accounts Payable account
   openingBalance?: number;
   taxTreatment: TaxTreatment;
   taxId?: string; // GSTIN / VAT / PAN
-  gstin?: string;      // GSTIN (primary GST number)
-  pan?: string;        // PAN number
+  gstin?: string; // GSTIN (primary GST number)
+  pan?: string; // PAN number
   tdsCategory?: string;
   msmeRegistered?: boolean;
   // Extra / social details
@@ -334,7 +353,13 @@ export interface IContact extends Document {
   skypeName?: string;
   facebookUrl?: string;
   // Attached documents
-  documents?: { name: string; url: string; publicId: string; size?: number; mimeType?: string }[];
+  documents?: {
+    name: string;
+    url: string;
+    publicId: string;
+    size?: number;
+    mimeType?: string;
+  }[];
   // Address
   billingAddress?: {
     attention?: string;
@@ -513,14 +538,14 @@ export interface ITax extends Document {
 export interface IPaymentTerms extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
-  name: string;          // "Net 30", "Due on Receipt"
+  name: string; // "Net 30", "Due on Receipt"
   termType: "net_days" | "end_of_month" | "end_of_next_month";
-  netDays: number;       // 0 = due on receipt; ignored for end_of_month types
+  netDays: number; // 0 = due on receipt; ignored for end_of_month types
   discountPercentage: number;
   discountDays: number;
   isDefault: boolean;
   isSystemTerm: boolean;
-  isPermanent: boolean;  // true = cannot be deleted or renamed
+  isPermanent: boolean; // true = cannot be deleted or renamed
   createdAt: Date;
   updatedAt: Date;
 }

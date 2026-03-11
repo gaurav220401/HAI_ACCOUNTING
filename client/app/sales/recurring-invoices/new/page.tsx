@@ -8,10 +8,7 @@ import { RecurringInvoiceForm } from "../_components/recurring-invoice-form";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 
@@ -57,7 +54,11 @@ export default function NewRecurringInvoicePage() {
             </span>
           }
           actions={
-            <Button variant="ghost" size="sm" onClick={() => router.push("/sales/recurring-invoices")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push("/sales/recurring-invoices")}
+            >
               <ArrowLeft className="mr-1 h-4 w-4" />
               Back
             </Button>
@@ -66,9 +67,12 @@ export default function NewRecurringInvoicePage() {
 
         <div className="flex flex-1 flex-col gap-6 p-6">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">New Recurring Invoice</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              New Recurring Invoice
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Build a billing template once and let the system generate invoices on schedule.
+              Build a billing template once and let the system generate invoices
+              on schedule.
             </p>
           </div>
           <RecurringInvoiceForm mode="create" />

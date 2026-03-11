@@ -148,7 +148,10 @@ function addMonthly(dateString: string) {
     .slice(0, 10);
 }
 
-function getNextRunPreview(startDate: string, frequency: RecurringInvoiceFrequency) {
+function getNextRunPreview(
+  startDate: string,
+  frequency: RecurringInvoiceFrequency,
+) {
   if (!startDate) return "";
   switch (frequency) {
     case "weekly":
@@ -191,7 +194,8 @@ export function RecurringInvoiceForm({
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState("");
   const [neverExpires, setNeverExpires] = useState(true);
-  const [frequency, setFrequency] = useState<RecurringInvoiceFrequency>("weekly");
+  const [frequency, setFrequency] =
+    useState<RecurringInvoiceFrequency>("weekly");
   const [paymentTermsId, setPaymentTermsId] = useState("");
   const [salesPersonId, setSalesPersonId] = useState("");
   const [subject, setSubject] = useState("");
@@ -204,7 +208,9 @@ export function RecurringInvoiceForm({
   const [totalTaxId, setTotalTaxId] = useState("");
   const [adjustmentLabel, setAdjustmentLabel] = useState("Adjustment");
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
-  const [customerNotes, setCustomerNotes] = useState("Thanks for your business.");
+  const [customerNotes, setCustomerNotes] = useState(
+    "Thanks for your business.",
+  );
   const [termsAndConditions, setTermsAndConditions] = useState("");
   const [emailContactsInput, setEmailContactsInput] = useState("");
   const [deliveryMode, setDeliveryMode] = useState<"draft" | "send">("draft");
@@ -222,12 +228,21 @@ export function RecurringInvoiceForm({
           settingsApi.salesPersons.list(),
           settingsApi.taxes.list(),
           settingsApi.paymentTerms.list(),
-          isEdit && recurringId ? recurringInvoiceApi.getById(recurringId) : Promise.resolve(null),
+          isEdit && recurringId ?
+            recurringInvoiceApi.getById(recurringId)
+          : Promise.resolve(null),
         ]);
 
         if (cancelled) return;
 
-        const [customersRes, itemsRes, salesPersonsRes, taxesRes, paymentTermsRes, recurringRes] = requests;
+        const [
+          customersRes,
+          itemsRes,
+          salesPersonsRes,
+          taxesRes,
+          paymentTermsRes,
+          recurringRes,
+        ] = requests;
 
         if (customersRes.status === "fulfilled") {
           setCustomers(customersRes.value.data ?? []);
@@ -245,7 +260,11 @@ export function RecurringInvoiceForm({
           setPaymentTermsList(paymentTermsRes.value.data ?? []);
         }
 
-        if (recurringRes && recurringRes.status === "fulfilled" && recurringRes.value) {
+        if (
+          recurringRes &&
+          recurringRes.status === "fulfilled" &&
+          recurringRes.value
+        ) {
           const recurring = recurringRes.value.data as RecurringInvoice;
           setCustomerId(getRefId(recurring.customerId));
           setProfileName(recurring.profileName || "");
@@ -289,7 +308,9 @@ export function RecurringInvoiceForm({
           }
         }
       } catch (error: unknown) {
-        toast.error(getErrorMessage(error, "Failed to load recurring invoice form"));
+        toast.error(
+          getErrorMessage(error, "Failed to load recurring invoice form"),
+        );
       } finally {
         if (!cancelled) setMasterLoading(false);
       }
@@ -310,7 +331,11 @@ export function RecurringInvoiceForm({
     }
   }, [customerId, customers, emailContactsInput]);
 
-  function updateLine(key: number, field: keyof LineItem, value: string | number) {
+  function updateLine(
+    key: number,
+    field: keyof LineItem,
+    value: string | number,
+  ) {
     setLines((current) =>
       current.map((line) =>
         line.key === key ? { ...line, [field]: value } : line,
@@ -335,7 +360,8 @@ export function RecurringInvoiceForm({
 
     setLines((current) =>
       current.map((line) =>
-        line.key === key ? {
+        line.key === key ?
+          {
             ...line,
             itemId: selectedItem._id,
             name: selectedItem.name,
@@ -461,13 +487,17 @@ export function RecurringInvoiceForm({
           <CardHeader>
             <CardTitle>Recurring Profile</CardTitle>
             <CardDescription>
-              Define when invoices should be generated and how they should be delivered.
+              Define when invoices should be generated and how they should be
+              delivered.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Customer</Label>
-              <Select value={customerId || undefined} onValueChange={setCustomerId}>
+              <Select
+                value={customerId || undefined}
+                onValueChange={setCustomerId}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
@@ -629,8 +659,12 @@ export function RecurringInvoiceForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="draft">Create child invoices as drafts</SelectItem>
-                  <SelectItem value="send">Create and email child invoices</SelectItem>
+                  <SelectItem value="draft">
+                    Create child invoices as drafts
+                  </SelectItem>
+                  <SelectItem value="send">
+                    Create and email child invoices
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -672,7 +706,8 @@ export function RecurringInvoiceForm({
           <CardHeader>
             <CardTitle>Invoice Template</CardTitle>
             <CardDescription>
-              These line items and totals are copied into each generated invoice.
+              These line items and totals are copied into each generated
+              invoice.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -707,7 +742,9 @@ export function RecurringInvoiceForm({
                             <SelectValue placeholder="Select item" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__custom">Custom line</SelectItem>
+                            <SelectItem value="__custom">
+                              Custom line
+                            </SelectItem>
                             {items.map((item) => (
                               <SelectItem key={item._id} value={item._id}>
                                 {item.name}
@@ -727,7 +764,11 @@ export function RecurringInvoiceForm({
                         <Textarea
                           value={line.description}
                           onChange={(event) =>
-                            updateLine(line.key, "description", event.target.value)
+                            updateLine(
+                              line.key,
+                              "description",
+                              event.target.value,
+                            )
                           }
                           placeholder="Description"
                           className="min-h-24"
@@ -962,8 +1003,9 @@ export function RecurringInvoiceForm({
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Frequency</span>
                 <span>
-                  {FREQUENCY_OPTIONS.find((option) => option.value === frequency)
-                    ?.label || "Weekly"}
+                  {FREQUENCY_OPTIONS.find(
+                    (option) => option.value === frequency,
+                  )?.label || "Weekly"}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -976,7 +1018,9 @@ export function RecurringInvoiceForm({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Delivery</span>
-                <span>{deliveryMode === "send" ? "Auto-send" : "Draft only"}</span>
+                <span>
+                  {deliveryMode === "send" ? "Auto-send" : "Draft only"}
+                </span>
               </div>
             </div>
 
@@ -984,7 +1028,9 @@ export function RecurringInvoiceForm({
 
             <div className="flex flex-col gap-3">
               <Button onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {saving ?
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : null}
                 {isEdit ? "Update Profile" : "Create Profile"}
               </Button>
               <Button
@@ -992,9 +1038,9 @@ export function RecurringInvoiceForm({
                 variant="outline"
                 onClick={() =>
                   router.push(
-                    isEdit && recurringId
-                      ? `/sales/recurring-invoices/${recurringId}`
-                      : "/sales/recurring-invoices",
+                    isEdit && recurringId ?
+                      `/sales/recurring-invoices/${recurringId}`
+                    : "/sales/recurring-invoices",
                   )
                 }
                 disabled={saving}

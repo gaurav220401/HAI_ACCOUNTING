@@ -46,7 +46,10 @@ function validateRecurringInput(req: AuthenticatedRequest) {
   if (!req.body.items || req.body.items.length === 0) {
     throw new ValidationError("At least one item is required");
   }
-  if (req.body.endDate && new Date(req.body.endDate) < new Date(req.body.startDate)) {
+  if (
+    req.body.endDate &&
+    new Date(req.body.endDate) < new Date(req.body.startDate)
+  ) {
     throw new ValidationError("End date cannot be before the start date");
   }
 }
@@ -88,7 +91,9 @@ function applyRecurringMutation(profile: any, body: any) {
   }
 
   if (body.items !== undefined) {
-    profile.items = normalizeInvoiceItems(body.items as Partial<IInvoiceItem>[]);
+    profile.items = normalizeInvoiceItems(
+      body.items as Partial<IInvoiceItem>[],
+    );
   }
 
   const taxAmount = Number(profile.taxAmount) || 0;
@@ -119,7 +124,11 @@ function recomputeNextRunDate(profile: any) {
     );
 
     while (nextRunDate < new Date()) {
-      nextRunDate = calculateNextRunDate(nextRunDate, profile.frequency, anchor);
+      nextRunDate = calculateNextRunDate(
+        nextRunDate,
+        profile.frequency,
+        anchor,
+      );
     }
 
     profile.nextRunDate = nextRunDate;
@@ -159,7 +168,10 @@ export const list = asyncHandler(
       .populate("customerId", "displayName companyName email")
       .populate("paymentTermsId", "name netDays termType")
       .populate("salesPersonId", "name")
-      .populate("lastGeneratedInvoiceId", "invoiceNumber status total invoiceDate")
+      .populate(
+        "lastGeneratedInvoiceId",
+        "invoiceNumber status total invoiceDate",
+      )
       .sort({ [sortBy as string]: sortOrder === "asc" ? 1 : -1 })
       .skip((+page - 1) * +limit)
       .limit(+limit)
@@ -191,7 +203,10 @@ export const getOne = asyncHandler(
       .populate("taxId", "name rate")
       .populate("items.itemId", "name sku sellingPrice")
       .populate("items.taxId", "name rate")
-      .populate("lastGeneratedInvoiceId", "invoiceNumber status total invoiceDate");
+      .populate(
+        "lastGeneratedInvoiceId",
+        "invoiceNumber status total invoiceDate",
+      );
 
     if (!profile) throw new NotFoundError("Recurring invoice profile");
 
@@ -224,7 +239,9 @@ export const create = asyncHandler(
     validateRecurringInput(req);
 
     const oid = orgId(req);
-    const items = normalizeInvoiceItems(req.body.items as Partial<IInvoiceItem>[]);
+    const items = normalizeInvoiceItems(
+      req.body.items as Partial<IInvoiceItem>[],
+    );
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
     const taxAmount = Number(req.body.taxAmount) || 0;
@@ -381,8 +398,14 @@ export const pause = asyncHandler(
 export const resume = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const profile = await requireProfile(req);
-    if (!profile.neverExpires && profile.endDate && new Date(profile.endDate) < new Date()) {
-      throw new ValidationError("Cannot resume a profile whose end date has already passed");
+    if (
+      !profile.neverExpires &&
+      profile.endDate &&
+      new Date(profile.endDate) < new Date()
+    ) {
+      throw new ValidationError(
+        "Cannot resume a profile whose end date has already passed",
+      );
     }
 
     profile.status = "active";
@@ -423,7 +446,9 @@ export const runNow = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const profile = await requireProfile(req);
     if (!["active", "paused"].includes(profile.status)) {
-      throw new ValidationError("Only active or paused profiles can generate an invoice now");
+      throw new ValidationError(
+        "Only active or paused profiles can generate an invoice now",
+      );
     }
 
     const result = await generateInvoiceFromRecurringProfile(profile, {

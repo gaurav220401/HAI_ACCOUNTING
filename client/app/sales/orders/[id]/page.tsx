@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Plus, Search, RefreshCw, MoreHorizontal, Pencil, FileText, Trash2, Download } from "lucide-react";
+import {
+  Plus,
+  Search,
+  RefreshCw,
+  MoreHorizontal,
+  Pencil,
+  FileText,
+  Trash2,
+  Download,
+} from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -23,7 +32,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { salesOrderApi, type SalesOrder, type SalesOrderStatus } from "@/lib/api/sales-orders";
+import {
+  salesOrderApi,
+  type SalesOrder,
+  type SalesOrderStatus,
+} from "@/lib/api/sales-orders";
 
 type TabKey = "overview";
 
@@ -46,7 +59,9 @@ function getLineItemName(lineItem: SalesOrder["lineItems"][number]): string {
   return lineItem.itemId.name || "";
 }
 
-function getConvertedInvoiceId(value: { _id?: string; invoiceId?: string } | undefined) {
+function getConvertedInvoiceId(
+  value: { _id?: string; invoiceId?: string } | undefined,
+) {
   return value?.invoiceId || value?._id || "";
 }
 
@@ -54,7 +69,11 @@ function formatDate(d?: string | null) {
   if (!d) return "—";
   try {
     const dt = new Date(d);
-    return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    return dt.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   } catch {
     return String(d);
   }
@@ -86,7 +105,8 @@ export default function SalesOrderDetailsPage() {
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+      router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
@@ -181,7 +201,9 @@ export default function SalesOrderDetailsPage() {
             <span className="text-sm text-muted-foreground">
               Sales <span className="mx-1">/</span>
               Sales Orders <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">{active?.salesOrderNumber || "Sales Order"}</span>
+              <span className="font-medium text-foreground">
+                {active?.salesOrderNumber || "Sales Order"}
+              </span>
             </span>
           }
           actions={
@@ -195,10 +217,19 @@ export default function SalesOrderDetailsPage() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Button variant="outline" size="sm" onClick={fetchOrders} disabled={fetching}>
-                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchOrders}
+                disabled={fetching}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`}
+                />
               </Button>
-              <Button size="sm" onClick={() => router.push("/sales/orders/new")}
+              <Button
+                size="sm"
+                onClick={() => router.push("/sales/orders/new")}
               >
                 <Plus className="h-4 w-4 mr-1" />
                 New
@@ -237,8 +268,13 @@ export default function SalesOrderDetailsPage() {
                     }
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-medium truncate">{o.salesOrderNumber}</div>
-                      <Badge variant={statusVariant(o.status)} className="shrink-0">
+                      <div className="text-sm font-medium truncate">
+                        {o.salesOrderNumber}
+                      </div>
+                      <Badge
+                        variant={statusVariant(o.status)}
+                        className="shrink-0"
+                      >
                         {o.status}
                       </Badge>
                     </div>
@@ -246,46 +282,74 @@ export default function SalesOrderDetailsPage() {
                       {getCustomerName(o.customerId) || "—"}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-                      {o.total != null ? `₹${Number(o.total).toLocaleString("en-IN")}` : "—"}
+                      {o.total != null ?
+                        `₹${Number(o.total).toLocaleString("en-IN")}`
+                      : "—"}
                     </div>
                   </button>
                 );
               })}
 
-              {filtered.length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground">No sales orders found.</div>
-              ) : null}
+              {filtered.length === 0 ?
+                <div className="p-6 text-sm text-muted-foreground">
+                  No sales orders found.
+                </div>
+              : null}
             </div>
           </aside>
 
           <main className="flex-1 p-6">
-            {!active ? (
-              <div className="text-sm text-muted-foreground">Select a sales order to view details.</div>
-            ) : (
-              <>
+            {!active ?
+              <div className="text-sm text-muted-foreground">
+                Select a sales order to view details.
+              </div>
+            : <>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h1 className="text-2xl font-bold">{active.salesOrderNumber}</h1>
+                    <h1 className="text-2xl font-bold">
+                      {active.salesOrderNumber}
+                    </h1>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                       <span>{getCustomerName(active.customerId) || "—"}</span>
                       <span>{formatDate(active.orderDate)}</span>
-                      {active.reference ? <span>Ref {active.reference}</span> : null}
-                      <Badge variant={statusVariant(active.status)}>{active.status}</Badge>
+                      {active.reference ?
+                        <span>Ref {active.reference}</span>
+                      : null}
+                      <Badge variant={statusVariant(active.status)}>
+                        {active.status}
+                      </Badge>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => router.push(`/sales/orders/${active._id}/edit`)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        router.push(`/sales/orders/${active._id}/edit`)
+                      }
+                    >
                       <Pencil className="h-4 w-4 mr-1" />
                       Edit
                     </Button>
-                    <Button size="sm" onClick={handleConvertToInvoice} disabled={active.status === "INVOICED" || active.status === "PARTIALLY_INVOICED"}>
+                    <Button
+                      size="sm"
+                      onClick={handleConvertToInvoice}
+                      disabled={
+                        active.status === "INVOICED" ||
+                        active.status === "PARTIALLY_INVOICED"
+                      }
+                    >
                       <FileText className="h-4 w-4 mr-1" />
                       Convert to Invoice
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="icon-sm" aria-label="More">
+                        <Button
+                          variant="outline"
+                          size="icon-sm"
+                          aria-label="More"
+                        >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -295,7 +359,10 @@ export default function SalesOrderDetailsPage() {
                           Download PDF
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                        <DropdownMenuItem
+                          onClick={handleDelete}
+                          className="text-destructive"
+                        >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
                         </DropdownMenuItem>
@@ -306,7 +373,10 @@ export default function SalesOrderDetailsPage() {
 
                 <div className="mt-6">
                   <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-                    <TabsList variant="line" className="w-full justify-start border-b rounded-none px-0">
+                    <TabsList
+                      variant="line"
+                      className="w-full justify-start border-b rounded-none px-0"
+                    >
                       <TabsTrigger value="overview">Overview</TabsTrigger>
                     </TabsList>
 
@@ -318,29 +388,50 @@ export default function SalesOrderDetailsPage() {
                               <CardTitle className="text-sm">Remarks</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              <div className="text-sm text-muted-foreground">{active.notes || "—"}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {active.notes || "—"}
+                              </div>
                             </CardContent>
                           </Card>
 
                           <Card>
                             <CardHeader>
-                              <CardTitle className="text-sm">Order Info</CardTitle>
+                              <CardTitle className="text-sm">
+                                Order Info
+                              </CardTitle>
                             </CardHeader>
                             <CardContent>
                               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                <div className="text-muted-foreground">Order Date</div>
+                                <div className="text-muted-foreground">
+                                  Order Date
+                                </div>
                                 <div>{formatDate(active.orderDate)}</div>
 
-                                <div className="text-muted-foreground">Expected Shipment</div>
-                                <div>{formatDate(active.expectedShipmentDate || null)}</div>
+                                <div className="text-muted-foreground">
+                                  Expected Shipment
+                                </div>
+                                <div>
+                                  {formatDate(
+                                    active.expectedShipmentDate || null,
+                                  )}
+                                </div>
 
-                                <div className="text-muted-foreground">Payment Terms</div>
-                                <div>{getPaymentTermsName(active.paymentTermsId) || "—"}</div>
+                                <div className="text-muted-foreground">
+                                  Payment Terms
+                                </div>
+                                <div>
+                                  {getPaymentTermsName(active.paymentTermsId) ||
+                                    "—"}
+                                </div>
 
-                                <div className="text-muted-foreground">Delivery Method</div>
+                                <div className="text-muted-foreground">
+                                  Delivery Method
+                                </div>
                                 <div>{active.deliveryMethod || "—"}</div>
 
-                                <div className="text-muted-foreground">Reference</div>
+                                <div className="text-muted-foreground">
+                                  Reference
+                                </div>
                                 <div>{active.reference || "—"}</div>
                               </div>
                             </CardContent>
@@ -355,25 +446,49 @@ export default function SalesOrderDetailsPage() {
                             <CardContent>
                               <div className="grid grid-cols-2 gap-6">
                                 <div>
-                                  <div className="text-xs text-muted-foreground">Sub Total</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Sub Total
+                                  </div>
                                   <div className="text-lg font-semibold tabular-nums">
-                                    ₹{Number(active.subTotal || 0).toLocaleString("en-IN")}
+                                    ₹
+                                    {Number(
+                                      active.subTotal || 0,
+                                    ).toLocaleString("en-IN")}
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="text-xs text-muted-foreground">Total</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Total
+                                  </div>
                                   <div className="text-lg font-semibold tabular-nums">
-                                    ₹{Number(active.total || 0).toLocaleString("en-IN")}
+                                    ₹
+                                    {Number(active.total || 0).toLocaleString(
+                                      "en-IN",
+                                    )}
                                   </div>
                                 </div>
                               </div>
 
                               <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                <div className="text-muted-foreground">Shipping Charges</div>
-                                <div>₹{Number(active.shippingCharges || 0).toLocaleString("en-IN")}</div>
+                                <div className="text-muted-foreground">
+                                  Shipping Charges
+                                </div>
+                                <div>
+                                  ₹
+                                  {Number(
+                                    active.shippingCharges || 0,
+                                  ).toLocaleString("en-IN")}
+                                </div>
 
-                                <div className="text-muted-foreground">Adjustment</div>
-                                <div>₹{Number(active.adjustment || 0).toLocaleString("en-IN")}</div>
+                                <div className="text-muted-foreground">
+                                  Adjustment
+                                </div>
+                                <div>
+                                  ₹
+                                  {Number(
+                                    active.adjustment || 0,
+                                  ).toLocaleString("en-IN")}
+                                </div>
                               </div>
                             </CardContent>
                           </Card>
@@ -383,27 +498,37 @@ export default function SalesOrderDetailsPage() {
                               <CardTitle className="text-sm">Items</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              {active.lineItems.length ? (
+                              {active.lineItems.length ?
                                 <div className="space-y-3">
                                   {active.lineItems.map((li, idx: number) => (
-                                    <div key={idx} className="flex items-start justify-between gap-4">
+                                    <div
+                                      key={idx}
+                                      className="flex items-start justify-between gap-4"
+                                    >
                                       <div>
                                         <div className="text-sm font-medium">
                                           {getLineItemName(li) || "Item"}
                                         </div>
                                         <div className="text-xs text-muted-foreground">
-                                          Qty {li.quantity} x ₹{Number(li.rate || 0).toLocaleString("en-IN")}
+                                          Qty {li.quantity} x ₹
+                                          {Number(li.rate || 0).toLocaleString(
+                                            "en-IN",
+                                          )}
                                         </div>
                                       </div>
                                       <div className="text-sm tabular-nums">
-                                        ₹{Number(li.amount || 0).toLocaleString("en-IN")}
+                                        ₹
+                                        {Number(li.amount || 0).toLocaleString(
+                                          "en-IN",
+                                        )}
                                       </div>
                                     </div>
                                   ))}
                                 </div>
-                              ) : (
-                                <div className="text-sm text-muted-foreground">No line items found.</div>
-                              )}
+                              : <div className="text-sm text-muted-foreground">
+                                  No line items found.
+                                </div>
+                              }
                             </CardContent>
                           </Card>
                         </div>
@@ -412,7 +537,7 @@ export default function SalesOrderDetailsPage() {
                   </Tabs>
                 </div>
               </>
-            )}
+            }
           </main>
         </div>
       </SidebarInset>
