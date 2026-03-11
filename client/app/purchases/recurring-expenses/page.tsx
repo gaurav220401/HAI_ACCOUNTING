@@ -1057,6 +1057,28 @@ export default function RecurringExpensesPage() {
           }
           actions={
             <div className="flex items-center gap-1.5">
+              <div className="relative w-52">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  className="pl-8 h-8 text-xs"
+                  placeholder="Search profiles..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                    {filterStatus || "All Profiles"} <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-40">
+                  <DropdownMenuItem onClick={() => setFilterStatus("")}>All Profiles</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterStatus("Active")}>Active</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterStatus("Stopped")}>Stopped</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Separator orientation="vertical" className="h-5" />
               <Button size="sm" className="h-8 text-xs gap-1" onClick={() => router.push("/purchases/recurring-expenses/new")}>
                 <Plus className="h-3.5 w-3.5" /> New
               </Button>
@@ -1114,8 +1136,8 @@ export default function RecurringExpensesPage() {
           }
         />
         <div className="flex flex-col h-[calc(100vh-56px)] overflow-hidden">
-          {/* Toolbar — bulk action bar when selections exist, normal bar otherwise */}
-          {anyChecked && !panelOpen ? (
+          {/* Toolbar — bulk action bar when selections exist */}
+          {anyChecked && !panelOpen && (
             <div className="flex items-center gap-2 px-4 py-2 border-b bg-blue-50 shrink-0">
               <Checkbox
                 checked={allChecked}
@@ -1134,30 +1156,6 @@ export default function RecurringExpensesPage() {
               <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" onClick={() => setCheckedIds(new Set())}>
                 <X className="h-3.5 w-3.5" />
               </Button>
-            </div>
-          ) : (
-            <div className="flex items-center px-4 py-2 border-b shrink-0 gap-2">
-              <div className="relative w-56">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  className="pl-8 h-8 text-xs"
-                  placeholder="Search profiles..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                    {filterStatus || "All Profiles"} <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-40">
-                  <DropdownMenuItem onClick={() => setFilterStatus("")}>All Profiles</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterStatus("Active")}>Active</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterStatus("Stopped")}>Stopped</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
           )}
 
