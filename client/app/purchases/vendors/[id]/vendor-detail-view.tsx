@@ -67,6 +67,7 @@ import { contactApi, type Contact, type ContactPerson, type BankDetail, type Con
   type ActivityEvent,
 } from "@/lib/api/contacts";
 import { expenseApi, type Expense } from "@/lib/api/expenses";
+import { recurringExpenseApi, type RecurringExpense } from "@/lib/api/recurring-expenses";
 import { smtpApi } from "@/lib/api/smtp";
 import * as XLSX from "xlsx";
 
@@ -1634,6 +1635,9 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
 
+  const [recurringProfiles, setRecurringProfiles] = useState<RecurringExpense[]>([]);
+  const [recurringLoading, setRecurringLoading] = useState(false);
+
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>("6m");
   const [chartMode, setChartMode] = useState<"accrual" | "cash">("accrual");
 
@@ -1738,6 +1742,16 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
       .catch(() => {})
       .finally(() => setExpensesLoading(false));
   }, [vendor._id]);
+
+  useEffect(() => {
+    if (activeTab !== "recurring" || !vendor._id) return;
+    setRecurringLoading(true);
+    recurringExpenseApi
+      .list({ vendorId: vendor._id, limit: 200 })
+      .then((res) => setRecurringProfiles(res.data ?? []))
+      .catch(() => {})
+      .finally(() => setRecurringLoading(false));
+  }, [activeTab, vendor._id]);
 
   useEffect(() => {
     if (!vendor._id) return;
@@ -2038,6 +2052,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
             { value: "overview", label: "Overview" },
             { value: "comments", label: "Comments" },
             { value: "transactions", label: "Transactions" },
+            { value: "recurring", label: "Recurring Expenses" },
             { value: "mails", label: "Mails" },
             { value: "statement", label: "Statement" },
           ].map((t) => (
@@ -2482,10 +2497,72 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
             <EmptySection title="Bill Payments" />
             <ExpensesSection expenses={expenses} vendorId={vendor._id} loading={expensesLoading} />
             <EmptySection title="Recurring Bills" />
-            <EmptySection title="Recurring Expenses" />
             <EmptySection title="Purchase Orders" />
             <EmptySection title="Vendor Credits" />
             <EmptySection title="Journals" />
+          </div>
+        </TabsContent>
+
+        {/* RECURRING EXPENSES */}
+        <TabsContent value="recurring" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+          <div className="max-w-3xl">
+            <div className="border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b bg-muted/10 flex items-center justify-between">
+                <p className="text-sm font-semibold">Recurring Expense Profiles</p>
+                <button
+                  className="text-xs text-primary hover:underline font-medium flex items-center gap-1"
+                  onClick={() => router.push("/purchases/recurring-expenses/new")}
+                >
+                  <Plus className="h-3.5 w-3.5" /> New
+                </button>
+              </div>
+              {recurringLoading ? (
+                <div className="flex justify-center py-10">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : recurringProfiles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
+                  <Clock className="h-8 w-8 opacity-30" />
+                  <p className="text-sm">No recurring expenses linked to this vendor.</p>
+                </div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/20">
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Profile Name</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Frequency</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Amount</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Status</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Next Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recurringProfiles.map((rp) => (
+                      <tr
+                        key={rp._id}
+                        className="border-b hover:bg-muted/20 cursor-pointer"
+                        onClick={() => router.push(`/purchases/recurring-expenses?id=${rp._id}`)}
+                      >
+                        <td className="px-4 py-2.5 font-medium text-primary">{rp.profileName}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">
+                          {rp.repeatEvery === 1 ? rp.frequency : `Every ${rp.repeatEvery} ${rp.frequency}`}
+                        </td>
+                        <td className="px-4 py-2.5 font-medium tabular-nums">
+                          {fmt(rp.amount, rp.currency)}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${rp.status === "Active" ? "text-green-600" : "text-gray-500"}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${rp.status === "Active" ? "bg-green-500" : "bg-gray-400"}`} />
+                            {rp.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(rp.nextExpenseDate ?? undefined)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </TabsContent>
 

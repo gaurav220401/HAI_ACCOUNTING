@@ -13,6 +13,7 @@ import invoiceRoutes from "./invoice.routes";
 import uploadRoutes from "./upload.routes";
 import gstinRoutes from "./gstin.routes";
 import expenseRoutes from "./expense.routes";
+import recurringExpenseRoutes from "./recurring-expense.routes";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use("/invoices", invoiceRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/gstin", gstinRoutes);
 router.use("/expenses", expenseRoutes);
+router.use("/recurring-expenses", recurringExpenseRoutes);
 
 export default router;
