@@ -337,6 +337,46 @@ export const testSmtpSettings = asyncHandler(
 );
 
 /**
+ * POST /api/organizations/:id/send-email
+ * Send a vendor statement email using the org's SMTP settings.
+ */
+export const sendEmail = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const org = await Organization.findById(req.params.id);
+    if (!org) throw new NotFoundError("Organization");
+
+    const smtp = (org as any).smtpSettings;
+    if (!smtp?.host || !smtp?.user || !smtp?.pass) {
+      throw new ValidationError(
+        "SMTP is not configured. Please set up your email settings in Settings → Email.",
+      );
+    }
+
+    const { to, subject, body, vendorName } = req.body;
+    if (!to) throw new ValidationError("Recipient email (to) is required");
+
+    const nodemailer = await import("nodemailer");
+    const transporter = nodemailer.default.createTransport({
+      host: smtp.host,
+      port: smtp.port ?? 587,
+      secure: smtp.secure ?? false,
+      auth: { user: smtp.user, pass: smtp.pass },
+    });
+
+    const bodyHtml = (body ?? "").replace(/\n/g, "<br/>");
+
+    await transporter.sendMail({
+      from: `"${smtp.fromName || org.name}" <${smtp.fromEmail || smtp.user}>`,
+      to,
+      subject: subject || `Statement of Accounts - ${vendorName || "Vendor"}`,
+      html: `<div style="font-family:Arial,sans-serif;font-size:13px;color:#333;">${bodyHtml}</div>`,
+    });
+
+    res.json({ success: true, message: `Email sent to ${to}` });
+  },
+);
+
+/**
  * POST /api/organizations/:id/members
  * Add a user (by email or userId) to an org's member list.
  */

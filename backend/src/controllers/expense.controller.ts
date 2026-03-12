@@ -11,13 +11,14 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
-/** GET /api/expenses?type=Regular|Mileage&status=...&search=...&page=1&limit=25 */
+/** GET /api/expenses?type=Regular|Mileage&status=...&vendorId=...&search=...&page=1&limit=25 */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { type, status, search, page = 1, limit = 25 } = req.query;
+  const { type, status, search, vendorId, page = 1, limit = 25 } = req.query;
 
   const filter: any = { organizationId: orgId(req), isDeleted: false };
   if (type) filter.expenseType = type;
   if (status) filter.status = status;
+  if (vendorId) filter.vendorId = vendorId;
   if (search) {
     filter.$or = [
       { invoiceNumber: { $regex: search, $options: "i" } },

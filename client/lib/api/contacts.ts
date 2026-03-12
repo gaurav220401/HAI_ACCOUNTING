@@ -50,6 +50,24 @@ export interface ContactDocument {
   mimeType?: string;
 }
 
+export interface ContactComment {
+  _id: string;
+  text: string;
+  userId?: string;
+  userName?: string;
+  createdAt: string;
+}
+
+export interface ActivityEvent {
+  type: "contact_created" | "expense_added" | string;
+  timestamp: string;
+  description: string;
+  amount?: number;
+  currency?: string;
+  ref?: string;
+  userName?: string;
+}
+
 export interface Contact {
   _id: string;
   orgId: string;
@@ -85,6 +103,7 @@ export interface Contact {
   salesPersonId?: string;
   reportingTags?: string[];
   notes?: string;
+  comments?: ContactComment[];
   portalEnabled?: boolean;
   // Extra / social
   websiteUrl?: string;
@@ -142,9 +161,10 @@ export interface CreateContactInput {
   facebookUrl?: string;
   // Documents
   documents?: ContactDocument[];
+  isActive?: boolean;
 }
 
-export type UpdateContactInput = Partial<CreateContactInput>;
+export type UpdateContactInput = Partial<CreateContactInput> & { isActive?: boolean };
 
 export interface ContactListParams extends ListParams {
   type?: ContactType | "All";
@@ -219,6 +239,15 @@ export const contactApi = {
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/contacts/${id}`, { method: "DELETE" }),
+
+  addComment: (id: string, text: string) =>
+    apiFetch<{ data: ContactComment[] }>(`/contacts/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+
+  getActivity: (id: string) =>
+    apiFetch<{ success: boolean; data: ActivityEvent[] }>(`/contacts/${id}/activity`),
 
   /** Fetch a fresh CAPTCHA image + cookie from the GST portal */
   getGstinCaptcha: () =>

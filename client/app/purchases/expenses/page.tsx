@@ -26,6 +26,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { expenseApi, type Expense } from "@/lib/api/expenses";
 import { invoiceApi } from "@/lib/api/invoices";
+import { recurringExpenseApi } from "@/lib/api/recurring-expenses";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 // ─── Print helper ─────────────────────────────────────────────────────────────
@@ -182,6 +187,50 @@ function ExpenseDetailPanel({
   onEdit: (e: Expense) => void;
   onConvertToInvoice: (e: Expense) => void;
 }) {
+  const router = useRouter();
+  const [showRecurring, setShowRecurring] = useState(false);
+  const [profName,      setProfName]      = useState("");
+  const [frequency,     setFrequency]     = useState<"Daily"|"Weekly"|"Monthly"|"Yearly">("Weekly");
+  const [startOn,       setStartOn]       = useState(() => expense.date.slice(0, 10));
+  const [endsOn,        setEndsOn]        = useState("");
+  const [neverExpires,  setNeverExpires]  = useState(true);
+  const [savingRec,     setSavingRec]     = useState(false);
+
+  async function handleSaveRecurring() {
+    if (!profName.trim()) return;
+    setSavingRec(true);
+    try {
+      function eid(f: unknown): string | undefined {
+        if (!f) return undefined;
+        if (typeof f === "object" && f !== null && "_id" in f) return (f as { _id: string })._id;
+        return f as string;
+      }
+      await recurringExpenseApi.create({
+        profileName: profName.trim(),
+        frequency,
+        repeatEvery: 1,
+        startDate: startOn || expense.date.slice(0, 10),
+        neverExpires,
+        endsOn: neverExpires ? null : (endsOn || null),
+        expenseAccountId: eid(expense.expenseAccountId),
+        amount: expense.amount,
+        currency: expense.currency,
+        paidThroughAccountId: eid(expense.paidThroughAccountId),
+        vendorId: eid(expense.vendorId),
+        customerId: eid(expense.customerId),
+        isBillable: expense.isBillable,
+        notes: expense.notes,
+      });
+      toast.success("Recurring profile created!");
+      setShowRecurring(false);
+      router.push("/purchases/recurring-expenses");
+    } catch {
+      toast.error("Failed to create recurring expense.");
+    } finally {
+      setSavingRec(false);
+    }
+  }
+
   const journalLines = buildJournal(expense);
   const totalD = journalLines.reduce((s, l) => s + l.debit, 0);
   const totalC = journalLines.reduce((s, l) => s + l.credit, 0);
@@ -191,7 +240,7 @@ function ExpenseDetailPanel({
   const paidThrough  = getName(expense.paidThroughAccountId);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden relative">
 
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b shrink-0">
@@ -211,7 +260,7 @@ function ExpenseDetailPanel({
             <FileText className="h-3.5 w-3.5" /> Convert to Invoice
           </Button>
         )}
-        <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7" disabled>
+        <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7" onClick={() => { setProfName(""); setFrequency("Weekly"); setStartOn(expense.date.slice(0, 10)); setEndsOn(""); setNeverExpires(true); setShowRecurring(true); }}>
           <RefreshCw className="h-3.5 w-3.5" /> Make Recurring
         </Button>
         <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7" onClick={() => printExpense(expense)}>
@@ -401,6 +450,85 @@ function ExpenseDetailPanel({
           )}
         </div>
       </div>
+
+      {/* ── Make Recurring slide-over ───────────────────────────────────── */}
+      {showRecurring && (
+        <div className="absolute inset-0 bg-background z-30 flex flex-col">
+          <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
+            <h3 className="text-base font-semibold">Make Recurring</h3>
+            <button onClick={() => setShowRecurring(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+            <div>
+              <Label className="text-xs font-medium text-red-500">Profile Name *</Label>
+              <Input
+                className="mt-1.5 h-9 text-sm"
+                placeholder="Enter profile name"
+                value={profName}
+                onChange={(e) => setProfName(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-red-500">Repeat Every *</Label>
+              <Select value={frequency} onValueChange={(v) => setFrequency(v as typeof frequency)}>
+                <SelectTrigger className="mt-1.5 h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Daily">Day</SelectItem>
+                  <SelectItem value="Weekly">Week</SelectItem>
+                  <SelectItem value="Monthly">Month</SelectItem>
+                  <SelectItem value="Yearly">Year</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-medium">Start On</Label>
+              <Input
+                type="date"
+                className="mt-1.5 h-9 text-sm"
+                value={startOn}
+                onChange={(e) => setStartOn(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground">Ends On</Label>
+              <Input
+                type="date"
+                className="mt-1.5 h-9 text-sm"
+                value={endsOn}
+                onChange={(e) => setEndsOn(e.target.value)}
+                disabled={neverExpires}
+              />
+            </div>
+            <div className="flex items-center gap-2.5 pt-1">
+              <input
+                type="checkbox"
+                id="neverExpiresChk"
+                checked={neverExpires}
+                onChange={(e) => { setNeverExpires(e.target.checked); if (e.target.checked) setEndsOn(""); }}
+                className="h-4 w-4 accent-primary cursor-pointer"
+              />
+              <label htmlFor="neverExpiresChk" className="text-sm cursor-pointer select-none">Never Expires</label>
+            </div>
+          </div>
+          <div className="px-6 py-4 border-t shrink-0 flex gap-2.5">
+            <Button
+              size="sm"
+              className="px-6"
+              onClick={handleSaveRecurring}
+              disabled={!profName.trim() || savingRec}
+            >
+              {savingRec ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving…</> : "Save"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowRecurring(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

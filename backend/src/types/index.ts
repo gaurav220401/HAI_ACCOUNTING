@@ -297,6 +297,14 @@ export type TaxTreatment =
   | "Composition"
   | "UIN";
 
+export interface IComment {
+  _id: Types.ObjectId;
+  text: string;
+  userId?: Types.ObjectId | null;
+  userName?: string;
+  createdAt: Date;
+}
+
 export interface IContactPerson {
   salutation?: string;
   firstName?: string;
@@ -384,6 +392,7 @@ export interface IContact extends Document {
   contactPersons: IContactPerson[];
   bankDetails: IBankDetail[];
   notes?: string;
+  comments: IComment[];
   portalEnabled: boolean;
   reportingTags: Types.ObjectId[];
   // Customer-specific

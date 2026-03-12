@@ -81,6 +81,7 @@ export interface ExpenseListParams extends ListParams {
   type?: ExpenseType;
   status?: ExpenseStatus;
   search?: string;
+  vendorId?: string;
 }
 
 // ─── API ────────────────────────────────────────────────────────────────────

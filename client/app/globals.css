@@ -124,3 +124,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Statement print styles ──────────────────────────────────── */
+@media print {
+  /* Hide everything except the statement preview */
+  body > * { visibility: hidden; }
+  .statement-print-area,
+  .statement-print-area * { visibility: visible; }
+  .statement-print-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 99999;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+}
