@@ -72,6 +72,17 @@ interface LineItem {
   accountId: string;
 }
 
+type RefValue = string | { _id: string } | null | undefined;
+
+function getRefId(value: RefValue): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : value._id;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function calcLineAmount(l: LineItem) {
   const lineTotal = l.quantity * l.rate;
   const discAmt = (lineTotal * l.discountPercent) / 100;
@@ -103,7 +114,11 @@ export default function EditInvoicePage() {
   const id = params.id as string;
 
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -148,77 +163,71 @@ export default function EditInvoicePage() {
 
   // Fetch invoice + master data
   useEffect(() => {
-    if (!firebaseUser || loading || !id) return;
+    if (!firebaseUser || loading || orgLoading || !activeOrganization || !id)
+      return;
     setFetching(true);
     Promise.all([
       invoiceApi.getById(id),
-      contactApi.list({ type: "Customer" as any, page: 1, limit: 500 }),
+      contactApi.list({ type: "Customer", page: 1, limit: 500 }),
       itemApi.list({ page: 1, limit: 500 }),
       settingsApi.salesPersons.list(),
       settingsApi.taxes.list(),
       settingsApi.paymentTerms.list(),
     ])
-      .then(([inv, c, i, sp, tx, pt]) => {
-        const data = inv.data;
-        setInvoice(data);
-        setCustomers(c.data ?? []);
-        setItems(i.data ?? []);
-        setSalesPersons(sp.data ?? []);
-        setTaxes(tx.data ?? []);
-        setPaymentTermsList(pt.data ?? []);
+      .then(([ir, cr, itr, spr, txr, ptr]) => {
+        const inv = ir.data;
+        setInvoice(inv);
+        setCustomers(cr.data ?? []);
+        setItems(itr.data ?? []);
+        setSalesPersons(spr.data ?? []);
+        setTaxes(txr.data ?? []);
+        setPaymentTermsList(ptr.data ?? []);
 
         // Populate form
-        setCustomerId(
-          typeof data.customerId === "string" ?
-            data.customerId
-          : data.customerId?._id || "",
-        );
-        setInvoiceNumber(data.invoiceNumber);
-        setOrderNumber(data.orderNumber || "");
-        setInvoiceDate(data.invoiceDate?.slice(0, 10) || "");
-        setDueDate(data.dueDate?.slice(0, 10) || "");
-        setPaymentTermsId(data.paymentTermsId || "");
-        setSalesPersonId(
-          typeof data.salesPersonId === "string" ?
-            data.salesPersonId
-          : (data.salesPersonId as any)?._id || "",
-        );
-        setSubject(data.subject || "");
-        setDiscountType(data.discountType || "percent");
-        setDiscountValue(data.discountValue || 0);
-        setTaxType(data.taxType || "TDS");
-        setTotalTaxId(data.taxId || "");
-        setAdjustmentLabel(data.adjustmentLabel || "Adjustment");
-        setAdjustmentAmount(data.adjustmentAmount || 0);
-        setCustomerNotes(data.customerNotes || "");
-        setTermsAndConditions(data.termsAndConditions || "");
+        setCustomerId(getRefId(inv.customerId));
+        setInvoiceNumber(inv.invoiceNumber);
+        setOrderNumber(inv.orderNumber || "");
+        setInvoiceDate(inv.invoiceDate?.slice(0, 10) || "");
+        setDueDate(inv.dueDate?.slice(0, 10) || "");
+        setPaymentTermsId(getRefId(inv.paymentTermsId));
+        setSalesPersonId(getRefId(inv.salesPersonId));
+        setSubject(inv.subject || "");
+        setDiscountType(inv.discountType || "percent");
+        setDiscountValue(inv.discountValue || 0);
+        setTaxType(inv.taxType || "none");
+        setTotalTaxId(getRefId(inv.taxId));
+        setAdjustmentLabel(inv.adjustmentLabel || "Adjustment");
+        setAdjustmentAmount(inv.adjustmentAmount || 0);
+        setCustomerNotes(inv.customerNotes || "");
+        setTermsAndConditions(inv.termsAndConditions || "");
 
-        // Populate lines
-        if (data.items.length > 0) {
+        if (inv.items && inv.items.length > 0) {
           setLines(
-            data.items.map((item, idx) => ({
-              key: idx + 1,
-              itemId: (item.itemId as string) || "",
-              name: item.name,
-              description: item.description || "",
-              hsnSacCode: item.hsnSacCode || "",
-              quantity: item.quantity,
-              rate: item.rate,
-              discountPercent: item.discountPercent || 0,
-              taxId: (item.taxId as string) || "",
-              taxPercent: item.taxPercent || 0,
-              accountId: (item.accountId as string) || "",
+            inv.items.map((it: Invoice["items"][number]) => ({
+              key: lineKeyCounter++,
+              itemId: getRefId(it.itemId),
+              name: it.name,
+              description: it.description || "",
+              hsnSacCode: it.hsnSacCode || "",
+              quantity: it.quantity || 1,
+              rate: it.rate || 0,
+              discountPercent: it.discountPercent || 0,
+              taxId: getRefId(it.taxId),
+              taxPercent: it.taxPercent || 0,
+              accountId: getRefId(it.accountId),
             })),
           );
         }
       })
-      .catch(() => {})
+      .catch((error: unknown) => {
+        toast.error(getErrorMessage(error, "Failed to fetch invoice data"));
+      })
       .finally(() => setFetching(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading, id]);
+  }, [firebaseUser, loading, orgLoading, activeOrganization, id]);
 
   const updateLine = useCallback(
-    (key: number, field: keyof LineItem, value: any) => {
+    <K extends keyof LineItem>(key: number, field: K, value: LineItem[K]) => {
       setLines((prev) =>
         prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)),
       );
@@ -278,8 +287,12 @@ export default function EditInvoicePage() {
         customerId,
         invoiceDate,
         dueDate: dueDate || null,
-        paymentTermsId: paymentTermsId || null,
-        salesPersonId: salesPersonId || null,
+        paymentTermsId:
+          paymentTermsId === "__receipt" || !paymentTermsId ?
+            null
+          : paymentTermsId,
+        salesPersonId:
+          salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())
@@ -307,8 +320,8 @@ export default function EditInvoicePage() {
       };
       await invoiceApi.update(id, payload);
       router.push(`/sales/invoices/${id}`);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update invoice");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to update invoice"));
     } finally {
       setSaving(false);
     }
@@ -513,17 +526,11 @@ export default function EditInvoicePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[240px]">
-                      ITEM DETAILS
-                    </TableHead>
-                    <TableHead className="w-[100px] text-right">QTY</TableHead>
-                    <TableHead className="w-[120px] text-right">RATE</TableHead>
-                    <TableHead className="w-[100px] text-right">
-                      DISC %
-                    </TableHead>
-                    <TableHead className="w-[120px] text-right">
-                      AMOUNT
-                    </TableHead>
+                    <TableHead className="min-w-60">ITEM DETAILS</TableHead>
+                    <TableHead className="w-25 text-right">QTY</TableHead>
+                    <TableHead className="w-30 text-right">RATE</TableHead>
+                    <TableHead className="w-25 text-right">DISC %</TableHead>
+                    <TableHead className="w-30 text-right">AMOUNT</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
@@ -651,7 +658,7 @@ export default function EditInvoicePage() {
               <div className="space-y-1.5">
                 <Label>Customer Notes</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-20 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                 />
@@ -659,7 +666,7 @@ export default function EditInvoicePage() {
               <div className="space-y-1.5">
                 <Label>Terms &amp; Conditions</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[100px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-25 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="Enter terms and conditions"
                   value={termsAndConditions}
                   onChange={(e) => setTermsAndConditions(e.target.value)}

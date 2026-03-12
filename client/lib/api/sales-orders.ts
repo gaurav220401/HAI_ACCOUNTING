@@ -19,18 +19,39 @@ export interface SalesOrderLineItemInput {
   amount: number;
 }
 
+export interface SalesOrderLineItem {
+  _id?: string;
+  itemId?: string | { _id: string; name: string; sku?: string } | null;
+  description?: string;
+  quantity: number;
+  rate: number;
+  discount?: number;
+  taxId?: string | { _id: string; name: string; rate?: number } | null;
+  amount: number;
+}
+
 export interface SalesOrder {
   _id: string;
   organizationId: string;
-  customerId: any;
+  customerId:
+    | string
+    | {
+        _id: string;
+        displayName: string;
+        companyName?: string;
+        email?: string;
+      };
   salesOrderNumber: string;
   reference?: string;
   orderDate: string;
   expectedShipmentDate?: string | null;
-  paymentTermsId?: any;
+  paymentTermsId?:
+    | string
+    | { _id: string; name: string; netDays?: number }
+    | null;
   deliveryMethod?: string;
-  salesPersonId?: any;
-  lineItems: Array<any>;
+  salesPersonId?: string | { _id: string; name: string } | null;
+  lineItems: SalesOrderLineItem[];
   subTotal: number;
   shippingCharges: number;
   adjustment: number;
@@ -62,15 +83,24 @@ export interface CreateSalesOrderInput {
 
 export type UpdateSalesOrderInput = Partial<CreateSalesOrderInput>;
 
+export interface SalesOrderConvertToInvoiceResponse {
+  _id?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+}
+
 export interface SalesOrderListParams extends ListParams {
   status?: SalesOrderStatus;
 }
 
 export const salesOrderApi = {
   list: (params?: SalesOrderListParams) =>
-    apiFetch<PaginatedResponse<SalesOrder>>(`/sales-orders${buildQuery(params || {})}`),
+    apiFetch<PaginatedResponse<SalesOrder>>(
+      `/sales-orders${buildQuery(params || {})}`,
+    ),
 
-  getById: (id: string) => apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}`),
+  getById: (id: string) =>
+    apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}`),
 
   create: (data: CreateSalesOrderInput) =>
     apiFetch<{ data: SalesOrder }>("/sales-orders", {
@@ -88,8 +118,11 @@ export const salesOrderApi = {
     apiFetch<{ success: boolean }>(`/sales-orders/${id}`, { method: "DELETE" }),
 
   convertToInvoice: (id: string, dueDate?: string) =>
-    apiFetch<{ data: any }>(`/sales-orders/${id}/convert-to-invoice`, {
-      method: "POST",
-      body: JSON.stringify(dueDate ? { dueDate } : {}),
-    }),
+    apiFetch<{ data: SalesOrderConvertToInvoiceResponse }>(
+      `/sales-orders/${id}/convert-to-invoice`,
+      {
+        method: "POST",
+        body: JSON.stringify(dueDate ? { dueDate } : {}),
+      },
+    ),
 };

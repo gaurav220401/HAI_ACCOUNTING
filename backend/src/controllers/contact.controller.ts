@@ -24,7 +24,17 @@ async function orgId(req: AuthenticatedRequest) {
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { type, search, page = 1, limit = 25 } = req.query;
   const filter: any = { organizationId: await orgId(req), isDeleted: false, isActive: true };
-  if (type) filter.contactType = type;
+
+  if (type) {
+    if (type === "Customer") {
+      filter.contactType = { $in: ["Customer", "Both"] };
+    } else if (type === "Vendor") {
+      filter.contactType = { $in: ["Vendor", "Both"] };
+    } else {
+      filter.contactType = type;
+    }
+  }
+
   if (search) filter.$or = [
     { displayName: { $regex: search, $options: "i" } },
     { companyName: { $regex: search, $options: "i" } },

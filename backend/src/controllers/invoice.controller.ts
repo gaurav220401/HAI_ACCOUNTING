@@ -410,6 +410,7 @@ export const sendInvoiceEmail = asyncHandler(
     await invoice.populate([
       { path: "customerId" },
       { path: "items.taxId", select: "name rate" },
+      { path: "paymentTermsId", select: "name" },
     ]);
 
     const customer = invoice.customerId as any;
@@ -443,9 +444,14 @@ export const sendInvoiceEmail = asyncHandler(
         .filter(Boolean)
         .join(", ");
 
+      const paymentTerms = (invoice as any).paymentTermsId;
+      const termsLabel = paymentTerms?.name || undefined;
+
       const pdfBuffer = await generateInvoicePdf({
         orgName: org?.name ?? "",
         orgAddress: org?.address as any,
+        orgEmail:
+          org?.smtpSettings?.fromEmail || org?.smtpSettings?.user || undefined,
         orgTaxId: org?.taxId,
 
         customerName,
@@ -455,6 +461,7 @@ export const sendInvoiceEmail = asyncHandler(
         invoiceNumber: invoice.invoiceNumber,
         invoiceDate: invoice.invoiceDate.toISOString(),
         dueDate: invoice.dueDate?.toISOString(),
+        paymentTerms: termsLabel,
         orderNumber: invoice.orderNumber,
         subject: invoice.subject,
 

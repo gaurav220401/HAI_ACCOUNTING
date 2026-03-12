@@ -811,7 +811,7 @@ function SendEmailModal({
 export default function NewInvoicePage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   // Master data
   const [customers, setCustomers] = useState<Contact[]>([]);
@@ -866,7 +866,7 @@ export default function NewInvoicePage() {
 
   // Load master data
   useEffect(() => {
-    if (!firebaseUser || loading) return;
+    if (!firebaseUser || loading || orgLoading || !activeOrganization) return;
     setMasterLoading(true);
     Promise.allSettled([
       contactApi.list({ type: "Customer", page: 1, limit: 500 }),
@@ -914,7 +914,7 @@ export default function NewInvoicePage() {
       })
       .finally(() => setMasterLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading]);
+  }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -1066,8 +1066,8 @@ export default function NewInvoicePage() {
         customerId,
         invoiceDate,
         dueDate: dueDate || null,
-        paymentTermsId: paymentTermsId || null,
-        salesPersonId: salesPersonId || null,
+        paymentTermsId: paymentTermsId === "__receipt" || !paymentTermsId ? null : paymentTermsId,
+        salesPersonId: salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())
@@ -1218,7 +1218,7 @@ export default function NewInvoicePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5">
             {/* Customer Name */}
             <div className="space-y-1.5">
-              <Label className="text-red-600">
+              <Label>
                 Customer Name<span className="text-red-500">*</span>
               </Label>
               <Select
@@ -1234,7 +1234,7 @@ export default function NewInvoicePage() {
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select or add a customer" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper">
                   <SelectItem value="__add_new">
                     <span className="text-blue-600 font-medium">
                       + Add a customer
@@ -1252,7 +1252,14 @@ export default function NewInvoicePage() {
                   )}
                   {customers.map((c) => (
                     <SelectItem key={c._id} value={c._id}>
-                      {c.displayName}
+                      <div className="flex flex-col">
+                        <span className="font-medium">{c.displayName}</span>
+                        {c.companyName && (
+                          <span className="text-xs text-muted-foreground">
+                            {c.companyName}
+                          </span>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>

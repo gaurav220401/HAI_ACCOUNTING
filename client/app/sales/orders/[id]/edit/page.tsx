@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, Trash2, MoreHorizontal, FileText, Download } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Plus,
+  Trash2,
+  MoreHorizontal,
+  FileText,
+  Download,
+} from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -39,7 +47,11 @@ import {
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
-import { salesOrderApi, type CreateSalesOrderInput, type SalesOrder } from "@/lib/api/sales-orders";
+import {
+  salesOrderApi,
+  type CreateSalesOrderInput,
+  type SalesOrder,
+} from "@/lib/api/sales-orders";
 
 type LineItemUi = {
   id: string;
@@ -50,6 +62,19 @@ type LineItemUi = {
   discount: string;
   amount: number;
 };
+
+type RefValue = string | { _id: string } | null | undefined;
+
+function getRefId(value: RefValue): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : value._id;
+}
+
+function getConvertedInvoiceId(
+  value: { _id?: string; invoiceId?: string } | undefined,
+) {
+  return value?.invoiceId || value?._id || "";
+}
 
 function todayISO() {
   const d = new Date();
@@ -65,11 +90,15 @@ export default function EditSalesOrderPage() {
   const id = params?.id;
 
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   const [saving, setSaving] = useState(false);
   const [loadingOrder, setLoadingOrder] = useState(true);
-  
+
   const [order, setOrder] = useState<SalesOrder | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -91,7 +120,15 @@ export default function EditSalesOrderPage() {
   });
 
   const [lineItems, setLineItems] = useState<LineItemUi[]>([
-    { id: "1", itemId: "", description: "", quantity: "1", rate: "0", discount: "0", amount: 0 },
+    {
+      id: "1",
+      itemId: "",
+      description: "",
+      quantity: "1",
+      rate: "0",
+      discount: "0",
+      amount: 0,
+    },
   ]);
 
   useEffect(() => {
@@ -99,7 +136,8 @@ export default function EditSalesOrderPage() {
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+      router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
@@ -126,14 +164,15 @@ export default function EditSalesOrderPage() {
         const orderData = orderRes.data;
         setOrder(orderData);
         setFormData({
-          customerId: orderData.customerId?._id || orderData.customerId || "",
+          customerId: getRefId(orderData.customerId),
           salesOrderNumber: orderData.salesOrderNumber || "",
           reference: orderData.reference || "",
           orderDate: orderData.orderDate?.split("T")[0] || todayISO(),
-          expectedShipmentDate: orderData.expectedShipmentDate?.split("T")[0] || "",
-          paymentTermsId: orderData.paymentTermsId?._id || orderData.paymentTermsId || "",
+          expectedShipmentDate:
+            orderData.expectedShipmentDate?.split("T")[0] || "",
+          paymentTermsId: getRefId(orderData.paymentTermsId),
           deliveryMethod: orderData.deliveryMethod || "",
-          salesPersonId: orderData.salesPersonId?._id || orderData.salesPersonId || "",
+          salesPersonId: getRefId(orderData.salesPersonId),
           shippingCharges: String(orderData.shippingCharges || 0),
           adjustment: String(orderData.adjustment || 0),
           notes: orderData.notes || "",
@@ -141,16 +180,30 @@ export default function EditSalesOrderPage() {
         });
 
         if (orderData.lineItems?.length) {
-          const formattedItems = orderData.lineItems.map((li: any, idx: number) => ({
+          const formattedItems = orderData.lineItems.map((li, idx: number) => ({
             id: String(idx + 1),
-            itemId: li.itemId?._id || li.itemId || "",
+            itemId: getRefId(li.itemId),
             description: li.description || "",
             quantity: String(li.quantity || 1),
             rate: String(li.rate || 0),
             discount: String(li.discount || 0),
             amount: li.amount || 0,
           }));
-          setLineItems(formattedItems.length > 0 ? formattedItems : [{ id: "1", itemId: "", description: "", quantity: "1", rate: "0", discount: "0", amount: 0 }]);
+          setLineItems(
+            formattedItems.length > 0 ?
+              formattedItems
+            : [
+                {
+                  id: "1",
+                  itemId: "",
+                  description: "",
+                  quantity: "1",
+                  rate: "0",
+                  discount: "0",
+                  amount: 0,
+                },
+              ],
+          );
         }
       }
     } catch (error) {
@@ -165,7 +218,11 @@ export default function EditSalesOrderPage() {
       prev.map((li) => {
         if (li.id === id) {
           const updated = { ...li, [field]: value };
-          if (field === "quantity" || field === "rate" || field === "discount") {
+          if (
+            field === "quantity" ||
+            field === "rate" ||
+            field === "discount"
+          ) {
             const qty = Number(updated.quantity) || 0;
             const rate = Number(updated.rate) || 0;
             const discount = Number(updated.discount) || 0;
@@ -174,7 +231,7 @@ export default function EditSalesOrderPage() {
           return updated;
         }
         return li;
-      })
+      }),
     );
   }
 
@@ -182,7 +239,15 @@ export default function EditSalesOrderPage() {
     const newId = String(Math.max(...lineItems.map((li) => Number(li.id))) + 1);
     setLineItems((prev) => [
       ...prev,
-      { id: newId, itemId: "", description: "", quantity: "1", rate: "0", discount: "0", amount: 0 },
+      {
+        id: newId,
+        itemId: "",
+        description: "",
+        quantity: "1",
+        rate: "0",
+        discount: "0",
+        amount: 0,
+      },
     ]);
   }
 
@@ -244,7 +309,10 @@ export default function EditSalesOrderPage() {
     if (!order) return;
     try {
       const result = await salesOrderApi.convertToInvoice(order._id);
-      router.push(`/sales/invoices/${(result as any).data?._id}`);
+      const invoiceId = getConvertedInvoiceId(result.data);
+      if (invoiceId) {
+        router.push(`/sales/invoices/${invoiceId}`);
+      }
     } catch (_err) {
       // noop
     }
@@ -283,7 +351,9 @@ export default function EditSalesOrderPage() {
   if (!order) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="text-sm text-muted-foreground">Sales order not found.</div>
+        <div className="text-sm text-muted-foreground">
+          Sales order not found.
+        </div>
       </div>
     );
   }
@@ -297,7 +367,9 @@ export default function EditSalesOrderPage() {
             <span className="text-sm text-muted-foreground">
               Sales <span className="mx-1">/</span>
               Sales Orders <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Edit {order.salesOrderNumber}</span>
+              <span className="font-medium text-foreground">
+                Edit {order.salesOrderNumber}
+              </span>
             </span>
           }
           actions={
@@ -322,7 +394,10 @@ export default function EditSalesOrderPage() {
                     Download PDF
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                  <DropdownMenuItem
+                    onClick={handleDelete}
+                    className="text-destructive"
+                  >
                     <Trash2 className="h-4 w-4 mr-2" />
                     Delete
                   </DropdownMenuItem>
@@ -336,7 +411,12 @@ export default function EditSalesOrderPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <Label htmlFor="customerId">Customer *</Label>
-              <Select value={formData.customerId} onValueChange={(v) => setFormData((prev) => ({ ...prev, customerId: v }))}>
+              <Select
+                value={formData.customerId}
+                onValueChange={(v) =>
+                  setFormData((prev) => ({ ...prev, customerId: v }))
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
@@ -355,7 +435,12 @@ export default function EditSalesOrderPage() {
               <Input
                 id="salesOrderNumber"
                 value={formData.salesOrderNumber}
-                onChange={(e) => setFormData((prev) => ({ ...prev, salesOrderNumber: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    salesOrderNumber: e.target.value,
+                  }))
+                }
                 required
               />
             </div>
@@ -365,7 +450,12 @@ export default function EditSalesOrderPage() {
               <Input
                 id="reference"
                 value={formData.reference}
-                onChange={(e) => setFormData((prev) => ({ ...prev, reference: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    reference: e.target.value,
+                  }))
+                }
               />
             </div>
 
@@ -375,7 +465,12 @@ export default function EditSalesOrderPage() {
                 id="orderDate"
                 type="date"
                 value={formData.orderDate}
-                onChange={(e) => setFormData((prev) => ({ ...prev, orderDate: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    orderDate: e.target.value,
+                  }))
+                }
                 required
               />
             </div>
@@ -383,18 +478,30 @@ export default function EditSalesOrderPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <Label htmlFor="expectedShipmentDate">Expected Shipment Date</Label>
+              <Label htmlFor="expectedShipmentDate">
+                Expected Shipment Date
+              </Label>
               <Input
                 id="expectedShipmentDate"
                 type="date"
                 value={formData.expectedShipmentDate}
-                onChange={(e) => setFormData((prev) => ({ ...prev, expectedShipmentDate: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    expectedShipmentDate: e.target.value,
+                  }))
+                }
               />
             </div>
 
             <div>
               <Label htmlFor="paymentTermsId">Payment Terms</Label>
-              <Select value={formData.paymentTermsId} onValueChange={(v) => setFormData((prev) => ({ ...prev, paymentTermsId: v }))}>
+              <Select
+                value={formData.paymentTermsId}
+                onValueChange={(v) =>
+                  setFormData((prev) => ({ ...prev, paymentTermsId: v }))
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select payment terms" />
                 </SelectTrigger>
@@ -413,13 +520,23 @@ export default function EditSalesOrderPage() {
               <Input
                 id="deliveryMethod"
                 value={formData.deliveryMethod}
-                onChange={(e) => setFormData((prev) => ({ ...prev, deliveryMethod: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    deliveryMethod: e.target.value,
+                  }))
+                }
               />
             </div>
 
             <div>
               <Label htmlFor="salesPersonId">Sales Person</Label>
-              <Select value={formData.salesPersonId} onValueChange={(v) => setFormData((prev) => ({ ...prev, salesPersonId: v }))}>
+              <Select
+                value={formData.salesPersonId}
+                onValueChange={(v) =>
+                  setFormData((prev) => ({ ...prev, salesPersonId: v }))
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select sales person" />
                 </SelectTrigger>
@@ -437,7 +554,12 @@ export default function EditSalesOrderPage() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Line Items</h3>
-              <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addLineItem}
+              >
                 <Plus className="h-4 w-4 mr-1" />
                 Add Item
               </Button>
@@ -460,7 +582,12 @@ export default function EditSalesOrderPage() {
                   {lineItems.map((li) => (
                     <TableRow key={li.id}>
                       <TableCell>
-                        <Select value={li.itemId} onValueChange={(v) => updateLineItem(li.id, "itemId", v)}>
+                        <Select
+                          value={li.itemId}
+                          onValueChange={(v) =>
+                            updateLineItem(li.id, "itemId", v)
+                          }
+                        >
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select item" />
                           </SelectTrigger>
@@ -476,7 +603,9 @@ export default function EditSalesOrderPage() {
                       <TableCell>
                         <Input
                           value={li.description}
-                          onChange={(e) => updateLineItem(li.id, "description", e.target.value)}
+                          onChange={(e) =>
+                            updateLineItem(li.id, "description", e.target.value)
+                          }
                           placeholder="Description"
                         />
                       </TableCell>
@@ -484,7 +613,9 @@ export default function EditSalesOrderPage() {
                         <Input
                           type="number"
                           value={li.quantity}
-                          onChange={(e) => updateLineItem(li.id, "quantity", e.target.value)}
+                          onChange={(e) =>
+                            updateLineItem(li.id, "quantity", e.target.value)
+                          }
                           min="0"
                           step="0.01"
                         />
@@ -493,7 +624,9 @@ export default function EditSalesOrderPage() {
                         <Input
                           type="number"
                           value={li.rate}
-                          onChange={(e) => updateLineItem(li.id, "rate", e.target.value)}
+                          onChange={(e) =>
+                            updateLineItem(li.id, "rate", e.target.value)
+                          }
                           min="0"
                           step="0.01"
                         />
@@ -502,7 +635,9 @@ export default function EditSalesOrderPage() {
                         <Input
                           type="number"
                           value={li.discount}
-                          onChange={(e) => updateLineItem(li.id, "discount", e.target.value)}
+                          onChange={(e) =>
+                            updateLineItem(li.id, "discount", e.target.value)
+                          }
                           min="0"
                           max="100"
                           step="0.01"
@@ -536,7 +671,12 @@ export default function EditSalesOrderPage() {
                 id="shippingCharges"
                 type="number"
                 value={formData.shippingCharges}
-                onChange={(e) => setFormData((prev) => ({ ...prev, shippingCharges: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    shippingCharges: e.target.value,
+                  }))
+                }
                 min="0"
                 step="0.01"
               />
@@ -548,7 +688,12 @@ export default function EditSalesOrderPage() {
                 id="adjustment"
                 type="number"
                 value={formData.adjustment}
-                onChange={(e) => setFormData((prev) => ({ ...prev, adjustment: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    adjustment: e.target.value,
+                  }))
+                }
                 step="0.01"
               />
             </div>
@@ -580,7 +725,9 @@ export default function EditSalesOrderPage() {
                 id="notes"
                 className="w-full min-h-24 p-2 border rounded-md"
                 value={formData.notes}
-                onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, notes: e.target.value }))
+                }
                 placeholder="Add any notes or special instructions..."
               />
             </div>
@@ -591,7 +738,9 @@ export default function EditSalesOrderPage() {
                 id="terms"
                 className="w-full min-h-24 p-2 border rounded-md"
                 value={formData.terms}
-                onChange={(e) => setFormData((prev) => ({ ...prev, terms: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, terms: e.target.value }))
+                }
                 placeholder="Add terms and conditions..."
               />
             </div>
@@ -599,16 +748,18 @@ export default function EditSalesOrderPage() {
 
           <div className="flex items-center gap-4 pt-4">
             <Button type="submit" disabled={saving}>
-              {saving ? (
+              {saving ?
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Saving...
                 </>
-              ) : (
-                "Save Changes"
-              )}
+              : "Save Changes"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => router.back()}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.back()}
+            >
               Cancel
             </Button>
           </div>

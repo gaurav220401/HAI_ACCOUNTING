@@ -72,3 +72,14 @@ export type {
   DiscountType,
   InvoiceTaxType,
 } from "./invoices";
+
+export { deliveryChallanApi } from "./delivery-challans";
+export type {
+  DeliveryChallan,
+  DeliveryChallanItem,
+  DeliveryChallanStatus,
+  ChallanType,
+  CreateDeliveryChallanInput,
+  UpdateDeliveryChallanInput,
+  DeliveryChallanListParams,
+} from "./delivery-challans";
