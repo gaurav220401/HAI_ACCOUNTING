@@ -12,6 +12,7 @@ import quoteRoutes from "./quote.routes";
 import salesOrderRoutes from "./sales-order.routes";
 import invoiceRoutes from "./invoice.routes";
 import recurringInvoiceRoutes from "./recurring-invoice.routes";
+import deliveryChallanRoutes from "./delivery-challan.routes";
 import uploadRoutes from "./upload.routes";
 import gstinRoutes from "./gstin.routes";
 
@@ -30,6 +31,7 @@ router.use("/quotes", quoteRoutes);
 router.use("/sales-orders", salesOrderRoutes);
 router.use("/invoices", invoiceRoutes);
 router.use("/recurring-invoices", recurringInvoiceRoutes);
+router.use("/delivery-challans", deliveryChallanRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/gstin", gstinRoutes);
 
