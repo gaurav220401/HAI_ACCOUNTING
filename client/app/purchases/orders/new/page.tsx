@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Search, Loader2, X, ChevronDown, GripVertical, Pencil,
-  Settings2, Upload, HelpCircle, Trash2, MoreHorizontal, Info, CircleDot,
+  Settings2, Upload, HelpCircle, Trash2, MoreHorizontal, Info, CircleDot, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -70,6 +70,29 @@ const PO_PREFIX_PLACEHOLDER_FORMATS: Record<string, string[]> = {
   "Transaction Month": ["MM", "MMM"],
 };
 
+const ITEM_TRANSACTION_TYPES = [
+  "Quotes", "Sales Orders", "Invoices", "Delivery Challans", "Credit Notes",
+  "Recurring Invoices", "Purchase Orders", "Bills", "Vendor Credits",
+] as const;
+
+const DEFAULT_TDS_TAXES: TdsTax[] = [
+  { _id: "default-1", organizationId: "", taxName: "Commission or Brokerage", rate: 2, sectionCode: "194H", sectionDescription: "Commission or Brokerage", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-2", organizationId: "", taxName: "Commission or Brokerage (Reduced)", rate: 3.75, sectionCode: "194H", sectionDescription: "Commission or Brokerage", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-3", organizationId: "", taxName: "Dividend", rate: 10, sectionCode: "194", sectionDescription: "Dividend", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-4", organizationId: "", taxName: "Dividend (Reduced)", rate: 7.5, sectionCode: "194", sectionDescription: "Dividend", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-5", organizationId: "", taxName: "Other Interest than securities", rate: 10, sectionCode: "194A", sectionDescription: "Other Interest than securities", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-6", organizationId: "", taxName: "Other Interest than securities (Reduced)", rate: 7.5, sectionCode: "194A", sectionDescription: "Other Interest than securities", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-7", organizationId: "", taxName: "Payment of contractors for Others", rate: 2, sectionCode: "194C", sectionDescription: "Payment of contractors for Others", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-8", organizationId: "", taxName: "Payment of contractors for Others (Reduced)", rate: 1.5, sectionCode: "194C", sectionDescription: "Payment of contractors for Others", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-9", organizationId: "", taxName: "Payment of contractors HUF/Indiv", rate: 1, sectionCode: "194C", sectionDescription: "Payment of contractors HUF/Indiv", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-10", organizationId: "", taxName: "Payment of contractors HUF/Indiv (Reduced)", rate: 0.75, sectionCode: "194C", sectionDescription: "Payment of contractors HUF/Indiv", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-11", organizationId: "", taxName: "Professional Fees", rate: 10, sectionCode: "194J", sectionDescription: "Professional Fees", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-12", organizationId: "", taxName: "Professional Fees (Reduced)", rate: 7.5, sectionCode: "194J", sectionDescription: "Professional Fees", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-13", organizationId: "", taxName: "Rent on land or furniture etc", rate: 10, sectionCode: "194I(A)", sectionDescription: "Rent on land or furniture etc", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-14", organizationId: "", taxName: "Rent on land or furniture etc (Reduced)", rate: 7.5, sectionCode: "194I(A)", sectionDescription: "Rent on land or furniture etc", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-15", organizationId: "", taxName: "Technical Fees (2%)", rate: 2, sectionCode: "194J(A)", sectionDescription: "Technical services", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+];
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (v: number) =>
@@ -91,6 +114,7 @@ interface LineRow {
   accountId: string;
   accountName: string;
   description: string;
+  unit: string;
   quantity: number;
   rate: number;
   discountPercent: number;
@@ -108,6 +132,7 @@ function newRow(): LineRow {
     accountId: "",
     accountName: "",
     description: "",
+    unit: "",
     quantity: 1,
     rate: 0,
     discountPercent: 0,
@@ -624,6 +649,25 @@ export default function NewPurchaseOrderPage() {
   const [showPrefixPlaceholders, setShowPrefixPlaceholders] = useState(false);
   const [poPrefixGroup, setPoPrefixGroup] = useState<(typeof PO_PREFIX_PLACEHOLDER_GROUPS)[number]>("Fiscal Year Start");
 
+  // Discount type toggle
+  const [discountType, setDiscountType] = useState<"%" | "₹">("%");
+  const [showDiscountTypeDD, setShowDiscountTypeDD] = useState(false);
+
+  // Item details side panel
+  const [itemPanelItemId, setItemPanelItemId] = useState<string | null>(null);
+  const [itemPanelTab, setItemPanelTab] = useState<"details" | "transactions">("details");
+  const [itemPanelTxType, setItemPanelTxType] = useState("Purchase Orders");
+  const [itemPanelTxStatus, setItemPanelTxStatus] = useState("All");
+  const [showTxTypeDD, setShowTxTypeDD] = useState(false);
+  const [showTxStatusDD, setShowTxStatusDD] = useState(false);
+
+  // TCS
+  const [tcsTaxes, setTcsTaxes] = useState<TdsTax[]>([]);
+  const [tcsId, setTcsId] = useState("");
+  const [showTCSDD, setShowTCSDD] = useState(false);
+  const [tdsSearch, setTdsSearch] = useState("");
+  const [tcsSearch, setTcsSearch] = useState("");
+
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
@@ -648,7 +692,8 @@ export default function NewPurchaseOrderPage() {
       setItems(iRes.data ?? []);
       setAccounts(aRes.data ?? []);
       setPaymentTermsList(ptRes.data ?? []);
-      setTdsTaxes(tdsRes.data ?? []);
+      const tdsData = tdsRes.data ?? [];
+      setTdsTaxes(tdsData.length > 0 ? tdsData : DEFAULT_TDS_TAXES);
       setPoNumber(numRes.data.purchaseOrderNumber ?? "PO-00001");
     } catch { /* noop */ }
   }, [firebaseUser, loading, activeOrganization?._id]);
@@ -673,9 +718,21 @@ export default function NewPurchaseOrderPage() {
 
   // Computed totals
   const subTotal = rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.amount, 0);
-  const discountAmt = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.discountAmount, 0);
+  const discountAmt = discountLevel === "transaction"
+    ? discountType === "%" ? (subTotal * discountPercent) / 100 : discountPercent
+    : rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.discountAmount, 0);
   const selectedTds = tdsTaxes.find((t) => t._id === tdsId);
-  const computedTax = selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : taxAmount;
+  const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
+  const computedTax = taxType === "TDS"
+    ? (selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0)
+    : taxType === "TCS"
+      ? (selectedTcs ? ((subTotal - discountAmt) * selectedTcs.rate) / 100 : 0)
+      : taxAmount;
+  const totalQuantity = rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.quantity, 0);
+  const panelItem = items.find((i) => i._id === itemPanelItemId) ?? null;
+  const panelUnit = !panelItem?.unit ? "" : typeof panelItem.unit === "string" ? panelItem.unit : (panelItem.unit as any)?.abbreviation || "";
+  const panelSalesAccount = accounts.find((a) => a._id === (panelItem?.salesAccountId || ""));
+  const panelPurchaseAccount = accounts.find((a) => a._id === (panelItem?.purchaseAccountId || ""));
   const total = subTotal - discountAmt - (taxType === "none" ? 0 : computedTax) + adjustmentAmount;
 
   // Vendor filter
@@ -750,11 +807,13 @@ export default function NewPurchaseOrderPage() {
   }
 
   function handleSelectItem(rowId: string, item: Item) {
+    const unitStr = !item.unit ? "" : typeof item.unit === "string" ? item.unit : (item.unit as any)?.abbreviation || "";
     updateRow(rowId, {
       itemId: item._id,
       itemName: item.name,
       quantity: 1,
       rate: item.costPrice || 0,
+      unit: unitStr,
     });
     setItemSelectorRow(null);
   }
@@ -789,7 +848,7 @@ export default function NewPurchaseOrderPage() {
         })),
         discountPercent,
         taxType,
-        tdsId: tdsId || null,
+        tdsId: (tdsId && !tdsId.startsWith("default-")) ? tdsId : null,
         taxAmount: taxType !== "none" ? computedTax : 0,
         adjustmentLabel,
         adjustmentAmount,
@@ -1103,7 +1162,7 @@ export default function NewPurchaseOrderPage() {
                           </td>
                         ) : (
                           <>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 align-top">
                               <DropdownMenu
                                 open={itemSelectorRow === row.id}
                                 onOpenChange={(open) => setItemSelectorRow(open ? row.id : null)}
@@ -1111,7 +1170,7 @@ export default function NewPurchaseOrderPage() {
                                 <DropdownMenuTrigger asChild>
                                   <button
                                     type="button"
-                                    className={cn("text-sm text-left w-full", row.itemName ? "" : "text-muted-foreground")}
+                                    className={cn("text-sm text-left w-full font-medium", row.itemName ? "text-primary" : "text-muted-foreground")}
                                   >
                                     {row.itemName || "Type or click to select an item."}
                                   </button>
@@ -1126,15 +1185,22 @@ export default function NewPurchaseOrderPage() {
                                   />
                                 </DropdownMenuContent>
                               </DropdownMenu>
+                              <Textarea
+                                className="mt-1 text-xs text-muted-foreground resize-none border-0 shadow-none p-0 focus-visible:ring-0 min-h-0 h-auto bg-transparent"
+                                rows={1}
+                                placeholder="Add a description to your item"
+                                value={row.description}
+                                onChange={(e) => updateRow(row.id, { description: e.target.value })}
+                              />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 align-top">
                               <AccountDropdown
                                 value={row.accountId}
                                 onChange={(id, name) => updateRow(row.id, { accountId: id, accountName: name })}
                                 accounts={accounts.filter((a) => a.rootType === "Expense")}
                               />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 align-top">
                               <Input
                                 type="number"
                                 className="h-8 text-sm text-right w-full"
@@ -1142,8 +1208,9 @@ export default function NewPurchaseOrderPage() {
                                 min={0}
                                 onChange={(e) => updateRow(row.id, { quantity: Math.max(0, Number(e.target.value)) })}
                               />
+                              {row.unit && <div className="text-xs text-muted-foreground text-right mt-0.5">{row.unit}</div>}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 align-top">
                               <Input
                                 type="number"
                                 className="h-8 text-sm text-right w-full"
@@ -1153,7 +1220,7 @@ export default function NewPurchaseOrderPage() {
                               />
                             </td>
                             {discountLevel === "line_item" && (
-                              <td className="px-3 py-2">
+                              <td className="px-3 py-2 align-top">
                                 <div className="flex items-center gap-1">
                                   <Input
                                     type="number"
@@ -1164,13 +1231,21 @@ export default function NewPurchaseOrderPage() {
                                     onChange={(e) => updateRow(row.id, { discountPercent: Math.min(100, Number(e.target.value)), discountAmount: 0 })}
                                   />
                                   <span className="text-xs text-muted-foreground">%</span>
-                                  <select className="h-8 text-xs border rounded px-1">
-                                    <option value="%">%</option>
-                                  </select>
                                 </div>
                               </td>
                             )}
-                            <td className="px-3 py-2 text-right font-medium">{fmt(row.amount)}</td>
+                            <td className="px-3 py-2 align-top text-right">
+                              <div className="font-medium">{fmt(row.amount)}</div>
+                              {row.itemId && (
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-primary hover:underline mt-0.5 block ml-auto"
+                                  onClick={() => { setItemPanelItemId(row.itemId); setItemPanelTab("transactions"); }}
+                                >
+                                  Recent Transactions
+                                </button>
+                              )}
+                            </td>
                           </>
                         )}
                         <td className="px-2 py-2">
@@ -1255,7 +1330,10 @@ export default function NewPurchaseOrderPage() {
             <div className="flex justify-end">
               <div className="w-96 space-y-3">
                 <div className="flex justify-between text-sm font-medium">
-                  <span>Sub Total</span>
+                  <div>
+                    <div>Sub Total</div>
+                    <div className="text-xs text-muted-foreground font-normal mt-0.5">Total Quantity : {totalQuantity}</div>
+                  </div>
                   <span>{fmt(subTotal)}</span>
                 </div>
                 {discountLevel === "transaction" && (
@@ -1266,56 +1344,105 @@ export default function NewPurchaseOrderPage() {
                         type="number"
                         className="h-7 w-16 text-right text-sm"
                         min={0}
-                        max={100}
                         value={discountPercent}
-                        onChange={(e) => setDiscountPercent(Math.min(100, Number(e.target.value)))}
+                        onChange={(e) => setDiscountPercent(Math.max(0, Number(e.target.value)))}
                       />
-                      <span className="text-sm text-muted-foreground">%</span>
+                      <DropdownMenu open={showDiscountTypeDD} onOpenChange={setShowDiscountTypeDD}>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="h-7 px-2 border rounded text-sm flex items-center gap-0.5 hover:bg-muted/30 min-w-[38px] justify-center"
+                          >
+                            {discountType}<ChevronDown className="h-3 w-3" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="z-[220] w-14 p-1 min-w-0">
+                          <button
+                            type="button"
+                            className={cn("w-full text-center py-1.5 rounded-sm text-sm font-medium transition-colors", discountType === "%" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                            onClick={() => { setDiscountType("%"); setShowDiscountTypeDD(false); }}
+                          >%</button>
+                          <button
+                            type="button"
+                            className={cn("w-full text-center py-1.5 rounded-sm text-sm font-medium transition-colors mt-0.5", discountType === "₹" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                            onClick={() => { setDiscountType("₹"); setShowDiscountTypeDD(false); }}
+                          >₹</button>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                     <span className="text-sm">{fmt(discountAmt)}</span>
                   </div>
                 )}
                 {/* TDS / TCS */}
                 <div className="flex items-center gap-3 justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                      <input type="radio" name="taxType" value="TDS" checked={taxType === "TDS"} onChange={() => setTaxType("TDS")} className="accent-primary" />
+                      <input type="radio" name="taxType" value="TDS" checked={taxType === "TDS"} onChange={() => { setTaxType("TDS"); setTcsId(""); }} className="accent-primary" />
                       TDS
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                      <input type="radio" name="taxType" value="TCS" checked={taxType === "TCS"} onChange={() => setTaxType("TCS")} className="accent-primary" />
+                      <input type="radio" name="taxType" value="TCS" checked={taxType === "TCS"} onChange={() => { setTaxType("TCS"); setTdsId(""); }} className="accent-primary" />
                       TCS
                     </label>
-                    {/* Tax Selector */}
-                    <DropdownMenu open={showTaxDD} onOpenChange={setShowTaxDD}>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 text-sm border rounded-md px-2.5 py-1 hover:bg-muted/30"
-                        >
-                          {selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                        <div className="max-h-64 overflow-y-auto">
-                          <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); }}>
-                            None
+                    {/* TDS Selector */}
+                    {taxType === "TDS" && (
+                      <DropdownMenu open={showTaxDD} onOpenChange={(o) => { setShowTaxDD(o); if (!o) setTdsSearch(""); }}>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="flex items-center gap-1 text-sm border rounded-md px-2.5 py-1 hover:bg-muted/30">
+                            {selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}
+                            <ChevronDown className="h-3 w-3" />
                           </button>
-                          {tdsTaxes.map((t) => (
-                            <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tdsId === t._id && "bg-primary/10 font-medium")}
-                              onClick={() => { setTdsId(t._id); setShowTaxDD(false); }}>
-                              {t.taxName} [{t.rate}%]
-                            </button>
-                          ))}
-                        </div>
-                        <div className="border-t p-2">
-                          <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>
-                            Manage TDS
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                            <Input className="h-7 text-xs" placeholder="Search" value={tdsSearch} onChange={(e) => setTdsSearch(e.target.value)} autoFocus />
+                          </div>
+                          <div className="max-h-56 overflow-y-auto">
+                            <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); setTdsSearch(""); }}>None</button>
+                            {tdsTaxes.filter((t) => t.taxName.toLowerCase().includes(tdsSearch.toLowerCase())).map((t) => (
+                              <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tdsId === t._id && "bg-primary/10 font-medium")}
+                                onClick={() => { setTdsId(t._id); setShowTaxDD(false); setTdsSearch(""); }}>
+                                {t.taxName} [{t.rate}%]
+                              </button>
+                            ))}
+                          </div>
+                          <div className="border-t p-2 flex items-center gap-1">
+                            <Settings2 className="h-3.5 w-3.5 text-primary" />
+                            <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>Manage TDS</button>
+                          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {/* TCS Selector */}
+                    {taxType === "TCS" && (
+                      <DropdownMenu open={showTCSDD} onOpenChange={(o) => { setShowTCSDD(o); if (!o) setTcsSearch(""); }}>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="flex items-center gap-1 text-sm border rounded-md px-2.5 py-1 hover:bg-muted/30">
+                            {selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}
+                            <ChevronDown className="h-3 w-3" />
                           </button>
-                        </div>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                            <Input className="h-7 text-xs" placeholder="Search" value={tcsSearch} onChange={(e) => setTcsSearch(e.target.value)} autoFocus />
+                          </div>
+                          <div className="max-h-56 overflow-y-auto">
+                            {tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).length === 0 ? (
+                              <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
+                            ) : tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).map((t) => (
+                              <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tcsId === t._id && "bg-primary/10 font-medium")}
+                                onClick={() => { setTcsId(t._id); setShowTCSDD(false); setTcsSearch(""); }}>
+                                {t.taxName} [{t.rate}%]
+                              </button>
+                            ))}
+                          </div>
+                          <div className="border-t p-2 flex items-center gap-1">
+                            <Settings2 className="h-3.5 w-3.5 text-primary" />
+                            <button type="button" className="text-xs text-primary hover:underline">Manage TCS</button>
+                          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                   <span className="text-sm text-red-500">- {fmt(taxType !== "none" ? computedTax : 0)}</span>
                 </div>
@@ -1666,6 +1793,133 @@ export default function NewPurchaseOrderPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* ── Item Details Side Panel ─────────────────────────────── */}
+        {panelItem && (
+          <div className="fixed right-0 inset-y-0 z-[300] w-[300px] bg-white border-l shadow-2xl flex flex-col">
+            {/* Close button */}
+            <button
+              type="button"
+              className="absolute top-3 right-3 text-red-500 hover:text-red-600 z-10"
+              onClick={() => setItemPanelItemId(null)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+            {/* Header */}
+            <div className="px-4 pt-4 pb-3 border-b">
+              <h3 className="text-sm font-semibold text-muted-foreground">Item Details</h3>
+            </div>
+            {/* Item info row */}
+            <div className="px-4 py-3 border-b flex items-start gap-3">
+              <div className="h-14 w-14 rounded border bg-muted/30 flex items-center justify-center shrink-0">
+                <svg viewBox="0 0 24 24" className="h-7 w-7 text-muted-foreground/40" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-muted-foreground mb-0.5">
+                  {panelItem.itemGroupId
+                    ? (typeof panelItem.itemGroupId === "object" ? (panelItem.itemGroupId as any).name : "Sales and Purchase Items")
+                    : "Sales and Purchase Items"}
+                </p>
+                <div className="flex items-center gap-1">
+                  <span className="font-semibold text-sm truncate">{panelItem.name}</span>
+                  <ExternalLink className="h-3.5 w-3.5 text-primary shrink-0" />
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">{panelUnit}</p>
+              </div>
+            </div>
+            {/* Tabs */}
+            <div className="flex border-b">
+              {(["details", "transactions"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={cn(
+                    "flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                    itemPanelTab === tab
+                      ? "border-b-2 border-primary text-primary"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setItemPanelTab(tab)}
+                >
+                  {tab === "details" ? "Item Details" : "Transactions"}
+                </button>
+              ))}
+            </div>
+            {/* Panel content */}
+            <div className="flex-1 overflow-y-auto">
+              {itemPanelTab === "details" ? (
+                <div className="p-4 space-y-5">
+                  <div>
+                    <h4 className="text-sm font-semibold mb-3">Sales Information</h4>
+                    <div className="space-y-2.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Price</span>
+                        <span>₹{fmt(panelItem.sellingPrice)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Account</span>
+                        <span className="text-right">{panelSalesAccount?.name || "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-semibold mb-3">Purchase Information</h4>
+                    <div className="space-y-2.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Price</span>
+                        <span>₹{fmt(panelItem.costPrice)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Account</span>
+                        <span className="text-right">{panelPurchaseAccount?.name || "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <DropdownMenu open={showTxTypeDD} onOpenChange={setShowTxTypeDD}>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="flex items-center gap-1 text-sm font-semibold hover:text-primary">
+                          {itemPanelTxType} <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="z-[320] w-52">
+                        {ITEM_TRANSACTION_TYPES.map((t) => (
+                          <DropdownMenuItem key={t} onClick={() => { setItemPanelTxType(t); setShowTxTypeDD(false); }}>
+                            {t}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <DropdownMenu open={showTxStatusDD} onOpenChange={setShowTxStatusDD}>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                          Status: {itemPanelTxStatus} <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="z-[320]">
+                        {["All", "Open", "Draft", "Closed"].map((s) => (
+                          <DropdownMenuItem key={s} onClick={() => { setItemPanelTxStatus(s); setShowTxStatusDD(false); }}>{s}</DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <Separator className="mb-4" />
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No {itemPanelTxType} recorded yet.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </SidebarInset>
     </SidebarProvider>
   );
