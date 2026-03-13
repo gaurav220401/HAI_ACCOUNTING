@@ -59,6 +59,49 @@ export interface InvoicePdfData {
   currencySymbol?: string;
 }
 
+export interface PurchaseOrderItemRow {
+  name: string;
+  description?: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+}
+
+export interface PurchaseOrderPdfData {
+  orgName: string;
+  orgAddress?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  };
+  orgTaxId?: string;
+
+  vendorName: string;
+  vendorAddress?: string;
+  vendorEmail?: string;
+
+  purchaseOrderNumber: string;
+  purchaseOrderDate: string;
+  deliveryDate?: string;
+  referenceNumber?: string;
+
+  items: PurchaseOrderItemRow[];
+
+  subTotal: number;
+  discountAmount?: number;
+  taxLabel?: string;
+  taxAmount?: number;
+  adjustmentLabel?: string;
+  adjustmentAmount?: number;
+  total: number;
+
+  notes?: string;
+  termsAndConditions?: string;
+  currencySymbol?: string;
+}
+
 function fmt(n: number, symbol = "₹"): string {
   return (
     symbol +
@@ -351,6 +394,234 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
         align: "center",
         width: pageW,
       });
+
+    doc.end();
+  });
+}
+
+export function generatePurchaseOrderPdf(
+  data: PurchaseOrderPdfData,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 60, bottom: 60, left: 60, right: 60 },
+    });
+
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const pageW = doc.page.width - 120;
+    const sym = data.currencySymbol ?? "₹";
+
+    let orgAddressCity = "";
+    if (data.orgAddress) {
+      if (typeof data.orgAddress === "string") {
+        orgAddressCity = data.orgAddress;
+      } else if (data.orgAddress.city) {
+        orgAddressCity = data.orgAddress.city;
+      }
+    }
+
+    // Top block
+    doc.font("Times-Bold").fontSize(13).fillColor("#000000").text(data.orgName, 60, 60);
+
+    let yOrg = 78;
+    doc.font("Times-Roman").fontSize(10).fillColor("#4b5563");
+    if (orgAddressCity) {
+      doc.text(orgAddressCity, 60, yOrg);
+      yOrg += 14;
+    }
+    doc.text("India", 60, yOrg);
+    yOrg += 14;
+    // Add orgEmail / orgPhone if they exist but we only have standard data here
+
+    // Title Block
+    doc
+      .font("Times-Bold")
+      .fontSize(24)
+      .fillColor("#1e3a5f")
+      .text("PURCHASE ORDER", 60, 60, { width: pageW, align: "right" });
+    doc
+      .font("Times-Roman")
+      .fontSize(11)
+      .fillColor("#4b5563")
+      .text(`# ${data.purchaseOrderNumber}`, 60, 85, {
+        width: pageW,
+        align: "right",
+      });
+
+    // Address Headings
+    let yAddresses = Math.max(yOrg, 110) + 30;
+
+    doc.font("Times-Roman").fontSize(9).fillColor("#6b7280");
+    doc.text("Vendor Address", 60, yAddresses);
+    doc.text("Deliver To", 300, yAddresses);
+    yAddresses += 14;
+
+    // Vendor and Deliver To info
+    doc
+      .font("Times-Bold")
+      .fontSize(11)
+      .fillColor("#2563eb")
+      .text(data.vendorName, 60, yAddresses, { width: 220 });
+
+    let yVend =
+      yAddresses + doc.heightOfString(data.vendorName, { width: 220 }) + 5;
+
+    let yDeliv = yAddresses;
+    doc.font("Times-Roman").fontSize(10).fillColor("#4b5563");
+    doc.text(data.orgName, 300, yDeliv);
+    yDeliv += 13;
+    if (orgAddressCity) {
+      doc.text(orgAddressCity, 300, yDeliv);
+      yDeliv += 13;
+    }
+    doc.text("India", 300, yDeliv);
+    yDeliv += 13;
+
+    let yNext = Math.max(yVend, yDeliv) + 25;
+
+    // Date
+    doc
+      .font("Times-Roman")
+      .fontSize(11)
+      .fillColor("#4b5563")
+      .text(`Date : ${fmtDate(data.purchaseOrderDate)}`, 60, yNext, {
+        width: pageW,
+        align: "right",
+      });
+    yNext += 20;
+
+    // Items table header
+    doc.rect(60, yNext, pageW, 25).fill("#3a3a3a");
+    const colHash = 60,
+      colItem = 100,
+      colQty = 340,
+      colRate = 390,
+      colAmt = 460;
+
+    doc.fillColor("#ffffff").font("Times-Bold").fontSize(10);
+    const thY = yNext + 7;
+    doc.text("#", colHash + 10, thY);
+    doc.text("Item & Description", colItem, thY);
+    doc.text("Qty", colQty, thY, { width: 45, align: "right" });
+    doc.text("Rate", colRate, thY, { width: 60, align: "right" });
+    // Adjust amount column to span accurately
+    doc.text("Amount", colAmt, thY, {
+      width: 60 + pageW - colAmt - 10,
+      align: "right",
+    });
+    yNext += 25;
+
+    // Items table rows
+    data.items.forEach((item, idx) => {
+      const lineH = item.description ? 35 : 22;
+      const textY = yNext + 6;
+      doc.fillColor("#111827");
+      doc
+        .font("Times-Roman")
+        .fontSize(10)
+        .text(String(idx + 1), colHash + 10, textY);
+      doc.font("Times-Bold").text(item.name, colItem, textY, { width: 230 });
+      if (item.description) {
+        doc
+          .font("Times-Roman")
+          .fillColor("#6b7280")
+          .fontSize(9)
+          .text(item.description, colItem, textY + 14, { width: 230 });
+      }
+      doc.font("Times-Roman").fontSize(10).fillColor("#111827");
+      doc.text(item.quantity.toFixed(2), colQty, textY, {
+        width: 45,
+        align: "right",
+      });
+      doc.text(item.rate.toFixed(2), colRate, textY, {
+        width: 60,
+        align: "right",
+      });
+      doc.text(item.amount.toFixed(2), colAmt, textY, {
+        width: 60 + pageW - colAmt - 10,
+        align: "right",
+      });
+
+      yNext += lineH;
+      doc
+        .moveTo(60, yNext)
+        .lineTo(60 + pageW, yNext)
+        .lineWidth(0.5)
+        .strokeColor("#e5e7eb")
+        .stroke();
+    });
+
+    yNext += 20;
+
+    // Totals
+    const totLabelX = 350;
+    const totValX = 450;
+    const totValW = 60 + pageW - totValX - 10;
+
+    const addTotal = (lbl: string, val: string, bold = false) => {
+      doc
+        .font(bold ? "Times-Bold" : "Times-Roman")
+        .fontSize(10)
+        .fillColor(bold ? "#111827" : "#4b5563");
+      doc.text(lbl, totLabelX, yNext, { width: 90 });
+      doc.text(val, totValX, yNext, { width: totValW, align: "right" });
+      yNext += 16;
+    };
+
+    addTotal("Sub Total", data.subTotal.toFixed(2));
+    if (data.discountAmount && data.discountAmount > 0) {
+      addTotal("Discount", `-${data.discountAmount.toFixed(2)}`);
+    }
+    if (data.taxAmount && data.taxAmount > 0) {
+      addTotal(data.taxLabel || "Tax", `${data.taxAmount.toFixed(2)}`);
+    }
+    if (data.adjustmentAmount && data.adjustmentAmount !== 0) {
+      addTotal(
+        data.adjustmentLabel || "Adjustment",
+        `${data.adjustmentAmount.toFixed(2)}`,
+      );
+    }
+
+    doc
+      .moveTo(totLabelX, yNext - 4)
+      .lineTo(60 + pageW, yNext - 4)
+      .lineWidth(0.5)
+      .strokeColor("#e5e7eb")
+      .stroke();
+    yNext += 4;
+    addTotal("Total", `${sym}${data.total.toFixed(2)}`, true);
+
+    if (data.notes) {
+      yNext += 20;
+      doc
+        .font("Times-Bold")
+        .fontSize(10)
+        .fillColor("#111827")
+        .text("Notes", 60, yNext);
+      yNext += 15;
+      doc
+        .font("Times-Roman")
+        .fontSize(10)
+        .fillColor("#4b5563")
+        .text(data.notes, 60, yNext, { width: pageW });
+      yNext += doc.heightOfString(data.notes, { width: pageW }) + 10;
+    }
+
+    yNext += 40;
+    if (yNext > doc.page.height - 100) {
+      doc.addPage();
+      yNext = 60;
+    }
+    doc
+      .font("Times-Roman")
+      .fontSize(10)
+      .fillColor("#4b5563")
+      .text("Authorized Signature ____________________________", 60, yNext);
 
     doc.end();
   });

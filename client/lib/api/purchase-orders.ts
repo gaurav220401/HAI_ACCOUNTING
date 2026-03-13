@@ -1,4 +1,4 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
 export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed";
@@ -78,6 +78,15 @@ export interface CreatePurchaseOrderInput {
 
 export type UpdatePurchaseOrderInput = Partial<CreatePurchaseOrderInput>;
 
+export interface SendPurchaseOrderEmailInput {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  body?: string;
+  attachPurchaseOrderPdf?: boolean;
+}
+
 export const purchaseOrderApi = {
   getNextNumber: () =>
     apiFetch<{ data: { purchaseOrderNumber: string } }>("/purchase-orders/next-number"),
@@ -103,6 +112,16 @@ export const purchaseOrderApi = {
       body: JSON.stringify(data),
       headers: { "Content-Type": "application/json" },
     }),
+
+  sendEmail: (id: string, data: SendPurchaseOrderEmailInput) =>
+    apiFetch<{ success: boolean; message: string }>(`/purchase-orders/${id}/send-email`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  downloadPdf: (id: string) =>
+    apiFetchBlob(`/purchase-orders/${id}/pdf`),
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/purchase-orders/${id}`, { method: "DELETE" }),

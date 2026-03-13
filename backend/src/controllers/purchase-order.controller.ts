@@ -1,9 +1,12 @@
 import { Response } from "express";
 import PurchaseOrder from "../models/purchase-order.model";
+import Organization from "../models/organization.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import { sendPurchaseOrderEmail as sendPurchaseOrderEmailService } from "../services/email.service";
+import { generatePurchaseOrderPdf } from "../services/pdf.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -36,6 +39,20 @@ function calcLineItems(items: any[], discountLevel: string) {
     }
     return { ...item, quantity: qty, rate, discountPercent: 0, discountAmount: 0, amount: lineTotal };
   });
+}
+
+function parseStringArray(input: unknown): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input.map((v) => String(v).trim()).filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 /** GET /api/purchase-orders/next-number */
@@ -184,4 +201,193 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   attachUser(po, req);
   await po.save();
   res.json({ success: true, message: "Purchase Order deleted" });
+});
+
+/** GET /api/purchase-orders/:id/pdf */
+export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const po = await PurchaseOrder.findOne({
+    _id: req.params.id,
+    organizationId: orgId(req),
+    isDeleted: false,
+  })
+    .populate("vendorId", "displayName companyName email billingAddress")
+    .populate("lineItems.itemId", "name")
+    .lean();
+
+  if (!po) throw new NotFoundError("Purchase Order");
+
+  const org = await Organization.findById(po.organizationId).lean();
+  if (!org) throw new NotFoundError("Organization");
+
+  const vendor = po.vendorId as any;
+  const vendorName =
+    (typeof vendor === "object" && (vendor?.displayName || vendor?.companyName)) ||
+    "Vendor";
+
+  const vendorAddress = [
+    vendor?.billingAddress?.street,
+    vendor?.billingAddress?.city,
+    vendor?.billingAddress?.state,
+    vendor?.billingAddress?.zip,
+    vendor?.billingAddress?.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const pdfBuffer = await generatePurchaseOrderPdf({
+    orgName: org.name,
+    orgAddress: org.address as any,
+    orgTaxId: (org as any).taxId,
+    vendorName,
+    vendorAddress,
+    vendorEmail: vendor?.email,
+    purchaseOrderNumber: po.purchaseOrderNumber,
+    purchaseOrderDate: po.purchaseOrderDate.toISOString(),
+    deliveryDate: po.deliveryDate ? po.deliveryDate.toISOString() : undefined,
+    referenceNumber: po.referenceNumber,
+    items: (po.lineItems || [])
+      .filter((li: any) => !li.isHeader)
+      .map((li: any) => ({
+        name:
+          (typeof li.itemId === "object" && li.itemId?.name) ||
+          li.name ||
+          "Item",
+        description: li.description,
+        quantity: li.quantity,
+        rate: li.rate,
+        amount: li.amount,
+      })),
+    subTotal: po.subTotal,
+    discountAmount: po.discountAmount,
+    taxLabel: po.taxType !== "none" ? `${po.taxType} Tax` : undefined,
+    taxAmount: po.taxAmount,
+    adjustmentLabel: po.adjustmentLabel,
+    adjustmentAmount: po.adjustmentAmount,
+    total: po.total,
+    notes: po.notes,
+    termsAndConditions: po.termsAndConditions,
+    currencySymbol: org.baseCurrency === "INR" ? "₹" : org.baseCurrency,
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="Purchase-Order-${po.purchaseOrderNumber}.pdf"`,
+  );
+  res.send(pdfBuffer);
+});
+
+/** POST /api/purchase-orders/:id/send-email */
+export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const po = await PurchaseOrder.findOne({
+    _id: req.params.id,
+    organizationId: orgId(req),
+    isDeleted: false,
+  })
+    .populate("vendorId", "displayName companyName email billingAddress")
+    .populate("lineItems.itemId", "name")
+    .lean();
+
+  if (!po) throw new NotFoundError("Purchase Order");
+
+  const to = parseStringArray(req.body.to);
+  const cc = parseStringArray(req.body.cc);
+  const bcc = parseStringArray(req.body.bcc);
+  const subject: string = req.body.subject || `Purchase Order ${po.purchaseOrderNumber}`;
+  const body: string = req.body.body || "";
+  const attachPurchaseOrderPdf: boolean =
+    req.body.attachPurchaseOrderPdf === true ||
+    req.body.attachPurchaseOrderPdf === "true";
+
+  const vendor = po.vendorId as any;
+  const vendorName =
+    (typeof vendor === "object" && (vendor?.displayName || vendor?.companyName)) ||
+    "Vendor";
+
+  const defaultTo = vendor?.email ? [vendor.email] : [];
+  const recipients = to.length > 0 ? to : defaultTo;
+  if (recipients.length === 0) {
+    throw new ValidationError("At least one recipient (to) is required");
+  }
+
+  const org = await Organization.findById(po.organizationId).lean();
+  if (!org) throw new NotFoundError("Organization");
+
+  const attachments: {
+    filename: string;
+    content: Buffer;
+    contentType: string;
+  }[] = [];
+
+  if (attachPurchaseOrderPdf) {
+    const vendorAddress = [
+      vendor?.billingAddress?.street,
+      vendor?.billingAddress?.city,
+      vendor?.billingAddress?.state,
+      vendor?.billingAddress?.zip,
+      vendor?.billingAddress?.country,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    const pdfBuffer = await generatePurchaseOrderPdf({
+      orgName: org.name,
+      orgAddress: org.address as any,
+      orgTaxId: (org as any).taxId,
+      vendorName,
+      vendorAddress,
+      vendorEmail: vendor?.email,
+      purchaseOrderNumber: po.purchaseOrderNumber,
+      purchaseOrderDate: po.purchaseOrderDate.toISOString(),
+      deliveryDate: po.deliveryDate ? po.deliveryDate.toISOString() : undefined,
+      referenceNumber: po.referenceNumber,
+      items: (po.lineItems || [])
+        .filter((li: any) => !li.isHeader)
+        .map((li: any) => ({
+          name:
+            (typeof li.itemId === "object" && li.itemId?.name) ||
+            li.name ||
+            "Item",
+          description: li.description,
+          quantity: li.quantity,
+          rate: li.rate,
+          amount: li.amount,
+        })),
+      subTotal: po.subTotal,
+      discountAmount: po.discountAmount,
+      taxLabel: po.taxType !== "none" ? `${po.taxType} Tax` : undefined,
+      taxAmount: po.taxAmount,
+      adjustmentLabel: po.adjustmentLabel,
+      adjustmentAmount: po.adjustmentAmount,
+      total: po.total,
+      notes: po.notes,
+      termsAndConditions: po.termsAndConditions,
+      currencySymbol: org.baseCurrency === "INR" ? "₹" : org.baseCurrency,
+    });
+
+    attachments.push({
+      filename: `Purchase-Order-${po.purchaseOrderNumber}.pdf`,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    });
+  }
+
+  await sendPurchaseOrderEmailService({
+    organizationId: po.organizationId.toString(),
+    to: recipients,
+    cc,
+    bcc,
+    subject,
+    body,
+    purchaseOrderNumber: po.purchaseOrderNumber,
+    purchaseOrderTotal: po.total,
+    purchaseOrderDate: po.purchaseOrderDate.toISOString(),
+    vendorName,
+    attachments: attachments.length > 0 ? attachments : undefined,
+  });
+
+  res.json({
+    success: true,
+    message: "Purchase order email sent successfully",
+  });
 });
