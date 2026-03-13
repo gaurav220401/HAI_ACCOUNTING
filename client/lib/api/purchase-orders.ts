@@ -1,0 +1,109 @@
+import { apiFetch, buildQuery } from "./client";
+import type { PaginatedResponse, ListParams } from "./client";
+
+export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed";
+export type DiscountLevel = "transaction" | "line_item";
+
+export interface PurchaseOrderLineItem {
+  _id?: string;
+  isHeader?: boolean;
+  headerText?: string;
+  itemId?: string | { _id: string; name: string; sku?: string; costPrice: number } | null;
+  name: string;
+  accountId?: string | { _id: string; name: string; accountType: string } | null;
+  description?: string;
+  quantity: number;
+  rate: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  amount: number;
+}
+
+export interface PurchaseOrder {
+  _id: string;
+  organizationId: string;
+  vendorId: any;
+  deliveryAddressType: "Organization" | "Customer";
+  deliveryCustomerId?: any;
+  purchaseOrderNumber: string;
+  referenceNumber?: string;
+  purchaseOrderDate: string;
+  deliveryDate?: string | null;
+  paymentTermsId?: any;
+  shipmentPreference?: string;
+  discountLevel: DiscountLevel;
+  discountAccountId?: any;
+  lineItems: PurchaseOrderLineItem[];
+  subTotal: number;
+  discountPercent: number;
+  discountAmount: number;
+  taxType: "TDS" | "TCS" | "none";
+  tdsId?: any;
+  taxAmount: number;
+  adjustmentLabel: string;
+  adjustmentAmount: number;
+  total: number;
+  notes?: string;
+  termsAndConditions?: string;
+  attachments?: string[];
+  status: PurchaseOrderStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePurchaseOrderInput {
+  vendorId?: string | null;
+  deliveryAddressType?: "Organization" | "Customer";
+  deliveryCustomerId?: string | null;
+  purchaseOrderNumber?: string;
+  referenceNumber?: string;
+  purchaseOrderDate: string;
+  deliveryDate?: string | null;
+  paymentTermsId?: string | null;
+  shipmentPreference?: string;
+  discountLevel?: DiscountLevel;
+  discountAccountId?: string | null;
+  lineItems?: Omit<PurchaseOrderLineItem, "_id">[];
+  discountPercent?: number;
+  taxType?: "TDS" | "TCS" | "none";
+  tdsId?: string | null;
+  taxAmount?: number;
+  adjustmentLabel?: string;
+  adjustmentAmount?: number;
+  notes?: string;
+  termsAndConditions?: string;
+  attachments?: string[];
+  status?: PurchaseOrderStatus;
+}
+
+export type UpdatePurchaseOrderInput = Partial<CreatePurchaseOrderInput>;
+
+export const purchaseOrderApi = {
+  getNextNumber: () =>
+    apiFetch<{ data: { purchaseOrderNumber: string } }>("/purchase-orders/next-number"),
+
+  list: (params?: ListParams & { status?: string; vendorId?: string }) => {
+    const qs = buildQuery({ ...params });
+    return apiFetch<PaginatedResponse<PurchaseOrder>>(`/purchase-orders${qs}`);
+  },
+
+  getOne: (id: string) =>
+    apiFetch<{ data: PurchaseOrder }>(`/purchase-orders/${id}`),
+
+  create: (data: CreatePurchaseOrderInput) =>
+    apiFetch<{ data: PurchaseOrder }>("/purchase-orders", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  update: (id: string, data: UpdatePurchaseOrderInput) =>
+    apiFetch<{ data: PurchaseOrder }>(`/purchase-orders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  remove: (id: string) =>
+    apiFetch<{ success: boolean }>(`/purchase-orders/${id}`, { method: "DELETE" }),
+};
