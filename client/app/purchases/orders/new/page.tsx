@@ -472,17 +472,16 @@ function BulkAddItemsDialog({
 
 // ─── Item selector popup ─────────────────────────────────────────────────────
 function ItemSelectorPopup({
-  items, onSelect, onClose,
+  items, onSelect,
 }: {
   items: Item[];
   onSelect: (item: Item) => void;
-  onClose: () => void;
 }) {
   const [q, setQ] = useState("");
   const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
 
   return (
-    <div className="absolute z-[180] top-full left-0 mt-1 w-72 bg-background border rounded-md shadow-lg overflow-hidden">
+    <div className="w-full overflow-hidden">
       <div className="p-2 border-b">
         <Input className="h-7 text-xs" placeholder="Search items…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
       </div>
@@ -491,7 +490,7 @@ function ItemSelectorPopup({
           <p className="text-xs text-muted-foreground text-center py-4">No items found</p>
         ) : filtered.map((item) => (
           <button key={item._id} type="button" className="w-full text-left px-3 py-2 hover:bg-muted/50 flex justify-between"
-            onClick={() => { onSelect(item); onClose(); }}>
+            onClick={() => onSelect(item)}>
             <span className="text-sm">{item.name}</span>
             <span className="text-xs text-muted-foreground">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(item.costPrice || 0)}</span>
           </button>
@@ -525,33 +524,43 @@ function AccountDropdown({
   }, {});
 
   return (
-    <div className="relative">
-      <button type="button" className="flex items-center gap-1 text-sm text-left hover:text-primary" onClick={() => setOpen((v) => !v)}>
-        <span className={selected ? "" : "text-muted-foreground"}>{selected ? selected.name : "Select an account"}</span>
-        <ChevronDown className="h-3 w-3 text-muted-foreground" />
-      </button>
-      {open && (
-        <div className="absolute z-[180] top-full left-0 mt-1 w-64 bg-background border rounded-md shadow-lg overflow-hidden">
-          <div className="p-2 border-b">
-            <Input className="h-7 text-xs" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {Object.entries(grouped).map(([group, accs]) => (
-              <div key={group}>
-                <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/30">{group}</div>
-                {accs.map((a) => (
-                  <button key={a._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", value === a._id && "bg-primary/10 text-primary font-medium")}
-                    onClick={() => { onChange(a._id, a.name); setOpen(false); setQ(""); }}>
-                    {a.name}
-                  </button>
-                ))}
-              </div>
-            ))}
-            {Object.keys(grouped).length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No accounts found</p>}
-          </div>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="flex items-center gap-1 text-sm text-left hover:text-primary">
+          <span className={selected ? "" : "text-muted-foreground"}>{selected ? selected.name : "Select an account"}</span>
+          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-64 p-0 overflow-hidden">
+        <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+          <Input
+            className="h-7 text-xs"
+            placeholder="Search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            autoFocus
+          />
         </div>
-      )}
-    </div>
+        <div className="max-h-64 overflow-y-auto">
+          {Object.entries(grouped).map(([group, accs]) => (
+            <div key={group}>
+              <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/30">{group}</div>
+              {accs.map((a) => (
+                <button
+                  key={a._id}
+                  type="button"
+                  className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", value === a._id && "bg-primary/10 text-primary font-medium")}
+                  onClick={() => { onChange(a._id, a.name); setOpen(false); setQ(""); }}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          ))}
+          {Object.keys(grouped).length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No accounts found</p>}
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -874,17 +883,15 @@ export default function NewPurchaseOrderPage() {
                       {currentAddr.country && <p>{currentAddr.country} ,</p>}
                     </div>
                     {/* Change destination dropdown */}
-                    <div className="relative mt-2">
-                      <button
-                        type="button"
-                        className="text-sm text-primary hover:underline"
-                        onClick={() => setShowAddrDropdown((v) => !v)}
-                      >
-                        Change destination to deliver
-                      </button>
-                      {showAddrDropdown && (
-                        <div className="absolute z-[180] top-full mt-1 left-0 w-72 bg-background border rounded-md shadow-lg overflow-hidden">
-                          <div className="p-2 border-b">
+                    <div className="mt-2">
+                      <DropdownMenu open={showAddrDropdown} onOpenChange={setShowAddrDropdown}>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="text-sm text-primary hover:underline">
+                            Change destination to deliver
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
+                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
                             <Input className="h-7 text-xs" placeholder="Search" autoFocus />
                           </div>
                           <div className="max-h-48 overflow-y-auto">
@@ -913,8 +920,8 @@ export default function NewPurchaseOrderPage() {
                               <Plus className="h-4 w-4" /> New Address
                             </button>
                           </div>
-                        </div>
-                      )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 )}
@@ -1096,21 +1103,29 @@ export default function NewPurchaseOrderPage() {
                           </td>
                         ) : (
                           <>
-                            <td className="px-3 py-2 relative">
-                              <button
-                                type="button"
-                                className={cn("text-sm text-left w-full", row.itemName ? "" : "text-muted-foreground")}
-                                onClick={() => setItemSelectorRow(row.id === itemSelectorRow ? null : row.id)}
+                            <td className="px-3 py-2">
+                              <DropdownMenu
+                                open={itemSelectorRow === row.id}
+                                onOpenChange={(open) => setItemSelectorRow(open ? row.id : null)}
                               >
-                                {row.itemName || "Type or click to select an item."}
-                              </button>
-                              {itemSelectorRow === row.id && (
-                                <ItemSelectorPopup
-                                  items={items}
-                                  onSelect={(item) => handleSelectItem(row.id, item)}
-                                  onClose={() => setItemSelectorRow(null)}
-                                />
-                              )}
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className={cn("text-sm text-left w-full", row.itemName ? "" : "text-muted-foreground")}
+                                  >
+                                    {row.itemName || "Type or click to select an item."}
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
+                                  <ItemSelectorPopup
+                                    items={items}
+                                    onSelect={(item) => {
+                                      handleSelectItem(row.id, item);
+                                      setItemSelectorRow(null);
+                                    }}
+                                  />
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </td>
                             <td className="px-3 py-2">
                               <AccountDropdown
@@ -1272,36 +1287,35 @@ export default function NewPurchaseOrderPage() {
                       TCS
                     </label>
                     {/* Tax Selector */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 text-sm border rounded-md px-2.5 py-1 hover:bg-muted/30"
-                        onClick={() => setShowTaxDD((v) => !v)}
-                      >
-                        {selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}
-                        <ChevronDown className="h-3 w-3" />
-                      </button>
-                      {showTaxDD && (
-                        <div className="absolute z-[180] top-full mt-1 left-0 w-80 bg-background border rounded-md shadow-lg overflow-hidden">
-                          <div className="max-h-64 overflow-y-auto">
-                            <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); }}>
-                              None
+                    <DropdownMenu open={showTaxDD} onOpenChange={setShowTaxDD}>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-sm border rounded-md px-2.5 py-1 hover:bg-muted/30"
+                        >
+                          {selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                        <div className="max-h-64 overflow-y-auto">
+                          <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); }}>
+                            None
+                          </button>
+                          {tdsTaxes.map((t) => (
+                            <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tdsId === t._id && "bg-primary/10 font-medium")}
+                              onClick={() => { setTdsId(t._id); setShowTaxDD(false); }}>
+                              {t.taxName} [{t.rate}%]
                             </button>
-                            {tdsTaxes.map((t) => (
-                              <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tdsId === t._id && "bg-primary/10 font-medium")}
-                                onClick={() => { setTdsId(t._id); setShowTaxDD(false); }}>
-                                {t.taxName} [{t.rate}%]
-                              </button>
-                            ))}
-                          </div>
-                          <div className="border-t p-2">
-                            <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>
-                              Manage TDS
-                            </button>
-                          </div>
+                          ))}
                         </div>
-                      )}
-                    </div>
+                        <div className="border-t p-2">
+                          <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>
+                            Manage TDS
+                          </button>
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   <span className="text-sm text-red-500">- {fmt(taxType !== "none" ? computedTax : 0)}</span>
                 </div>
