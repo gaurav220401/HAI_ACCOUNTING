@@ -339,10 +339,11 @@ export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: R
     currencySymbol: org.baseCurrency === "INR" ? "₹" : org.baseCurrency,
   });
 
+  const isPreview = req.query.preview === "true";
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="Purchase-Order-${po.purchaseOrderNumber}.pdf"`,
+    `${isPreview ? "inline" : "attachment"}; filename="Purchase-Order-${po.purchaseOrderNumber}.pdf"`,
   );
   res.send(pdfBuffer);
 });
@@ -442,6 +443,16 @@ export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequ
     });
   }
 
+  // Add custom attachments from request
+  if (Array.isArray(req.body.attachments)) {
+    for (const att of req.body.attachments) {
+      attachments.push({
+        filename: att.filename,
+        path: att.path,
+      } as any);
+    }
+  }
+
   await sendPurchaseOrderEmailService({
     organizationId: po.organizationId.toString(),
     to: recipients,
@@ -454,6 +465,7 @@ export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequ
     purchaseOrderDate: po.purchaseOrderDate.toISOString(),
     vendorName,
     attachments: attachments.length > 0 ? attachments : undefined,
+    rawBody: true, // Use the body exactly as sent from the rich text editor
   });
 
   res.json({

@@ -51,8 +51,9 @@ function translateSmtpError(err: any): string {
 
 export interface EmailAttachment {
   filename: string;
-  content: Buffer;
-  contentType: string;
+  content?: Buffer | string;
+  path?: string;
+  contentType?: string;
 }
 
 export interface SendInvoiceEmailOptions {
@@ -82,6 +83,7 @@ export interface SendPurchaseOrderEmailOptions {
   purchaseOrderDate: string;
   vendorName: string;
   attachments?: EmailAttachment[];
+  rawBody?: boolean;
 }
 
 function buildInvoiceHtml(opts: SendInvoiceEmailOptions): string {
@@ -171,7 +173,10 @@ function buildInvoiceHtml(opts: SendInvoiceEmailOptions): string {
 </html>`;
 }
 
-function buildPurchaseOrderHtml(opts: SendPurchaseOrderEmailOptions): string {
+function buildPurchaseOrderHtml(opts: SendPurchaseOrderEmailOptions & { rawBody?: boolean }): string {
+  if (opts.rawBody) {
+    return opts.body || "";
+  }
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -283,6 +288,7 @@ export async function sendInvoiceEmail(
       attachments: opts.attachments?.map((a) => ({
         filename: a.filename,
         content: a.content,
+        path: a.path,
         contentType: a.contentType,
       })),
     });
@@ -328,6 +334,7 @@ export async function sendPurchaseOrderEmail(
       attachments: opts.attachments?.map((a) => ({
         filename: a.filename,
         content: a.content,
+        path: a.path,
         contentType: a.contentType,
       })),
     });

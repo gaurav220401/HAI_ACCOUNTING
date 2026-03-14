@@ -352,7 +352,7 @@ export const sendEmail = asyncHandler(
       );
     }
 
-    const { to, subject, body, vendorName } = req.body;
+    const { to, subject, body, vendorName, attachments } = req.body;
     if (!to) throw new ValidationError("Recipient email (to) is required");
 
     const nodemailer = await import("nodemailer");
@@ -370,6 +370,11 @@ export const sendEmail = asyncHandler(
       to,
       subject: subject || `Statement of Accounts - ${vendorName || "Vendor"}`,
       html: `<div style="font-family:Arial,sans-serif;font-size:13px;color:#333;">${bodyHtml}</div>`,
+      attachments: attachments?.map((a: any) => ({
+        filename: a.filename,
+        path: a.path, // Supports URLs (Cloudinary)
+        content: a.content, // Supports Buffer/String
+      })),
     });
 
     res.json({ success: true, message: `Email sent to ${to}` });

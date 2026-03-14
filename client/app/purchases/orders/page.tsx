@@ -46,6 +46,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { apiFetch, apiFetchBlob } from "@/lib/api/client";
 
 const fmtCur = (v: number) =>
   new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
@@ -64,19 +65,33 @@ function getName(v: any): string {
   return String(v);
 }
 
+async function uploadImage(file: File, folder: string = "general"): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const data = await apiFetch<{ data: { url: string } }>(`/upload?folder=${encodeURIComponent(folder)}`, {
+    method: "POST",
+    body: formData,
+  });
+  return data.data.url;
+}
+
 // â”€â”€ Send Email Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function SendEmailDialog({
-  open, onClose, order, orgName, orgEmail,
+// ─── Send Email View ──────────────────────────────────────────────────────────
+function SendEmailView({
+  show, onClose, order, orgName, orgEmail,
 }: {
-  open: boolean;
+  show: boolean;
   onClose: () => void;
   order: PurchaseOrder | null;
   orgName: string;
   orgEmail: string;
 }) {
+  const router = useRouter();
   const [attachPdf, setAttachPdf] = useState(true);
   const [sending, setSending] = useState(false);
   const [emailBody, setEmailBody] = useState("");
+  const [customAttachments, setCustomAttachments] = useState<{ filename: string; path: string; publicId?: string }[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const vendorName = order ? getName(order.vendorId) : "";
   const vendorEmail = (order?.vendorId as any)?.email || "";
@@ -89,22 +104,77 @@ function SendEmailDialog({
   const amountStr = order ? `₹${fmtCur(order.total)}(in INR)` : "";
 
   useEffect(() => {
-    if (order) {
+    if (order && show) {
       setEmailBody(`
         <p>Dear ${vendorName},</p>
         <p>The purchase order (${order.purchaseOrderNumber}) is attached with this email.</p>
         <p>An overview of the purchase order is available below:</p>
-        <p style="color:#666">--------------------------------------------------------------------------------</p>
-        <p style="font-size:18px; font-weight:bold;">Purchase Order # : ${order.purchaseOrderNumber}</p>
-        <p style="color:#666">--------------------------------------------------------------------------------</p>
-        <p><strong>Order Date:</strong> ${dateStr}</p>
-        <p><strong>Amount:</strong> ${amountStr}</p>
-        <p style="color:#666">--------------------------------------------------------------------------------</p>
-        <p>Please go through it and confirm the order. We look forward to working with you again.</p>
-        <p>Regards,<br/>${orgEmail.split("@")[0]}<br/>${orgName}</p>
+        <p style="color:#666">----------------------------------------------------------------------------------------</p>
+        <p><strong style="font-size: 20px;">Purchase Order # : ${order.purchaseOrderNumber}</strong></p>
+        <br/>
+        <p style="color:#666">----------------------------------------------------------------------------------------</p>
+        <table style="font-size: 13px; border-collapse: collapse;">
+          <tr>
+            <td style="padding-right: 20px; font-weight: 500;">Order Date</td>
+            <td>: ${dateStr}</td>
+          </tr>
+          <tr>
+            <td style="padding-right: 20px; font-weight: 500;">Amount</td>
+            <td>: ${amountStr}</td>
+          </tr>
+        </table>
+        <p style="color:#666">----------------------------------------------------------------------------------------</p>
+        <p>Please go through it and confirm the order. We look forward to working with you again</p>
+        <br/><br/>
+        <p>Regards,<br/><strong>${orgEmail.split("@")[0]}</strong><br/>${orgName}</p>
       `);
+      setCustomAttachments([]);
     }
-  }, [order, vendorName, dateStr, amountStr, orgEmail, orgName]);
+  }, [order, show, vendorName, dateStr, amountStr, orgEmail, orgName]);
+
+  const handleImageUpload = (file: File) => uploadImage(file, "emails");
+
+  const handleFileAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const toastId = toast.loading(`Uploading ${file.name}...`);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const data = await apiFetch<{ data: { url: string; publicId: string } }>("/upload?folder=attachments&resourceType=auto", {
+        method: "POST",
+        body: formData,
+      });
+      
+      setCustomAttachments(prev => [...prev, { 
+        filename: file.name, 
+        path: data.data.url,
+        publicId: data.data.publicId 
+      }]);
+      toast.success(`${file.name} uploaded`, { id: toastId });
+    } catch (err: any) {
+      toast.error(err.message || `Failed to upload ${file.name}`, { id: toastId });
+    }
+    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+  };
+
+  const removeAttachment = (index: number) => {
+    setCustomAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePreviewPdf = async () => {
+    if (!order) return;
+    const toastId = toast.loading("Generating preview...");
+    try {
+      const blob = await apiFetchBlob(`/purchase-orders/${order._id}/pdf?preview=true`);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      toast.dismiss(toastId);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate preview", { id: toastId });
+    }
+  };
 
   async function handleSend() {
     if (!vendorEmail) {
@@ -113,17 +183,16 @@ function SendEmailDialog({
     }
     setSending(true);
     try {
-      const response = await fetch(`/api/organizations/${order?.organizationId}/send-email`, {
+      const data = await apiFetch<{ success: boolean; message: string }>(`/purchase-orders/${order?._id}/send-email`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: vendorEmail,
+          to: [vendorEmail],
           subject,
           body: emailBody,
-          vendorName
+          attachPurchaseOrderPdf: attachPdf,
+          attachments: customAttachments
         })
       });
-      const data = await response.json();
       if (data.success) {
         toast.success("Email sent successfully");
         onClose();
@@ -137,73 +206,151 @@ function SendEmailDialog({
     }
   }
 
+  if (!show) return null;
+
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden">
-        <div className="px-6 py-4 border-b">
-          <h2 className="text-base font-semibold">Email To {vendorName}.</h2>
+    <div className="fixed inset-0 z-[60] bg-white flex flex-col">
+      {/* Header */}
+      <div className="px-6 py-4 border-b flex items-center justify-between bg-white">
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-medium">Email To {vendorName}.</h2>
+          <button 
+            onClick={() => router.push(`/settings/email`)}
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+            title="Configure Email Settings"
+          >
+            <Settings className="h-3.5 w-3.5" /> Email Settings
+          </button>
         </div>
-        <div className="divide-y">
-          {/* From */}
-          <div className="flex items-center gap-4 px-6 py-2.5">
-            <span className="text-sm text-muted-foreground w-16 shrink-0">From <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[9px] text-muted-foreground ml-0.5">?</span></span>
-            <span className="text-sm">{orgEmail}</span>
-          </div>
-          {/* Send To */}
-          <div className="flex items-center gap-4 px-6 py-2.5">
-            <span className="text-sm text-muted-foreground w-16 shrink-0">Send To</span>
-            <div className="flex items-center flex-wrap gap-1.5 flex-1">
-              <span className="flex items-center gap-1 bg-muted rounded px-2 py-0.5 text-xs">
-                <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">{vendorName.slice(0, 1)}</span>
-                {vendorName} {vendorEmail && <span className="text-muted-foreground">&lt;{vendorEmail}&gt;</span>}
-                <button type="button" className="ml-1 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
-              </span>
-              <span className="text-xs text-primary cursor-pointer ml-auto">Cc &nbsp; Bcc</span>
+        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto bg-gray-50/30">
+        <div className="max-w-[1000px] mx-auto my-6 bg-white border rounded-lg shadow-sm overflow-hidden">
+          <div className="divide-y">
+            {/* From */}
+            <div className="flex items-center gap-4 px-6 py-3">
+              <span className="text-sm text-gray-400 w-20 shrink-0">From <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[9px] ml-0.5">?</span></span>
+              <span className="text-sm text-gray-700">{orgEmail} &lt;{orgEmail}&gt;</span>
             </div>
-          </div>
-          {/* Subject */}
-          <div className="flex items-center gap-4 px-6 py-2.5">
-            <span className="text-sm text-muted-foreground w-16 shrink-0">Subject</span>
-            <span className="text-sm text-primary">{subject}</span>
-          </div>
-          {/* Body */}
-          <div className="p-0">
-            <RichTextEditor
-              value={emailBody}
-              onChange={setEmailBody}
-              placeholder="Write your email here..."
-              minHeight="350px"
-              className="border-none"
-              toolbarClassName="bg-gray-50/50 sticky top-0 z-20"
-              editorClassName="font-serif px-6 py-4"
+            {/* Send To */}
+            <div className="flex items-center gap-4 px-6 py-3">
+              <span className="text-sm text-gray-400 w-20 shrink-0">Send To</span>
+              <div className="flex items-center flex-wrap gap-1.5 flex-1">
+                <span className="flex items-center gap-1.5 bg-gray-100/80 rounded px-2 py-1 text-xs border border-gray-200">
+                  <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">{vendorName.slice(0, 1)}</span>
+                  <span className="text-gray-700 font-medium">{vendorName} &lt;{vendorEmail}&gt;</span>
+                  <button type="button" className="ml-1 text-gray-400 hover:text-gray-600"><X className="h-3 w-3" /></button>
+                </span>
+                <div className="ml-auto flex gap-3">
+                  <span className="text-xs text-blue-600 cursor-pointer hover:underline font-medium">Cc</span>
+                  <span className="text-xs text-blue-600 cursor-pointer hover:underline font-medium">Bcc</span>
+                </div>
+              </div>
+            </div>
+            {/* Subject */}
+            <div className="flex items-center gap-4 px-6 py-3">
+              <span className="text-sm text-gray-400 w-20 shrink-0">Subject</span>
+              <span className="text-sm text-gray-700 font-medium">{subject}</span>
+            </div>
+
+            {/* Top Attachments Bar */}
+            <div className="px-6 py-2.5 bg-gray-50/50 flex flex-col gap-2 border-t">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="attachPdf" 
+                    checked={attachPdf} 
+                    onCheckedChange={(c) => setAttachPdf(!!c)} 
+                    className="h-4 w-4 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600" 
+                  />
+                  <Label htmlFor="attachPdf" className="text-xs text-gray-600 cursor-pointer font-medium flex items-center gap-1.5">
+                    Attach PO PDF
+                    {attachPdf && order && (
+                      <span 
+                        onClick={(e) => { e.preventDefault(); handlePreviewPdf(); }}
+                        className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-100 font-bold hover:bg-red-100 transition-colors"
+                      >
+                        {order.purchaseOrderNumber}.pdf
+                      </span>
+                    )}
+                  </Label>
+                </div>
+                <div className="w-px h-3 bg-gray-200" />
+                <button 
+                  type="button" 
+                  onClick={() => attachmentInputRef.current?.click()}
+                  className="text-xs text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1.5 font-medium"
+                >
+                  <Paperclip className="h-3.5 w-3.5" /> Attach Files
+                </button>
+              </div>
+
+              {customAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {customAttachments.map((a, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-white border border-gray-200 rounded-full pl-2.5 pr-1 py-1 shadow-sm">
+                      <Paperclip className="h-3 w-3 text-blue-500" />
+                      <span className="text-[11px] text-gray-600 font-medium max-w-[120px] truncate">{a.filename}</span>
+                      <button 
+                        type="button" 
+                        onClick={() => removeAttachment(i)}
+                        className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Rich Editor */}
+            <div className="p-0 border-t relative">
+              <RichTextEditor
+                value={emailBody}
+                onChange={setEmailBody}
+                onImageUpload={handleImageUpload}
+                placeholder="Write your email here..."
+                minHeight="450px"
+                className="border-none rounded-none"
+                toolbarClassName="bg-gray-50/50 border-b sticky top-0 z-10"
+                editorClassName="px-8 py-8 min-h-[500px]"
+              />
+            </div>
+
+            {/* Hidden Input */}
+            <input
+              type="file"
+              ref={attachmentInputRef}
+              className="hidden"
+              onChange={handleFileAttachment}
             />
           </div>
         </div>
-        {/* Footer */}
-        <div className="px-6 py-3 border-t flex items-center gap-4 bg-muted/20">
-          <Checkbox id="attachPdf" checked={attachPdf} onCheckedChange={(c) => setAttachPdf(!!c)} />
-          <Label htmlFor="attachPdf" className="text-sm cursor-pointer">Attach Purchase Order PDF</Label>
-          {attachPdf && order && (
-            <div className="flex items-center gap-2 bg-white border rounded px-3 py-1 ml-4">
-              <span className="text-red-500 text-xs">▶</span>
-              <span className="text-sm text-muted-foreground">{order.purchaseOrderNumber}</span>
-            </div>
-          )}
-        </div>
-        <div className="px-6 pb-3 border-t bg-muted/20">
-          <button type="button" className="text-xs text-primary hover:underline flex items-center gap-1 pt-2">
-            <Paperclip className="h-3.5 w-3.5" /> Attachments
-          </button>
-        </div>
-        <div className="px-6 py-3 border-t flex gap-2">
-          <Button size="sm" onClick={handleSend} disabled={sending}>
-            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-            Send
-          </Button>
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+
+      {/* Action Footer */}
+      <div className="px-6 py-4 border-t bg-white flex gap-3 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] z-50">
+        <Button 
+          className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-9 text-[13px] font-semibold" 
+          onClick={handleSend} 
+          disabled={sending}
+        >
+          {sending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+          Send
+        </Button>
+        <Button 
+          variant="outline" 
+          className="px-8 h-9 text-[13px] font-medium border-gray-200 text-gray-600 hover:bg-gray-50" 
+          onClick={onClose}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -995,6 +1142,7 @@ function OrderDetailPanel({
                   <RichTextEditor
                     value={commentText}
                     onChange={setCommentText}
+                    onImageUpload={(file) => uploadImage(file, "comments")}
                     placeholder="Type your comment here..."
                     minHeight="100px"
                     className="border-none"
@@ -1680,8 +1828,8 @@ export default function PurchaseOrdersPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <SendEmailDialog
-          open={showSendEmail}
+        <SendEmailView
+          show={showSendEmail}
           onClose={() => setShowSendEmail(false)}
           order={selectedOrder}
           orgName={orgName}
