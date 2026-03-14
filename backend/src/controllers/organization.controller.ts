@@ -1,4 +1,4 @@
-﻿import { Response } from "express";
+import { Response } from "express";
 import Organization from "../models/organization.model";
 import User from "../models/user.model";
 import asyncHandler from "../utils/asyncHandler";
@@ -363,7 +363,7 @@ export const sendEmail = asyncHandler(
       auth: { user: smtp.user, pass: smtp.pass },
     });
 
-    const bodyHtml = (body ?? "").replace(/\n/g, "<br/>");
+    const bodyHtml = body ?? "";
 
     await transporter.sendMail({
       from: `"${smtp.fromName || org.name}" <${smtp.fromEmail || smtp.user}>`,

@@ -6,19 +6,22 @@ import {
   Plus, Search, Loader2, MoreHorizontal, Trash2, RefreshCw,
   ShoppingBag, ChevronDown, Pencil, Mail, Printer, CheckCircle,
   Copy, X, Paperclip, MessageSquare, ChevronRight, Sparkles,
-  FileText, PackageCheck, Upload, History
+  FileText, PackageCheck, Upload, History, ArrowUpDown, Download,
+  Settings, Columns
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub,
+  DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -73,6 +76,8 @@ function SendEmailDialog({
 }) {
   const [attachPdf, setAttachPdf] = useState(true);
   const [sending, setSending] = useState(false);
+  const [emailBody, setEmailBody] = useState("");
+
   const vendorName = order ? getName(order.vendorId) : "";
   const vendorEmail = (order?.vendorId as any)?.email || "";
   const subject = order
@@ -83,12 +88,53 @@ function SendEmailDialog({
     : "";
   const amountStr = order ? `₹${fmtCur(order.total)}(in INR)` : "";
 
+  useEffect(() => {
+    if (order) {
+      setEmailBody(`
+        <p>Dear ${vendorName},</p>
+        <p>The purchase order (${order.purchaseOrderNumber}) is attached with this email.</p>
+        <p>An overview of the purchase order is available below:</p>
+        <p style="color:#666">--------------------------------------------------------------------------------</p>
+        <p style="font-size:18px; font-weight:bold;">Purchase Order # : ${order.purchaseOrderNumber}</p>
+        <p style="color:#666">--------------------------------------------------------------------------------</p>
+        <p><strong>Order Date:</strong> ${dateStr}</p>
+        <p><strong>Amount:</strong> ${amountStr}</p>
+        <p style="color:#666">--------------------------------------------------------------------------------</p>
+        <p>Please go through it and confirm the order. We look forward to working with you again.</p>
+        <p>Regards,<br/>${orgEmail.split("@")[0]}<br/>${orgName}</p>
+      `);
+    }
+  }, [order, vendorName, dateStr, amountStr, orgEmail, orgName]);
+
   async function handleSend() {
+    if (!vendorEmail) {
+      toast.error("Vendor email is missing");
+      return;
+    }
     setSending(true);
-    await new Promise((r) => setTimeout(r, 800));
-    toast.success("Email sent successfully");
-    setSending(false);
-    onClose();
+    try {
+      const response = await fetch(`/api/organizations/${order?.organizationId}/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: vendorEmail,
+          subject,
+          body: emailBody,
+          vendorName
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success("Email sent successfully");
+        onClose();
+      } else {
+        toast.error(data.message || "Failed to send email");
+      }
+    } catch {
+      toast.error("An error occurred while sending email");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -120,61 +166,17 @@ function SendEmailDialog({
             <span className="text-sm text-muted-foreground w-16 shrink-0">Subject</span>
             <span className="text-sm text-primary">{subject}</span>
           </div>
-          {/* Toolbar */}
-          <div className="flex items-center gap-2 px-4 py-1.5 bg-muted/20 text-xs text-muted-foreground border-b">
-            {["B","I","U","S"].map((t) => (
-              <button key={t} type="button"
-                className={cn("font-medium hover:text-foreground w-5 text-center", t === "B" && "font-bold", t === "I" && "italic", t === "U" && "underline", t === "S" && "line-through")}
-                onClick={(e) => {
-                  e.preventDefault();
-                  const cmd = t === "B" ? "bold" : t === "I" ? "italic" : t === "U" ? "underline" : "strikeThrough";
-                  document.execCommand(cmd, false, undefined);
-                }}
-              >
-                {t}
-              </button>
-            ))}
-            <Separator orientation="vertical" className="h-4 mx-1" />
-            <span>16px</span>
-            <Separator orientation="vertical" className="h-4 mx-1" />
-            <span>Arial</span>
-            <Separator orientation="vertical" className="h-4 mx-1" />
-            <button type="button" className="hover:text-foreground">≡</button>
-            <button type="button" className="hover:text-foreground">≡</button>
-            <Separator orientation="vertical" className="h-4 mx-1" />
-            <button type="button" className="hover:text-foreground">⊞</button>
-            <button type="button" className="hover:text-foreground">🔗</button>
-            <div className="ml-auto flex gap-1">
-              <button type="button" className="hover:text-foreground">▲</button>
-              <button type="button" className="hover:text-foreground">▼</button>
-            </div>
-          </div>
           {/* Body */}
-          <div className="px-6 py-4 min-h-[280px] text-sm leading-relaxed font-serif select-text focus:outline-none" contentEditable suppressContentEditableWarning>
-            <p className="mb-3">&nbsp;</p>
-            <p className="mb-2">Dear {vendorName},</p>
-            <p className="mb-2">The purchase order ({order?.purchaseOrderNumber}) is attached with this email.</p>
-            <p className="mb-4">An overview of the purchase order is available below:</p>
-            <p className="mb-4 text-muted-foreground">{"â”€".repeat(80)}</p>
-            <p className="text-2xl font-bold mb-4">Purchase Order # : {order?.purchaseOrderNumber}</p>
-            <div className="mb-1 text-muted-foreground">{"â”€".repeat(80)}</div>
-            <table className="text-sm mb-1">
-              <tbody>
-                <tr>
-                  <td className="font-semibold pr-4 py-0.5">Order Date</td>
-                  <td className="py-0.5">: {dateStr}</td>
-                </tr>
-                <tr>
-                  <td className="font-semibold pr-4 py-0.5">Amount</td>
-                  <td className="py-0.5">: {amountStr}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p className="mb-4 text-muted-foreground">{"â”€".repeat(80)}</p>
-            <p className="mb-4">Please go through it and confirm the order. We look forward to working with you again</p>
-            <p className="mb-1">Regards,</p>
-            <p className="mb-0">{orgEmail.split("@")[0]}</p>
-            <p>{orgName}</p>
+          <div className="p-0">
+            <RichTextEditor
+              value={emailBody}
+              onChange={setEmailBody}
+              placeholder="Write your email here..."
+              minHeight="350px"
+              className="border-none"
+              toolbarClassName="bg-gray-50/50 sticky top-0 z-20"
+              editorClassName="font-serif px-6 py-4"
+            />
           </div>
         </div>
         {/* Footer */}
@@ -989,31 +991,22 @@ function OrderDetailPanel({
             
             <div className="flex-1 flex flex-col overflow-hidden bg-white">
               {/* Comment Input */}
-              <div className="px-5 py-5 border-b bg-gray-50/50">
-                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-3 px-3 py-2 border-b bg-gray-50/50">
-                    {["B", "I", "U"].map((t) => (
-                      <button 
-                        key={t} 
-                        className="h-7 w-7 rounded hover:bg-white hover:shadow-sm text-xs font-bold text-gray-600 flex items-center justify-center transition-all active:scale-95"
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    className="w-full text-sm px-4 py-3 resize-none outline-none min-h-[90px] placeholder:text-gray-400"
-                    placeholder="Type your comment here..."
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                  <RichTextEditor
                     value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
+                    onChange={setCommentText}
+                    placeholder="Type your comment here..."
+                    minHeight="100px"
+                    className="border-none"
+                    toolbarClassName="bg-gray-50/80 border-b"
                   />
-                  <div className="px-3 py-2.5 bg-gray-50/30 flex justify-start">
+                  <div className="px-3 py-2.5 bg-gray-50/50 flex justify-start border-t">
                     <button
-                      disabled={!commentText.trim() || updatingStatus}
-                      className="h-8 px-5 py-0 text-xs font-semibold border border-gray-200 rounded bg-white text-gray-400 hover:text-primary hover:border-primary disabled:opacity-50 transition-all"
+                      disabled={!commentText.replace(/<[^>]*>/g, "").trim() || updatingStatus}
+                      className="h-8 px-5 py-0 text-xs font-semibold border border-primary/20 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all shadow-sm"
                       onClick={async () => {
                         const txt = commentText.trim();
-                        if (!txt) return;
+                        if (!txt || !txt.replace(/<[^>]*>/g, "").trim()) return;
                         setUpdatingStatus(true);
                         try {
                           await purchaseOrderApi.addComment(order._id, txt);
@@ -1034,7 +1027,6 @@ function OrderDetailPanel({
                     </button>
                   </div>
                 </div>
-              </div>
 
               {/* Comments List */}
               <div className="flex-1 overflow-y-auto px-5 py-6 scrollbar-thin">
@@ -1091,7 +1083,7 @@ function OrderDetailPanel({
                               ? "bg-gray-50/50 border-gray-100 text-gray-600 italic" 
                               : "bg-white border-gray-100 text-gray-800"
                           )}>
-                            {c.text}
+                            <div dangerouslySetInnerHTML={{ __html: c.text }} className="rich-text-content" />
                             {!c.isSystem && (
                               <button 
                                 className="absolute right-3 top-3 opacity-0 group-hover/msg:opacity-100 text-muted-foreground hover:text-destructive transition-all"
@@ -1412,12 +1404,71 @@ export default function PurchaseOrdersPage() {
             )}
             actions={(
               <div className="flex items-center gap-1.5">
-                <Button size="sm" className="h-8 gap-1 text-sm" onClick={() => router.push("/purchases/orders/new")}>
+                <Button size="sm" className="h-8 gap-1 text-sm bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/purchases/orders/new")}>
                   <Plus className="h-3.5 w-3.5" /> New
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-8 w-8 border-gray-200">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[200px] p-0 overflow-hidden">
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-blue-600 hover:text-white group">
+                        <ArrowUpDown className="h-4 w-4 text-blue-600 group-hover:text-white" />
+                        <span className="flex-1">Sort by</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-[180px] p-0">
+                        <DropdownMenuItem className="px-3 py-2 text-[13px] bg-blue-600 text-white flex justify-between">
+                          Created Time <ChevronDown className="h-4 w-4 rotate-180" />
+                        </DropdownMenuItem>
+                        {["Date", "Purchase Order#", "Vendor Name", "Amount", "Delivery Date", "Last Modified Time"].map((s) => (
+                          <DropdownMenuItem key={s} className="px-3 py-2 text-[13px] hover:bg-gray-100">{s}</DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+
+                    <DropdownMenuSeparator className="m-0" />
+
+                    <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
+                      <Download className="h-4 w-4 text-blue-600" />
+                      <span>Import Purchase Orders</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
+                        <Upload className="h-4 w-4 text-blue-600" />
+                        <span className="flex-1">Export</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-[180px]">
+                        <DropdownMenuItem className="px-3 py-2 text-[13px]">Export as CSV</DropdownMenuItem>
+                        <DropdownMenuItem className="px-3 py-2 text-[13px]">Export as PDF</DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+
+                    <DropdownMenuSeparator className="m-0" />
+
+                    <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
+                      <Settings className="h-4 w-4 text-blue-600" />
+                      <span>Preferences</span>
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
+                      <Columns className="h-4 w-4 text-blue-600" />
+                      <span>Manage Custom Fields</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator className="m-0" />
+
+                    <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50" onClick={fetchOrders}>
+                      <RefreshCw className="h-4 w-4 text-blue-600" />
+                      <span>Refresh List</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
           />
