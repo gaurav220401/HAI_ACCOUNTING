@@ -34,8 +34,15 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PageHeader } from "@/components/page-header";
 import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus } from "@/lib/api/purchase-orders";
+import { contactApi } from "@/lib/api/contacts";
+import { itemApi } from "@/lib/api/items";
+import { accountApi } from "@/lib/api/accounts";
 import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const fmtCur = (v: number) =>
   new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
@@ -197,7 +204,297 @@ function SendEmailDialog({
   );
 }
 
-// â”€â”€ PDF View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Advanced Search Dialog ──────────────────────────────────────────────────
+function AdvancedSearchDialog({
+  open, onClose, onSearch, vendors, customers, items, accounts,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSearch: (filters: any) => void;
+  vendors: any[];
+  customers: any[];
+  items: any[];
+  accounts: any[];
+}) {
+  const [filters, setFilters] = useState({
+    poNumber: "",
+    referenceNumber: "",
+    dateRange: { start: "", end: "" },
+    deliveryDate: { start: "", end: "" },
+    createdBetween: { start: "", end: "" },
+    status: "All",
+    itemNameId: "",
+    itemDescription: "",
+    amountMin: "",
+    amountMax: "",
+    vendorId: "",
+    accountId: "",
+    projectName: "",
+    deliverToCustomerId: "",
+    tcsId: "",
+    taxExemptions: "",
+    addressType: "Billing and Shipping",
+    attention: "",
+    addressLine: "",
+  });
+
+  const handleSearch = () => {
+    onSearch(filters);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-[1000px] p-0 overflow-hidden bg-white border-none shadow-2xl">
+        <DialogHeader className="px-6 py-4 border-b bg-gray-50/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-8">
+               <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-500">Search</span>
+                  <Select defaultValue="Purchase Orders">
+                     <SelectTrigger className="w-[200px] h-9 bg-white border-gray-300">
+                        <SelectValue />
+                     </SelectTrigger>
+                     <SelectContent>
+                        <SelectItem value="Purchase Orders">Purchase Orders</SelectItem>
+                     </SelectContent>
+                  </Select>
+               </div>
+               <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-500">Filter</span>
+                  <Select defaultValue="All">
+                     <SelectTrigger className="w-[200px] h-9 bg-white border-gray-300">
+                        <SelectValue />
+                     </SelectTrigger>
+                     <SelectContent>
+                        <SelectItem value="All">All Purchase Orders</SelectItem>
+                        <SelectItem value="Draft">Draft</SelectItem>
+                        <SelectItem value="Open">Open</SelectItem>
+                        <SelectItem value="Billed">Billed</SelectItem>
+                        <SelectItem value="Closed">Closed</SelectItem>
+                     </SelectContent>
+                  </Select>
+               </div>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+               <X className="h-5 w-5" />
+            </button>
+          </div>
+        </DialogHeader>
+        
+        <div className="p-8 grid grid-cols-2 gap-x-12 gap-y-6 overflow-y-auto max-h-[70vh]">
+           {/* Left Column */}
+           <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Purchase Order#</Label>
+                 <Input 
+                   value={filters.poNumber}
+                   onChange={(e) => setFilters(f => ({ ...f, poNumber: e.target.value }))}
+                   className="flex-1 h-9 border-blue-400 focus-visible:ring-1 focus-visible:ring-blue-400" 
+                 />
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Date Range</Label>
+                 <div className="flex-1 flex items-center gap-2">
+                    <Input 
+                      placeholder="dd/MM/yyyy" 
+                      className="h-9 border-gray-300" 
+                      value={filters.dateRange.start}
+                      onChange={(e) => setFilters(f => ({ ...f, dateRange: { ...f.dateRange, start: e.target.value } }))}
+                    />
+                    <span className="text-gray-400">-</span>
+                    <Input 
+                      placeholder="dd/MM/yyyy" 
+                      className="h-9 border-gray-300"
+                      value={filters.dateRange.end}
+                      onChange={(e) => setFilters(f => ({ ...f, dateRange: { ...f.dateRange, end: e.target.value } }))}
+                    />
+                 </div>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Created Between</Label>
+                 <div className="flex-1 flex items-center gap-2">
+                    <Input 
+                      placeholder="dd/MM/yyyy" 
+                      className="h-9 border-gray-300"
+                      value={filters.createdBetween.start}
+                      onChange={(e) => setFilters(f => ({ ...f, createdBetween: { ...f.createdBetween, start: e.target.value } }))}
+                    />
+                    <span className="text-gray-400">-</span>
+                    <Input 
+                      placeholder="dd/MM/yyyy" 
+                      className="h-9 border-gray-300"
+                      value={filters.createdBetween.end}
+                      onChange={(e) => setFilters(f => ({ ...f, createdBetween: { ...f.createdBetween, end: e.target.value } }))}
+                    />
+                 </div>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Item Name</Label>
+                 <Select value={filters.itemNameId} onValueChange={(v) => setFilters(f => ({ ...f, itemNameId: v }))}>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="Select an item" />
+                    </SelectTrigger>
+                    <SelectContent>
+                       {items.map(i => <SelectItem key={i._id} value={i._id}>{i.name}</SelectItem>)}
+                    </SelectContent>
+                 </Select>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Total Range</Label>
+                 <div className="flex-1 flex items-center gap-2">
+                    <Input 
+                      className="h-9 border-gray-300" 
+                      placeholder="Min"
+                      value={filters.amountMin}
+                      onChange={(e) => setFilters(f => ({ ...f, amountMin: e.target.value }))}
+                    />
+                    <span className="text-gray-400">-</span>
+                    <Input 
+                      className="h-9 border-gray-300"
+                      placeholder="Max"
+                      value={filters.amountMax}
+                      onChange={(e) => setFilters(f => ({ ...f, amountMax: e.target.value }))}
+                    />
+                 </div>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Account</Label>
+                 <Select value={filters.accountId} onValueChange={(v) => setFilters(f => ({ ...f, accountId: v }))}>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="Select an account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                       {accounts.map(a => <SelectItem key={a._id} value={a._id}>{a.name}</SelectItem>)}
+                    </SelectContent>
+                 </Select>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Deliver To Customer</Label>
+                 <Select value={filters.deliverToCustomerId} onValueChange={(v) => setFilters(f => ({ ...f, deliverToCustomerId: v }))}>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="Select a customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                       {customers.map(v => <SelectItem key={v._id} value={v._id}>{getName(v)}</SelectItem>)}
+                    </SelectContent>
+                 </Select>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Tax Exemptions</Label>
+                 <Select>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="Select a Tax Exemption" />
+                    </SelectTrigger>
+                 </Select>
+              </div>
+           </div>
+
+           {/* Right Column */}
+           <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Reference#</Label>
+                 <Input className="flex-1 h-9 border-gray-300" />
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Expected Delivery Date</Label>
+                 <div className="flex-1 flex items-center gap-2">
+                    <Input placeholder="dd/MM/yyyy" className="h-9 border-gray-300" />
+                    <span className="text-gray-400">-</span>
+                    <Input placeholder="dd/MM/yyyy" className="h-9 border-gray-300" />
+                 </div>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Status</Label>
+                 <Select>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                       <SelectItem value="Draft">Draft</SelectItem>
+                       <SelectItem value="Open">Open</SelectItem>
+                       <SelectItem value="Billed">Billed</SelectItem>
+                       <SelectItem value="Closed">Closed</SelectItem>
+                    </SelectContent>
+                 </Select>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Item Description</Label>
+                 <Input className="flex-1 h-9 border-gray-300" />
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Vendor</Label>
+                 <Select>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="Select a vendor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                       {vendors.map(v => <SelectItem key={v._id} value={v._id}>{getName(v)}</SelectItem>)}
+                    </SelectContent>
+                 </Select>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">Project Name</Label>
+                 <Select>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="Select a project" />
+                    </SelectTrigger>
+                 </Select>
+              </div>
+              <div className="flex items-center gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600">TCS</Label>
+                 <Select>
+                    <SelectTrigger className="flex-1 h-9 border-gray-300">
+                       <SelectValue placeholder="Select a Tax" />
+                    </SelectTrigger>
+                 </Select>
+              </div>
+              <div className="flex items-start gap-4">
+                 <Label className="w-40 text-sm font-normal text-gray-600 mt-1.5">Address</Label>
+                 <div className="flex-1 space-y-4">
+                    <RadioGroup defaultValue="Billing and Shipping" className="flex flex-wrap gap-4">
+                       <div className="flex items-center gap-2">
+                          <RadioGroupItem value="Billing and Shipping" id="bs" className="border-blue-500 text-blue-500" />
+                          <Label htmlFor="bs" className="text-sm font-normal cursor-pointer">Billing and Shipping</Label>
+                       </div>
+                       <div className="flex items-center gap-2">
+                          <RadioGroupItem value="Billing" id="b" className="border-blue-500 text-blue-500" />
+                          <Label htmlFor="b" className="text-sm font-normal cursor-pointer">Billing</Label>
+                       </div>
+                       <div className="flex items-center gap-2">
+                          <RadioGroupItem value="Shipping" id="s" className="border-blue-500 text-blue-500" />
+                          <Label htmlFor="s" className="text-sm font-normal cursor-pointer">Shipping</Label>
+                       </div>
+                    </RadioGroup>
+                    <div className="flex border rounded-md overflow-hidden border-gray-300">
+                       <Select defaultValue="Attention">
+                          <SelectTrigger className="w-[120px] h-9 border-none bg-gray-50 text-xs rounded-none focus:ring-0">
+                             <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                             <SelectItem value="Attention">Attention</SelectItem>
+                          </SelectContent>
+                       </Select>
+                       <Input className="flex-1 h-9 border-none focus-visible:ring-0 rounded-none border-l border-gray-200" />
+                    </div>
+                    <button className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors">
+                       <Plus className="h-3.5 w-3.5" /> Address Line
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        <div className="p-6 border-t flex justify-center gap-3 bg-gray-50/50">
+           <Button className="px-10 h-10 bg-blue-500 hover:bg-blue-600 shadow-sm text-sm font-medium" onClick={handleSearch}>Search</Button>
+           <Button variant="outline" className="px-10 h-10 border-gray-300 text-sm font-medium" onClick={onClose}>Cancel</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── PDF View ──────────────────────────────────────────────────────────────────
 function POPdfView({ order, orgName, orgAddress, orgPhone, orgEmail }: {
   order: PurchaseOrder;
   orgName: string;
@@ -425,63 +722,95 @@ function OrderDetailPanel({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Top action bar */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-white shrink-0 flex-wrap">
-        <button type="button" onClick={() => onEdit(order._id)} className="flex items-center gap-1.5 text-sm px-3 py-1.5 border rounded hover:bg-muted/30 transition-colors">
-          <Pencil className="h-3.5 w-3.5" /> Edit
-        </button>
-        <button type="button" onClick={() => onSendEmail(order._id)} className="flex items-center gap-1.5 text-sm px-3 py-1.5 border rounded hover:bg-muted/30 transition-colors">
-          <Mail className="h-3.5 w-3.5" /> Send Email
-        </button>
-        {/* PDF/Print dropdown */}
-        <DropdownMenu open={showPrintMenu} onOpenChange={setShowPrintMenu}>
-          <DropdownMenuTrigger asChild>
-            <button type="button" className="flex items-center gap-1.5 text-sm px-3 py-1.5 border rounded hover:bg-muted/30 transition-colors">
-              <Printer className="h-3.5 w-3.5" /> PDF/Print <ChevronDown className="h-3 w-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44">
-            <DropdownMenuItem onClick={() => onPrint(order._id)}>
-              <Printer className="h-3.5 w-3.5 mr-2" /> Print
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDownloadPdf(order._id)}>
-              <FileText className="h-3.5 w-3.5 mr-2" /> Download PDF
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {/* Mark as Issued */}
-        {order.status === "Draft" && (
-          <button
-            type="button"
-            disabled={updatingStatus}
-            onClick={handleMarkAsIssued}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 border rounded hover:bg-muted/30 transition-colors"
-          >
-            {updatingStatus ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
-            Mark as Issued
+      {/* Top action bar - EXACT design matching */}
+      <div className="flex items-center px-2 py-0.5 border-b bg-white shrink-0 flex-wrap min-h-[48px]">
+        <div className="flex items-center pr-2">
+          <button type="button" onClick={() => onEdit(order._id)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium">
+            <Pencil className="h-3.5 w-3.5" /> Edit
           </button>
-        )}
-        {/* More actions */}
-        <DropdownMenu open={showMoreMenu} onOpenChange={setShowMoreMenu}>
-          <DropdownMenuTrigger asChild>
-            <button type="button" className="flex items-center gap-1 text-sm px-2.5 py-1.5 border rounded hover:bg-muted/30">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {order.status === "Draft" && (
-              <DropdownMenuItem className="font-medium bg-primary text-primary-foreground focus:bg-primary/90 focus:text-primary-foreground" onClick={handleMarkAsIssued}>
-                Mark as Issued
+        </div>
+        
+        <div className="w-px h-6 bg-gray-200" />
+        
+        <div className="flex items-center px-2">
+          <button type="button" onClick={() => onSendEmail(order._id)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium">
+            <Mail className="h-3.5 w-3.5" /> Send Email
+          </button>
+        </div>
+        
+        <div className="w-px h-6 bg-gray-200" />
+        
+        <div className="flex items-center px-2">
+          {/* PDF/Print dropdown */}
+          <DropdownMenu open={showPrintMenu} onOpenChange={setShowPrintMenu}>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium">
+                <Printer className="h-3.5 w-3.5" /> PDF/Print <ChevronDown className="h-3 w-3 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52 shadow-xl border-gray-200 mt-1">
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => onPrint(order._id)}>
+                <Printer className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Print
               </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={handleConvertToBill}>Convert to Bill</DropdownMenuItem>
-            <DropdownMenuItem onClick={handleClone}>Clone</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(order)}>
-              Delete
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleMarkReceived}>Mark as Received</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => onDownloadPdf(order._id)}>
+                <FileText className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Download PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        
+        <div className="w-px h-6 bg-gray-200" />
+        
+        <div className="flex items-center px-2">
+          {/* Mark as Issued */}
+          {order.status === "Draft" && (
+            <button
+              type="button"
+              disabled={updatingStatus}
+              onClick={handleMarkAsIssued}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium"
+            >
+              <CheckCircle className={cn("h-3.5 w-3.5", updatingStatus ? "animate-spin" : "")} />
+              Mark as Issued
+            </button>
+          )}
+          {order.status !== "Draft" && (
+            <div className="px-3 py-1.5 text-xs text-blue-600 font-bold uppercase tracking-wider bg-blue-50 mx-1 rounded">
+              {order.status}
+            </div>
+          )}
+        </div>
+        
+        <div className="w-px h-6 bg-gray-200" />
+
+        <div className="flex items-center px-2">
+          {/* More actions */}
+          <DropdownMenu open={showMoreMenu} onOpenChange={setShowMoreMenu}>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="flex items-center gap-1 text-xs px-2.5 py-1.5 text-gray-600 hover:text-foreground transition-colors">
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52 shadow-xl border-gray-200 mt-1">
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleMarkAsIssued}>
+                <CheckCircle className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Mark as Issued
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleConvertToBill}>
+                <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Convert to Bill
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
+                <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer text-destructive focus:text-destructive" onClick={() => onDelete(order)}>
+                <Trash2 className="h-3.5 w-3.5 mr-2.5" /> Delete
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleMarkReceived}>
+                <ShoppingBag className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Mark as Received
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         {/* Right side icons - EXACT design matching */}
         <div className="ml-auto flex items-center relative gap-1">
           <button
@@ -784,6 +1113,12 @@ export default function PurchaseOrdersPage() {
   const [deleting, setDeleting] = useState(false);
   const [showFilterDD, setShowFilterDD] = useState(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
+  const [showPOConfig, setShowPOConfig] = useState(false);
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [items, setItems] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [vendorsList, setVendorsList] = useState<any[]>([]);
+  const [customersList, setCustomersList] = useState<any[]>([]);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -792,6 +1127,25 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
+
+  const fetchSearchData = useCallback(async () => {
+    try {
+      const [iRes, aRes, vRes, cRes] = await Promise.all([
+        itemApi.list({ page: 1, limit: 1000 }),
+        accountApi.list({ excludeGroups: true }),
+        contactApi.list({ type: "Vendor", page: 1, limit: 1000 }),
+        contactApi.list({ type: "Customer", page: 1, limit: 1000 }),
+      ]);
+      setItems(iRes.data ?? []);
+      setAccounts(aRes.data ?? []);
+      setVendorsList(vRes.data ?? []);
+      setCustomersList(cRes.data ?? []);
+    } catch { /* noop */ }
+  }, []);
+
+  useEffect(() => {
+    if (activeOrganization?._id) fetchSearchData();
+  }, [activeOrganization?._id, fetchSearchData]);
 
   const fetchOrders = useCallback(async () => {
     setFetching(true);
@@ -852,25 +1206,48 @@ export default function PurchaseOrdersPage() {
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Print PO - ${selectedOrder?.purchaseOrderNumber || id}</title>
+            <title>Purchase Order - ${selectedOrder?.purchaseOrderNumber || id}</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
-              body { margin: 0; padding: 20px; box-sizing: border-box; font-family: sans-serif; background: transparent !important; }
+              @page {
+                size: A4;
+                margin: 0;
+              }
+              body { 
+                margin: 0; 
+                padding: 40px; 
+                box-sizing: border-box; 
+                font-family: 'Inter', sans-serif;
+                background: white !important;
+                -webkit-font-smoothing: antialiased;
+              }
+              #print-root {
+                width: 100%;
+                max-width: 800px;
+                margin: 0 auto;
+              }
               table { width: 100%; border-collapse: collapse; }
-              th, td { text-align: left; }
               @media print {
-                body { padding: 0; }
-                .shadow-xl { box-shadow: none !important; }
+                body { padding: 40px; }
+                .no-print { display: none !important; }
+                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
               }
             </style>
           </head>
           <body>
-            ${printContents}
+            <div id="print-root">
+              ${printContents}
+            </div>
             <script>
-              setTimeout(() => {
-                window.print();
-                window.close();
-              }, 1000);
+              window.onload = () => {
+                setTimeout(() => {
+                  window.print();
+                  window.close();
+                }, 800);
+              };
             </script>
           </body>
         </html>
@@ -963,7 +1340,11 @@ export default function PurchaseOrdersPage() {
                   <div className="px-2 py-2">Billed Status</div>
                   <div className="px-2 py-2 text-right">Amount</div>
                   <div className="px-2 py-2">Delivery Date</div>
-                  <div className="px-2 py-2 flex items-center justify-end"><Search className="h-3.5 w-3.5" /></div>
+                  <div className="px-2 py-2 flex items-center justify-end">
+                    <button onClick={() => setShowAdvancedSearch(true)} className="p-1 hover:bg-muted rounded transition-colors" title="Advanced Search">
+                      <Search className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1129,6 +1510,19 @@ export default function PurchaseOrdersPage() {
           order={selectedOrder}
           orgName={orgName}
           orgEmail={orgEmail}
+        />
+
+        <AdvancedSearchDialog
+          open={showAdvancedSearch}
+          onClose={() => setShowAdvancedSearch(false)}
+          onSearch={(f) => {
+            console.log("Search filters:", f);
+            setShowAdvancedSearch(false);
+          }}
+          vendors={vendorsList}
+          customers={customersList}
+          items={items}
+          accounts={accounts}
         />
       </SidebarInset>
     </SidebarProvider>
