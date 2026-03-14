@@ -1,7 +1,7 @@
 import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
-export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed";
+export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed" | "Canceled";
 export type DiscountLevel = "transaction" | "line_item";
 
 export interface PurchaseOrderLineItem {
@@ -46,6 +46,12 @@ export interface PurchaseOrder {
   notes?: string;
   termsAndConditions?: string;
   attachments?: string[];
+  comments?: {
+    author: string;
+    text: string;
+    time: string;
+    isSystem: boolean;
+  }[];
   status: PurchaseOrderStatus;
   createdAt: string;
   updatedAt: string;
@@ -91,7 +97,20 @@ export const purchaseOrderApi = {
   getNextNumber: () =>
     apiFetch<{ data: { purchaseOrderNumber: string } }>("/purchase-orders/next-number"),
 
-  list: (params?: ListParams & { status?: string; vendorId?: string }) => {
+  list: (params?: ListParams & { 
+    status?: string; 
+    vendorId?: string;
+    poNumber?: string;
+    referenceNumber?: string;
+    dateStart?: string;
+    dateEnd?: string;
+    deliveryStart?: string;
+    deliveryEnd?: string;
+    amountMin?: number;
+    amountMax?: number;
+    itemNameId?: string;
+    accountId?: string;
+  }) => {
     const qs = buildQuery({ ...params });
     return apiFetch<PaginatedResponse<PurchaseOrder>>(`/purchase-orders${qs}`);
   },
@@ -122,6 +141,19 @@ export const purchaseOrderApi = {
 
   downloadPdf: (id: string) =>
     apiFetchBlob(`/purchase-orders/${id}/pdf`),
+
+  clone: (id: string) =>
+    apiFetch<{ data: PurchaseOrder }>(`/purchase-orders/${id}/clone`, { method: "POST" }),
+
+  convertToBill: (id: string) =>
+    apiFetch<{ data: PurchaseOrder }>(`/purchase-orders/${id}/convert-to-bill`, { method: "POST" }),
+
+  addComment: (id: string, text: string) =>
+    apiFetch<{ data: any }>(`/purchase-orders/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+      headers: { "Content-Type": "application/json" },
+    }),
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/purchase-orders/${id}`, { method: "DELETE" }),

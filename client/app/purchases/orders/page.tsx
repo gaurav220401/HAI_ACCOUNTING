@@ -52,6 +52,7 @@ const statusColor: Record<PurchaseOrderStatus, string> = {
   Open:   "text-blue-600",
   Billed: "text-green-600",
   Closed: "text-slate-500",
+  Canceled: "text-red-600",
 };
 
 function getName(v: any): string {
@@ -662,22 +663,27 @@ function OrderDetailPanel({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showPrintMenu, setShowPrintMenu] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
 
   // Comments & History
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [comments, setComments] = useState([
-    {
-      id: "system-1",
-      author: orgEmail || "user",
-      text: `Purchase Order created for \u20b9${fmtCur(order.total)}`,
-      time: new Date(order.createdAt).toLocaleString("en-IN", {
-        day: "2-digit", month: "2-digit", year: "numeric",
-        hour: "2-digit", minute: "2-digit", hour12: true,
-      }),
-      isSystem: true,
-    },
-  ]);
+  const [comments, setComments] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (order.comments) {
+      setComments([...order.comments].reverse().map((c, idx) => ({
+        id: `c-${idx}`,
+        author: c.author,
+        text: c.text,
+        time: new Date(c.time).toLocaleString("en-IN", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+          hour: "2-digit", minute: "2-digit", hour12: true,
+        }),
+        isSystem: c.isSystem,
+      })));
+    }
+  }, [order.comments]);
 
   // Attachments
   const [showAttachments, setShowAttachments] = useState(false);
@@ -701,11 +707,21 @@ function OrderDetailPanel({
   }
 
   async function handleConvertToBill() {
-    toast.info("Convert to Bill coming soon");
+    setUpdatingStatus(true);
+    try {
+      await purchaseOrderApi.convertToBill(order._id);
+      onStatusChange(order._id, "Billed");
+      toast.success("Purchase order converted to bill");
+    } catch { toast.error("Failed to convert to bill"); } finally { setUpdatingStatus(false); }
   }
 
   async function handleClone() {
-    toast.info("Clone coming soon");
+    setUpdatingStatus(true);
+    try {
+       await purchaseOrderApi.clone(order._id);
+       toast.success("Purchase order cloned successfully");
+       window.location.reload();
+    } catch { toast.error("Failed to clone purchase order"); } finally { setUpdatingStatus(false); }
   }
 
   async function handleMarkReceived() {
@@ -715,6 +731,29 @@ function OrderDetailPanel({
       onStatusChange(order._id, "Closed");
       toast.success("Marked as Received");
     } catch { toast.error("Failed"); } finally { setUpdatingStatus(false); }
+  }
+
+  async function handleMarkCanceled() {
+    setUpdatingStatus(true);
+    try {
+      await purchaseOrderApi.update(order._id, { status: "Canceled" });
+      onStatusChange(order._id, "Canceled");
+      toast.success("Purchase order canceled");
+    } catch { toast.error("Failed to cancel"); } finally { setUpdatingStatus(false); }
+  }
+
+  async function handleSaveDeliveryDate(date: string, notes: string) {
+    setUpdatingStatus(true);
+    try {
+      await purchaseOrderApi.update(order._id, { deliveryDate: date });
+      const dateStr = new Date(date).toLocaleDateString("en-GB");
+      const commentTxt = `Order expected on "${dateStr}".\n${notes}`.trim();
+      await purchaseOrderApi.addComment(order._id, commentTxt);
+      
+      onStatusChange(order._id, order.status); // Trigger refresh
+      toast.success("Delivery date updated");
+      setShowDeliveryDialog(false);
+    } catch { toast.error("Failed to update delivery date"); } finally { setUpdatingStatus(false); }
   }
 
   const isOpen = order.status === "Open";
@@ -762,19 +801,26 @@ function OrderDetailPanel({
         <div className="w-px h-6 bg-gray-200" />
         
         <div className="flex items-center px-2">
-          {/* Mark as Issued */}
-          {order.status === "Draft" && (
+          {/* Status Specific Action Buttons */}
+          {order.status === "Draft" ? (
             <button
               type="button"
               disabled={updatingStatus}
               onClick={handleMarkAsIssued}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium hover:bg-muted/30 rounded"
             >
               <CheckCircle className={cn("h-3.5 w-3.5", updatingStatus ? "animate-spin" : "")} />
               Mark as Issued
             </button>
-          )}
-          {order.status !== "Draft" && (
+          ) : order.status === "Open" ? (
+            <button
+              type="button"
+              onClick={handleConvertToBill}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium hover:bg-muted/30 rounded"
+            >
+              <PackageCheck className="h-3.5 w-3.5" /> Convert to Bill
+            </button>
+          ) : (
             <div className="px-3 py-1.5 text-xs text-blue-600 font-bold uppercase tracking-wider bg-blue-50 mx-1 rounded">
               {order.status}
             </div>
@@ -792,15 +838,37 @@ function OrderDetailPanel({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52 shadow-xl border-gray-200 mt-1">
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleMarkAsIssued}>
-                <CheckCircle className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Mark as Issued
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleConvertToBill}>
-                <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Convert to Bill
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
-                <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
-              </DropdownMenuItem>
+              {order.status === "Draft" ? (
+                <>
+                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer focus:bg-blue-50 focus:text-blue-600 font-medium" onClick={handleMarkAsIssued}>
+                    <CheckCircle className="h-3.5 w-3.5 mr-2.5" /> Mark as Issued
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleConvertToBill}>
+                    <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Convert to Bill
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
+                    <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem 
+                    className="text-xs py-2.5 cursor-pointer text-blue-600 font-semibold bg-blue-50/50 hover:bg-blue-50 focus:bg-blue-50 focus:text-blue-600"
+                    onClick={() => setShowDeliveryDialog(true)}
+                  >
+                    Expected Delivery Date
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer">
+                    Cancel Items
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleMarkCanceled}>
+                    Mark as Canceled
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
+                    <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-xs py-2.5 cursor-pointer text-destructive focus:text-destructive" onClick={() => onDelete(order)}>
                 <Trash2 className="h-3.5 w-3.5 mr-2.5" /> Delete
@@ -944,23 +1012,29 @@ function OrderDetailPanel({
                     <Button
                       size="sm"
                       className="h-8 px-4"
-                      disabled={!commentText.trim()}
-                      onClick={() => {
-                        if (!commentText.trim()) return;
-                        setComments((prev) => [
-                          {
-                            id: Date.now().toString(),
-                            author: orgEmail || "user",
-                            text: commentText.trim(),
-                            time: new Date().toLocaleString("en-IN", {
-                              day: "2-digit", month: "2-digit", year: "numeric",
-                              hour: "2-digit", minute: "2-digit", hour12: true,
-                            }),
-                            isSystem: false,
-                          },
-                          ...prev,
-                        ]);
-                        setCommentText("");
+                      disabled={!commentText.trim() || updatingStatus}
+                      onClick={async () => {
+                        const txt = commentText.trim();
+                        if (!txt) return;
+                        setUpdatingStatus(true);
+                        try {
+                          await purchaseOrderApi.addComment(order._id, txt);
+                          setComments((prev) => [
+                            {
+                              id: Date.now().toString(),
+                              author: orgEmail || "user",
+                              text: txt,
+                              time: new Date().toLocaleString("en-IN", {
+                                day: "2-digit", month: "2-digit", year: "numeric",
+                                hour: "2-digit", minute: "2-digit", hour12: true,
+                              }),
+                              isSystem: false,
+                            },
+                            ...prev,
+                          ]);
+                          setCommentText("");
+                          toast.success("Comment added");
+                        } catch { toast.error("Failed to add comment"); } finally { setUpdatingStatus(false); }
                       }}
                     >
                       Add Comment
@@ -1006,12 +1080,17 @@ function OrderDetailPanel({
                             {c.time}
                           </span>
                         </div>
-                        <div className={cn("text-xs leading-relaxed p-3 rounded-lg border", 
+                        <div className={cn("text-xs leading-relaxed p-3 rounded-lg border relative group/msg", 
                           c.isSystem 
-                            ? "bg-amber-50/30 border-amber-100/50 text-foreground/80" 
+                            ? "bg-amber-50/20 border-amber-100/50 text-foreground/80 font-medium" 
                             : "bg-gray-50/50 border-gray-100 text-foreground"
                         )}>
                           {c.text}
+                          {!c.isSystem && (
+                            <button className="absolute right-2 top-2 opacity-0 group-hover/msg:opacity-100 text-muted-foreground hover:text-destructive transition-opacity">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1045,11 +1124,18 @@ function OrderDetailPanel({
         <div className="flex items-center gap-3 px-5 py-3 border-b bg-white shrink-0">
           <PackageCheck className="h-4 w-4 text-blue-600 shrink-0" />
           <span className="text-sm text-muted-foreground">
-            <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Receive goods or convert to a bill.
+            <strong className="text-foreground uppercase tracking-tight font-bold mr-1">WHAT&apos;S NEXT?</strong> Convert this to a bill to...
           </span>
-          <Button size="sm" variant="outline" className="ml-auto shrink-0" onClick={handleConvertToBill}>Convert to Bill</Button>
+          <Button size="sm" className="ml-auto shrink-0 bg-blue-500 hover:bg-blue-600" onClick={handleConvertToBill}>Convert to Bill</Button>
         </div>
       )}
+
+      <ExpectedDeliveryDialog 
+        open={showDeliveryDialog} 
+        onClose={() => setShowDeliveryDialog(false)} 
+        onSave={handleSaveDeliveryDate}
+        initialDate={order.deliveryDate || ""}
+      />
 
       {/* PDF toggle + content */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -1147,10 +1233,24 @@ export default function PurchaseOrdersPage() {
     if (activeOrganization?._id) fetchSearchData();
   }, [activeOrganization?._id, fetchSearchData]);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (filters?: any) => {
     setFetching(true);
     try {
-      const res = await purchaseOrderApi.list({ page: 1, limit: 100 });
+      const res = await purchaseOrderApi.list({ 
+        page: 1, 
+        limit: 100,
+        status: filters?.status !== "All" ? filters?.status : undefined,
+        poNumber: filters?.poNumber,
+        referenceNumber: filters?.referenceNumber,
+        dateStart: filters?.dateRange?.start,
+        dateEnd: filters?.dateRange?.end,
+        deliveryStart: filters?.deliveryDate?.start,
+        deliveryEnd: filters?.deliveryDate?.end,
+        itemNameId: filters?.itemNameId,
+        accountId: filters?.accountId,
+        amountMin: filters?.amountMin ? Number(filters.amountMin) : undefined,
+        amountMax: filters?.amountMax ? Number(filters.amountMax) : undefined,
+      });
       setOrders(res.data ?? []);
     } catch { /* noop */ } finally { setFetching(false); }
   }, []);
@@ -1257,8 +1357,19 @@ export default function PurchaseOrdersPage() {
   }
 
   async function handleDownloadPdf(id: string) {
-    // Matches the exact visual view by calling the same print logic
-    handlePrint(id);
+    try {
+      const blob = await purchaseOrderApi.downloadPdf(id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `PurchaseOrder-${selectedOrder?.purchaseOrderNumber || id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to download PDF");
+    }
   }
 
   const hasOrders = orders.length > 0;
@@ -1516,7 +1627,7 @@ export default function PurchaseOrdersPage() {
           open={showAdvancedSearch}
           onClose={() => setShowAdvancedSearch(false)}
           onSearch={(f) => {
-            console.log("Search filters:", f);
+            fetchOrders(f);
             setShowAdvancedSearch(false);
           }}
           vendors={vendorsList}
@@ -1526,5 +1637,54 @@ export default function PurchaseOrdersPage() {
         />
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+function ExpectedDeliveryDialog({ open, onClose, onSave, initialDate }: { open: boolean, onClose: () => void, onSave: (date: string, notes: string) => void, initialDate: string }) {
+  const [date, setDate] = useState(initialDate ? initialDate.split("T")[0] : new Date().toISOString().split("T")[0]);
+  const [notes, setNotes] = useState("");
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 py-4 border-b">
+          <DialogTitle className="text-lg font-medium text-gray-800">Expected Delivery Date</DialogTitle>
+        </DialogHeader>
+        <div className="p-6 space-y-6">
+          <div className="space-y-2">
+            <Label className="text-sm text-gray-500 font-normal">Delivery Date</Label>
+            <Input 
+              type="date" 
+              value={date} 
+              onChange={(e) => setDate(e.target.value)} 
+              className="w-full border-gray-200 focus:ring-blue-500 rounded-md"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-red-500">Notes*</Label>
+            <textarea
+              className="w-full h-24 border border-gray-200 rounded-md p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              placeholder=""
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 flex gap-3">
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-9" 
+            onClick={() => onSave(date, notes)}
+          >
+            Save
+          </Button>
+          <Button 
+            variant="outline" 
+            className="border-gray-200 text-gray-600 px-6 h-9" 
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

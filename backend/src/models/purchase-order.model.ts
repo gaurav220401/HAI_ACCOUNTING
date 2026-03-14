@@ -1,7 +1,7 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { auditTrailPlugin, softDeletePlugin } from "../plugins";
 
-export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed";
+export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed" | "Canceled";
 export type DiscountLevel = "transaction" | "line_item";
 
 export interface IPurchaseOrderLineItem {
@@ -17,6 +17,13 @@ export interface IPurchaseOrderLineItem {
   discountPercent?: number;
   discountAmount?: number;
   amount: number;
+}
+
+export interface IPurchaseOrderComment {
+  author: string;
+  text: string;
+  time: Date;
+  isSystem: boolean;
 }
 
 export interface IPurchaseOrder extends Document {
@@ -45,6 +52,7 @@ export interface IPurchaseOrder extends Document {
   notes: string;
   termsAndConditions: string;
   attachments: string[];
+  comments: IPurchaseOrderComment[];
   status: PurchaseOrderStatus;
   isActive: boolean;
   isDeleted: boolean;
@@ -112,9 +120,17 @@ const purchaseOrderSchema = new Schema<IPurchaseOrder>(
     notes: { type: String, default: "" },
     termsAndConditions: { type: String, default: "" },
     attachments: [{ type: String }],
+    comments: [
+      {
+        author: { type: String, required: true },
+        text: { type: String, required: true },
+        time: { type: Date, default: Date.now },
+        isSystem: { type: Boolean, default: false },
+      },
+    ],
     status: {
       type: String,
-      enum: ["Draft", "Open", "Billed", "Closed"],
+      enum: ["Draft", "Open", "Billed", "Closed", "Canceled"],
       default: "Draft",
     },
     isActive: { type: Boolean, default: true },

@@ -484,15 +484,22 @@ export function generatePurchaseOrderPdf(
 
     let yNext = Math.max(yVend, yDeliv) + 25;
 
-    // Date
+    // Date & Meta
     doc
       .font("Times-Roman")
-      .fontSize(11)
+      .fontSize(10)
       .fillColor("#4b5563")
       .text(`Date : ${fmtDate(data.purchaseOrderDate)}`, 60, yNext, {
         width: pageW,
         align: "right",
       });
+    if (data.deliveryDate) {
+      yNext += 13;
+      doc.text(`Expected Delivery : ${fmtDate(data.deliveryDate)}`, 60, yNext, {
+        width: pageW,
+        align: "right",
+      });
+    }
     yNext += 20;
 
     // Items table header

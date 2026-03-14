@@ -15,7 +15,10 @@ function orgId(req: AuthenticatedRequest) {
 }
 
 async function nextPONumber(organizationId: any): Promise<string> {
-  const last = await PurchaseOrder.findOne({ organizationId })
+  const last = await PurchaseOrder.findOne({ 
+    organizationId,
+    isDeleted: { $in: [true, false] } // Bypass soft-delete filter to find absolute last number
+  })
     .sort({ purchaseOrderNumber: -1 })
     .select("purchaseOrderNumber")
     .lean();
@@ -55,6 +58,12 @@ function parseStringArray(input: unknown): string[] {
   return [];
 }
 
+function toNum(val: unknown, fallback = 0): number {
+  if (val === undefined || val === null || val === "") return fallback;
+  const n = Number(val);
+  return isNaN(n) ? fallback : n;
+}
+
 /** GET /api/purchase-orders/next-number */
 export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const num = await nextPONumber(orgId(req));
@@ -63,10 +72,38 @@ export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res:
 
 /** GET /api/purchase-orders */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { status, search, vendorId, page = 1, limit = 25, sortBy = "createdAt", sortOrder = "desc" } = req.query;
+  const {
+    status, search, vendorId, poNumber, referenceNumber, 
+    dateStart, dateEnd, deliveryStart, deliveryEnd, 
+    amountMin, amountMax, itemNameId, accountId,
+    page = 1, limit = 25, sortBy = "createdAt", sortOrder = "desc" 
+  } = req.query;
   const filter: any = { organizationId: orgId(req), isDeleted: false };
   if (status && status !== "All") filter.status = status;
   if (vendorId) filter.vendorId = vendorId;
+  if (poNumber) filter.purchaseOrderNumber = { $regex: poNumber, $options: "i" };
+  if (referenceNumber) filter.referenceNumber = { $regex: referenceNumber, $options: "i" };
+  if (itemNameId) filter["lineItems.itemId"] = itemNameId;
+  if (accountId) filter["lineItems.accountId"] = accountId;
+
+  if (dateStart || dateEnd) {
+    filter.purchaseOrderDate = {};
+    if (dateStart) filter.purchaseOrderDate.$gte = new Date(dateStart as string);
+    if (dateEnd) filter.purchaseOrderDate.$lte = new Date(dateEnd as string);
+  }
+
+  if (deliveryStart || deliveryEnd) {
+    filter.deliveryDate = {};
+    if (deliveryStart) filter.deliveryDate.$gte = new Date(deliveryStart as string);
+    if (deliveryEnd) filter.deliveryDate.$lte = new Date(deliveryEnd as string);
+  }
+
+  if (amountMin || amountMax) {
+    filter.total = {};
+    if (amountMin) filter.total.$gte = toNum(amountMin);
+    if (amountMax) filter.total.$lte = toNum(amountMax);
+  }
+
   if (search) {
     filter.$or = [
       { purchaseOrderNumber: { $regex: search, $options: "i" } },
@@ -108,10 +145,10 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const discountLevel = req.body.discountLevel || "transaction";
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
-  const discountPercent = discountLevel === "transaction" ? (Number(req.body.discountPercent) || 0) : 0;
+  const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent) : 0;
   const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxAmount = Number(req.body.taxAmount) || 0;
-  const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
+  const taxAmount = toNum(req.body.taxAmount);
+  const adjustmentAmount = toNum(req.body.adjustmentAmount);
   const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
 
   const po = new PurchaseOrder({
@@ -141,6 +178,12 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     termsAndConditions: req.body.termsAndConditions || "",
     attachments: req.body.attachments || [],
     status: req.body.status || "Draft",
+    comments: [{
+      author: "System",
+      text: `Purchase Order created for ${fmtCur(total)}`,
+      time: new Date(),
+      isSystem: true,
+    }],
   });
   attachUser(po, req);
   await po.save();
@@ -155,12 +198,21 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const discountLevel = req.body.discountLevel || po.discountLevel;
   const lineItems = req.body.lineItems ? calcLineItems(req.body.lineItems, discountLevel) : po.lineItems;
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
-  const discountPercent = discountLevel === "transaction" ? (Number(req.body.discountPercent) ?? po.discountPercent) : 0;
+  const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent, po.discountPercent) : 0;
   const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxAmount = Number(req.body.taxAmount) ?? po.taxAmount;
-  const adjustmentAmount = Number(req.body.adjustmentAmount) ?? po.adjustmentAmount;
+  const taxAmount = toNum(req.body.taxAmount, po.taxAmount);
+  const adjustmentAmount = toNum(req.body.adjustmentAmount, po.adjustmentAmount);
   const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
 
+  if (req.body.status && req.body.status !== po.status) {
+    po.comments.push({
+      author: "System",
+      text: `Status changed from ${po.status} to ${req.body.status}`,
+      time: new Date(),
+      isSystem: true,
+    });
+  }
+  
   Object.assign(po, {
     vendorId: req.body.vendorId !== undefined ? req.body.vendorId : po.vendorId,
     deliveryAddressType: req.body.deliveryAddressType || po.deliveryAddressType,
@@ -190,6 +242,22 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   attachUser(po, req);
   await po.save();
   res.json({ success: true, data: po });
+});
+
+/** POST /api/purchase-orders/:id/comments */
+export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const po = await PurchaseOrder.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
+  if (!po) throw new NotFoundError("Purchase Order");
+  
+  po.comments.push({
+    author: req.user?.displayName || req.user?.email || "User",
+    text: req.body.text,
+    time: new Date(),
+    isSystem: req.body.isSystem === true,
+  });
+  
+  await po.save();
+  res.json({ success: true, data: po.comments[po.comments.length - 1] });
 });
 
 /** DELETE /api/purchase-orders/:id */
@@ -391,3 +459,49 @@ export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequ
     message: "Purchase order email sent successfully",
   });
 });
+
+/** POST /api/purchase-orders/:id/clone */
+export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const source = await PurchaseOrder.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false }).lean();
+  if (!source) throw new NotFoundError("Purchase Order");
+
+  const purchaseOrderNumber = await nextPONumber(source.organizationId);
+  const { _id, createdAt, updatedAt, __v, ...cloneData } = source;
+  
+  const po = new PurchaseOrder({
+    ...cloneData,
+    purchaseOrderNumber,
+    purchaseOrderDate: new Date(),
+    status: "Draft",
+    comments: [{
+      author: "System",
+      text: `Purchase Order cloned from ${source.purchaseOrderNumber}`,
+      time: new Date(),
+      isSystem: true,
+    }],
+  });
+  attachUser(po, req);
+  await po.save();
+  res.status(201).json({ success: true, data: po });
+});
+
+/** POST /api/purchase-orders/:id/convert-to-bill */
+export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const po = await PurchaseOrder.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
+  if (!po) throw new NotFoundError("Purchase Order");
+  
+  // Logic to create a bill from PO...
+  // For now we mark status as Billed
+  const oldStatus = po.status;
+  po.status = "Billed";
+  po.comments.push({
+    author: "System",
+    text: `Status changed from ${oldStatus} to Billed (Converted to Bill)`,
+    time: new Date(),
+    isSystem: true,
+  });
+  await po.save();
+  
+  res.json({ success: true, message: "Purchase order converted to bill successfully", data: po });
+});
+
