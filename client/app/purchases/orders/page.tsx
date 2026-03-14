@@ -6,7 +6,7 @@ import {
   Plus, Search, Loader2, MoreHorizontal, Trash2, RefreshCw,
   ShoppingBag, ChevronDown, Pencil, Mail, Printer, CheckCircle,
   Copy, X, Paperclip, MessageSquare, ChevronRight, Sparkles,
-  FileText, PackageCheck, Upload
+  FileText, PackageCheck, Upload, History
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -990,61 +990,54 @@ function OrderDetailPanel({
             <div className="flex-1 flex flex-col overflow-hidden bg-white">
               {/* Comment Input */}
               <div className="px-5 py-5 border-b bg-gray-50/50">
-                <div className="border rounded-md overflow-hidden bg-white shadow-sm transition-focus-within focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary">
-                  <div className="flex items-center gap-1 px-2.5 py-1.5 border-b bg-muted/5">
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 px-3 py-2 border-b bg-gray-50/50">
                     {["B", "I", "U"].map((t) => (
-                      <button key={t} type="button" className={cn("text-xs w-7 h-7 flex items-center justify-center rounded hover:bg-muted text-gray-600 transition-colors",
-                        t === "B" && "font-bold",
-                        t === "I" && "italic font-serif",
-                        t === "U" && "underline"
-                      )}>
+                      <button 
+                        key={t} 
+                        className="h-7 w-7 rounded hover:bg-white hover:shadow-sm text-xs font-bold text-gray-600 flex items-center justify-center transition-all active:scale-95"
+                      >
                         {t}
                       </button>
                     ))}
                   </div>
                   <textarea
-                    className="w-full text-sm px-4 py-3 resize-none outline-none min-h-[80px]"
+                    className="w-full text-sm px-4 py-3 resize-none outline-none min-h-[90px] placeholder:text-gray-400"
                     placeholder="Type your comment here..."
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
                   />
-                  <div className="px-3 py-2.5 border-t flex justify-end">
-                    <Button
-                      size="sm"
-                      className="h-8 px-4"
+                  <div className="px-3 py-2.5 bg-gray-50/30 flex justify-start">
+                    <button
                       disabled={!commentText.trim() || updatingStatus}
+                      className="h-8 px-5 py-0 text-xs font-semibold border border-gray-200 rounded bg-white text-gray-400 hover:text-primary hover:border-primary disabled:opacity-50 transition-all"
                       onClick={async () => {
                         const txt = commentText.trim();
                         if (!txt) return;
                         setUpdatingStatus(true);
                         try {
                           await purchaseOrderApi.addComment(order._id, txt);
-                          setComments((prev) => [
-                            {
-                              id: Date.now().toString(),
-                              author: orgEmail || "user",
-                              text: txt,
-                              time: new Date().toLocaleString("en-IN", {
-                                day: "2-digit", month: "2-digit", year: "numeric",
-                                hour: "2-digit", minute: "2-digit", hour12: true,
-                              }),
-                              isSystem: false,
-                            },
-                            ...prev,
-                          ]);
+                          const newComment = {
+                            id: Date.now().toString(),
+                            author: orgEmail || "me",
+                            text: txt,
+                            time: new Date().toLocaleDateString("en-GB") + " " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+                            isSystem: false,
+                          };
+                          setComments((prev) => [newComment, ...prev]);
                           setCommentText("");
                           toast.success("Comment added");
                         } catch { toast.error("Failed to add comment"); } finally { setUpdatingStatus(false); }
                       }}
                     >
                       Add Comment
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </div>
 
               {/* Comments List */}
-              <div className="flex-1 overflow-y-auto px-5 py-6">
+              <div className="flex-1 overflow-y-auto px-5 py-6 scrollbar-thin">
                 <div className="flex items-center justify-between mb-6">
                   <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/80">
                     ALL COMMENTS
@@ -1054,47 +1047,68 @@ function OrderDetailPanel({
                   </span>
                 </div>
                 
-                <div className="space-y-6 relative">
+                <div className="space-y-6 relative pb-10">
                   {/* Vertical Timeline Line */}
                   <div className="absolute left-[13px] top-2 bottom-4 w-px bg-border/60" />
                   
-                  {comments.map((c) => (
-                    <div key={c.id} className="relative pl-10 group">
-                      {/* Timeline Dot/Avatar */}
-                      <div className="absolute left-0 top-0.5">
-                        <div className={cn("h-7 w-7 rounded flex items-center justify-center text-[10px] font-bold border transition-transform group-hover:scale-110",
-                          c.isSystem 
-                            ? "bg-amber-50 text-amber-600 border-amber-200" 
-                            : "bg-blue-50 text-blue-600 border-blue-200"
-                        )}>
-                          {c.isSystem ? "📝" : c.author.slice(0, 1).toUpperCase()}
+                  {comments.map((c, idx) => {
+                    const isCreation = c.text.toLowerCase().includes("created") || c.text.toLowerCase().includes("cloned");
+                    const isStatus = c.text.toLowerCase().includes("status changed") || c.text.toLowerCase().includes("marked as");
+                    const isDelivery = c.text.toLowerCase().includes("order expected on");
+                    
+                    let Icon = MessageSquare;
+                    let iconBg = "bg-blue-50 text-blue-600 border-blue-200";
+                    if (c.isSystem) {
+                      if (isCreation) { Icon = FileText; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
+                      else if (isStatus) { Icon = CheckCircle; iconBg = "bg-green-50 text-green-600 border-green-200"; }
+                      else { Icon = History; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
+                    } else if (isDelivery) {
+                      Icon = PackageCheck;
+                      iconBg = "bg-blue-50 text-blue-600 border-blue-200";
+                    }
+
+                    return (
+                      <div key={c.id} className="relative pl-10 group">
+                        {/* Timeline Dot/Avatar Icon */}
+                        <div className="absolute left-0 top-0.5 z-10">
+                          <div className={cn("h-7 w-7 rounded flex items-center justify-center border transition-transform group-hover:scale-110 shadow-sm", iconBg)}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-col gap-1 pb-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-gray-800">
+                              {c.author.split("@")[0]}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-medium">
+                              • {c.time}
+                            </span>
+                          </div>
+                          
+                          <div className={cn("text-[13px] leading-relaxed p-3.5 rounded-lg border relative group/msg shadow-sm whitespace-pre-wrap", 
+                            c.isSystem 
+                              ? "bg-gray-50/50 border-gray-100 text-gray-600 italic" 
+                              : "bg-white border-gray-100 text-gray-800"
+                          )}>
+                            {c.text}
+                            {!c.isSystem && (
+                              <button 
+                                className="absolute right-3 top-3 opacity-0 group-hover/msg:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                                onClick={() => {
+                                  // In a real app, this would call a delete API
+                                  setComments(prev => prev.filter(p => p.id !== c.id));
+                                  toast.success("Comment removed locally");
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="font-semibold text-xs text-foreground">
-                            {c.author.split("@")[0]}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground font-medium">
-                            {c.time}
-                          </span>
-                        </div>
-                        <div className={cn("text-xs leading-relaxed p-3 rounded-lg border relative group/msg", 
-                          c.isSystem 
-                            ? "bg-amber-50/20 border-amber-100/50 text-foreground/80 font-medium" 
-                            : "bg-gray-50/50 border-gray-100 text-foreground"
-                        )}>
-                          {c.text}
-                          {!c.isSystem && (
-                            <button className="absolute right-2 top-2 opacity-0 group-hover/msg:opacity-100 text-muted-foreground hover:text-destructive transition-opacity">
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   
                   {comments.length === 0 && (
                     <div className="text-center py-10">

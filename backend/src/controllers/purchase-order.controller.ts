@@ -58,6 +58,8 @@ function parseStringArray(input: unknown): string[] {
   return [];
 }
 
+const fmtCur = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 function toNum(val: unknown, fallback = 0): number {
   if (val === undefined || val === null || val === "") return fallback;
   const n = Number(val);
