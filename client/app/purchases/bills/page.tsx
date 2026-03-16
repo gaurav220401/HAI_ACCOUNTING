@@ -39,7 +39,6 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
@@ -454,7 +453,7 @@ function BillDetailPanel({
   orgEmail: string;
   orgCurrency: string;
 }) {
-  const [activeTab, setActiveTab] = useState("overview");
+  const journalRef = useRef<HTMLDivElement>(null);
   const [showPdf, setShowPdf] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showPrintMenu, setShowPrintMenu] = useState(false);
@@ -652,7 +651,13 @@ function BillDetailPanel({
               <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
                 <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => setActiveTab("journal")}>
+              <DropdownMenuItem
+                className="text-xs py-2.5 cursor-pointer"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  journalRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
                 <History className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> View Journal
               </DropdownMenuItem>
               <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => toast.info("Vendor credits coming soon")}>
@@ -975,141 +980,123 @@ function BillDetailPanel({
           </div>
 
           <div className="px-6 pb-8">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <div className="flex justify-center mb-4">
-                <TabsList className="bg-muted/50 p-1 h-9 items-center rounded-lg border shadow-sm">
-                  <TabsTrigger value="overview" className="text-xs px-6">Overview</TabsTrigger>
-                  <TabsTrigger value="journal" className="text-xs px-6">Journal</TabsTrigger>
-                </TabsList>
+            {showPdf ? (
+              <div className="flex justify-center w-full" id="bill-pdf-view">
+                <BillPdfView bill={bill} orgName={orgName} orgAddress={orgAddress} orgPhone={orgPhone} orgEmail={orgEmail} />
               </div>
-
-              <TabsContent value="overview" className="mt-0 focus-visible:ring-0">
-                {showPdf ? (
-                  <div className="flex justify-center w-full" id="bill-pdf-view">
-                    <BillPdfView bill={bill} orgName={orgName} orgAddress={orgAddress} orgPhone={orgPhone} orgEmail={orgEmail} />
-                  </div>
-                ) : (
-                  <div className="max-w-[700px] mx-auto space-y-4">
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                      <div className="bg-gray-50/50 border-b px-6 py-4 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-gray-800">Bill Details</h3>
-                        <div className="text-xs text-gray-500">#{bill.billNumber}</div>
-                      </div>
-                      <div className="p-6">
-                        <div className="grid grid-cols-2 gap-y-6 gap-x-12 mt-1">
-                          <div className="space-y-1">
-                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Vendor</Label>
-                            <div className="text-sm font-semibold text-blue-600 hover:underline cursor-pointer flex items-center gap-1.5">
-                              {getName(bill.vendorId)}
-                              <ChevronRight className="h-3 w-3" />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Bill Date</Label>
-                            <div className="text-sm font-medium">{new Date(bill.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Total Amount</Label>
-                            <div className="text-xl font-black text-gray-900">₹{fmtCur(bill.total || 0)}</div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Balance Due</Label>
-                            <div className="text-xl font-black text-red-600">₹{fmtCur(bill.balanceDue ?? bill.total ?? 0)}</div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Due Date</Label>
-                            <div className="text-sm font-medium">{bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "No due date set"}</div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Status</Label>
-                            <div className={cn("text-xs font-bold uppercase flex items-center gap-1.5", statusColor[bill.status])}>
-                              <div className={cn("w-2 h-2 rounded-full", bill.status === "Paid" ? "bg-green-600" : bill.status === "Void" ? "bg-gray-400" : "bg-blue-600")} />
-                              {bill.status}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {(bill.lineItems || []).length > 0 && (
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                        <div className="bg-gray-50/50 border-b px-6 py-3">
-                          <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Line Items</h3>
-                        </div>
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-gray-50/30 border-b text-[10px] text-gray-400 uppercase font-black tracking-tighter">
-                              <th className="text-left px-6 py-2.5">Item</th>
-                              <th className="text-right px-6 py-2.5">Qty</th>
-                              <th className="text-right px-6 py-2.5">Rate</th>
-                              <th className="text-right px-6 py-2.5">Amount</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(bill.lineItems || []).map((li, i) => (
-                              <tr key={i} className="border-b last:border-0 hover:bg-gray-50/50 transition-colors">
-                                <td className="px-6 py-3.5">
-                                  <div className="font-semibold text-gray-800">{typeof li.itemId === "object" && li.itemId ? (li.itemId as any).name : li.name}</div>
-                                  {li.description && <div className="text-xs text-gray-400 mt-0.5 leading-tight">{li.description}</div>}
-                                </td>
-                                <td className="px-6 py-3.5 text-right font-medium tabular-nums">{li.quantity.toFixed(2)}</td>
-                                <td className="px-6 py-3.5 text-right font-medium tabular-nums">₹{fmtCur(li.rate)}</td>
-                                <td className="px-6 py-3.5 text-right font-bold tabular-nums">₹{fmtCur(li.amount)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="journal" className="mt-0 focus-visible:ring-0 max-w-[700px] mx-auto">
+            ) : (
+              <div className="max-w-[700px] mx-auto space-y-4">
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                   <div className="bg-gray-50/50 border-b px-6 py-4 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-tight">Journal Entry</h3>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 italic">Amount displayed in {orgCurrency}</p>
-                    </div>
-                    <div className="bg-primary/10 text-primary p-2 rounded-lg">
-                      <ShieldCheck className="h-4 w-4" />
+                    <h3 className="text-sm font-semibold text-gray-800">Bill Details</h3>
+                    <div className="text-xs text-gray-500">#{bill.billNumber}</div>
+                  </div>
+                  <div className="p-6">
+                    <div className="grid grid-cols-2 gap-y-6 gap-x-12 mt-1">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Vendor</Label>
+                        <div className="text-sm font-semibold text-blue-600 hover:underline cursor-pointer flex items-center gap-1.5">
+                          {getName(bill.vendorId)}
+                          <ChevronRight className="h-3 w-3" />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Bill Date</Label>
+                        <div className="text-sm font-medium">{new Date(bill.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Total Amount</Label>
+                        <div className="text-xl font-black text-gray-900">₹{fmtCur(bill.total || 0)}</div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Balance Due</Label>
+                        <div className="text-xl font-black text-red-600">₹{fmtCur(bill.balanceDue ?? bill.total ?? 0)}</div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Due Date</Label>
+                        <div className="text-sm font-medium">{bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "No due date set"}</div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Status</Label>
+                        <div className={cn("text-xs font-bold uppercase flex items-center gap-1.5", statusColor[bill.status])}>
+                          <div className={cn("w-2 h-2 rounded-full", bill.status === "Paid" ? "bg-green-600" : bill.status === "Void" ? "bg-gray-400" : "bg-blue-600")} />
+                          {bill.status}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="p-0 overflow-x-auto">
+                </div>
+
+                {(bill.lineItems || []).length > 0 && (
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="bg-gray-50/50 border-b px-6 py-3">
+                      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Line Items</h3>
+                    </div>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-muted/10 border-b">
-                          <th className="text-left px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Account</th>
-                          <th className="text-right px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-32">Debit</th>
-                          <th className="text-right px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-32">Credit</th>
+                        <tr className="bg-gray-50/30 border-b text-[10px] text-gray-400 uppercase font-black tracking-tighter">
+                          <th className="text-left px-6 py-2.5">Item</th>
+                          <th className="text-right px-6 py-2.5">Qty</th>
+                          <th className="text-right px-6 py-2.5">Rate</th>
+                          <th className="text-right px-6 py-2.5">Amount</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {journalLines.map((l, i) => (
+                        {(bill.lineItems || []).map((li, i) => (
                           <tr key={i} className="border-b last:border-0 hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4 font-medium text-gray-700">{l.account}</td>
-                            <td className="px-6 py-4 text-right tabular-nums text-gray-600 font-semibold">{l.debit > 0 ? fmtCur(l.debit) : ""}</td>
-                            <td className="px-6 py-4 text-right tabular-nums text-primary font-bold">{l.credit > 0 ? fmtCur(l.credit) : ""}</td>
+                            <td className="px-6 py-3.5">
+                              <div className="font-semibold text-gray-800">{typeof li.itemId === "object" && li.itemId ? (li.itemId as any).name : li.name}</div>
+                              {li.description && <div className="text-xs text-gray-400 mt-0.5 leading-tight">{li.description}</div>}
+                            </td>
+                            <td className="px-6 py-3.5 text-right font-medium tabular-nums">{li.quantity.toFixed(2)}</td>
+                            <td className="px-6 py-3.5 text-right font-medium tabular-nums">₹{fmtCur(li.rate)}</td>
+                            <td className="px-6 py-3.5 text-right font-bold tabular-nums">₹{fmtCur(li.amount)}</td>
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot>
-                        <tr className="border-t bg-gray-50/50 font-black">
-                          <td className="px-6 py-4 text-gray-800">TOTAL</td>
-                          <td className="px-6 py-4 text-right tabular-nums text-gray-900 border-l border-white">₹{fmtCur(totalD)}</td>
-                          <td className="px-6 py-4 text-right tabular-nums text-gray-900 border-l border-white">₹{fmtCur(totalC)}</td>
-                        </tr>
-                      </tfoot>
                     </table>
                   </div>
-                </div>
-                <div className="mt-4 flex items-center gap-2 p-3 bg-blue-50/30 rounded-lg border border-blue-100/50 text-blue-600/70">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <p className="text-[10px] uppercase font-bold tracking-tighter">Automatic journal entries are created for every finalized transaction.</p>
-                </div>
-              </TabsContent>
-            </Tabs>
+                )}
+              </div>
+            )}
+
+            <div ref={journalRef} className="max-w-[900px] mx-auto mt-10">
+              <div className="text-sm font-semibold text-gray-800 border-b pb-2">Journal</div>
+              <div className="text-[11px] text-muted-foreground mt-2">
+                Amount is displayed in your base currency{" "}
+                <span className="ml-1 inline-flex items-center rounded-sm bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  {orgCurrency}
+                </span>
+              </div>
+              <div className="mt-4 text-sm font-semibold text-gray-800">Bill</div>
+              <div className="mt-2 overflow-x-auto bg-white rounded-md border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-[11px] text-gray-500">
+                      <th className="text-left px-4 py-2.5 font-semibold">ACCOUNT</th>
+                      <th className="text-right px-4 py-2.5 font-semibold w-32">DEBIT</th>
+                      <th className="text-right px-4 py-2.5 font-semibold w-32">CREDIT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {journalLines.map((l, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="px-4 py-2.5 text-gray-800">{l.account}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{l.debit > 0 ? fmtCur(l.debit) : "0.00"}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{l.credit > 0 ? fmtCur(l.credit) : "0.00"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="font-semibold">
+                      <td className="px-4 py-2.5 text-right text-gray-800">&nbsp;</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{fmtCur(totalD)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{fmtCur(totalC)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
           </div>
 
           <div className="text-center text-xs text-muted-foreground pb-6 mt-4">
