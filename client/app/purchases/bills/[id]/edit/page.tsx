@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -28,6 +29,7 @@ import { itemApi, type Item } from "@/lib/api/items";
 import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
 import { billApi, type UpdateBillInput, type DiscountLevel, type Bill } from "@/lib/api/bills";
 import { tdsTaxApi, type TdsTax } from "@/lib/api/tds-taxes";
+import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { cn } from "@/lib/utils";
 import { uploadApi, type UploadResult } from "@/lib/api/upload";
 
@@ -151,6 +153,7 @@ export default function EditBillPage() {
   const [discountPercent, setDiscountPercent] = useState(0);
   const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("none");
   const [tdsId, setTdsId] = useState("");
+   const [tcsId, setTcsId] = useState("");
   const [adjustmentLabel, setAdjustmentLabel] = useState("Adjustment");
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
   const [notes, setNotes] = useState("");
@@ -165,6 +168,7 @@ export default function EditBillPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [paymentTermsList, setPaymentTermsList] = useState<PaymentTerms[]>([]);
   const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
+   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
   const [vendorSearch, setVendorSearch] = useState("");
@@ -178,13 +182,14 @@ export default function EditBillPage() {
     if (!activeOrganization?._id || !id) return;
     setFetching(true);
     try {
-      const [vRes, cRes, iRes, aRes, ptRes, tdsRes, bRes] = await Promise.all([
+      const [vRes, cRes, iRes, aRes, ptRes, tdsRes, tcsRes, bRes] = await Promise.all([
         contactApi.list({ type: "Vendor", page: 1, limit: 1000 }),
         contactApi.list({ type: "Customer", page: 1, limit: 1000 }),
         itemApi.list({ page: 1, limit: 1000 }),
         accountApi.list({ excludeGroups: true }),
         settingsApi.paymentTerms.list(),
         tdsTaxApi.list(),
+        tcsTaxApi.list(),
         billApi.getOne(id),
       ]);
       setVendors(vRes.data ?? []);
@@ -193,6 +198,7 @@ export default function EditBillPage() {
       setAccounts(aRes.data ?? []);
       setPaymentTermsList(ptRes.data ?? []);
       setTdsTaxes(tdsRes.data ?? []);
+      setTcsTaxes(tcsRes.data ?? []);
       
       const b = bRes.data;
       setBill(b);
@@ -208,6 +214,7 @@ export default function EditBillPage() {
       setDiscountPercent(b.discountPercent);
       setTaxType(b.taxType);
       setTdsId(typeof b.tdsId === "object" ? b.tdsId._id : b.tdsId || "");
+      setTcsId(typeof b.tcsId === "object" ? b.tcsId._id : b.tcsId || "");
       setAdjustmentLabel(b.adjustmentLabel);
       setAdjustmentAmount(b.adjustmentAmount);
       setNotes(b.notes || "");
@@ -237,9 +244,18 @@ export default function EditBillPage() {
 
   const subTotal = rows.filter(r => !r.isHeader).reduce((s, r) => s + r.amount, 0);
   const discAmt = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : rows.reduce((s, r) => s + r.discountAmount, 0);
-  const selectedTds = tdsTaxes.find(t => t._id === tdsId);
-  const taxAmt = taxType === "TDS" && selectedTds ? ((subTotal - discAmt) * selectedTds.rate) / 100 : 0;
-  const total = subTotal - discAmt - taxAmt + adjustmentAmount;
+   const selectedTds = tdsTaxes.find(t => t._id === tdsId);
+   const selectedTcs = tcsTaxes.find(t => t._id === tcsId);
+   const taxAmt = taxType === "TDS"
+      ? (selectedTds ? ((subTotal - discAmt) * selectedTds.rate) / 100 : 0)
+      : taxType === "TCS"
+         ? (selectedTcs ? ((subTotal - discAmt + adjustmentAmount) * selectedTcs.rate) / 100 : 0)
+         : 0;
+   const total = taxType === "TDS"
+      ? (subTotal - discAmt - taxAmt + adjustmentAmount)
+      : taxType === "TCS"
+         ? (subTotal - discAmt + adjustmentAmount + taxAmt)
+         : (subTotal - discAmt + adjustmentAmount);
 
   const selectedVendor = vendors.find(v => v._id === vendorId);
   const filteredVendors = vendors.filter(v => getName(v).toLowerCase().includes(vendorSearch.toLowerCase()));
@@ -273,6 +289,11 @@ export default function EditBillPage() {
         discountPercent,
         taxType,
         tdsId: tdsId || null,
+            tcsId: tcsId || null,
+            taxAmount: taxType === "TDS" ? taxAmt : 0,
+            tcsAmount: taxType === "TCS" ? taxAmt : 0,
+            adjustmentLabel,
+            adjustmentAmount,
         notes,
         termsAndConditions: terms,
         attachments: attachments.map(a => a.url),
@@ -458,9 +479,25 @@ export default function EditBillPage() {
                         </div>
                         <span className="font-bold text-sm text-red-500">-{fmt(discAmt)}</span>
                      </div>
-                     <div className="flex items-center gap-2 pt-2"><div className="flex-1 flex items-center gap-2"><Input className="h-8 text-sm font-bold text-gray-500 uppercase tracking-tight bg-transparent border-none p-0 focus-visible:ring-0" value={adjustmentLabel} onChange={e => setAdjustmentLabel(e.target.value)} /><HelpCircle className="h-3.5 w-3.5 text-muted-foreground" /></div>
+                     <div className="flex items-center gap-2 pt-2">
+                        <div className="flex-1 flex items-center gap-2">
+                           <Input className="h-8 text-sm font-bold text-gray-500 uppercase tracking-tight bg-transparent border-none p-0 focus-visible:ring-0" value={adjustmentLabel} onChange={e => setAdjustmentLabel(e.target.value)} />
+                           <TooltipProvider delayDuration={0}>
+                             <Tooltip>
+                               <TooltipTrigger asChild>
+                                 <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                               </TooltipTrigger>
+                               <TooltipContent className="bg-slate-900 border-none text-white max-w-[250px] p-3 text-sm rounded shadow-lg font-medium leading-relaxed">
+                                 Add any other +ve or -ve charges that need to be applied to adjust the total amount of the transaction Eg. +10 or -10.
+                               </TooltipContent>
+                             </Tooltip>
+                           </TooltipProvider>
+                        </div>
                         <div className="flex items-center gap-2"><Input type="number" className="w-20 h-8 text-right text-sm font-bold bg-white" value={adjustmentAmount} onChange={e => setAdjustmentAmount(Number(e.target.value))} /></div>
                      </div>
+                     <p className="text-[11px] text-muted-foreground leading-4">
+                        Add any other +ve or -ve charges that need to be applied to adjust the total amount of the transaction Eg. +10 or -10.
+                     </p>
                      <Separator className="bg-gray-200" /><div className="flex items-center justify-between text-blue-600"><span className="text-lg font-black uppercase tracking-widest">Total (₹)</span><span className="text-3xl font-black">{fmt(total)}</span></div>
                   </div>
                </div>

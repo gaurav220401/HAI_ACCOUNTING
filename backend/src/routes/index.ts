@@ -15,6 +15,7 @@ import gstinRoutes from "./gstin.routes";
 import expenseRoutes from "./expense.routes";
 import recurringExpenseRoutes from "./recurring-expense.routes";
 import tdsTaxRoutes from "./tds-tax.routes";
+import tcsTaxRoutes from "./tcs-tax.routes";
 import purchaseOrderRoutes from "./purchase-order.routes";
 import billRoutes from "./bill.routes";
 
@@ -36,6 +37,7 @@ router.use("/gstin", gstinRoutes);
 router.use("/expenses", expenseRoutes);
 router.use("/recurring-expenses", recurringExpenseRoutes);
 router.use("/tds-taxes", tdsTaxRoutes);
+router.use("/tcs-taxes", tcsTaxRoutes);
 router.use("/purchase-orders", purchaseOrderRoutes);
 router.use("/bills", billRoutes);
 

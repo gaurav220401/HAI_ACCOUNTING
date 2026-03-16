@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -34,6 +35,7 @@ import { itemApi, type Item } from "@/lib/api/items";
 import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
 import { purchaseOrderApi, type CreatePurchaseOrderInput, type DiscountLevel } from "@/lib/api/purchase-orders";
 import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/lib/api/tds-taxes";
+import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { cn } from "@/lib/utils";
 import { uploadApi, type UploadResult } from "@/lib/api/upload";
 
@@ -62,6 +64,12 @@ const ITEM_TRANSACTION_TYPES = [
   "Quotes", "Sales Orders", "Invoices", "Delivery Challans", "Credit Notes",
   "Recurring Invoices", "Purchase Orders", "Bills", "Vendor Credits",
 ] as const;
+
+const DEFAULT_TCS_TAXES: TcsTax[] = [
+  { _id: "default-tcs-1", organizationId: "", taxName: "TCS on Sales", rate: 1, sectionCode: "194O", sectionDescription: "TCS on Sale", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-tcs-2", organizationId: "", taxName: "TCS on Sale of Goods (Reduced)", rate: 0.5, sectionCode: "194O", sectionDescription: "TCS on Sale", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+  { _id: "default-tcs-3", organizationId: "", taxName: "TCS on Sale of Services", rate: 1, sectionCode: "194O", sectionDescription: "TCS on Sale", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
+];
 
 const DEFAULT_TDS_TAXES: TdsTax[] = [
   { _id: "default-1", organizationId: "", taxName: "Commission or Brokerage", rate: 2, sectionCode: "194H", sectionDescription: "Commission or Brokerage", isHigherRate: false, isActive: true, createdAt: "", updatedAt: "" },
@@ -372,6 +380,166 @@ function ManageTDSDialog({
   );
 }
 
+// ─── Manage TCS Dialog ───────────────────────────────────────────────────
+function ManageTCSDialog({
+  open, onClose, tcsTaxes, onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  tcsTaxes: TcsTax[];
+  onCreated: (t: TcsTax) => void;
+}) {
+  const [showNew, setShowNew] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<CreateTcsTaxInput>({
+    taxName: "", rate: 0, sectionCode: "", sectionDescription: "",
+    tcsPayableAccountId: null, tcsReceivableAccountId: null,
+    isHigherRate: false, applicableStartDate: null, applicableEndDate: null,
+  });
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [showPayableDD, setShowPayableDD] = useState(false);
+  const [showReceivableDD, setShowReceivableDD] = useState(false);
+  const [payableSearch, setPayableSearch] = useState("");
+  const [receivableSearch, setReceivableSearch] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      accountApi.list({ excludeGroups: true }).then((r) => setAccounts(r.data ?? [])).catch(() => {});
+    }
+  }, [open]);
+
+  async function handleSave() {
+    if (!form.taxName.trim()) { toast.error("Tax name is required"); return; }
+    if (!form.sectionCode) { toast.error("Section is required"); return; }
+    setSaving(true);
+    try {
+      const res = await tcsTaxApi.create(form);
+      toast.success("TCS tax created");
+      onCreated(res.data);
+      setShowNew(false);
+      setForm({ taxName: "", rate: 0, sectionCode: "", sectionDescription: "", tcsPayableAccountId: null, tcsReceivableAccountId: null, isHigherRate: false, applicableStartDate: null, applicableEndDate: null });
+    } catch { toast.error("Failed to create TCS tax"); } finally { setSaving(false); }
+  }
+
+  const payableAccounts = accounts.filter((a) => a.name.toLowerCase().includes(payableSearch.toLowerCase()));
+  const receivableAccounts = accounts.filter((a) => a.name.toLowerCase().includes(receivableSearch.toLowerCase()));
+  const selectedPayable = accounts.find((a) => a._id === form.tcsPayableAccountId);
+  const selectedReceivable = accounts.find((a) => a._id === form.tcsReceivableAccountId);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[650px] p-6 pt-5">
+        <DialogHeader className="mb-4">
+          <DialogTitle className="text-xl font-normal text-slate-800">
+            {showNew ? "New TCS" : "Manage TCS"}
+          </DialogTitle>
+        </DialogHeader>
+
+        {!showNew ? (
+          <>
+            <div className="flex items-center justify-between mb-4 border-b border-t py-4">
+              <h3 className="text-xl font-normal text-slate-800">TCS taxes</h3>
+              <Button className="bg-[#4682B4] hover:bg-[#3a6d96] text-white px-4 h-9" onClick={() => setShowNew(true)}>
+                + New TCS Tax
+              </Button>
+            </div>
+            <div className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-[#f0f4f8] text-[#555]">
+                  <tr className="text-xs uppercase tracking-wide">
+                    <th className="text-left px-4 py-3 font-semibold w-1/3">TAX NAME</th>
+                    <th className="text-left px-4 py-3 font-semibold text-center w-[15%]">RATE (%)</th>
+                    <th className="text-left px-4 py-3 font-semibold w-[40%] pl-8">NATURE OF COLLECTION</th>
+                    <th className="text-left px-4 py-3 font-semibold w-[12%]">STATUS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y text-[#333]">
+                  {tcsTaxes.length === 0 ? (
+                    <tr><td colSpan={4} className="px-4 py-8 text-center text-[#777] text-base font-medium">No TCS Taxes to show</td></tr>
+                  ) : tcsTaxes.map((t) => (
+                    <tr key={t._id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3">{t.taxName}</td>
+                      <td className="px-4 py-3 text-center">{t.rate}</td>
+                      <td className="px-4 py-3 pl-8">Section {t.sectionCode} - {TCS_SECTIONS.find(s => s.code === t.sectionCode)?.label || t.sectionCode}</td>
+                      <td className="px-4 py-3 text-green-600">{t.isActive ? "Active" : "Inactive"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <Label className="text-[13px] font-normal text-red-500 mb-1 block">Tax Name*</Label>
+                <Input className="h-9 focus-visible:ring-1 focus-visible:ring-blue-400 border-slate-300" value={form.taxName} onChange={(e) => setForm((f) => ({ ...f, taxName: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-[13px] font-normal text-red-500 mb-1 block">Rate (%)*</Label>
+                <Input className="h-9 focus-visible:ring-1 focus-visible:ring-blue-400 border-slate-300" type="number" value={form.rate || ""} onChange={(e) => setForm((f) => ({ ...f, rate: Number(e.target.value) }))} />
+              </div>
+            </div>
+            
+            <div className="w-1/2 pr-3">
+              <Label className="text-[13px] font-normal text-red-500 mb-1 block">Nature of Collection*</Label>
+              <Select value={form.sectionCode} onValueChange={(v) => setForm((f) => ({ ...f, sectionCode: v }))}>
+                <SelectTrigger className="h-9 focus:ring-1 focus:ring-blue-400 border-slate-300 text-[13px] text-slate-500">
+                  <SelectValue placeholder="Select a Tax Type." />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {TCS_SECTIONS.map((s) => (
+                    <SelectItem key={s.code} value={s.code} className="text-[13px] py-2">{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="mt-4 text-[13px] text-slate-700 bg-white leading-relaxed">
+              <span className="inline-flex items-center justify-center bg-blue-500 text-white rounded-full w-4 h-4 text-[10px] mr-2 font-bold select-none cursor-default">i</span>
+              By default, TCS will be tracked under <strong>TCS Payable</strong> and <strong>TCS Receivable</strong> accounts. Click <button className="text-blue-500 hover:underline">Edit <Pencil className="inline h-3 w-3" /></button> to choose an account of your choice.
+            </div>
+
+            <div className="flex items-center gap-2 mt-6">
+              <Checkbox
+                id="isHigherRate"
+                checked={form.isHigherRate}
+                onCheckedChange={(c) => setForm((f) => ({ ...f, isHigherRate: !!c }))}
+                className="border-slate-400 rounded-[3px] data-[state=checked]:bg-blue-500"
+              />
+              <label htmlFor="isHigherRate" className="text-[13px] text-slate-700 cursor-pointer flex items-center gap-1">
+                This is a Higher TCS Rate <HelpCircle className="h-3.5 w-3.5 text-slate-400" />
+              </label>
+            </div>
+            
+            <div className="mt-6 pt-2">
+              <h4 className="text-[15px] font-medium text-slate-800 mb-4 flex items-center gap-1">
+                Applicable Period <HelpCircle className="h-3.5 w-3.5 text-slate-400" />
+              </h4>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <Label className="text-[13px] font-normal text-slate-600 mb-1 block">Start Date</Label>
+                  <Input type="date" className="h-9 focus-visible:ring-1 focus-visible:ring-blue-400 border-slate-300 text-slate-500" value={form.applicableStartDate || ""} onChange={(e) => setForm((f) => ({ ...f, applicableStartDate: e.target.value || null }))} />
+                </div>
+                <div>
+                  <Label className="text-[13px] font-normal text-slate-600 mb-1 block">End Date</Label>
+                  <Input type="date" className="h-9 focus-visible:ring-1 focus-visible:ring-blue-400 border-slate-300 text-slate-500" value={form.applicableEndDate || ""} onChange={(e) => setForm((f) => ({ ...f, applicableEndDate: e.target.value || null }))} />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 pt-4 border-t mt-8">
+              <Button className="bg-[#4682B4] hover:bg-[#3a6d96] text-white px-5 h-9" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save
+              </Button>
+              <Button variant="outline" className="border-slate-300 px-5 h-9 font-normal text-slate-700 hover:bg-slate-50" onClick={() => setShowNew(false)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Add Items in Bulk Dialog ────────────────────────────────────────────────
 function BulkAddItemsDialog({
   open, onClose, items, onAdd,
@@ -626,6 +794,7 @@ export default function NewPurchaseOrderPage() {
   // UI state
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showManageTDS, setShowManageTDS] = useState(false);
+  const [showManageTCS, setShowManageTCS] = useState(false);
   const [showTaxDD, setShowTaxDD] = useState(false);
   const [itemSelectorRow, setItemSelectorRow] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -653,7 +822,7 @@ export default function NewPurchaseOrderPage() {
   const [showTxStatusDD, setShowTxStatusDD] = useState(false);
 
   // TCS
-  const [tcsTaxes, setTcsTaxes] = useState<TdsTax[]>([]);
+  const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [tcsId, setTcsId] = useState("");
   const [showTCSDD, setShowTCSDD] = useState(false);
   const [tdsSearch, setTdsSearch] = useState("");
@@ -669,13 +838,14 @@ export default function NewPurchaseOrderPage() {
   const loadData = useCallback(async () => {
     if (!firebaseUser || loading || !activeOrganization?._id) return;
     try {
-      const [vRes, cRes, iRes, aRes, ptRes, tdsRes, numRes] = await Promise.all([
+      const [vRes, cRes, iRes, aRes, ptRes, tdsRes, tcsRes, numRes] = await Promise.all([
         contactApi.list({ type: "Vendor", page: 1, limit: 200 }),
         contactApi.list({ type: "Customer", page: 1, limit: 200 }),
         itemApi.list({ page: 1, limit: 200 }),
         accountApi.list({ excludeGroups: true }),
         settingsApi.paymentTerms.list(),
         tdsTaxApi.list(),
+        tcsTaxApi.list(),
         purchaseOrderApi.getNextNumber(),
       ]);
       setVendors(vRes.data ?? []);
@@ -685,6 +855,8 @@ export default function NewPurchaseOrderPage() {
       setPaymentTermsList(ptRes.data ?? []);
       const tdsData = tdsRes.data ?? [];
       setTdsTaxes(tdsData.length > 0 ? tdsData : DEFAULT_TDS_TAXES);
+      const tcsData = tcsRes.data ?? [];
+      setTcsTaxes(tcsData.length > 0 ? tcsData : DEFAULT_TCS_TAXES);
       setPoNumber(numRes.data.purchaseOrderNumber ?? "PO-00001");
     } catch { /* noop */ }
   }, [firebaseUser, loading, activeOrganization?._id]);
@@ -714,17 +886,22 @@ export default function NewPurchaseOrderPage() {
     : rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.discountAmount, 0);
   const selectedTds = tdsTaxes.find((t) => t._id === tdsId);
   const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
+  const baseBeforeTax = subTotal - discountAmt + adjustmentAmount;
   const computedTax = taxType === "TDS"
     ? (selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0)
     : taxType === "TCS"
-      ? (selectedTcs ? ((subTotal - discountAmt) * selectedTcs.rate) / 100 : 0)
+      ? (selectedTcs ? (baseBeforeTax * selectedTcs.rate) / 100 : 0)
       : taxAmount;
   const totalQuantity = rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.quantity, 0);
   const panelItem = items.find((i) => i._id === itemPanelItemId) ?? null;
   const panelUnit = !panelItem?.unit ? "" : typeof panelItem.unit === "string" ? panelItem.unit : (panelItem.unit as any)?.abbreviation || "";
   const panelSalesAccount = accounts.find((a) => a._id === (panelItem?.salesAccountId || ""));
   const panelPurchaseAccount = accounts.find((a) => a._id === (panelItem?.purchaseAccountId || ""));
-  const total = subTotal - discountAmt - (taxType === "none" ? 0 : computedTax) + adjustmentAmount;
+  const total = taxType === "TDS"
+    ? (subTotal - discountAmt - computedTax + adjustmentAmount)
+    : taxType === "TCS"
+      ? (subTotal - discountAmt + adjustmentAmount + computedTax)
+      : (subTotal - discountAmt + adjustmentAmount);
 
   // Vendor filter
   const filteredVendors = vendors.filter((v) => {
@@ -842,7 +1019,9 @@ export default function NewPurchaseOrderPage() {
         discountPercent,
         taxType,
         tdsId: (tdsId && !tdsId.startsWith("default-")) ? tdsId : null,
-        taxAmount: taxType !== "none" ? computedTax : 0,
+        tcsId: (tcsId && !tcsId.startsWith("default-")) ? tcsId : null,
+        taxAmount: taxType === "TDS" ? computedTax : 0,
+        tcsAmount: taxType === "TCS" ? computedTax : 0,
         adjustmentLabel,
         adjustmentAmount,
         notes,
@@ -1408,68 +1587,94 @@ export default function NewPurchaseOrderPage() {
                   </div>
                   {/* TDS Selector */}
                   {taxType === "TDS" && (
-                    <div className="w-32">
-                      <DropdownMenu open={showTaxDD} onOpenChange={(o) => { setShowTaxDD(o); if (!o) setTdsSearch(""); }}>
-                        <DropdownMenuTrigger asChild>
-                          <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
-                            <span className="truncate">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
-                            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                            <Input className="h-7 text-xs" placeholder="Search" value={tdsSearch} onChange={(e) => setTdsSearch(e.target.value)} autoFocus />
-                          </div>
-                          <div className="max-h-56 overflow-y-auto">
-                            <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); setTdsSearch(""); }}>None</button>
-                            {tdsTaxes.filter((t) => t.taxName.toLowerCase().includes(tdsSearch.toLowerCase())).map((t) => (
-                              <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tdsId === t._id && "bg-primary/10 font-medium")}
-                                onClick={() => { setTdsId(t._id); setShowTaxDD(false); setTdsSearch(""); }}>
-                                {t.taxName} [{t.rate}%]
-                              </button>
-                            ))}
-                          </div>
-                          <div className="border-t p-2 flex items-center gap-1">
-                            <Settings2 className="h-3.5 w-3.5 text-primary" />
-                            <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>Manage TDS</button>
-                          </div>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <div className="w-32 flex items-center gap-2">
+                      <div className="flex-1">
+                        <DropdownMenu open={showTaxDD} onOpenChange={(o) => { setShowTaxDD(o); if (!o) setTdsSearch(""); }}>
+                          <DropdownMenuTrigger asChild>
+                            <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
+                              <span className="truncate">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
+                              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                            <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                              <Input className="h-7 text-xs" placeholder="Search" value={tdsSearch} onChange={(e) => setTdsSearch(e.target.value)} autoFocus />
+                            </div>
+                            <div className="max-h-56 overflow-y-auto">
+                              <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); setTdsSearch(""); }}>None</button>
+                              {tdsTaxes.filter((t) => t.taxName.toLowerCase().includes(tdsSearch.toLowerCase())).map((t) => (
+                                <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tdsId === t._id && "bg-primary/10 font-medium")}
+                                  onClick={() => { setTdsId(t._id); setShowTaxDD(false); setTdsSearch(""); }}>
+                                  {t.taxName} [{t.rate}%]
+                                </button>
+                              ))}
+                            </div>
+                            <div className="border-t p-2 flex items-center gap-1">
+                              <Settings2 className="h-3.5 w-3.5 text-primary" />
+                              <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>Manage TDS</button>
+                            </div>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      <TooltipProvider delayDuration={0}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-slate-900 border-none text-white max-w-[250px] p-3 text-sm rounded shadow-lg font-medium leading-relaxed">
+                            TDS is calculated on the Total amount before tax, exclusive of discounts and adjustments.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   )}
                   {/* TCS Selector */}
                   {taxType === "TCS" && (
-                    <div className="w-32">
-                      <DropdownMenu open={showTCSDD} onOpenChange={(o) => { setShowTCSDD(o); if (!o) setTcsSearch(""); }}>
-                        <DropdownMenuTrigger asChild>
-                          <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
-                            <span className="truncate">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
-                            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                            <Input className="h-7 text-xs" placeholder="Search" value={tcsSearch} onChange={(e) => setTcsSearch(e.target.value)} autoFocus />
-                          </div>
-                          <div className="max-h-56 overflow-y-auto">
-                            {tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).length === 0 ? (
-                              <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
-                            ) : tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).map((t) => (
-                              <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tcsId === t._id && "bg-primary/10 font-medium")}
-                                onClick={() => { setTcsId(t._id); setShowTCSDD(false); setTcsSearch(""); }}>
-                                {t.taxName} [{t.rate}%]
-                              </button>
-                            ))}
-                          </div>
-                          <div className="border-t p-2 flex items-center gap-1">
-                            <Settings2 className="h-3.5 w-3.5 text-primary" />
-                            <button type="button" className="text-xs text-primary hover:underline">Manage TCS</button>
-                          </div>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <div className="w-32 flex items-center gap-2">
+                      <div className="flex-1">
+                        <DropdownMenu open={showTCSDD} onOpenChange={(o) => { setShowTCSDD(o); if (!o) setTcsSearch(""); }}>
+                          <DropdownMenuTrigger asChild>
+                            <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
+                              <span className="truncate">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
+                              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                            <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                              <Input className="h-7 text-xs" placeholder="Search" value={tcsSearch} onChange={(e) => setTcsSearch(e.target.value)} autoFocus />
+                            </div>
+                            <div className="max-h-56 overflow-y-auto">
+                              {tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).length === 0 ? (
+                                <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
+                              ) : tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).map((t) => (
+                                <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tcsId === t._id && "bg-primary/10 font-medium")}
+                                  onClick={() => { setTcsId(t._id); setShowTCSDD(false); setTcsSearch(""); }}>
+                                  {t.taxName} [{t.rate}%]
+                                </button>
+                              ))}
+                            </div>
+                            <div className="border-t p-2 flex items-center gap-1">
+                              <Settings2 className="h-3.5 w-3.5 text-primary" />
+                              <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTCSDD?.(false); setShowManageTCS(true); }}>Manage TCS</button>
+                            </div>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      <TooltipProvider delayDuration={0}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-slate-900 border-none text-white max-w-[250px] p-3 text-sm rounded shadow-lg font-medium leading-relaxed">
+                            TCS is calculated on the Total amount which is inclusive of taxes, discounts and adjustments.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   )}
-                  <span className="flex-1 text-right text-sm text-muted-foreground">- {fmt(taxType !== "none" ? computedTax : 0)}</span>
+                  <span className="flex-1 text-right text-sm text-muted-foreground">
+                    {taxType === "TCS" ? `+ ${fmt(computedTax)}` : `- ${fmt(taxType !== "none" ? computedTax : 0)}`}
+                  </span>
                 </div>
                 {/* Adjustment */}
                 <div className="flex items-center gap-3 justify-between">
@@ -1483,14 +1688,26 @@ export default function NewPurchaseOrderPage() {
                   <div className="flex items-center gap-2 w-32 relative">
                     <Input
                       type="number"
-                      className="h-8 text-sm text-right pr-6"
+                      className="h-8 text-sm text-right pr-8"
                       value={adjustmentAmount}
                       onChange={(e) => setAdjustmentAmount(Number(e.target.value))}
                     />
-                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground absolute right-2" />
+                    <TooltipProvider delayDuration={0}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground absolute right-2 top-2 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="bg-slate-900 border-none text-white max-w-[250px] p-3 text-sm rounded shadow-lg font-medium leading-relaxed">
+                          Add any other +ve or -ve charges that need to be applied to adjust the total amount of the transaction Eg. +10 or -10.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                   <span className="flex-1 text-right text-sm">{fmt(adjustmentAmount)}</span>
                 </div>
+                <p className="text-[11px] text-muted-foreground leading-4">
+                  Add any other +ve or -ve charges that need to be applied to adjust the total amount of the transaction Eg. +10 or -10.
+                </p>
                 <Separator className="bg-muted/30" />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
@@ -1653,6 +1870,14 @@ export default function NewPurchaseOrderPage() {
           onClose={() => setShowManageTDS(false)}
           tdsTaxes={tdsTaxes}
           onCreated={(t) => setTdsTaxes((prev) => [...prev, t])}
+        />
+        <ManageTCSDialog
+          open={showManageTCS}
+          onClose={() => setShowManageTCS(false)}
+          tcsTaxes={tcsTaxes}
+          onCreated={(tax) => {
+            setTcsTaxes((prev) => [...prev, tax]);
+          }}
         />
 
         {/* ── New Address Dialog ─────────────────────────────── */}

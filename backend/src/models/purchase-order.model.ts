@@ -45,7 +45,9 @@ export interface IPurchaseOrder extends Document {
   discountAmount: number;
   taxType: "TDS" | "TCS" | "none";
   tdsId: Types.ObjectId | null;
+  tcsId: Types.ObjectId | null;
   taxAmount: number;
+  tcsAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   total: number;
@@ -113,7 +115,9 @@ const purchaseOrderSchema = new Schema<IPurchaseOrder>(
       default: "none",
     },
     tdsId: { type: Schema.Types.ObjectId, ref: "TdsTax", default: null },
+    tcsId: { type: Schema.Types.ObjectId, ref: "TcsTax", default: null },
     taxAmount: { type: Number, default: 0 },
+    tcsAmount: { type: Number, default: 0 },
     adjustmentLabel: { type: String, default: "Adjustment" },
     adjustmentAmount: { type: Number, default: 0 },
     total: { type: Number, default: 0 },

@@ -3,7 +3,6 @@ import PurchaseOrder from "../models/purchase-order.model";
 import Organization from "../models/organization.model";
 import { AuthenticatedRequest } from "../types";
 import Bill from "../models/bill.model";
-import { billApi } from "../controllers/bill.controller"; // We can reuse the next bill number helper if we export it, but let's just use the logic
 
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -168,9 +167,13 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent) : 0;
   const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxAmount = toNum(req.body.taxAmount);
+  const taxType = req.body.taxType || "none";
+  const tdsId = taxType === "TDS" ? (req.body.tdsId || null) : null;
+  const tcsId = taxType === "TCS" ? (req.body.tcsId || null) : null;
+  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount) : 0;
+  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount) : 0;
   const adjustmentAmount = toNum(req.body.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
 
   const po = new PurchaseOrder({
     organizationId: oid,
@@ -189,9 +192,11 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     subTotal,
     discountPercent,
     discountAmount,
-    taxType: req.body.taxType || "none",
-    tdsId: req.body.tdsId || null,
+    taxType,
+    tdsId,
+    tcsId,
     taxAmount,
+    tcsAmount,
     adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
     adjustmentAmount,
     total,
@@ -221,9 +226,17 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent, po.discountPercent) : 0;
   const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxAmount = toNum(req.body.taxAmount, po.taxAmount);
+  const taxType = req.body.taxType ?? po.taxType;
+  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount, po.taxAmount) : 0;
+  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount, (po as any).tcsAmount) : 0;
   const adjustmentAmount = toNum(req.body.adjustmentAmount, po.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
+  const nextTdsId = taxType === "TDS"
+    ? (req.body.tdsId !== undefined ? req.body.tdsId : po.tdsId)
+    : null;
+  const nextTcsId = taxType === "TCS"
+    ? (req.body.tcsId !== undefined ? req.body.tcsId : (po as any).tcsId)
+    : null;
 
   if (req.body.status && req.body.status !== po.status) {
     po.comments.push({
@@ -249,9 +262,11 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     subTotal,
     discountPercent,
     discountAmount,
-    taxType: req.body.taxType || po.taxType,
-    tdsId: req.body.tdsId !== undefined ? req.body.tdsId : po.tdsId,
+    taxType,
+    tdsId: nextTdsId,
+    tcsId: nextTcsId,
     taxAmount,
+    tcsAmount,
     adjustmentLabel: req.body.adjustmentLabel || po.adjustmentLabel,
     adjustmentAmount,
     total,
@@ -271,7 +286,7 @@ export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Re
   if (!po) throw new NotFoundError("Purchase Order");
   
   po.comments.push({
-    author: req.user?.displayName || req.user?.email || "User",
+    author: (req.user as any)?.displayName || req.user?.email || "User",
     text: req.body.text,
     time: new Date(),
     isSystem: req.body.isSystem === true,
@@ -499,7 +514,7 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   if (!source) throw new NotFoundError("Purchase Order");
 
   const purchaseOrderNumber = await nextPONumber(source.organizationId);
-  const { _id, createdAt, updatedAt, __v, ...cloneData } = source;
+  const { _id, __v, ...cloneData } = source as any;
   
   const po = new PurchaseOrder({
     ...cloneData,

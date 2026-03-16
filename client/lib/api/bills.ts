@@ -42,6 +42,7 @@ export interface Bill {
   tdsId?: any;
   tcsId?: any;
   taxAmount: number;
+  tcsAmount?: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   total: number;
@@ -78,6 +79,7 @@ export interface CreateBillInput {
   tdsId?: string | null;
   tcsId?: string | null;
   taxAmount?: number;
+  tcsAmount?: number;
   adjustmentLabel?: string;
   adjustmentAmount?: number;
   notes?: string;

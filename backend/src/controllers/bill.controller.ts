@@ -158,9 +158,10 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent) : 0;
   const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxAmount = toNum(req.body.taxAmount);
+  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount) : 0;
+  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount) : 0;
   const adjustmentAmount = toNum(req.body.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
 
   const bill = new Bill({
     organizationId: oid,
@@ -182,6 +183,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     taxType,
     tdsId,
     tcsId,
+    tcsAmount,
     taxAmount,
     adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
     adjustmentAmount,
@@ -209,14 +211,15 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!bill) throw new NotFoundError("Bill");
 
   const discountLevel = req.body.discountLevel || bill.discountLevel;
-  const taxType = req.body.taxType || bill.taxType;
   const lineItems = req.body.lineItems ? calcLineItems(req.body.lineItems, discountLevel) : bill.lineItems;
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent ?? bill.discountPercent) : 0;
   const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxAmount = toNum(req.body.taxAmount ?? bill.taxAmount);
+  const taxType = req.body.taxType ?? bill.taxType;
+  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount ?? bill.taxAmount) : 0;
+  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount ?? bill.tcsAmount) : 0;
   const adjustmentAmount = toNum(req.body.adjustmentAmount ?? bill.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
   const nextTdsId = taxType === "TDS"
     ? (req.body.tdsId !== undefined ? req.body.tdsId : bill.tdsId)
     : null;
@@ -232,7 +235,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     taxType,
     tdsId: nextTdsId,
     tcsId: nextTcsId,
-    taxAmount, 
+    taxAmount,
+    tcsAmount,
     adjustmentAmount, 
     total,
     balanceDue: total

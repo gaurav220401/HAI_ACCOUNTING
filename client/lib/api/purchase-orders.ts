@@ -39,7 +39,9 @@ export interface PurchaseOrder {
   discountAmount: number;
   taxType: "TDS" | "TCS" | "none";
   tdsId?: any;
+  tcsId?: any;
   taxAmount: number;
+  tcsAmount?: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   total: number;
@@ -73,7 +75,9 @@ export interface CreatePurchaseOrderInput {
   discountPercent?: number;
   taxType?: "TDS" | "TCS" | "none";
   tdsId?: string | null;
+  tcsId?: string | null;
   taxAmount?: number;
+  tcsAmount?: number;
   adjustmentLabel?: string;
   adjustmentAmount?: number;
   notes?: string;

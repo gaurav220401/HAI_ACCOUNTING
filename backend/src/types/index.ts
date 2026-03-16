@@ -792,6 +792,7 @@ export interface IBill extends Document {
   tdsId?: Types.ObjectId | null;
   tcsId?: Types.ObjectId | null;
   taxAmount: number;
+  tcsAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   total: number;
