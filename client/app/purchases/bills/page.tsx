@@ -8,6 +8,7 @@ import {
   Copy, X, Paperclip, MessageSquare, Sparkles,
   FileText, Upload, History, ArrowUpDown, Download,
   Settings, Columns, ChevronRight, CreditCard, PackageCheck,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -17,11 +18,20 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub,
   DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { billApi, type Bill, type BillStatus } from "@/lib/api/bills";
+import { uploadApi } from "@/lib/api/upload";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -29,13 +39,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
-import { billApi, type Bill, type BillStatus } from "@/lib/api/bills";
-import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -65,6 +70,75 @@ async function uploadImage(file: File, folder: string = "general"): Promise<stri
     console.error("Image upload failed:", error);
     throw error;
   }
+}
+
+// ── Journal builder ─────────────────────────────────────────────────────────
+interface JournalLine { account: string; debit: number; credit: number }
+
+function buildJournal(b: Bill): JournalLine[] {
+  const vendor = getName(b.vendorId) || "Vendor";
+  const lines: JournalLine[] = [];
+
+  // Debit side (Expenses/Items)
+  (b.lineItems || []).forEach((li) => {
+    if (li.isHeader) return;
+    const accName = typeof li.accountId === "object" && li.accountId
+      ? (li.accountId as any).name : "Expense Account";
+    lines.push({ account: accName, debit: li.amount, credit: 0 });
+  });
+
+  // Credit side (Accounts Payable)
+  lines.push({ account: `Accounts Payable - ${vendor}`, debit: 0, credit: b.total });
+
+  return lines;
+}
+
+// ── Void Dialog ───────────────────────────────────────────────────────────────
+function VoidDialog({
+  open, onClose, onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 py-4 border-b">
+          <DialogTitle className="text-lg font-medium text-gray-800">Void Transaction</DialogTitle>
+        </DialogHeader>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-600 leading-relaxed italic border-l-4 border-amber-400 pl-4 py-1 bg-amber-50/50">
+            Voiding a transaction will reverse all its accounting entries. This action cannot be undone.
+          </p>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Reason for voiding*</Label>
+            <textarea
+              className="w-full h-24 border border-gray-200 rounded-md p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              placeholder="e.g. Duplicate entry, incorrect details, order cancelled"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 flex gap-3 justify-end border-t">
+          <Button variant="outline" className="border-gray-200 text-gray-600 px-6 h-9" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-red-600 hover:bg-red-700 text-white px-6 h-9 font-semibold"
+            onClick={() => onConfirm(reason)}
+            disabled={!reason.trim()}
+          >
+            Void Transaction
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ── Expected Payment Date Dialog ──────────────────────────────────────────────
@@ -118,6 +192,77 @@ function ExpectedPaymentDialog({
   );
 }
 
+// ── Record Payment Dialog ───────────────────────────────────────────────────
+function RecordPaymentDialog({
+  open, onClose, onSave, bill,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (data: any) => void;
+  bill: Bill;
+}) {
+  const [amount, setAmount] = useState(bill.balanceDue || 0);
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);
+  const [paymentMode, setPaymentMode] = useState("Cash");
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 py-4 border-b">
+          <DialogTitle className="text-lg font-medium text-gray-800">Record Payment</DialogTitle>
+        </DialogHeader>
+        <div className="p-6 space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Amount Paid*</Label>
+            <Input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              className="w-full border-gray-200 focus:ring-blue-500 rounded-md"
+            />
+            <p className="text-[11px] text-muted-foreground italic">Balance Due: ₹{fmtCur(bill.balanceDue || 0)}</p>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Payment Date</Label>
+            <Input
+              type="date"
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              className="w-full border-gray-200 focus:ring-blue-500 rounded-md"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">Payment Mode</Label>
+            <Select value={paymentMode} onValueChange={setPaymentMode}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Cash">Cash</SelectItem>
+                <SelectItem value="Bank Check">Bank Check</SelectItem>
+                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Credit Card">Credit Card</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 flex gap-3 justify-end border-t">
+          <Button variant="outline" className="border-gray-200 text-gray-600 px-6 h-9" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-9 font-semibold"
+            onClick={() => onSave({ amount, paymentDate, paymentMode })}
+            disabled={amount <= 0 || amount > bill.balanceDue}
+          >
+            Record Payment
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Bill PDF View ─────────────────────────────────────────────────────────────
 function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
   bill: Bill;
@@ -144,6 +289,21 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
       {bill.status === "Void" && (
         <div style={{ position: "absolute", top: 24, left: -18, zIndex: 10, transform: "rotate(-45deg)" }}>
           <div className="bg-red-600/80 text-white text-xs font-bold px-8 py-1 shadow">Void</div>
+        </div>
+      )}
+      {bill.status === "Paid" && (
+        <div style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%) rotate(-30deg)",
+          zIndex: 5,
+          opacity: 0.15,
+          pointerEvents: "none",
+        }}>
+          <div className="border-[12px] border-green-700 text-green-700 text-8xl font-black px-12 py-6 rounded-2xl uppercase tracking-[0.2em]">
+            PAID
+          </div>
         </div>
       )}
 
@@ -294,11 +454,19 @@ function BillDetailPanel({
   orgEmail: string;
   orgCurrency: string;
 }) {
+  const [activeTab, setActiveTab] = useState("overview");
   const [showPdf, setShowPdf] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showPrintMenu, setShowPrintMenu] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showExpectedPaymentDialog, setShowExpectedPaymentDialog] = useState(false);
+  const [showVoidDialog, setShowVoidDialog] = useState(false);
+  const [showRecordPaymentDialog, setShowRecordPaymentDialog] = useState(false);
+
+  // Journal data
+  const journalLines = buildJournal(bill);
+  const totalD = journalLines.reduce((acc, l) => acc + l.debit, 0);
+  const totalC = journalLines.reduce((acc, l) => acc + l.credit, 0);
 
   // Comments
   const [showComments, setShowComments] = useState(false);
@@ -346,18 +514,38 @@ function BillDetailPanel({
   }
 
   async function handleMarkAsVoid() {
+    setShowMoreMenu(false);
+    setShowVoidDialog(true);
+  }
+
+  async function handleConfirmVoid(reason: string) {
     setUpdatingStatus(true);
     try {
-      await billApi.update(bill._id, { status: "Void" });
+      await billApi.void(bill._id, reason);
       onStatusChange(bill._id, "Void");
       toast.success("Bill voided");
+      setShowVoidDialog(false);
     } catch { toast.error("Failed to void bill"); } finally { setUpdatingStatus(false); }
+  }
+
+  async function handleConfirmRecordPayment(data: any) {
+    setUpdatingStatus(true);
+    try {
+      const res = await billApi.recordPayment(bill._id, data);
+      onStatusChange(bill._id, res.data.status);
+      toast.success("Payment recorded");
+      setShowRecordPaymentDialog(false);
+      // Update local state without reload if possible, but status change is handled by parent
+      onStatusChange(bill._id, res.data.status);
+    } catch { toast.error("Failed to record payment"); } finally { setUpdatingStatus(false); }
   }
 
   async function handleClone() {
     setUpdatingStatus(true);
     try {
-      toast.info("Clone functionality coming soon");
+      await billApi.clone(bill._id);
+      toast.success("Bill cloned successfully");
+      window.location.reload();
     } catch { toast.error("Failed to clone"); } finally { setUpdatingStatus(false); }
   }
 
@@ -421,7 +609,7 @@ function BillDetailPanel({
           ) : bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid" ? (
             <button
               type="button"
-              onClick={() => onRecordPayment(bill._id)}
+              onClick={() => setShowRecordPaymentDialog(true)}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-50 transition-colors rounded"
             >
               <CreditCard className="h-3.5 w-3.5" /> Record Payment
@@ -462,11 +650,11 @@ function BillDetailPanel({
               <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
                 <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
               </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => setActiveTab("journal")}>
+                <History className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> View Journal
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => toast.info("Vendor credits coming soon")}>
                 <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Create Vendor Credits
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => toast.info("Journal view coming soon")}>
-                <FileText className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> View Journal
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -719,7 +907,7 @@ function BillDetailPanel({
           <span className="text-sm text-muted-foreground">
             <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Record a payment for this bill.
           </span>
-          <Button size="sm" className="ml-auto shrink-0 bg-blue-600 hover:bg-blue-700" onClick={() => onRecordPayment(bill._id)}>
+          <Button size="sm" className="ml-auto shrink-0 bg-blue-600 hover:bg-blue-700" onClick={() => setShowRecordPaymentDialog(true)}>
             Record Payment
           </Button>
         </div>
@@ -733,43 +921,191 @@ function BillDetailPanel({
         initialDate={bill.dueDate || ""}
       />
 
+      {/* Void Dialog */}
+      <VoidDialog
+        open={showVoidDialog}
+        onClose={() => setShowVoidDialog(false)}
+        onConfirm={handleConfirmVoid}
+      />
+
+      {/* Record Payment Dialog */}
+      <RecordPaymentDialog
+        open={showRecordPaymentDialog}
+        onClose={() => setShowRecordPaymentDialog(false)}
+        onSave={handleConfirmRecordPayment}
+        bill={bill}
+      />
+
       {/* PDF toggle + content */}
       <div className="flex flex-1 overflow-hidden relative">
         <div className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="flex items-center justify-end px-6 py-3">
-            <span className="text-sm text-muted-foreground mr-2">Show PDF View</span>
-            <button
-              type="button"
-              className={cn(
-                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                showPdf ? "bg-primary" : "bg-muted-foreground/30"
-              )}
-              onClick={() => setShowPdf((v) => !v)}
-            >
-              <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform", showPdf ? "translate-x-6" : "translate-x-1")} />
-            </button>
+          <div className="flex items-center justify-between px-6 py-3">
+            <div className="flex items-center gap-2">
+              <div className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                bill.status === "Paid" ? "bg-green-100 text-green-700" :
+                  bill.status === "Void" ? "bg-slate-100 text-slate-600" :
+                    "bg-blue-100 text-blue-700"
+              )}>
+                {bill.status}
+              </div>
+              <span className="text-xs text-muted-foreground italic truncate max-w-[200px]" title={bill.notes}>
+                {bill.notes}
+              </span>
+            </div>
+            <div className="flex items-center">
+              <span className="text-sm text-muted-foreground mr-2">Show PDF View</span>
+              <button
+                type="button"
+                className={cn(
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                  showPdf ? "bg-primary" : "bg-muted-foreground/30"
+                )}
+                onClick={() => setShowPdf((v) => !v)}
+              >
+                <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform", showPdf ? "translate-x-6" : "translate-x-1")} />
+              </button>
+            </div>
           </div>
 
-          {showPdf ? (
-            <div className="px-4 pb-8 flex justify-center w-full" id="bill-pdf-view">
-              <BillPdfView bill={bill} orgName={orgName} orgAddress={orgAddress} orgPhone={orgPhone} orgEmail={orgEmail} />
-            </div>
-          ) : (
-            <div className="px-6 py-4 space-y-4">
-              <div className="bg-white rounded border p-5 text-sm space-y-2">
-                <div className="grid grid-cols-2 gap-4">
-                  <div><span className="text-muted-foreground">Bill#</span> <span className="font-medium ml-2">{bill.billNumber}</span></div>
-                  <div><span className="text-muted-foreground">Date</span> <span className="ml-2">{new Date(bill.billDate).toLocaleDateString("en-IN")}</span></div>
-                  <div><span className="text-muted-foreground">Vendor</span> <span className="ml-2">{getName(bill.vendorId)}</span></div>
-                  <div><span className="text-muted-foreground">Status</span> <span className={cn("ml-2 font-medium", statusColor[bill.status])}>{bill.status}</span></div>
-                  <div><span className="text-muted-foreground">Total</span> <span className="ml-2 font-medium">₹{fmtCur(bill.total || 0)}</span></div>
-                  <div><span className="text-muted-foreground">Balance Due</span> <span className="ml-2 font-medium">₹{fmtCur(bill.balanceDue ?? bill.total ?? 0)}</span></div>
-                </div>
+          <div className="px-6 pb-8">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <div className="flex justify-center mb-4">
+                <TabsList className="bg-muted/50 p-1 h-9 items-center rounded-lg border shadow-sm">
+                  <TabsTrigger value="overview" className="text-xs px-6">Overview</TabsTrigger>
+                  <TabsTrigger value="journal" className="text-xs px-6">Journal</TabsTrigger>
+                </TabsList>
               </div>
-            </div>
-          )}
 
-          <div className="text-center text-xs text-muted-foreground pb-6">
+              <TabsContent value="overview" className="mt-0 focus-visible:ring-0">
+                {showPdf ? (
+                  <div className="flex justify-center w-full" id="bill-pdf-view">
+                    <BillPdfView bill={bill} orgName={orgName} orgAddress={orgAddress} orgPhone={orgPhone} orgEmail={orgEmail} />
+                  </div>
+                ) : (
+                  <div className="max-w-[700px] mx-auto space-y-4">
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                      <div className="bg-gray-50/50 border-b px-6 py-4 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-gray-800">Bill Details</h3>
+                        <div className="text-xs text-gray-500">#{bill.billNumber}</div>
+                      </div>
+                      <div className="p-6">
+                        <div className="grid grid-cols-2 gap-y-6 gap-x-12 mt-1">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Vendor</Label>
+                            <div className="text-sm font-semibold text-blue-600 hover:underline cursor-pointer flex items-center gap-1.5">
+                              {getName(bill.vendorId)}
+                              <ChevronRight className="h-3 w-3" />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Bill Date</Label>
+                            <div className="text-sm font-medium">{new Date(bill.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Total Amount</Label>
+                            <div className="text-xl font-black text-gray-900">₹{fmtCur(bill.total || 0)}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Balance Due</Label>
+                            <div className="text-xl font-black text-red-600">₹{fmtCur(bill.balanceDue ?? bill.total ?? 0)}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Due Date</Label>
+                            <div className="text-sm font-medium">{bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "No due date set"}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Status</Label>
+                            <div className={cn("text-xs font-bold uppercase flex items-center gap-1.5", statusColor[bill.status])}>
+                              <div className={cn("w-2 h-2 rounded-full", bill.status === "Paid" ? "bg-green-600" : bill.status === "Void" ? "bg-gray-400" : "bg-blue-600")} />
+                              {bill.status}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {(bill.lineItems || []).length > 0 && (
+                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                        <div className="bg-gray-50/50 border-b px-6 py-3">
+                          <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Line Items</h3>
+                        </div>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50/30 border-b text-[10px] text-gray-400 uppercase font-black tracking-tighter">
+                              <th className="text-left px-6 py-2.5">Item</th>
+                              <th className="text-right px-6 py-2.5">Qty</th>
+                              <th className="text-right px-6 py-2.5">Rate</th>
+                              <th className="text-right px-6 py-2.5">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(bill.lineItems || []).map((li, i) => (
+                              <tr key={i} className="border-b last:border-0 hover:bg-gray-50/50 transition-colors">
+                                <td className="px-6 py-3.5">
+                                  <div className="font-semibold text-gray-800">{typeof li.itemId === "object" && li.itemId ? (li.itemId as any).name : li.name}</div>
+                                  {li.description && <div className="text-xs text-gray-400 mt-0.5 leading-tight">{li.description}</div>}
+                                </td>
+                                <td className="px-6 py-3.5 text-right font-medium tabular-nums">{li.quantity.toFixed(2)}</td>
+                                <td className="px-6 py-3.5 text-right font-medium tabular-nums">₹{fmtCur(li.rate)}</td>
+                                <td className="px-6 py-3.5 text-right font-bold tabular-nums">₹{fmtCur(li.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="journal" className="mt-0 focus-visible:ring-0 max-w-[700px] mx-auto">
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="bg-gray-50/50 border-b px-6 py-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-tight">Journal Entry</h3>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 italic">Amount displayed in {orgCurrency}</p>
+                    </div>
+                    <div className="bg-primary/10 text-primary p-2 rounded-lg">
+                      <ShieldCheck className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <div className="p-0 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/10 border-b">
+                          <th className="text-left px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Account</th>
+                          <th className="text-right px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-32">Debit</th>
+                          <th className="text-right px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-32">Credit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {journalLines.map((l, i) => (
+                          <tr key={i} className="border-b last:border-0 hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4 font-medium text-gray-700">{l.account}</td>
+                            <td className="px-6 py-4 text-right tabular-nums text-gray-600 font-semibold">{l.debit > 0 ? fmtCur(l.debit) : ""}</td>
+                            <td className="px-6 py-4 text-right tabular-nums text-primary font-bold">{l.credit > 0 ? fmtCur(l.credit) : ""}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t bg-gray-50/50 font-black">
+                          <td className="px-6 py-4 text-gray-800">TOTAL</td>
+                          <td className="px-6 py-4 text-right tabular-nums text-gray-900 border-l border-white">₹{fmtCur(totalD)}</td>
+                          <td className="px-6 py-4 text-right tabular-nums text-gray-900 border-l border-white">₹{fmtCur(totalC)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2 p-3 bg-blue-50/30 rounded-lg border border-blue-100/50 text-blue-600/70">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <p className="text-[10px] uppercase font-bold tracking-tighter">Automatic journal entries are created for every finalized transaction.</p>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <div className="text-center text-xs text-muted-foreground pb-6 mt-4">
             PDF Template : &apos;Standard Template&apos; <button type="button" className="text-primary hover:underline ml-1">Change</button>
           </div>
         </div>

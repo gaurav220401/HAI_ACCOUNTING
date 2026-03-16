@@ -205,6 +205,83 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   res.status(201).json({ success: true, data: bill });
 });
 
+/** POST /api/bills/:id/void */
+export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
+  if (!bill) throw new NotFoundError("Bill");
+  if (bill.status === "Void") throw new ValidationError("Bill is already voided");
+
+  bill.status = "Void";
+  const reason = req.body.reason || "No reason provided";
+  bill.comments.push({
+    author: req.user?.name || req.user?.email || "System",
+    text: `Bill voided. Reason: ${reason}`,
+    time: new Date(),
+    isSystem: true,
+  });
+
+  await bill.save();
+  res.json({ success: true, data: bill });
+});
+
+/** POST /api/bills/:id/payments */
+export const recordPayment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
+  if (!bill) throw new NotFoundError("Bill");
+  
+  const paymentAmount = toNum(req.body.amount);
+  if (paymentAmount <= 0) throw new ValidationError("Payment amount must be greater than zero");
+  if (paymentAmount > bill.balanceDue) throw new ValidationError("Payment amount exceeds balance due");
+
+  bill.balanceDue = (bill.balanceDue || 0) - paymentAmount;
+  
+  if (bill.balanceDue <= 0) {
+    bill.status = "Paid";
+    bill.balanceDue = 0;
+  } else {
+    bill.status = "Partially Paid";
+  }
+
+  const mode = req.body.paymentMode || "Cash";
+  bill.comments.push({
+    author: req.user?.name || req.user?.email || "System",
+    text: `Payment of ${paymentAmount.toLocaleString("en-IN")} recorded via ${mode}`,
+    time: new Date(),
+    isSystem: true,
+  });
+
+  await bill.save();
+  res.json({ success: true, data: bill });
+});
+
+/** POST /api/bills/:id/clone */
+export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const source = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false }).lean();
+  if (!source) throw new NotFoundError("Bill");
+
+  const billNumber = await nextBillNumber(source.organizationId);
+  const { _id, __v, ...cloneData } = source as any;
+
+  const bill = new Bill({
+    ...cloneData,
+    billNumber,
+    billDate: new Date(),
+    status: "Open",
+    balanceDue: source.total || 0,
+    isDeleted: false,
+    deletedAt: null,
+    comments: [{
+      author: "System",
+      text: `Bill cloned from ${source.billNumber}`,
+      time: new Date(),
+      isSystem: true,
+    }],
+  });
+  attachUser(bill, req);
+  await bill.save();
+  res.status(201).json({ success: true, data: bill });
+});
+
 /** PATCH /api/bills/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });

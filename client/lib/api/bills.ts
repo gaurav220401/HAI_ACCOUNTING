@@ -156,6 +156,25 @@ export const billApi = {
       headers: { "Content-Type": "application/json" },
     }),
 
+  void: (id: string, reason?: string) =>
+    apiFetch<{ data: Bill }>(`/bills/${id}/void`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  recordPayment: (id: string, data: any) =>
+    apiFetch<{ data: any }>(`/bills/${id}/payments`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  clone: (id: string) =>
+    apiFetch<{ data: Bill }>(`/bills/${id}/clone`, {
+      method: "POST",
+    }),
+
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/bills/${id}`, { method: "DELETE" }),
 };
