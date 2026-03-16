@@ -2,6 +2,9 @@ import { Response } from "express";
 import PurchaseOrder from "../models/purchase-order.model";
 import Organization from "../models/organization.model";
 import { AuthenticatedRequest } from "../types";
+import Bill from "../models/bill.model";
+import { billApi } from "../controllers/bill.controller"; // We can reuse the next bill number helper if we export it, but let's just use the logic
+
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
@@ -28,6 +31,22 @@ async function nextPONumber(organizationId: any): Promise<string> {
   const next = parseInt(match[1], 10) + 1;
   return `PO-${String(next).padStart(5, "0")}`;
 }
+
+async function nextBillNumber(organizationId: any): Promise<string> {
+  const last = await Bill.findOne({ 
+    organizationId,
+    isDeleted: { $in: [true, false] }
+  })
+    .sort({ billNumber: -1 })
+    .select("billNumber")
+    .lean();
+  if (!last) return "BILL-00001";
+  const match = last.billNumber.match(/BILL-(\d+)/);
+  if (!match) return "BILL-00001";
+  const next = parseInt(match[1], 10) + 1;
+  return `BILL-${String(next).padStart(5, "0")}`;
+}
+
 
 function calcLineItems(items: any[], discountLevel: string) {
   return (items || []).map((item: any) => {
@@ -501,21 +520,80 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
 
 /** POST /api/purchase-orders/:id/convert-to-bill */
 export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const po = await PurchaseOrder.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
+  const oid = orgId(req);
+  const po = await PurchaseOrder.findOne({ _id: req.params.id, organizationId: oid, isDeleted: false });
   if (!po) throw new NotFoundError("Purchase Order");
   
-  // Logic to create a bill from PO...
-  // For now we mark status as Billed
-  const oldStatus = po.status;
+  if (po.status === "Billed") {
+    throw new ValidationError("This purchase order has already been converted to a bill.");
+  }
+
+  const billNumber = await nextBillNumber(oid);
+  
+  // Create the Bill
+  const bill = new Bill({
+    organizationId: oid,
+    vendorId: po.vendorId,
+    billNumber,
+    orderNumber: po.purchaseOrderNumber,
+    billDate: new Date(),
+    dueDate: po.deliveryDate || null,
+    paymentTermsId: po.paymentTermsId,
+    accountsPayableId: null, // User will need to set this if not default
+    subject: po.referenceNumber ? `Bill for PO: ${po.purchaseOrderNumber} (Ref: ${po.referenceNumber})` : `Bill for PO: ${po.purchaseOrderNumber}`,
+    lineItems: po.lineItems.map(li => ({
+      isHeader: li.isHeader,
+      headerText: li.headerText,
+      itemId: li.itemId,
+      name: li.name,
+      description: li.description,
+      quantity: li.quantity,
+      rate: li.rate,
+      discountPercent: li.discountPercent,
+      amount: li.amount,
+      accountId: li.accountId,
+    })),
+    subTotal: po.subTotal,
+    discountLevel: po.discountLevel,
+    discountPercent: po.discountPercent,
+    discountAmount: po.discountAmount,
+    taxType: po.taxType,
+    tdsId: po.tdsId,
+    taxAmount: po.taxAmount,
+    adjustmentLabel: po.adjustmentLabel,
+    adjustmentAmount: po.adjustmentAmount,
+    total: po.total,
+    balanceDue: po.total,
+    notes: po.notes,
+    termsAndConditions: po.termsAndConditions,
+    attachments: po.attachments,
+    status: "Open",
+    comments: [{
+      author: "System",
+      text: `Bill created from Purchase Order ${po.purchaseOrderNumber}`,
+      time: new Date(),
+      isSystem: true,
+    }],
+  });
+
+  attachUser(bill, req);
+  await bill.save();
+
+  // Update PO status
   po.status = "Billed";
   po.comments.push({
     author: "System",
-    text: `Status changed from ${oldStatus} to Billed (Converted to Bill)`,
+    text: `Converted to Bill ${billNumber}`,
     time: new Date(),
     isSystem: true,
   });
   await po.save();
   
-  res.json({ success: true, message: "Purchase order converted to bill successfully", data: po });
+  res.json({ 
+    success: true, 
+    message: "Purchase order converted to bill successfully", 
+    data: { po, billId: bill._id } 
+  });
 });
+
 

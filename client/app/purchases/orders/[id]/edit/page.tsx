@@ -488,6 +488,7 @@ export default function EditPurchaseOrderPage() {
         url,
         publicId: "",
         name: decodeURIComponent(url.split("/").pop() || "File"),
+        originalName: decodeURIComponent(url.split("/").pop() || "File"),
       })));
 
       // Convert line items

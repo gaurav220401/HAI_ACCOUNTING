@@ -25,6 +25,7 @@ router.post(
       (req.query.resourceType as "image" | "raw" | "video" | "auto") ??
       (folder.includes("document") || folder.includes("raw") ? "auto" : "image");
     const result = await uploadBuffer(req.file.buffer, folder, undefined, resourceType);
+    result.originalName = req.file.originalname;
     res.status(201).json({ success: true, data: result });
   }),
 );

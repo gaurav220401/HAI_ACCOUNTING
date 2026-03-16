@@ -16,6 +16,7 @@ import expenseRoutes from "./expense.routes";
 import recurringExpenseRoutes from "./recurring-expense.routes";
 import tdsTaxRoutes from "./tds-tax.routes";
 import purchaseOrderRoutes from "./purchase-order.routes";
+import billRoutes from "./bill.routes";
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use("/expenses", expenseRoutes);
 router.use("/recurring-expenses", recurringExpenseRoutes);
 router.use("/tds-taxes", tdsTaxRoutes);
 router.use("/purchase-orders", purchaseOrderRoutes);
+router.use("/bills", billRoutes);
 
 export default router;
