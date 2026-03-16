@@ -11,6 +11,69 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
+const DEFAULT_TDS_TAXES = [
+  {
+    sectionCode: "192",
+    taxName: "192 - Salaries",
+    sectionDescription: "Salaries",
+    rate: 0,
+  },
+  {
+    sectionCode: "194A",
+    taxName: "194A - Other Interest than securities",
+    sectionDescription: "Other Interest than securities",
+    rate: 0,
+  },
+  {
+    sectionCode: "194C",
+    taxName: "194C - Payment of contractors",
+    sectionDescription: "Payment of contractors HUF/Indiv and Payment of contractors for Others",
+    rate: 0,
+  },
+  {
+    sectionCode: "194H",
+    taxName: "194H - Commission or Brokerage",
+    sectionDescription: "Commission or Brokerage",
+    rate: 0,
+  },
+  {
+    sectionCode: "194I",
+    taxName: "194I - Rent",
+    sectionDescription: "Rent on land or furniture etc and Rent on plant and machinery",
+    rate: 0,
+  },
+  {
+    sectionCode: "194J",
+    taxName: "194J - Professional Fees",
+    sectionDescription: "Professional Fees",
+    rate: 0,
+  },
+  {
+    sectionCode: "194O",
+    taxName: "194O - e-commerce participant",
+    sectionDescription: "e-commerce participant",
+    rate: 0,
+  },
+  {
+    sectionCode: "194Q",
+    taxName: "194Q - Payment of purchase of goods",
+    sectionDescription: "Payment of purchase of goods",
+    rate: 0,
+  },
+  {
+    sectionCode: "194R",
+    taxName: "194R - Benefit or perquisite",
+    sectionDescription: "Benefit or perquisite",
+    rate: 0,
+  },
+  {
+    sectionCode: "Others",
+    taxName: "Others - Others",
+    sectionDescription: "Others",
+    rate: 0,
+  },
+];
+
 /** GET /api/tds-taxes */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { search } = req.query;
@@ -58,6 +121,31 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   attachUser(tax, req);
   await tax.save();
   res.status(201).json({ success: true, data: tax });
+});
+
+/** POST /api/tds-taxes/seed */
+export const seed = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organization = orgId(req);
+  const existing = await TdsTax.countDocuments({ organizationId: organization, isDeleted: false });
+  if (existing > 0) return res.json({ success: true, message: "TDS taxes already exist" });
+
+  await TdsTax.insertMany(
+    DEFAULT_TDS_TAXES.map((t) => ({
+      organizationId: organization,
+      taxName: t.taxName,
+      rate: t.rate,
+      sectionCode: t.sectionCode,
+      sectionDescription: t.sectionDescription,
+      tdsPayableAccountId: null,
+      tdsReceivableAccountId: null,
+      isHigherRate: false,
+      applicableStartDate: null,
+      applicableEndDate: null,
+      isActive: true,
+    }))
+  );
+
+  res.status(201).json({ success: true, message: "Default TDS taxes created" });
 });
 
 /** PATCH /api/tds-taxes/:id */

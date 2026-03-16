@@ -700,8 +700,21 @@ export function RecurringBillForm({ mode, initialData, onSuccess, onCancel }: Re
         setPaymentTerms(termsRes.data || []);
         setItems(itemsRes.data || []);
         setAccounts(accountsRes.data || []);
-        setTdsTaxes(tdsRes.data || []);
-        setTcsTaxes(tcsRes.data || []);
+
+        let nextTds = tdsRes.data || [];
+        let nextTcs = tcsRes.data || [];
+        if (nextTds.length === 0) {
+          await tdsTaxApi.seed();
+          const seeded = await tdsTaxApi.list();
+          nextTds = seeded.data || [];
+        }
+        if (nextTcs.length === 0) {
+          await tcsTaxApi.seed();
+          const seeded = await tcsTaxApi.list();
+          nextTcs = seeded.data || [];
+        }
+        setTdsTaxes(nextTds);
+        setTcsTaxes(nextTcs);
       } catch {
         toast.error("Failed to load data");
       }

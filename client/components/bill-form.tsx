@@ -717,12 +717,25 @@ export function BillForm({ initialData, onSuccess, onCancel, mode }: BillFormPro
               tdsTaxApi.list(),
               tcsTaxApi.list(),
            ]);
-           setVendors(vRes.data || []);
-           setItems(iRes.data || []);
-           setPaymentTerms(ptRes.data || []);
-           setAccounts(accRes.data || []);
-           setTdsTaxes(tdsRes.data || []);
-           setTcsTaxes(tcsRes.data || []);
+                setVendors(vRes.data || []);
+                setItems(iRes.data || []);
+                setPaymentTerms(ptRes.data || []);
+                setAccounts(accRes.data || []);
+
+                let nextTds = tdsRes.data || [];
+                let nextTcs = tcsRes.data || [];
+                if (nextTds.length === 0) {
+                   await tdsTaxApi.seed();
+                   const seeded = await tdsTaxApi.list();
+                   nextTds = seeded.data || [];
+                }
+                if (nextTcs.length === 0) {
+                   await tcsTaxApi.seed();
+                   const seeded = await tcsTaxApi.list();
+                   nextTcs = seeded.data || [];
+                }
+                setTdsTaxes(nextTds);
+                setTcsTaxes(nextTcs);
 
            if (cloneId) {
              const { data: bill } = await billApi.getOne(cloneId);

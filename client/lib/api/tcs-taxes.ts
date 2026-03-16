@@ -100,6 +100,7 @@ export const tcsTaxApi = {
     const qs = params?.search ? `?search=${encodeURIComponent(params.search)}` : "";
     return apiFetch<{ data: TcsTax[] }>(`/tcs-taxes${qs}`);
   },
+  seed: () => apiFetch<{ message: string }>("/tcs-taxes/seed", { method: "POST" }),
   getOne: (id: string) => apiFetch<{ data: TcsTax }>(`/tcs-taxes/${id}`),
   create: (data: CreateTcsTaxInput) =>
     apiFetch<{ data: TcsTax }>("/tcs-taxes", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
