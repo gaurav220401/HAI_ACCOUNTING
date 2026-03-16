@@ -13,6 +13,7 @@ router.post("/", billController.create);
 router.post("/:id/clone", billController.clone);
 router.post("/:id/void", billController.voidBill);
 router.post("/:id/payments", billController.recordPayment);
+router.post("/:id/comments", billController.addComment);
 router.patch("/:id", billController.update);
 router.delete("/:id", billController.remove);
 

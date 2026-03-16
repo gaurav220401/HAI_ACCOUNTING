@@ -175,6 +175,13 @@ export const billApi = {
       method: "POST",
     }),
 
+  addComment: (id: string, text: string, isSystem = false) =>
+    apiFetch<{ data: any }>(`/bills/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text, isSystem }),
+      headers: { "Content-Type": "application/json" },
+    }),
+
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/bills/${id}`, { method: "DELETE" }),
 };

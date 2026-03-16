@@ -554,6 +554,8 @@ function BillDetailPanel({
     try {
       await billApi.update(bill._id, { dueDate: date });
       const dateStr = new Date(date).toLocaleDateString("en-GB");
+      const commentTxt = `Payment expected on "${dateStr}".\n${notes}`.trim();
+      await billApi.addComment(bill._id, commentTxt, true);
       toast.success(`Payment expected on ${dateStr}`);
       setShowExpectedPaymentDialog(false);
     } catch { toast.error("Failed to update"); } finally { setUpdatingStatus(false); }
@@ -809,12 +811,17 @@ function BillDetailPanel({
                       if (!txt || !txt.replace(/<[^>]*>/g, "").trim()) return;
                       setUpdatingStatus(true);
                       try {
+                        const res = await billApi.addComment(bill._id, txt);
+                        const added = res.data;
                         const newComment = {
                           id: Date.now().toString(),
-                          author: orgEmail || "me",
-                          text: txt,
-                          time: new Date().toLocaleDateString("en-GB") + " " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
-                          isSystem: false,
+                          author: added.author || orgEmail || "me",
+                          text: added.text || txt,
+                          time: new Date(added.time || Date.now()).toLocaleString("en-IN", {
+                            day: "2-digit", month: "2-digit", year: "numeric",
+                            hour: "2-digit", minute: "2-digit", hour12: true,
+                          }),
+                          isSystem: !!added.isSystem,
                         };
                         setComments((prev) => [newComment, ...prev]);
                         setCommentText("");

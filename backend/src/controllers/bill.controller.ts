@@ -287,6 +287,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
 
+  const prevStatus = bill.status;
+
   const discountLevel = req.body.discountLevel || bill.discountLevel;
   const lineItems = req.body.lineItems ? calcLineItems(req.body.lineItems, discountLevel) : bill.lineItems;
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
@@ -318,10 +320,35 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     total,
     balanceDue: total
   });
+
+  if (req.body.status && req.body.status !== prevStatus) {
+    bill.comments.push({
+      author: req.user?.name || req.user?.email || "System",
+      text: `Status changed to ${req.body.status}`,
+      time: new Date(),
+      isSystem: true,
+    });
+  }
   
   attachUser(bill, req);
   await bill.save();
   res.json({ success: true, data: bill });
+});
+
+/** POST /api/bills/:id/comments */
+export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
+  if (!bill) throw new NotFoundError("Bill");
+
+  bill.comments.push({
+    author: req.user?.name || req.user?.email || "User",
+    text: req.body.text,
+    time: new Date(),
+    isSystem: req.body.isSystem === true,
+  });
+
+  await bill.save();
+  res.json({ success: true, data: bill.comments[bill.comments.length - 1] });
 });
 
 /** DELETE /api/bills/:id */
