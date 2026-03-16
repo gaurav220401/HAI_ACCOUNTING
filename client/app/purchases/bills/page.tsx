@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Search, Loader2, MoreHorizontal, Trash2,
-  ChevronDown, Pencil, Mail, Printer, CheckCircle,
-  X, FileText, Download, ArrowUpDown, Upload, History, ChevronRight
+  Plus, Search, Loader2, MoreHorizontal, Trash2, RefreshCw,
+  ChevronDown, Pencil, Printer, CheckCircle,
+  Copy, X, Paperclip, MessageSquare, Sparkles,
+  FileText, Upload, History, ArrowUpDown, Download,
+  Settings, Columns, ChevronRight, CreditCard, PackageCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,16 +23,22 @@ import {
   DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/page-header";
 import { billApi, type Bill, type BillStatus } from "@/lib/api/bills";
-import { contactApi } from "@/lib/api/contacts";
-import { itemApi } from "@/lib/api/items";
-import { accountApi } from "@/lib/api/accounts";
+import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtCur = (v: number) =>
   new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
@@ -48,6 +57,728 @@ function getName(v: any): string {
   return String(v);
 }
 
+async function uploadImage(file: File, folder: string = "general"): Promise<string> {
+  try {
+    const res = await uploadApi.upload(file, folder);
+    return res.url;
+  } catch (error) {
+    console.error("Image upload failed:", error);
+    throw error;
+  }
+}
+
+// ── Expected Payment Date Dialog ──────────────────────────────────────────────
+function ExpectedPaymentDialog({
+  open, onClose, onSave, initialDate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (date: string, notes: string) => void;
+  initialDate: string;
+}) {
+  const [date, setDate] = useState(initialDate ? initialDate.split("T")[0] : new Date().toISOString().split("T")[0]);
+  const [notes, setNotes] = useState("");
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 py-4 border-b">
+          <DialogTitle className="text-lg font-medium text-gray-800">Expected Payment Date</DialogTitle>
+        </DialogHeader>
+        <div className="p-6 space-y-6">
+          <div className="space-y-2">
+            <Label className="text-sm text-gray-500 font-normal">Payment Date</Label>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full border-gray-200 focus:ring-blue-500 rounded-md"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-red-500">Notes*</Label>
+            <textarea
+              className="w-full h-24 border border-gray-200 rounded-md p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              placeholder=""
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 flex gap-3">
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-9" onClick={() => onSave(date, notes)}>
+            Save
+          </Button>
+          <Button variant="outline" className="border-gray-200 text-gray-600 px-6 h-9" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Bill PDF View ─────────────────────────────────────────────────────────────
+function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
+  bill: Bill;
+  orgName: string;
+  orgAddress: string;
+  orgPhone: string;
+  orgEmail: string;
+}) {
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const lineItems = (bill.lineItems || []).filter((li) => !li.isHeader);
+  const vendorName = getName(bill.vendorId);
+
+  return (
+    <div
+      className="bg-white shadow-xl rounded border mx-auto"
+      style={{ width: "680px", minHeight: "880px", fontFamily: "serif", fontSize: "13px", position: "relative" }}
+    >
+      {/* Status ribbon */}
+      {bill.status === "Draft" && (
+        <div style={{ position: "absolute", top: 24, left: -18, zIndex: 10, transform: "rotate(-45deg)" }}>
+          <div className="bg-gray-600/80 text-white text-xs font-bold px-8 py-1 shadow">Draft</div>
+        </div>
+      )}
+      {bill.status === "Void" && (
+        <div style={{ position: "absolute", top: 24, left: -18, zIndex: 10, transform: "rotate(-45deg)" }}>
+          <div className="bg-red-600/80 text-white text-xs font-bold px-8 py-1 shadow">Void</div>
+        </div>
+      )}
+
+      <div className="p-10 overflow-hidden">
+        {/* Header */}
+        <div className="flex justify-between items-start mb-8">
+          <div>
+            <div className="font-bold text-base mb-1">{orgName}</div>
+            <div className="text-xs text-gray-600 leading-relaxed">
+              {orgAddress && <div>{orgAddress}</div>}
+              <div>India</div>
+              {orgPhone && <div>{orgPhone}</div>}
+              {orgEmail && <div className="text-blue-600">{orgEmail}</div>}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-bold tracking-wide text-gray-800 uppercase">Bill</div>
+            <div className="text-sm text-gray-600 mt-1"># {bill.billNumber}</div>
+          </div>
+        </div>
+
+        {/* Vendor + Dates */}
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          <div>
+            <div className="text-xs font-medium text-gray-500 mb-1">Vendor Address</div>
+            <div className="text-blue-600 text-sm font-medium">{vendorName}</div>
+          </div>
+          <div className="space-y-1 text-sm text-right">
+            <div className="flex justify-end gap-8">
+              <span className="text-gray-500">Date</span>
+              <span className="font-medium">{fmtDate(bill.billDate)}</span>
+            </div>
+            {bill.dueDate && (
+              <div className="flex justify-end gap-8">
+                <span className="text-gray-500">Due Date</span>
+                <span className="font-medium">{fmtDate(bill.dueDate)}</span>
+              </div>
+            )}
+            {bill.referenceNumber && (
+              <div className="flex justify-end gap-8">
+                <span className="text-gray-500">Reference#</span>
+                <span className="font-medium">{bill.referenceNumber}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Items table */}
+        <table className="w-full mb-6" style={{ borderCollapse: "collapse" }}>
+          <thead style={{ background: "#3a3a3a", color: "white" }}>
+            <tr>
+              <th className="text-left px-3 py-2 text-xs font-medium w-8">#</th>
+              <th className="text-left px-3 py-2 text-xs font-medium">Item &amp; Description</th>
+              <th className="text-right px-3 py-2 text-xs font-medium w-20">Qty</th>
+              <th className="text-right px-3 py-2 text-xs font-medium w-24">Rate</th>
+              <th className="text-right px-3 py-2 text-xs font-medium w-24">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineItems.map((li, idx) => {
+              const itemName = typeof li.itemId === "object" && li.itemId ? (li.itemId as any).name : li.name;
+              return (
+                <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                  <td className="px-3 py-2.5 text-xs align-top">{idx + 1}</td>
+                  <td className="px-3 py-2.5 text-xs align-top">
+                    <div className="font-medium text-gray-800">{itemName}</div>
+                    {li.description && <div className="text-gray-500 mt-0.5">{li.description}</div>}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-right align-top">{li.quantity?.toFixed(2)}</td>
+                  <td className="px-3 py-2.5 text-xs text-right align-top">{li.rate?.toFixed(2)}</td>
+                  <td className="px-3 py-2.5 text-xs text-right align-top">{li.amount?.toFixed(2)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* Totals */}
+        <div className="flex justify-end">
+          <div className="w-56 space-y-1.5">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Sub Total</span>
+              <span>{(bill.subTotal || 0).toFixed(2)}</span>
+            </div>
+            {(bill.discountAmount || 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Discount</span>
+                <span>-{(bill.discountAmount || 0).toFixed(2)}</span>
+              </div>
+            )}
+            {(bill.taxAmount || 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">{bill.taxType?.toUpperCase() || "TAX"}</span>
+                <span>{(bill.taxAmount || 0).toFixed(2)}</span>
+              </div>
+            )}
+            {(bill.adjustmentAmount || 0) !== 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">{bill.adjustmentLabel || "Adjustment"}</span>
+                <span>{(bill.adjustmentAmount || 0).toFixed(2)}</span>
+              </div>
+            )}
+            <div className="border-t pt-1.5 flex justify-between text-sm font-bold">
+              <span>Total</span>
+              <span>₹{(bill.total || 0).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Balance Due</span>
+              <span className="font-bold text-gray-900">₹{(bill.balanceDue !== undefined ? bill.balanceDue : bill.total || 0).toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Notes / T&C */}
+        {bill.notes && (
+          <div className="mt-8 text-xs text-gray-600">
+            <div className="font-medium mb-1">Notes</div>
+            <div>{bill.notes}</div>
+          </div>
+        )}
+        {bill.termsAndConditions && (
+          <div className="mt-6 text-xs text-gray-600">
+            <div className="font-medium mb-1">Terms &amp; Conditions</div>
+            <div>{bill.termsAndConditions}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Bill Detail Panel ─────────────────────────────────────────────────────────
+function BillDetailPanel({
+  bill, onClose, onStatusChange, onDelete, onEdit, onPrint, onDownloadPdf,
+  orgName, orgAddress, orgPhone, orgEmail, orgCurrency, onRecordPayment,
+}: {
+  bill: Bill;
+  onClose: () => void;
+  onStatusChange: (id: string, status: BillStatus) => void;
+  onDelete: (o: Bill) => void;
+  onEdit: (id: string) => void;
+  onPrint: (id: string) => void;
+  onDownloadPdf: (id: string) => Promise<void>;
+  onRecordPayment: (id: string) => void;
+  orgName: string;
+  orgAddress: string;
+  orgPhone: string;
+  orgEmail: string;
+  orgCurrency: string;
+}) {
+  const [showPdf, setShowPdf] = useState(true);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showPrintMenu, setShowPrintMenu] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showExpectedPaymentDialog, setShowExpectedPaymentDialog] = useState(false);
+
+  // Comments
+  const [showComments, setShowComments] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [comments, setComments] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (bill.comments) {
+      setComments(
+        [...bill.comments].reverse().map((c, idx) => ({
+          id: `c-${idx}`,
+          author: c.author,
+          text: c.text,
+          time: new Date(c.time).toLocaleString("en-IN", {
+            day: "2-digit", month: "2-digit", year: "numeric",
+            hour: "2-digit", minute: "2-digit", hour12: true,
+          }),
+          isSystem: c.isSystem,
+        }))
+      );
+    } else {
+      setComments([]);
+    }
+  }, [bill.comments]);
+
+  // Attachments
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [attachments, setAttachments] = useState(
+    (bill.attachments || []).map((url) => ({
+      url,
+      publicId: "",
+      name: decodeURIComponent(url.split("/").pop() || "File"),
+    }))
+  );
+  const [uploading, setUploading] = useState(false);
+  const attachFileRef = useRef<HTMLInputElement>(null);
+
+  async function handleMarkAsOpen() {
+    setUpdatingStatus(true);
+    try {
+      await billApi.update(bill._id, { status: "Open" });
+      onStatusChange(bill._id, "Open");
+      toast.success("Marked as Open");
+    } catch { toast.error("Failed to update status"); } finally { setUpdatingStatus(false); }
+  }
+
+  async function handleMarkAsVoid() {
+    setUpdatingStatus(true);
+    try {
+      await billApi.update(bill._id, { status: "Void" });
+      onStatusChange(bill._id, "Void");
+      toast.success("Bill voided");
+    } catch { toast.error("Failed to void bill"); } finally { setUpdatingStatus(false); }
+  }
+
+  async function handleClone() {
+    setUpdatingStatus(true);
+    try {
+      toast.info("Clone functionality coming soon");
+    } catch { toast.error("Failed to clone"); } finally { setUpdatingStatus(false); }
+  }
+
+  async function handleSaveExpectedPaymentDate(date: string, notes: string) {
+    setUpdatingStatus(true);
+    try {
+      await billApi.update(bill._id, { dueDate: date });
+      const dateStr = new Date(date).toLocaleDateString("en-GB");
+      toast.success(`Payment expected on ${dateStr}`);
+      setShowExpectedPaymentDialog(false);
+    } catch { toast.error("Failed to update"); } finally { setUpdatingStatus(false); }
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Top action bar */}
+      <div className="flex items-center px-2 py-0.5 border-b bg-white shrink-0 flex-wrap min-h-[48px]">
+        <div className="flex items-center pr-2">
+          <button
+            type="button"
+            onClick={() => onEdit(bill._id)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </button>
+        </div>
+
+        <div className="w-px h-6 bg-gray-200" />
+
+        <div className="flex items-center px-2">
+          <DropdownMenu open={showPrintMenu} onOpenChange={setShowPrintMenu}>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium">
+                <Printer className="h-3.5 w-3.5" /> PDF/Print <ChevronDown className="h-3 w-3 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52 shadow-xl border-gray-200 mt-1">
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => onPrint(bill._id)}>
+                <Printer className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Print
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => onDownloadPdf(bill._id)}>
+                <FileText className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Download PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div className="w-px h-6 bg-gray-200" />
+
+        <div className="flex items-center px-2">
+          {bill.status === "Draft" ? (
+            <button
+              type="button"
+              disabled={updatingStatus}
+              onClick={handleMarkAsOpen}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium hover:bg-muted/30 rounded"
+            >
+              <CheckCircle className={cn("h-3.5 w-3.5", updatingStatus ? "animate-spin" : "")} />
+              Mark as Open
+            </button>
+          ) : bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid" ? (
+            <button
+              type="button"
+              onClick={() => onRecordPayment(bill._id)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-50 transition-colors rounded"
+            >
+              <CreditCard className="h-3.5 w-3.5" /> Record Payment
+            </button>
+          ) : (
+            <div className={cn("px-3 py-1.5 text-xs font-bold uppercase tracking-wider mx-1 rounded",
+              bill.status === "Paid" ? "text-green-600 bg-green-50" : "text-slate-500 bg-slate-50"
+            )}>
+              {bill.status}
+            </div>
+          )}
+        </div>
+
+        <div className="w-px h-6 bg-gray-200" />
+
+        <div className="flex items-center px-2">
+          <DropdownMenu open={showMoreMenu} onOpenChange={setShowMoreMenu}>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="flex items-center gap-1 text-xs px-2.5 py-1.5 text-gray-600 hover:text-foreground transition-colors">
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 shadow-xl border-gray-200 mt-1">
+              {bill.status !== "Void" && (
+                <DropdownMenuItem
+                  className="text-xs py-2.5 cursor-pointer text-blue-600 font-semibold bg-blue-50/50 hover:bg-blue-50 focus:bg-blue-50 focus:text-blue-600"
+                  onClick={handleMarkAsVoid}
+                >
+                  <X className="h-3.5 w-3.5 mr-2.5" /> Void
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                className="text-xs py-2.5 cursor-pointer"
+                onClick={() => { setShowMoreMenu(false); setShowExpectedPaymentDialog(true); }}
+              >
+                <CreditCard className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Expected Payment Date
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
+                <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => toast.info("Vendor credits coming soon")}>
+                <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Create Vendor Credits
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => toast.info("Journal view coming soon")}>
+                <FileText className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> View Journal
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-xs py-2.5 cursor-pointer text-destructive focus:text-destructive"
+                onClick={() => { setShowMoreMenu(false); onDelete(bill); }}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-2.5" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Right icons */}
+        <div className="ml-auto flex items-center relative gap-1">
+          <button
+            type="button"
+            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showAttachments ? "text-primary bg-muted/30" : "text-muted-foreground")}
+            title="Attachments"
+            onClick={() => { setShowAttachments((v) => !v); setShowComments(false); }}
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showComments ? "text-primary bg-muted/30" : "text-muted-foreground")}
+            title="Comments & History"
+            onClick={() => { setShowComments((v) => !v); setShowAttachments(false); }}
+          >
+            <MessageSquare className="h-4 w-4" />
+            {comments.length > 0 && (
+              <span className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-primary text-[9px] text-white flex items-center justify-center font-bold">
+                {comments.length}
+              </span>
+            )}
+          </button>
+
+          <div className="h-4 w-px bg-border mx-1" />
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 transition-colors text-muted-foreground hover:text-foreground rounded"
+            title="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          {/* Attachments Popover */}
+          {showAttachments && (
+            <div className="absolute top-full right-11 mt-2 w-[340px] bg-white rounded-md shadow-xl border z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2">
+              <div className="absolute -top-2 right-4 w-4 h-4 bg-white border-l border-t transform rotate-45 z-[-1]" />
+              <div className="px-4 py-3 border-b flex items-center justify-between bg-white z-10 relative">
+                <h3 className="text-sm font-semibold">Attachments</h3>
+                <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setShowAttachments(false)}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 max-h-[300px] bg-white relative z-10">
+                {attachments.length === 0 && (
+                  <p className="text-xs text-muted-foreground py-6 text-center border-b border-dashed">No Files Attached</p>
+                )}
+                {attachments.map((a, idx) => {
+                  const isImg = ["jpg", "jpeg", "png", "gif", "webp"].some((e) => a.url.toLowerCase().includes(`.${e}`));
+                  return (
+                    <div key={idx} className="flex items-center gap-2 border rounded-md px-3 py-2 text-xs group">
+                      {isImg
+                        ? <img src={a.url} className="h-8 w-8 object-cover rounded shrink-0" alt={a.name} />
+                        : <span className="text-red-500 text-base shrink-0">📄</span>
+                      }
+                      <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate flex-1">
+                        {a.name}
+                      </a>
+                      {a.publicId && (
+                        <button
+                          type="button"
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0"
+                          onClick={async () => {
+                            try {
+                              await uploadApi.remove(a.publicId);
+                              setAttachments((prev) => prev.filter((_, i) => i !== idx));
+                            } catch { toast.error("Failed to remove file"); }
+                          }}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="pt-2">
+                  <Button
+                    variant="outline" size="sm"
+                    className="gap-2 text-primary border-primary/20 text-xs w-full py-4 bg-blue-50/30 hover:bg-blue-50/50 border-dashed"
+                    disabled={uploading || attachments.length >= 10}
+                    onClick={() => attachFileRef.current?.click()}
+                  >
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {uploading ? "Uploading..." : "Upload your Files"} <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                  <input
+                    ref={attachFileRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (!files.length) return;
+                      setUploading(true);
+                      try {
+                        const results = await Promise.all(
+                          files.slice(0, 10 - attachments.length).map((f) => uploadApi.upload(f, "bills"))
+                        );
+                        setAttachments((prev) => [
+                          ...prev,
+                          ...results.map((r) => ({ url: r.url, publicId: r.publicId, name: decodeURIComponent(r.url.split("/").pop() || "File") })),
+                        ]);
+                        toast.success("Files uploaded");
+                      } catch { toast.error("Upload failed"); } finally { setUploading(false); e.target.value = ""; }
+                    }}
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-2 text-center">You can upload a maximum of 10 files, 10MB each</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Comments & History Sheet */}
+        <Sheet open={showComments} onOpenChange={setShowComments}>
+          <SheetContent side="right" className="p-0 sm:max-w-[400px] flex flex-col gap-0 border-l shadow-xl">
+            <SheetHeader className="px-5 py-4 border-b">
+              <SheetTitle className="text-base font-semibold">Comments &amp; History</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 flex flex-col overflow-hidden bg-white">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <RichTextEditor
+                  value={commentText}
+                  onChange={setCommentText}
+                  onImageUpload={(file) => uploadImage(file, "comments")}
+                  placeholder="Type your comment here..."
+                  minHeight="100px"
+                  className="border-none"
+                  toolbarClassName="bg-gray-50/80 border-b"
+                />
+                <div className="px-3 py-2.5 bg-gray-50/50 flex justify-start border-t">
+                  <button
+                    disabled={!commentText.replace(/<[^>]*>/g, "").trim() || updatingStatus}
+                    className="h-8 px-5 py-0 text-xs font-semibold border border-primary/20 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all shadow-sm"
+                    onClick={async () => {
+                      const txt = commentText.trim();
+                      if (!txt || !txt.replace(/<[^>]*>/g, "").trim()) return;
+                      setUpdatingStatus(true);
+                      try {
+                        const newComment = {
+                          id: Date.now().toString(),
+                          author: orgEmail || "me",
+                          text: txt,
+                          time: new Date().toLocaleDateString("en-GB") + " " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+                          isSystem: false,
+                        };
+                        setComments((prev) => [newComment, ...prev]);
+                        setCommentText("");
+                        toast.success("Comment added");
+                      } catch { toast.error("Failed to add comment"); } finally { setUpdatingStatus(false); }
+                    }}
+                  >
+                    Add Comment
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-6 scrollbar-thin">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/80">ALL COMMENTS</h4>
+                  <span className="bg-primary/10 text-primary rounded-full text-[11px] px-2.5 py-0.5 font-bold">{comments.length}</span>
+                </div>
+
+                <div className="space-y-6 relative pb-10">
+                  <div className="absolute left-[13px] top-2 bottom-4 w-px bg-border/60" />
+                  {comments.map((c, idx) => {
+                    const isCreation = c.text.toLowerCase().includes("created") || c.text.toLowerCase().includes("cloned");
+                    const isStatus = c.text.toLowerCase().includes("status changed") || c.text.toLowerCase().includes("marked as");
+
+                    let Icon = MessageSquare;
+                    let iconBg = "bg-blue-50 text-blue-600 border-blue-200";
+                    if (c.isSystem) {
+                      if (isCreation) { Icon = FileText; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
+                      else if (isStatus) { Icon = CheckCircle; iconBg = "bg-green-50 text-green-600 border-green-200"; }
+                      else { Icon = History; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
+                    }
+
+                    return (
+                      <div key={c.id} className="relative pl-10 group">
+                        <div className="absolute left-0 top-0.5 z-10">
+                          <div className={cn("h-7 w-7 rounded flex items-center justify-center border transition-transform group-hover:scale-110 shadow-sm", iconBg)}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1 pb-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-gray-800">{c.author.split("@")[0]}</span>
+                            <span className="text-[11px] text-muted-foreground font-medium">• {c.time}</span>
+                          </div>
+                          <div className={cn("text-[13px] leading-relaxed p-3.5 rounded-lg border relative group/msg shadow-sm whitespace-pre-wrap",
+                            c.isSystem ? "bg-gray-50/50 border-gray-100 text-gray-600 italic" : "bg-white border-gray-100 text-gray-800"
+                          )}>
+                            <div dangerouslySetInnerHTML={{ __html: c.text }} className="rich-text-content" />
+                            {!c.isSystem && (
+                              <button
+                                className="absolute right-3 top-3 opacity-0 group-hover/msg:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                                onClick={() => { setComments((prev) => prev.filter((p) => p.id !== c.id)); toast.success("Comment removed"); }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {comments.length === 0 && (
+                    <div className="text-center py-10">
+                      <MessageSquare className="h-8 w-8 text-border mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">No comments yet</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* What's next banners */}
+      {bill.status === "Draft" && (
+        <div className="flex items-center gap-3 px-5 py-3 border-b bg-white shrink-0">
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-sm text-muted-foreground">
+            <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Mark this bill as open to start tracking payments.
+          </span>
+          <Button size="sm" variant="outline" className="shrink-0 ml-auto" onClick={handleMarkAsOpen} disabled={updatingStatus}>
+            Mark as Open
+          </Button>
+        </div>
+      )}
+      {(bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid") && (
+        <div className="flex items-center gap-3 px-5 py-3 border-b bg-white shrink-0">
+          <CreditCard className="h-4 w-4 text-blue-600 shrink-0" />
+          <span className="text-sm text-muted-foreground">
+            <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Record a payment for this bill.
+          </span>
+          <Button size="sm" className="ml-auto shrink-0 bg-blue-600 hover:bg-blue-700" onClick={() => onRecordPayment(bill._id)}>
+            Record Payment
+          </Button>
+        </div>
+      )}
+
+      {/* Expected Payment Dialog */}
+      <ExpectedPaymentDialog
+        open={showExpectedPaymentDialog}
+        onClose={() => setShowExpectedPaymentDialog(false)}
+        onSave={handleSaveExpectedPaymentDate}
+        initialDate={bill.dueDate || ""}
+      />
+
+      {/* PDF toggle + content */}
+      <div className="flex flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-y-auto bg-gray-50">
+          <div className="flex items-center justify-end px-6 py-3">
+            <span className="text-sm text-muted-foreground mr-2">Show PDF View</span>
+            <button
+              type="button"
+              className={cn(
+                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                showPdf ? "bg-primary" : "bg-muted-foreground/30"
+              )}
+              onClick={() => setShowPdf((v) => !v)}
+            >
+              <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform", showPdf ? "translate-x-6" : "translate-x-1")} />
+            </button>
+          </div>
+
+          {showPdf ? (
+            <div className="px-4 pb-8 flex justify-center w-full" id="bill-pdf-view">
+              <BillPdfView bill={bill} orgName={orgName} orgAddress={orgAddress} orgPhone={orgPhone} orgEmail={orgEmail} />
+            </div>
+          ) : (
+            <div className="px-6 py-4 space-y-4">
+              <div className="bg-white rounded border p-5 text-sm space-y-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div><span className="text-muted-foreground">Bill#</span> <span className="font-medium ml-2">{bill.billNumber}</span></div>
+                  <div><span className="text-muted-foreground">Date</span> <span className="ml-2">{new Date(bill.billDate).toLocaleDateString("en-IN")}</span></div>
+                  <div><span className="text-muted-foreground">Vendor</span> <span className="ml-2">{getName(bill.vendorId)}</span></div>
+                  <div><span className="text-muted-foreground">Status</span> <span className={cn("ml-2 font-medium", statusColor[bill.status])}>{bill.status}</span></div>
+                  <div><span className="text-muted-foreground">Total</span> <span className="ml-2 font-medium">₹{fmtCur(bill.total || 0)}</span></div>
+                  <div><span className="text-muted-foreground">Balance Due</span> <span className="ml-2 font-medium">₹{fmtCur(bill.balanceDue ?? bill.total ?? 0)}</span></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="text-center text-xs text-muted-foreground pb-6">
+            PDF Template : &apos;Standard Template&apos; <button type="button" className="text-primary hover:underline ml-1">Change</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function BillsPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
@@ -73,10 +804,7 @@ export default function BillsPage() {
   const fetchBills = useCallback(async () => {
     setFetching(true);
     try {
-      const res = await billApi.list({ 
-        page: 1, 
-        limit: 100,
-      });
+      const res = await billApi.list({ page: 1, limit: 100 });
       setBills(res.data ?? []);
     } catch { /* noop */ } finally { setFetching(false); }
   }, []);
@@ -89,8 +817,17 @@ export default function BillsPage() {
     if (filterStatus && b.status !== filterStatus) return false;
     if (!search) return true;
     const s = search.toLowerCase();
-    return [b.billNumber, b.referenceNumber || "", getName(b.vendorId)].some((v) => v.toLowerCase().includes(s));
+    return [(b.billNumber || ""), (b.referenceNumber || ""), getName(b.vendorId)].some((v) => v.toLowerCase().includes(s));
   });
+
+  const selectedBill = bills.find((b) => b._id === selectedId) ?? null;
+
+  const org = activeOrganization as any;
+  const orgName = org?.name || "";
+  const orgAddress = org?.address?.city || org?.billingAddress?.city || "";
+  const orgPhone = org?.phone || "";
+  const orgEmail = (firebaseUser as any)?.email || "";
+  const orgCurrency = org?.baseCurrency || "INR";
 
   async function handleDelete() {
     if (!toDelete) return;
@@ -101,6 +838,43 @@ export default function BillsPage() {
       setBills((prev) => prev.filter((b) => b._id !== toDelete._id));
       if (selectedId === toDelete._id) setSelectedId(null);
     } catch { toast.error("Failed to delete"); } finally { setDeleting(false); setToDelete(null); }
+  }
+
+  function handleStatusChange(id: string, status: BillStatus) {
+    setBills((prev) => prev.map((b) => b._id === id ? { ...b, status } : b));
+  }
+
+  function handlePrint(id: string) {
+    const printContents = document.getElementById("bill-pdf-view")?.innerHTML;
+    if (!printContents) { toast.error("Please show the PDF View before printing."); return; }
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Bill - ${selectedBill?.billNumber || id}</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+              @page { size: A4; margin: 0; }
+              body { margin: 0; padding: 40px; box-sizing: border-box; background: white !important; }
+              #print-root { width: 100%; max-width: 800px; margin: 0 auto; }
+              table { width: 100%; border-collapse: collapse; }
+              @media print { body { padding: 40px; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
+            </style>
+          </head>
+          <body>
+            <div id="print-root">${printContents}</div>
+            <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 800); };</script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  }
+
+  async function handleDownloadPdf(id: string) {
+    toast.info("PDF download coming soon");
   }
 
   return (
@@ -118,15 +892,19 @@ export default function BillsPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-52">
                   <DropdownMenuItem onClick={() => { setFilterStatus(""); setShowFilterDD(false); }}>All Bills</DropdownMenuItem>
-                  {["Draft", "Open", "Overdue", "Partially Paid", "Paid", "Void"].map(s => (
-                    <DropdownMenuItem key={s} onClick={() => { setFilterStatus(s as BillStatus); setShowFilterDD(false); }}>{s}</DropdownMenuItem>
+                  {(["Draft", "Open", "Overdue", "Partially Paid", "Paid", "Void"] as BillStatus[]).map((s) => (
+                    <DropdownMenuItem key={s} onClick={() => { setFilterStatus(s); setShowFilterDD(false); }}>{s}</DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
             actions={(
               <div className="flex items-center gap-1.5">
-                <Button size="sm" className="h-8 gap-1 text-sm bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/purchases/bills/new")}>
+                <Button
+                  size="sm"
+                  className="h-8 gap-1 text-sm bg-blue-600 hover:bg-blue-700"
+                  onClick={() => router.push("/purchases/bills/new")}
+                >
                   <Plus className="h-3.5 w-3.5" /> New
                 </Button>
                 <DropdownMenu>
@@ -143,19 +921,51 @@ export default function BillsPage() {
                         <ChevronRight className="h-4 w-4" />
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent className="w-[180px] p-0">
-                        {["Created Time", "Date", "Bill#", "Vendor Name", "Amount", "Due Date"].map((s) => (
+                        <DropdownMenuItem className="px-3 py-2 text-[13px] bg-blue-600 text-white flex justify-between">
+                          Created Time <ChevronDown className="h-4 w-4 rotate-180" />
+                        </DropdownMenuItem>
+                        {["Date", "Bill#", "Vendor Name", "Amount", "Due Date", "Last Modified Time"].map((s) => (
                           <DropdownMenuItem key={s} className="px-3 py-2 text-[13px] hover:bg-gray-100">{s}</DropdownMenuItem>
                         ))}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
+
                     <DropdownMenuSeparator className="m-0" />
+
                     <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
                       <Download className="h-4 w-4 text-blue-600" />
                       <span>Import Bills</span>
                     </DropdownMenuItem>
+
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
+                        <Upload className="h-4 w-4 text-blue-600" />
+                        <span className="flex-1">Export</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-[180px]">
+                        <DropdownMenuItem className="px-3 py-2 text-[13px]">Export as CSV</DropdownMenuItem>
+                        <DropdownMenuItem className="px-3 py-2 text-[13px]">Export as PDF</DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+
+                    <DropdownMenuSeparator className="m-0" />
+
                     <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
-                      <Upload className="h-4 w-4 text-blue-600" />
-                      <span>Export Bills</span>
+                      <Settings className="h-4 w-4 text-blue-600" />
+                      <span>Preferences</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
+                      <Columns className="h-4 w-4 text-blue-600" />
+                      <span>Manage Custom Fields</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator className="m-0" />
+
+                    <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50" onClick={fetchBills}>
+                      <RefreshCw className="h-4 w-4 text-blue-600" />
+                      <span>Refresh List</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -163,63 +973,166 @@ export default function BillsPage() {
             )}
           />
 
+          {/* Body */}
           <div className="flex flex-1 overflow-hidden">
-            {/* List side */}
-            <div className={cn("flex-1 flex flex-col bg-white border-r", selectedId && "hidden lg:flex w-[400px] max-w-[400px]")}>
-              <div className="p-4 border-b space-y-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search Bills"
-                    className="pl-9 h-9"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
+            {/* Left list panel */}
+            <div className={cn(
+              "flex flex-col border-r bg-white overflow-hidden transition-all duration-200",
+              selectedBill ? "w-[320px] shrink-0" : "flex-1"
+            )}>
+              {/* List header / search */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
+                {!selectedBill && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-1">
+                    <input type="checkbox" className="rounded border" />
+                    <span className="ml-1 font-medium uppercase tracking-wide">DATE</span>
+                    <span className="ml-auto font-medium uppercase tracking-wide">BILL#</span>
+                  </div>
+                )}
+                {!selectedBill && (
+                  <div className="flex items-center gap-1 ml-2">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input className="h-7 pl-7 text-xs w-40" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+                {selectedBill && (
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input className="h-7 pl-7 text-xs w-full" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                  </div>
+                )}
               </div>
 
+              {/* Full-width table header (only when no detail panel open) */}
+              {!selectedBill && (
+                <div
+                  className="grid text-[11px] uppercase tracking-wide text-muted-foreground font-medium border-b bg-muted/10 shrink-0"
+                  style={{ gridTemplateColumns: "36px 90px 150px 130px 1fr 120px 100px 110px 36px" }}
+                >
+                  <div className="px-3 py-2 flex items-center"><input type="checkbox" className="rounded border" /></div>
+                  <div className="px-2 py-2">Date</div>
+                  <div className="px-2 py-2">Bill#</div>
+                  <div className="px-2 py-2">Reference#</div>
+                  <div className="px-2 py-2">Vendor Name</div>
+                  <div className="px-2 py-2">Status</div>
+                  <div className="px-2 py-2 text-right">Amount</div>
+                  <div className="px-2 py-2 text-right">Balance Due</div>
+                  <div className="px-2 py-2" />
+                </div>
+              )}
+
+              {/* List content */}
               <div className="flex-1 overflow-y-auto">
                 {fetching ? (
-                  <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm">Fetching bills...</p>
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filtered.length === 0 && !search && !filterStatus ? (
+                  <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+                    <h2 className="text-xl font-semibold mb-2">Start Managing Your Bills!</h2>
+                    <p className="text-muted-foreground text-sm mb-6">Record bills from vendors and track payments easily.</p>
+                    <Button className="px-6 py-2 text-sm font-semibold uppercase tracking-wide bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/purchases/bills/new")}>
+                      Create New Bill
+                    </Button>
+                    <div className="mt-10 w-full max-w-2xl">
+                      <p className="text-sm font-medium text-muted-foreground mb-5">Life cycle of a Bill</p>
+                      <div className="flex items-center justify-center flex-wrap gap-0">
+                        {[
+                          { icon: "🧾", label: "CREATE BILL" },
+                          { label: "MARK AS OPEN", dash: true },
+                          { icon: "💳", label: "RECORD PAYMENT" },
+                          { label: "MARK AS PAID", dash: true },
+                          { icon: "✅", label: "BILL CLOSED" },
+                        ].map((step, i) =>
+                          step.dash ? (
+                            <div key={i} className="flex items-center">
+                              <div className="w-6 border-t border-dashed border-gray-400" />
+                              <div className="bg-white border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-500 max-w-[80px] text-center leading-tight">{step.label}</div>
+                              <div className="w-6 border-t border-dashed border-gray-400" />
+                            </div>
+                          ) : (
+                            <div key={i} className="flex flex-col items-center bg-white border border-gray-300 rounded-md px-3 py-2.5 text-xs font-medium text-gray-600 min-w-[100px]">
+                              <span className="text-lg mb-1">{step.icon}</span>
+                              <span className="text-center leading-tight">{step.label}</span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ) : filtered.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-64 gap-4 px-6 text-center">
-                    <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center">
-                      <FileText className="h-8 w-8 text-gray-300" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-semibold text-gray-900">No bills found</h3>
-                      <p className="text-sm text-gray-500 mt-1">Try changing your filters or create a new bill.</p>
-                    </div>
-                    <Button onClick={() => router.push("/purchases/bills/new")} className="bg-blue-600">Create New Bill</Button>
+                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                    <FileText className="h-8 w-8 text-muted-foreground/40" />
+                    <p className="text-sm">No bills match your filter.</p>
                   </div>
-                ) : (
-                  <div className="divide-y overflow-hidden">
+                ) : selectedBill ? (
+                  /* Compact list when detail panel is open */
+                  <div className="divide-y">
                     {filtered.map((b) => (
-                      <div
+                      <button
                         key={b._id}
+                        type="button"
                         className={cn(
-                          "p-4 cursor-pointer hover:bg-blue-50/50 transition-colors relative group",
-                          selectedId === b._id && "bg-blue-50 shadow-inner"
+                          "w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors",
+                          selectedId === b._id && "bg-blue-50 border-l-2 border-l-primary"
                         )}
                         onClick={() => setSelectedId(b._id)}
                       >
-                        {selectedId === b._id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600" />}
-                        <div className="flex items-start justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-[13px] text-primary">{getName(b.vendorId)}</span>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-sm text-foreground truncate">{getName(b.vendorId) || "—"}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {b.billNumber} • {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                            </div>
+                            <div className={cn("text-xs font-medium mt-0.5 uppercase tracking-wide", statusColor[b.status])}>{b.status}</div>
                           </div>
-                          <span className="text-sm font-bold text-gray-900">₹{fmtCur(b.total)}</span>
+                          <div className="text-sm font-semibold shrink-0">₹{fmtCur(b.total)}</div>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                            <span>{b.billNumber}</span>
-                            <span>•</span>
-                            <span>{new Date(b.billDate).toLocaleDateString("en-IN")}</span>
-                          </div>
-                          <span className={cn("text-[11px] font-bold uppercase tracking-wider", statusColor[b.status])}>{b.status}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  /* Full-width table rows */
+                  <div>
+                    {filtered.map((b) => (
+                      <div
+                        key={b._id}
+                        className="grid items-center border-b hover:bg-muted/20 cursor-pointer transition-colors text-sm group"
+                        style={{ gridTemplateColumns: "36px 90px 150px 130px 1fr 120px 100px 110px 36px" }}
+                        onClick={() => setSelectedId(b._id)}
+                      >
+                        <div className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" className="rounded border" />
+                        </div>
+                        <div className="px-2 py-2.5 text-muted-foreground text-xs">
+                          {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                        </div>
+                        <div className="px-2 py-2.5 text-primary font-medium">{b.billNumber}</div>
+                        <div className="px-2 py-2.5 text-muted-foreground">{b.referenceNumber || ""}</div>
+                        <div className="px-2 py-2.5">{getName(b.vendorId)}</div>
+                        <div className={cn("px-2 py-2.5 text-xs font-medium uppercase tracking-wide", statusColor[b.status])}>{b.status}</div>
+                        <div className="px-2 py-2.5 text-right font-medium">₹{fmtCur(b.total)}</div>
+                        <div className="px-2 py-2.5 text-right text-muted-foreground">₹{fmtCur(b.balanceDue ?? b.total ?? 0)}</div>
+                        <div className="px-2 py-2.5 opacity-0 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-6 w-6">
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => router.push(`/purchases/bills/${b._id}/edit`)}>Edit</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setToDelete(b)}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     ))}
@@ -228,87 +1141,46 @@ export default function BillsPage() {
               </div>
             </div>
 
-            {/* Detail side */}
-            <div className={cn("flex-1 bg-white overflow-hidden flex flex-col", !selectedId && "hidden lg:flex items-center justify-center")}>
-              {selectedId ? (
-                <div className="flex flex-col h-full">
-                  <div className="flex items-center justify-between p-4 border-b">
-                    <h2 className="text-lg font-bold">Bill Details</h2>
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedId(null)}><X className="h-4 w-4" /></Button>
-                  </div>
-                  <div className="p-8 flex-1 overflow-y-auto space-y-6">
-                    <div className="bg-gray-50 rounded-lg p-6 space-y-4">
-                       <div className="flex justify-between items-start">
-                          <div>
-                             <p className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Vendor</p>
-                             <p className="text-xl font-bold mt-1">{getName(bills.find(b => b._id === selectedId)?.vendorId)}</p>
-                          </div>
-                          <div className="text-right">
-                             <p className="text-sm text-muted-foreground">Bill Amount</p>
-                             <p className="text-3xl font-bold text-blue-600">₹{fmtCur(bills.find(b => b._id === selectedId)?.total || 0)}</p>
-                          </div>
-                       </div>
-                       <div className="grid grid-cols-2 gap-8 pt-4 border-t">
-                          <div>
-                             <p className="text-xs text-muted-foreground font-bold uppercase">Bill#</p>
-                             <p className="text-sm font-medium">{bills.find(b => b._id === selectedId)?.billNumber}</p>
-                          </div>
-                          <div>
-                             <p className="text-xs text-muted-foreground font-bold uppercase">Bill Date</p>
-                             <p className="text-sm font-medium">{new Date(bills.find(b => b._id === selectedId)?.billDate || "").toLocaleDateString("en-IN")}</p>
-                          </div>
-                          <div>
-                             <p className="text-xs text-muted-foreground font-bold uppercase">Status</p>
-                             <p className={cn("text-sm font-bold", statusColor[bills.find(b => b._id === selectedId)?.status || "Draft"])}>{bills.find(b => b._id === selectedId)?.status}</p>
-                          </div>
-                          <div>
-                             <p className="text-xs text-muted-foreground font-bold uppercase">Due Date</p>
-                             <p className="text-sm font-medium">{bills.find(b => b._id === selectedId)?.dueDate ? new Date(bills.find(b => b._id === selectedId)!.dueDate!).toLocaleDateString("en-IN") : "No due date"}</p>
-                          </div>
-                       </div>
-                    </div>
-
-                    <div className="space-y-4">
-                       <h3 className="font-bold border-b pb-2">Actions</h3>
-                       <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant="outline" className="gap-2" onClick={() => router.push(`/purchases/bills/${selectedId}/edit`)}>
-                             <Pencil className="h-3.5 w-3.5" /> Edit
-                          </Button>
-                          <Button size="sm" variant="outline" className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/5" onClick={() => {
-                             const bill = bills.find(b => b._id === selectedId);
-                             if (bill) setToDelete(bill);
-                          }}>
-                             <Trash2 className="h-3.5 w-3.5" /> Delete
-                          </Button>
-                       </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center space-y-4 max-w-sm px-8">
-                  <div className="w-24 h-24 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-6">
-                    <FileText className="h-12 w-12 text-blue-200" />
-                  </div>
-                  <h3 className="text-xl font-bold">Select a bill to view details</h3>
-                  <p className="text-muted-foreground">Choose a bill from the left list to see its details, line items, and manage its lifecycle.</p>
-                </div>
-              )}
-            </div>
+            {/* Right detail panel */}
+            {selectedBill && (
+              <div className="flex-1 overflow-hidden">
+                <BillDetailPanel
+                  bill={selectedBill}
+                  onClose={() => setSelectedId(null)}
+                  onStatusChange={handleStatusChange}
+                  onDelete={(o) => { setToDelete(o); setSelectedId(null); }}
+                  onEdit={(id) => router.push(`/purchases/bills/${id}/edit`)}
+                  onPrint={handlePrint}
+                  onDownloadPdf={handleDownloadPdf}
+                  onRecordPayment={(id) => toast.info("Record Payment for " + id + " coming soon")}
+                  orgName={orgName}
+                  orgAddress={orgAddress}
+                  orgPhone={orgPhone}
+                  orgEmail={orgEmail}
+                  orgCurrency={orgCurrency}
+                />
+              </div>
+            )}
           </div>
         </div>
 
+        {/* Delete confirmation */}
         <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogTitle>Delete Bill?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will delete bill {toDelete?.billNumber}. This action cannot be undone.
+                {toDelete?.billNumber} will be permanently deleted. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleting}>
-                {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Delete Bill
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
