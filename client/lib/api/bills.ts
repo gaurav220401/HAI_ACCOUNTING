@@ -30,6 +30,8 @@ export interface Bill {
   billDate: string;
   dueDate?: string | null;
   paymentTermsId?: any;
+  sourceOfSupply?: string;
+  destinationOfSupply?: string;
   accountsPayableId?: any;
   subject?: string;
   discountLevel: DiscountLevel;
@@ -69,6 +71,8 @@ export interface CreateBillInput {
   billDate: string;
   dueDate?: string | null;
   paymentTermsId?: string | null;
+  sourceOfSupply?: string;
+  destinationOfSupply?: string;
   accountsPayableId?: string | null;
   subject?: string;
   discountLevel?: DiscountLevel;

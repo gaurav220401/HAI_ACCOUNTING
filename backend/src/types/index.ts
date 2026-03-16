@@ -781,11 +781,14 @@ export interface IBill extends Document {
   billDate: Date;
   dueDate?: Date | null;
   paymentTermsId?: Types.ObjectId | null;
+  sourceOfSupply?: string;
+  destinationOfSupply?: string;
   accountsPayableId?: Types.ObjectId | null; // Accounts Payable account (Liability)
   subject?: string;
   lineItems: IBillLineItem[];
   subTotal: number;
   discountLevel: "transaction" | "line_item";
+  discountAccountId?: Types.ObjectId | null;
   discountPercent: number;
   discountAmount: number;
   taxType: BillTaxType;

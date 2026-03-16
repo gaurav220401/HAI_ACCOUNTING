@@ -172,6 +172,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     billDate: req.body.billDate,
     dueDate: req.body.dueDate || null,
     paymentTermsId: req.body.paymentTermsId || null,
+    sourceOfSupply: req.body.sourceOfSupply || "",
+    destinationOfSupply: req.body.destinationOfSupply || "",
     accountsPayableId: req.body.accountsPayableId || null,
     subject: req.body.subject || "",
     discountLevel,

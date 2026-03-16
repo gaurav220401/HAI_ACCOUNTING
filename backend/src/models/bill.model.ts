@@ -43,6 +43,8 @@ const billSchema = new Schema<IBill>(
       ref: "PaymentTerms",
       default: null,
     },
+    sourceOfSupply: { type: String, default: "" },
+    destinationOfSupply: { type: String, default: "" },
     accountsPayableId: {
       type: Schema.Types.ObjectId,
       ref: "Account",
@@ -55,6 +57,11 @@ const billSchema = new Schema<IBill>(
       type: String,
       enum: ["transaction", "line_item"],
       default: "transaction",
+    },
+    discountAccountId: {
+      type: Schema.Types.ObjectId,
+      ref: "Account",
+      default: null,
     },
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },

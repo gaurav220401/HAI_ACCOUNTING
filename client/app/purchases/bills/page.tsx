@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Search, Loader2, MoreHorizontal, Trash2, RefreshCw,
   ChevronDown, Pencil, Printer, CheckCircle,
@@ -1111,6 +1111,7 @@ function BillDetailPanel({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function BillsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();
   const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
@@ -1142,6 +1143,11 @@ export default function BillsPage() {
   useEffect(() => {
     if (firebaseUser && !loading && activeOrganization?._id) fetchBills();
   }, [firebaseUser, loading, activeOrganization?._id, fetchBills]);
+
+  useEffect(() => {
+    const paramId = searchParams.get("billId");
+    if (paramId) setSelectedId(paramId);
+  }, [searchParams]);
 
   const filtered = bills.filter((b) => {
     if (filterStatus && b.status !== filterStatus) return false;

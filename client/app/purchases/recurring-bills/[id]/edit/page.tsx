@@ -3,32 +3,30 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { AppSidebar } from "@/components/app-sidebar";
-import { PageHeader } from "@/components/page-header";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { BillForm } from "@/components/bill-form";
-import { billApi, type Bill } from "@/lib/api/bills";
 import { toast } from "sonner";
+import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { PageHeader } from "@/components/page-header";
+import { RecurringBillForm } from "@/components/recurring-bill-form";
+import { recurringBillApi, type RecurringBill } from "@/lib/api/recurring-bills";
 
-export default function EditBillPage() {
+export default function EditRecurringBillPage() {
   const router = useRouter();
-  const { id } = useParams();
-  const [bill, setBill] = useState<Bill | null>(null);
+  const params = useParams<{ id: string }>();
+  const [rec, setRec] = useState<RecurringBill | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (id) {
-      billApi.getOne(id as string)
-        .then(res => {
-          setBill(res.data);
-          setLoading(false);
-        })
-        .catch(() => {
-          toast.error("Failed to load bill");
-          router.push("/purchases/bills");
-        });
-    }
-  }, [id, router]);
+    if (!params?.id) return;
+    recurringBillApi
+      .getById(params.id)
+      .then((res) => setRec(res.data))
+      .catch(() => {
+        toast.error("Failed to load recurring bill");
+        router.push("/purchases/recurring-bills");
+      })
+      .finally(() => setLoading(false));
+  }, [params?.id, router]);
 
   if (loading) {
     return (
@@ -46,22 +44,21 @@ export default function EditBillPage() {
           breadcrumb={
             <span className="text-sm text-muted-foreground">
               Purchases <span className="mx-1">/</span>
-              <a href="/purchases/bills" className="hover:text-foreground transition-colors">Bills</a>
+              <a href="/purchases/recurring-bills" className="hover:text-foreground transition-colors">Recurring Bills</a>
               <span className="mx-1">/</span>
               <span className="font-medium text-foreground">Edit</span>
             </span>
           }
         />
-        {bill && (
-          <BillForm
+        {rec && (
+          <RecurringBillForm
             mode="edit"
-            initialData={bill}
-            onSuccess={() => router.push("/purchases/bills")}
-            onCancel={() => router.push("/purchases/bills")}
+            initialData={rec}
+            onSuccess={() => router.push("/purchases/recurring-bills")}
+            onCancel={() => router.push("/purchases/recurring-bills")}
           />
         )}
       </SidebarInset>
     </SidebarProvider>
   );
 }
-
