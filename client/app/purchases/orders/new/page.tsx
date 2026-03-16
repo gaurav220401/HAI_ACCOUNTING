@@ -1587,12 +1587,12 @@ export default function NewPurchaseOrderPage() {
                   </div>
                   {/* TDS Selector */}
                   {taxType === "TDS" && (
-                    <div className="w-32 flex items-center gap-2">
-                      <div className="flex-1">
+                    <div className="w-56 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
                         <DropdownMenu open={showTaxDD} onOpenChange={(o) => { setShowTaxDD(o); if (!o) setTdsSearch(""); }}>
                           <DropdownMenuTrigger asChild>
-                            <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
-                              <span className="truncate">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
+                            <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
+                              <span className="truncate text-left flex-1 mr-2">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
                               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                             </button>
                           </DropdownMenuTrigger>
@@ -1630,12 +1630,12 @@ export default function NewPurchaseOrderPage() {
                   )}
                   {/* TCS Selector */}
                   {taxType === "TCS" && (
-                    <div className="w-32 flex items-center gap-2">
-                      <div className="flex-1">
+                    <div className="w-56 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
                         <DropdownMenu open={showTCSDD} onOpenChange={(o) => { setShowTCSDD(o); if (!o) setTcsSearch(""); }}>
                           <DropdownMenuTrigger asChild>
-                            <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
-                              <span className="truncate">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
+                            <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
+                              <span className="truncate text-left flex-1 mr-2">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
                               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                             </button>
                           </DropdownMenuTrigger>

@@ -1326,12 +1326,12 @@ export default function NewBillPage() {
                        </label>
                      </div>
                      {taxType === "TDS" && (
-                       <div className="w-32 flex items-center gap-2">
-                         <div className="flex-1">
+                       <div className="w-56 flex items-center gap-2">
+                         <div className="flex-1 min-w-0">
                            <DropdownMenu open={showTaxDD} onOpenChange={(o) => { setShowTaxDD(o); if (!o) setTdsSearch(""); }}>
                              <DropdownMenuTrigger asChild>
-                               <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-black transition-colors">
-                               <span className="truncate">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
+                               <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-black transition-colors">
+                                 <span className="truncate text-left flex-1 mr-2">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
                                  <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                                </button>
                              </DropdownMenuTrigger>
@@ -1368,12 +1368,12 @@ export default function NewBillPage() {
                        </div>
                      )}
                      {taxType === "TCS" && (
-                       <div className="w-32 flex items-center gap-2">
-                         <div className="flex-1">
+                       <div className="w-56 flex items-center gap-2">
+                         <div className="flex-1 min-w-0">
                            <DropdownMenu open={showTCSDD} onOpenChange={(o) => { setShowTCSDD(o); if (!o) setTcsSearch(""); }}>
                              <DropdownMenuTrigger asChild>
-                               <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-black transition-colors">
-                               <span className="truncate">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
+                               <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-black transition-colors">
+                                 <span className="truncate text-left flex-1 mr-2">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
                                  <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                                </button>
                              </DropdownMenuTrigger>
@@ -1570,20 +1570,6 @@ export default function NewBillPage() {
                 )}
               </div>
 
-              {vendorId && (
-                <div className="bg-amber-50/40 border border-amber-100 p-4 rounded-lg flex items-center justify-between mt-6">
-                  <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
-                    <ShoppingBagIcon className="h-4 w-4" /> Include Open Purchase Orders <span className="text-[11px] font-medium text-amber-600 ml-2">({openPurchaseOrders.length} available)</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="bg-white h-8 text-xs font-bold" onClick={() => setShowPoScanner(true)}>Scan PO</Button>
-                    <Select onValueChange={includePurchaseOrder} value="">
-                      <SelectTrigger className="h-8 w-48 bg-white text-xs border-amber-200"><SelectValue placeholder="Select Open PO" /></SelectTrigger>
-                      <SelectContent className="bg-white">{openPurchaseOrders.map(p => <SelectItem key={p._id} value={p._id}>{p.purchaseOrderNumber}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
           {/* Footer Navigation */}
@@ -1600,7 +1586,6 @@ export default function NewBillPage() {
             </div>
           </div>
         </div>
-        <Dialog open={showPoScanner} onOpenChange={setShowPoScanner}><DialogContent className="max-w-md bg-white border-none shadow-2xl"><DialogHeader><DialogTitle className="text-black">Scan PO Code</DialogTitle></DialogHeader><div id="qr-reader" className="w-full"></div><DialogFooter><Button variant="outline" className="text-black" onClick={() => setShowPoScanner(false)}>Close</Button></DialogFooter></DialogContent></Dialog>
         <BulkAddItemsDialog open={showBulkAdd} items={items} onAdd={handleBulkAdd} onClose={() => setShowBulkAdd(false)} />
         <ManageTDSDialog
           open={showManageTDS}
