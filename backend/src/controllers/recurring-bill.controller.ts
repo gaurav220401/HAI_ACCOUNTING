@@ -1,10 +1,12 @@
 import { Response } from "express";
 import RecurringBill from "../models/recurring-bill.model";
 import Bill from "../models/bill.model";
+import PaymentTerms from "../models/payment-terms.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
+import { calcLineItems, computeDueDate, computeNextDate, nextBillNumber, toNum } from "../utils/recurring-bills";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -12,60 +14,6 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
-async function nextBillNumber(organizationId: any): Promise<string> {
-  const last = await Bill.findOne({
-    organizationId,
-    isDeleted: { $in: [true, false] },
-  })
-    .sort({ billNumber: -1 })
-    .select("billNumber")
-    .lean();
-  if (!last) return "BILL-00001";
-  const match = last.billNumber.match(/BILL-(\d+)/);
-  if (!match) return "BILL-00001";
-  const next = parseInt(match[1], 10) + 1;
-  return `BILL-${String(next).padStart(5, "0")}`;
-}
-
-function toNum(val: unknown, fallback = 0): number {
-  if (val === undefined || val === null || val === "") return fallback;
-  const n = Number(val);
-  return isNaN(n) ? fallback : n;
-}
-
-function calcLineItems(items: any[], discountLevel: string) {
-  return (items || []).map((item: any) => {
-    if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
-    const qty = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = qty * rate;
-    if (discountLevel === "line_item") {
-      const discPct = Number(item.discountPercent) || 0;
-      const discAmt = Number(item.discountAmount) || (lineTotal * discPct) / 100;
-      return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: lineTotal - discAmt };
-    }
-    return { ...item, quantity: qty, rate, discountPercent: 0, discountAmount: 0, amount: lineTotal };
-  });
-}
-
-function computeNextDate(from: Date, frequency: string, repeatEvery: number): Date {
-  const d = new Date(from);
-  switch (frequency) {
-    case "Daily":
-      d.setDate(d.getDate() + repeatEvery);
-      break;
-    case "Weekly":
-      d.setDate(d.getDate() + repeatEvery * 7);
-      break;
-    case "Monthly":
-      d.setMonth(d.getMonth() + repeatEvery);
-      break;
-    case "Yearly":
-      d.setFullYear(d.getFullYear() + repeatEvery);
-      break;
-  }
-  return d;
-}
 
 function applyExpiry(rec: any) {
   if (!rec.neverExpires && rec.endsOn) {
@@ -257,6 +205,10 @@ export const resume = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const rec = await RecurringBill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!rec) throw new NotFoundError("Recurring bill");
   rec.status = "Active";
+  if (!rec.nextBillDate) {
+    const base = rec.lastBillDate || new Date();
+    rec.nextBillDate = computeNextDate(base, rec.frequency, rec.repeatEvery);
+  }
   applyExpiry(rec);
   attachUser(rec as any, req);
   await rec.save();
@@ -277,6 +229,10 @@ export const createBillNow = asyncHandler(async (req: AuthenticatedRequest, res:
 
   const billNumber = await nextBillNumber(rec.organizationId);
   const billDate = new Date();
+  const paymentTerms = rec.paymentTermsId
+    ? await PaymentTerms.findById(rec.paymentTermsId).lean()
+    : null;
+  const dueDate = computeDueDate(billDate, paymentTerms ? { termType: paymentTerms.termType, netDays: paymentTerms.netDays } : null);
   const lineItems = calcLineItems((rec as any).lineItems || [], rec.discountLevel || "transaction");
   const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = rec.discountLevel === "transaction" ? toNum(rec.discountPercent) : 0;
@@ -293,11 +249,14 @@ export const createBillNow = asyncHandler(async (req: AuthenticatedRequest, res:
     vendorId: rec.vendorId,
     billNumber,
     billDate,
-    dueDate: null,
+    dueDate,
     paymentTermsId: rec.paymentTermsId || null,
+    sourceOfSupply: rec.sourceOfSupply || "",
+    destinationOfSupply: rec.destinationOfSupply || "",
     subject: rec.subject || "",
     orderNumber: rec.orderNumber || "",
     discountLevel: rec.discountLevel,
+    discountAccountId: rec.discountAccountId || null,
     lineItems,
     subTotal,
     discountPercent,
