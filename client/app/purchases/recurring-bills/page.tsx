@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, ChevronDown, Loader2, MoreHorizontal, PauseCircle, PlayCircle, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ function getName(field: unknown): string {
   return "";
 }
 
-export default function RecurringBillsPage() {
+function RecurringBillsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();
@@ -433,5 +433,13 @@ export default function RecurringBillsPage() {
         )}
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+export default function RecurringBillsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading recurring bills...</div>}>
+      <RecurringBillsPageContent />
+    </Suspense>
   );
 }

@@ -19,6 +19,7 @@ import tdsTaxRoutes from "./tds-tax.routes";
 import tcsTaxRoutes from "./tcs-tax.routes";
 import purchaseOrderRoutes from "./purchase-order.routes";
 import billRoutes from "./bill.routes";
+import vendorCreditRoutes from "./vendor-credit.routes";
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use("/tds-taxes", tdsTaxRoutes);
 router.use("/tcs-taxes", tcsTaxRoutes);
 router.use("/purchase-orders", purchaseOrderRoutes);
 router.use("/bills", billRoutes);
+router.use("/vendor-credits", vendorCreditRoutes);
 
 export default router;

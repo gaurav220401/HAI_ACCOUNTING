@@ -44,6 +44,7 @@ export function OrganizationProvider({
   );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const fetchOrganizations = useCallback(async () => {
     if (!firebaseUser) {
@@ -55,6 +56,7 @@ export function OrganizationProvider({
 
     try {
       setLoading(true);
+      setLoadFailed(false);
       const res = await organizationApi.list();
       const orgs = (res as any).data ?? [];
       setOrganizations(orgs);
@@ -95,6 +97,7 @@ export function OrganizationProvider({
         setActiveOrganization(null);
       }
     } catch {
+      setLoadFailed(true);
       setOrganizations([]);
       setActiveOrg(null);
     } finally {
@@ -128,7 +131,12 @@ export function OrganizationProvider({
     [setActiveOrganization],
   );
 
-  const needsOrgSetup = !loading && firebaseUser != null && organizations.length === 0;
+  const needsOrgSetup =
+    !loading &&
+    !loadFailed &&
+    firebaseUser != null &&
+    dbUser != null &&
+    organizations.length === 0;
 
   return (
     <OrganizationContext.Provider

@@ -95,8 +95,8 @@ const billSchema = new Schema<IBill>(
         isSystem: { type: Boolean, default: false },
       },
     ],
-    recurringId: { type: Schema.Types.ObjectId, ref: "RecurringBill", default: null },
-    recurringRunDate: { type: Date, default: null },
+    recurringId: { type: Schema.Types.ObjectId, ref: "RecurringBill", default: undefined },
+    recurringRunDate: { type: Date, default: undefined },
     recurringRunSequence: { type: Number, default: null },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
@@ -111,7 +111,16 @@ billSchema.plugin(softDeletePlugin);
 billSchema.index({ organizationId: 1, billNumber: 1 }, { unique: true });
 billSchema.index({ organizationId: 1, vendorId: 1 });
 billSchema.index({ organizationId: 1, status: 1 });
-billSchema.index({ organizationId: 1, recurringId: 1, recurringRunDate: 1 }, { unique: true, sparse: true });
+billSchema.index(
+  { organizationId: 1, recurringId: 1, recurringRunDate: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      recurringId: { $type: "objectId" },
+      recurringRunDate: { $type: "date" },
+    },
+  },
+);
 
 const Bill = model<IBill>("Bill", billSchema);
 export default Bill;

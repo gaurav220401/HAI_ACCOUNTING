@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Search, Loader2, MoreHorizontal, Trash2, RefreshCw,
@@ -660,7 +660,12 @@ function BillDetailPanel({
               >
                 <History className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> View Journal
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => toast.info("Vendor credits coming soon")}>
+              <DropdownMenuItem
+                className="text-xs py-2.5 cursor-pointer"
+                onClick={() => {
+                  window.location.href = `/purchases/vendor-credits/new?billId=${bill._id}`;
+                }}
+              >
                 <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Create Vendor Credits
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -1109,7 +1114,7 @@ function BillDetailPanel({
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
-export default function BillsPage() {
+function BillsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();
@@ -1523,5 +1528,13 @@ export default function BillsPage() {
         </AlertDialog>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+export default function BillsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading bills...</div>}>
+      <BillsPageContent />
+    </Suspense>
   );
 }

@@ -72,3 +72,13 @@ export type {
   DiscountType,
   InvoiceTaxType,
 } from "./invoices";
+
+export { vendorCreditApi } from "./vendor-credits";
+export type {
+  VendorCredit,
+  VendorCreditLineItem,
+  VendorCreditStatus,
+  VendorCreditApplication,
+  CreateVendorCreditInput,
+  UpdateVendorCreditInput,
+} from "./vendor-credits";

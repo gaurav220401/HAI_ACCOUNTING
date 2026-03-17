@@ -107,7 +107,6 @@ const expenseSchema = new Schema<IExpense>(
 
 expenseSchema.plugin(auditTrailPlugin);
 expenseSchema.index({ organizationId: 1, date: -1 });
-expenseSchema.index({ expenseNumber: 1 }, { unique: true, sparse: true });
 
 // Auto-generate expenseNumber before first save
 expenseSchema.pre("save", async function () {
