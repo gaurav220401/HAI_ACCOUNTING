@@ -9,16 +9,25 @@ export function toNum(val: unknown, fallback = 0): number {
 export function calcLineItems(items: any[], discountLevel: string) {
   return (items || []).map((item: any) => {
     if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
-    const qty = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
+    const qty = Number(item.quantity);
+    const rate = Number(item.rate);
+    if (!Number.isFinite(qty) || qty <= 0) throw new Error("Quantity must be greater than zero");
+    if (!Number.isFinite(rate) || rate < 0) throw new Error("Rate cannot be negative");
     const lineTotal = qty * rate;
     if (discountLevel === "line_item") {
       const discPct = Number(item.discountPercent) || 0;
+      if (discPct < 0) throw new Error("Discount percent cannot be negative");
       const discAmt = Number(item.discountAmount) || (lineTotal * discPct) / 100;
+      if (discAmt < 0) throw new Error("Discount amount cannot be negative");
       return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: lineTotal - discAmt };
     }
     return { ...item, quantity: qty, rate, discountPercent: 0, discountAmount: 0, amount: lineTotal };
   });
+}
+
+function isLastDayOfMonth(date: Date): boolean {
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return date.getDate() === end;
 }
 
 export function computeNextDate(from: Date, frequency: string, repeatEvery: number): Date {
@@ -31,13 +40,44 @@ export function computeNextDate(from: Date, frequency: string, repeatEvery: numb
       d.setDate(d.getDate() + repeatEvery * 7);
       break;
     case "Monthly":
-      d.setMonth(d.getMonth() + repeatEvery);
+      if (isLastDayOfMonth(from)) {
+        d.setMonth(d.getMonth() + repeatEvery + 1, 0);
+      } else {
+        const targetDay = from.getDate();
+        d.setMonth(d.getMonth() + repeatEvery, 1);
+        const end = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        d.setDate(Math.min(targetDay, end));
+      }
       break;
     case "Yearly":
       d.setFullYear(d.getFullYear() + repeatEvery);
       break;
   }
   return d;
+}
+
+export function computeRecurringTotals(input: {
+  lineItems: any[];
+  discountLevel: "transaction" | "line_item";
+  discountPercent: number;
+  taxAmount: number;
+  tcsAmount: number;
+  adjustmentAmount: number;
+}) {
+  const subTotal = input.lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
+  const discountTotal = input.discountLevel === "transaction"
+    ? (subTotal * input.discountPercent) / 100
+    : input.lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
+  const taxableAmount = subTotal - discountTotal;
+  const taxTotal = input.taxAmount + input.tcsAmount;
+  const totalAmount = taxableAmount + taxTotal + input.adjustmentAmount;
+  return {
+    subTotal,
+    discountTotal,
+    taxableAmount,
+    taxTotal,
+    totalAmount,
+  };
 }
 
 export function computeDueDate(

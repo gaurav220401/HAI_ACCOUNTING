@@ -798,6 +798,7 @@ export interface IBill extends Document {
   tcsAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
+  amountPaid: number;
   total: number;
   balanceDue: number;
   notes: string;
@@ -810,6 +811,9 @@ export interface IBill extends Document {
     time: Date;
     isSystem: boolean;
   }[];
+  recurringId?: Types.ObjectId | null;
+  recurringRunDate?: Date | null;
+  recurringRunSequence?: number | null;
   isDeleted: boolean;
   deletedAt?: Date;
   createdBy: Types.ObjectId;

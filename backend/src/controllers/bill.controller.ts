@@ -48,6 +48,54 @@ function toNum(val: unknown, fallback = 0): number {
   return isNaN(n) ? fallback : n;
 }
 
+function computeBillTotals(input: {
+  lineItems: any[];
+  discountLevel: "transaction" | "line_item";
+  discountPercent: number;
+  taxAmount: number;
+  tcsAmount: number;
+  adjustmentAmount: number;
+}) {
+  const subTotal = input.lineItems
+    .filter((i: any) => !i.isHeader)
+    .reduce((s: number, i: any) => s + (i.quantity * i.rate), 0);
+  const discountAmount = input.discountLevel === "transaction"
+    ? (subTotal * input.discountPercent) / 100
+    : input.lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
+  const taxableAmount = subTotal - discountAmount;
+  const taxTotal = input.taxAmount + input.tcsAmount;
+  const total = taxableAmount + taxTotal + input.adjustmentAmount;
+  return { subTotal, discountAmount, taxableAmount, taxTotal, total };
+}
+
+function canTransitionStatus(current: string, next: string): boolean {
+  if (current === next) return true;
+  const map: Record<string, string[]> = {
+    Draft: ["Open", "Void"],
+    Open: ["Partially Paid", "Paid", "Overdue", "Void"],
+    "Partially Paid": ["Paid", "Overdue", "Void"],
+    Overdue: ["Partially Paid", "Paid", "Void"],
+    Paid: [],
+    Void: [],
+  };
+  return (map[current] || []).includes(next);
+}
+
+function hasFinancialEdits(payload: any): boolean {
+  const keys = [
+    "lineItems", "discountLevel", "discountPercent", "taxType", "taxAmount", "tcsAmount",
+    "adjustmentAmount", "tdsId", "tcsId", "discountAccountId", "subTotal", "total",
+  ];
+  return keys.some((k) => payload[k] !== undefined);
+}
+
+function applyOverdueState(bill: any) {
+  if (bill.status === "Open" && bill.dueDate && bill.balanceDue > 0) {
+    const now = new Date();
+    if (new Date(bill.dueDate) < now) bill.status = "Overdue";
+  }
+}
+
 /** GET /api/bills/next-number */
 export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const num = await nextBillNumber(orgId(req));
@@ -117,6 +165,17 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
     ];
   }
 
+  await Bill.updateMany(
+    {
+      organizationId: orgId(req),
+      isDeleted: false,
+      status: "Open",
+      dueDate: { $ne: null, $lt: new Date() },
+      balanceDue: { $gt: 0 },
+    },
+    { $set: { status: "Overdue" } }
+  );
+
   const total = await Bill.countDocuments(filter);
   const bills = await Bill.find(filter)
     .populate("vendorId", "displayName companyName email")
@@ -141,6 +200,8 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     .populate("tcsId", "taxName rate sectionCode")
     .populate("discountAccountId", "name");
   if (!bill) throw new NotFoundError("Bill");
+  applyOverdueState(bill);
+  await bill.save();
   res.json({ success: true, data: bill });
 });
 
@@ -155,13 +216,26 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const tdsId = taxType === "TDS" ? (req.body.tdsId || null) : null;
   const tcsId = taxType === "TCS" ? (req.body.tcsId || null) : null;
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
-  const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent) : 0;
-  const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
+  if (discountPercent < 0) throw new ValidationError("Discount percent cannot be negative");
   const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount) : 0;
   const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount) : 0;
+  if (taxAmount < 0 || tcsAmount < 0) throw new ValidationError("Tax cannot be negative");
   const adjustmentAmount = toNum(req.body.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
+  const totals = computeBillTotals({
+    lineItems,
+    discountLevel,
+    discountPercent,
+    taxAmount,
+    tcsAmount,
+    adjustmentAmount,
+  });
+  if (totals.total < 0) throw new ValidationError("Total cannot be negative");
+
+  const requestedStatus = req.body.status || "Open";
+  if (!["Draft", "Open"].includes(requestedStatus)) {
+    throw new ValidationError("New bill status must be Draft or Open");
+  }
 
   const bill = new Bill({
     organizationId: oid,
@@ -179,9 +253,9 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     discountLevel,
     discountAccountId: req.body.discountAccountId || null,
     lineItems,
-    subTotal,
+    subTotal: totals.subTotal,
     discountPercent,
-    discountAmount,
+    discountAmount: totals.discountAmount,
     taxType,
     tdsId,
     tcsId,
@@ -189,20 +263,22 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     taxAmount,
     adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
     adjustmentAmount,
-    total,
-    balanceDue: total,
+    amountPaid: 0,
+    total: totals.total,
+    balanceDue: totals.total,
     notes: req.body.notes || "",
     termsAndConditions: req.body.termsAndConditions || "",
     attachments: req.body.attachments || [],
-    status: req.body.status || "Open",
+    status: requestedStatus,
     comments: [{
       author: "System",
-      text: `Bill created for ${total.toLocaleString("en-IN")}`,
+      text: `Bill created for ${totals.total.toLocaleString("en-IN")}`,
       time: new Date(),
       isSystem: true,
     }],
   });
   attachUser(bill, req);
+  applyOverdueState(bill);
   await bill.save();
   res.status(201).json({ success: true, data: bill });
 });
@@ -212,6 +288,7 @@ export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Resp
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
   if (bill.status === "Void") throw new ValidationError("Bill is already voided");
+  if (bill.amountPaid > 0) throw new ValidationError("Cannot void a bill with recorded payments");
 
   bill.status = "Void";
   const reason = req.body.reason || "No reason provided";
@@ -230,14 +307,22 @@ export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Resp
 export const recordPayment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
+  if (bill.status === "Void") throw new ValidationError("Cannot record payment on a void bill");
+  if (!["Open", "Partially Paid", "Overdue"].includes(bill.status)) {
+    throw new ValidationError("Payment can be recorded only on open bills");
+  }
   
   const paymentAmount = toNum(req.body.amount);
   if (paymentAmount <= 0) throw new ValidationError("Payment amount must be greater than zero");
   if (paymentAmount > bill.balanceDue) throw new ValidationError("Payment amount exceeds balance due");
 
-  bill.balanceDue = (bill.balanceDue || 0) - paymentAmount;
-  
-  if (bill.balanceDue <= 0) {
+  bill.amountPaid = toNum(bill.amountPaid) + paymentAmount;
+  if (bill.amountPaid > bill.total) throw new ValidationError("Payment amount exceeds bill total");
+  bill.balanceDue = bill.total - bill.amountPaid;
+
+  if (bill.amountPaid === 0) {
+    bill.status = "Open";
+  } else if (bill.balanceDue <= 0) {
     bill.status = "Paid";
     bill.balanceDue = 0;
   } else {
@@ -269,6 +354,7 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
     billNumber,
     billDate: new Date(),
     status: "Open",
+    amountPaid: 0,
     balanceDue: source.total || 0,
     isDeleted: false,
     deletedAt: null,
@@ -288,19 +374,32 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
+  if (bill.status === "Void") throw new ValidationError("Cannot edit a void bill");
+
+  if (bill.amountPaid > 0 && hasFinancialEdits(req.body)) {
+    throw new ValidationError("Cannot edit financial fields after payment is recorded");
+  }
 
   const prevStatus = bill.status;
 
   const discountLevel = req.body.discountLevel || bill.discountLevel;
   const lineItems = req.body.lineItems ? calcLineItems(req.body.lineItems, discountLevel) : bill.lineItems;
-  const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent ?? bill.discountPercent) : 0;
-  const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
+  if (discountPercent < 0) throw new ValidationError("Discount percent cannot be negative");
   const taxType = req.body.taxType ?? bill.taxType;
   const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount ?? bill.taxAmount) : 0;
   const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount ?? bill.tcsAmount) : 0;
+  if (taxAmount < 0 || tcsAmount < 0) throw new ValidationError("Tax cannot be negative");
   const adjustmentAmount = toNum(req.body.adjustmentAmount ?? bill.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
+  const totals = computeBillTotals({
+    lineItems,
+    discountLevel,
+    discountPercent,
+    taxAmount,
+    tcsAmount,
+    adjustmentAmount,
+  });
+  if (totals.total < 0) throw new ValidationError("Total cannot be negative");
   const nextTdsId = taxType === "TDS"
     ? (req.body.tdsId !== undefined ? req.body.tdsId : bill.tdsId)
     : null;
@@ -310,20 +409,36 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   Object.assign(bill, req.body, { 
     lineItems, 
-    subTotal, 
+    subTotal: totals.subTotal,
     discountPercent, 
-    discountAmount, 
+    discountAmount: totals.discountAmount,
     taxType,
     tdsId: nextTdsId,
     tcsId: nextTcsId,
     taxAmount,
     tcsAmount,
     adjustmentAmount, 
-    total,
-    balanceDue: total
+    total: totals.total,
+    balanceDue: totals.total - toNum(bill.amountPaid),
+    amountPaid: toNum(bill.amountPaid),
   });
 
+  if (bill.balanceDue < 0) {
+    throw new ValidationError("Invalid balance due after update");
+  }
+
+  if (bill.amountPaid === 0 && bill.status !== "Draft") {
+    bill.status = bill.balanceDue > 0 ? "Open" : "Paid";
+  } else if (bill.amountPaid > 0 && bill.balanceDue > 0) {
+    bill.status = "Partially Paid";
+  } else if (bill.balanceDue === 0) {
+    bill.status = "Paid";
+  }
+
   if (req.body.status && req.body.status !== prevStatus) {
+    if (!canTransitionStatus(prevStatus, req.body.status)) {
+      throw new ValidationError(`Invalid status transition from ${prevStatus} to ${req.body.status}`);
+    }
     bill.comments.push({
       author: req.user?.name || req.user?.email || "System",
       text: `Status changed to ${req.body.status}`,
@@ -332,6 +447,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     });
   }
   
+  applyOverdueState(bill);
   attachUser(bill, req);
   await bill.save();
   res.json({ success: true, data: bill });
@@ -357,6 +473,7 @@ export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Re
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
+  if (bill.status !== "Draft") throw new ValidationError("Only draft bills can be deleted. Void other bills.");
   bill.isDeleted = true;
   bill.deletedAt = new Date();
   await bill.save();

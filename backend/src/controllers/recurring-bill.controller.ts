@@ -1,12 +1,12 @@
 import { Response } from "express";
 import RecurringBill from "../models/recurring-bill.model";
 import Bill from "../models/bill.model";
-import PaymentTerms from "../models/payment-terms.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
-import { calcLineItems, computeDueDate, computeNextDate, nextBillNumber, toNum } from "../utils/recurring-bills";
+import { calcLineItems, computeNextDate, computeRecurringTotals, toNum } from "../utils/recurring-bills";
+import { executeRecurringRun } from "../services/recurring-bill.execution";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -90,15 +90,18 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const tdsId = taxType === "TDS" ? (req.body.tdsId || null) : null;
   const tcsId = taxType === "TCS" ? (req.body.tcsId || null) : null;
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
-  const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent) : 0;
-  const discountAmount = discountLevel === "transaction"
-    ? (subTotal * discountPercent) / 100
-    : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
   const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount) : 0;
   const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount) : 0;
   const adjustmentAmount = toNum(req.body.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
+  const totals = computeRecurringTotals({
+    lineItems,
+    discountLevel,
+    discountPercent,
+    taxAmount,
+    tcsAmount,
+    adjustmentAmount,
+  });
 
   const recurringBill = new RecurringBill({
     organizationId: orgId(req),
@@ -118,7 +121,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     discountLevel,
     discountAccountId: req.body.discountAccountId || null,
     discountPercent,
-    discountAmount,
+    discountAmount: totals.discountTotal,
     taxType,
     tdsId,
     tcsId,
@@ -126,8 +129,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     tcsAmount,
     adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
     adjustmentAmount,
-    subTotal,
-    total,
+    subTotal: totals.subTotal,
+    total: totals.totalAmount,
     lineItems,
     notes: req.body.notes || "",
     termsAndConditions: req.body.termsAndConditions || "",
@@ -161,23 +164,26 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   const discountLevel = rec.discountLevel || "transaction";
   const lineItems = calcLineItems(rec.lineItems || [], discountLevel);
-  const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
   const discountPercent = discountLevel === "transaction" ? toNum(rec.discountPercent) : 0;
-  const discountAmount = discountLevel === "transaction"
-    ? (subTotal * discountPercent) / 100
-    : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
   const taxType = rec.taxType || "none";
   const taxAmount = taxType === "TDS" ? toNum((rec as any).taxAmount) : 0;
   const tcsAmount = taxType === "TCS" ? toNum((rec as any).tcsAmount) : 0;
   const adjustmentAmount = toNum(rec.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
+  const totals = computeRecurringTotals({
+    lineItems,
+    discountLevel: discountLevel as "transaction" | "line_item",
+    discountPercent,
+    taxAmount,
+    tcsAmount,
+    adjustmentAmount,
+  });
 
   rec.lineItems = lineItems as any;
-  rec.subTotal = subTotal;
-  rec.discountAmount = discountAmount;
+  rec.subTotal = totals.subTotal;
+  rec.discountAmount = totals.discountTotal;
   rec.taxAmount = taxAmount;
   rec.tcsAmount = tcsAmount;
-  rec.total = total;
+  rec.total = totals.totalAmount;
 
   if (req.body.startDate && !rec.lastBillDate) {
     rec.nextBillDate = new Date(req.body.startDate);
@@ -227,74 +233,9 @@ export const createBillNow = asyncHandler(async (req: AuthenticatedRequest, res:
   if (!rec) throw new NotFoundError("Recurring bill");
   if (rec.status !== "Active") throw new ValidationError("Recurring bill is not active");
 
-  const billNumber = await nextBillNumber(rec.organizationId);
-  const billDate = new Date();
-  const paymentTerms = rec.paymentTermsId
-    ? await PaymentTerms.findById(rec.paymentTermsId).lean()
-    : null;
-  const dueDate = computeDueDate(billDate, paymentTerms ? { termType: paymentTerms.termType, netDays: paymentTerms.netDays } : null);
-  const lineItems = calcLineItems((rec as any).lineItems || [], rec.discountLevel || "transaction");
-  const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
-  const discountPercent = rec.discountLevel === "transaction" ? toNum(rec.discountPercent) : 0;
-  const discountAmount = rec.discountLevel === "transaction"
-    ? (subTotal * discountPercent) / 100
-    : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxAmount = rec.taxType === "TDS" ? toNum(rec.taxAmount) : 0;
-  const tcsAmount = rec.taxType === "TCS" ? toNum(rec.tcsAmount) : 0;
-  const adjustmentAmount = toNum(rec.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
-
-  const bill = new Bill({
-    organizationId: rec.organizationId,
-    vendorId: rec.vendorId,
-    billNumber,
-    billDate,
-    dueDate,
-    paymentTermsId: rec.paymentTermsId || null,
-    sourceOfSupply: rec.sourceOfSupply || "",
-    destinationOfSupply: rec.destinationOfSupply || "",
-    subject: rec.subject || "",
-    orderNumber: rec.orderNumber || "",
-    discountLevel: rec.discountLevel,
-    discountAccountId: rec.discountAccountId || null,
-    lineItems,
-    subTotal,
-    discountPercent,
-    discountAmount,
-    taxType: rec.taxType,
-    tdsId: rec.tdsId || null,
-    tcsId: rec.tcsId || null,
-    taxAmount,
-    tcsAmount,
-    adjustmentLabel: rec.adjustmentLabel || "Adjustment",
-    adjustmentAmount,
-    total,
-    balanceDue: total,
-    notes: rec.notes || "",
-    termsAndConditions: rec.termsAndConditions || "",
-    status: "Open",
-    comments: [{
-      author: "System",
-      text: `Bill created from recurring profile ${rec.profileName}`,
-      time: new Date(),
-      isSystem: true,
-    }],
-  });
-  attachUser(bill as any, req);
-  await bill.save();
-
-  rec.lastBillDate = billDate;
-  const nextDate = computeNextDate(billDate, rec.frequency, rec.repeatEvery);
-  if (rec.neverExpires || !rec.endsOn || nextDate <= rec.endsOn) {
-    rec.nextBillDate = nextDate;
-  } else {
-    rec.nextBillDate = null;
-    rec.status = "Expired";
-  }
-  rec.generatedBillIds.push(bill._id as any);
-  await rec.save();
-
-  res.status(201).json({ success: true, data: bill });
+  const scheduledRunDate = rec.nextBillDate ? new Date(rec.nextBillDate) : new Date();
+  const result = await executeRecurringRun(rec, scheduledRunDate, req.user?._id);
+  res.status(result.skipped ? 200 : 201).json({ success: true, data: result.bill, skipped: result.skipped });
 });
 
 /** DELETE /api/recurring-bills/:id */
