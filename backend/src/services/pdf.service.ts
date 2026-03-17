@@ -102,6 +102,48 @@ export interface PurchaseOrderPdfData {
   currencySymbol?: string;
 }
 
+export interface VendorCreditItemRow {
+  name: string;
+  description?: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+}
+
+export interface VendorCreditPdfData {
+  orgName: string;
+  orgAddress?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  };
+  orgTaxId?: string;
+
+  vendorName: string;
+  vendorAddress?: string;
+  vendorEmail?: string;
+
+  vendorCreditNumber: string;
+  vendorCreditDate: string;
+  referenceNumber?: string;
+
+  items: VendorCreditItemRow[];
+
+  subTotal: number;
+  discountAmount?: number;
+  taxAmount?: number;
+  tdsAmount?: number;
+  tcsAmount?: number;
+  total: number;
+  creditsRemaining: number;
+
+  notes?: string;
+  termsAndConditions?: string;
+  currencySymbol?: string;
+}
+
 function fmt(n: number, symbol = "₹"): string {
   return (
     symbol +
@@ -629,6 +671,146 @@ export function generatePurchaseOrderPdf(
       .fontSize(10)
       .fillColor("#4b5563")
       .text("Authorized Signature ____________________________", 60, yNext);
+
+    doc.end();
+  });
+}
+
+export function generateVendorCreditPdf(
+  data: VendorCreditPdfData,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 60, bottom: 60, left: 60, right: 60 },
+    });
+
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const pageW = doc.page.width - 120;
+    const sym = data.currencySymbol ?? "₹";
+
+    const orgCity = data.orgAddress?.city || "";
+
+    doc.font("Times-Bold").fontSize(13).fillColor("#000000").text(data.orgName, 60, 60);
+
+    let yOrg = 78;
+    doc.font("Times-Roman").fontSize(10).fillColor("#4b5563");
+    if (orgCity) {
+      doc.text(orgCity, 60, yOrg);
+      yOrg += 14;
+    }
+    doc.text("India", 60, yOrg);
+
+    doc
+      .font("Times-Bold")
+      .fontSize(24)
+      .fillColor("#1e3a5f")
+      .text("VENDOR CREDITS", 60, 60, { width: pageW, align: "right" });
+    doc
+      .font("Times-Roman")
+      .fontSize(11)
+      .fillColor("#4b5563")
+      .text(`CreditNote# ${data.vendorCreditNumber}`, 60, 85, {
+        width: pageW,
+        align: "right",
+      });
+    doc
+      .font("Times-Bold")
+      .fontSize(11)
+      .fillColor("#111827")
+      .text(`Credits Remaining ${sym}${data.creditsRemaining.toFixed(2)}`, 60, 102, {
+        width: pageW,
+        align: "right",
+      });
+
+    let y = Math.max(yOrg, 115) + 24;
+
+    doc.font("Times-Roman").fontSize(9).fillColor("#6b7280").text("Vendor Address", 60, y);
+    y += 14;
+    doc.font("Times-Bold").fontSize(11).fillColor("#2563eb").text(data.vendorName, 60, y, { width: 260 });
+    y += 14;
+    if (data.vendorAddress) {
+      doc.font("Times-Roman").fontSize(10).fillColor("#4b5563").text(data.vendorAddress, 60, y, { width: 260 });
+    }
+
+    doc
+      .font("Times-Roman")
+      .fontSize(10)
+      .fillColor("#4b5563")
+      .text(`Date : ${fmtDate(data.vendorCreditDate)}`, 60, y - 10, { width: pageW, align: "right" });
+    doc
+      .text(`Reference number : ${data.referenceNumber || "-"}`, 60, y + 8, { width: pageW, align: "right" });
+
+    y += 48;
+
+    doc.rect(60, y, pageW, 25).fill("#3a3a3a");
+    const colHash = 60;
+    const colItem = 100;
+    const colQty = 340;
+    const colRate = 390;
+    const colAmt = 460;
+
+    doc.fillColor("#ffffff").font("Times-Bold").fontSize(10);
+    const thY = y + 7;
+    doc.text("#", colHash + 10, thY);
+    doc.text("Item & Description", colItem, thY);
+    doc.text("Qty", colQty, thY, { width: 45, align: "right" });
+    doc.text("Rate", colRate, thY, { width: 60, align: "right" });
+    doc.text("Amount", colAmt, thY, { width: 60 + pageW - colAmt - 10, align: "right" });
+    y += 25;
+
+    data.items.forEach((item, idx) => {
+      const lineH = item.description ? 35 : 22;
+      const textY = y + 6;
+      doc.fillColor("#111827").font("Times-Roman").fontSize(10).text(String(idx + 1), colHash + 10, textY);
+      doc.font("Times-Bold").text(item.name, colItem, textY, { width: 230 });
+      if (item.description) {
+        doc.font("Times-Roman").fillColor("#6b7280").fontSize(9).text(item.description, colItem, textY + 14, { width: 230 });
+      }
+
+      doc.font("Times-Roman").fontSize(10).fillColor("#111827");
+      doc.text(item.quantity.toFixed(2), colQty, textY, { width: 45, align: "right" });
+      doc.text(item.rate.toFixed(2), colRate, textY, { width: 60, align: "right" });
+      doc.text(item.amount.toFixed(2), colAmt, textY, { width: 60 + pageW - colAmt - 10, align: "right" });
+
+      y += lineH;
+      doc.moveTo(60, y).lineTo(60 + pageW, y).lineWidth(0.5).strokeColor("#e5e7eb").stroke();
+    });
+
+    y += 20;
+
+    const totLabelX = 350;
+    const totValX = 450;
+    const totValW = 60 + pageW - totValX - 10;
+
+    const addTotal = (lbl: string, val: string, bold = false) => {
+      doc.font(bold ? "Times-Bold" : "Times-Roman").fontSize(10).fillColor(bold ? "#111827" : "#4b5563");
+      doc.text(lbl, totLabelX, y, { width: 90 });
+      doc.text(val, totValX, y, { width: totValW, align: "right" });
+      y += 16;
+    };
+
+    addTotal("Sub Total", data.subTotal.toFixed(2));
+    if ((data.discountAmount || 0) > 0) addTotal("Discount", `-${(data.discountAmount || 0).toFixed(2)}`);
+    if ((data.taxAmount || 0) > 0) addTotal("Tax", (data.taxAmount || 0).toFixed(2));
+    if ((data.tdsAmount || 0) > 0) addTotal("TDS", `-${(data.tdsAmount || 0).toFixed(2)}`);
+    if ((data.tcsAmount || 0) > 0) addTotal("TCS", (data.tcsAmount || 0).toFixed(2));
+
+    doc.moveTo(totLabelX, y - 4).lineTo(60 + pageW, y - 4).lineWidth(0.5).strokeColor("#e5e7eb").stroke();
+    y += 4;
+    addTotal("Total", `${sym}${data.total.toFixed(2)}`, true);
+    addTotal("Credits Remaining", `${sym}${data.creditsRemaining.toFixed(2)}`, true);
+
+    y += 34;
+    if (y > doc.page.height - 100) {
+      doc.addPage();
+      y = 60;
+    }
+    doc.font("Times-Roman").fontSize(10).fillColor("#4b5563").text("Authorized Signature ____________________________", 60, y);
 
     doc.end();
   });

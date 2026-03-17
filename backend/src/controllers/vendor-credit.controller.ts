@@ -1,8 +1,10 @@
 import mongoose, { ClientSession } from "mongoose";
 import { Response } from "express";
 import Bill from "../models/bill.model";
+import Organization from "../models/organization.model";
 import VendorCredit from "../models/vendor-credit.model";
 import VendorCreditApplication from "../models/vendor-credit-application.model";
+import { generateVendorCreditPdf } from "../services/pdf.service";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -63,6 +65,8 @@ function computeTotals(input: {
   lineItems: any[];
   discountLevel: "transaction" | "line_item";
   discountPercent: number;
+  tdsAmount: number;
+  tcsAmount: number;
   adjustmentAmount: number;
 }) {
   const rowItems = input.lineItems.filter((line: any) => !line.isHeader);
@@ -90,7 +94,7 @@ function computeTotals(input: {
     }, 0),
   );
 
-  const total = round2(taxableBase + taxAmount + input.adjustmentAmount);
+  const total = round2(taxableBase + taxAmount - input.tdsAmount + input.tcsAmount + input.adjustmentAmount);
   return {
     subTotal,
     discountAmount: safeDiscountAmount,
@@ -123,6 +127,11 @@ function hasFinancialEdits(payload: any): boolean {
     "referenceBillId",
     "discountLevel",
     "discountPercent",
+    "taxType",
+    "tdsId",
+    "tcsId",
+    "tdsAmount",
+    "tcsAmount",
     "adjustmentAmount",
     "subTotal",
     "discountAmount",
@@ -252,6 +261,80 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   res.json({ success: true, data: { credit, applications } });
 });
 
+/** GET /api/vendor-credits/:id/pdf */
+export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const credit = await VendorCredit.findOne({
+    _id: req.params.id,
+    organizationId: orgId(req),
+    isDeleted: false,
+  })
+    .populate("vendorId", "displayName companyName email billingAddress")
+    .populate("referenceBillId", "billNumber")
+    .populate("lineItems.itemId", "name")
+    .lean();
+
+  if (!credit) throw new NotFoundError("Vendor credit");
+
+  const org = await Organization.findById(credit.organizationId).lean();
+  if (!org) throw new NotFoundError("Organization");
+
+  const vendor = credit.vendorId as any;
+  const vendorName =
+    (typeof vendor === "object" && (vendor?.displayName || vendor?.companyName)) ||
+    "Vendor";
+
+  const vendorAddress = [
+    vendor?.billingAddress?.street,
+    vendor?.billingAddress?.city,
+    vendor?.billingAddress?.state,
+    vendor?.billingAddress?.zip,
+    vendor?.billingAddress?.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const pdfBuffer = await generateVendorCreditPdf({
+    orgName: org.name,
+    orgAddress: org.address as any,
+    orgTaxId: (org as any).taxId,
+    vendorName,
+    vendorAddress,
+    vendorEmail: vendor?.email,
+    vendorCreditNumber: credit.vendorCreditNumber,
+    vendorCreditDate: (credit.vendorCreditDate as any)?.toISOString
+      ? (credit.vendorCreditDate as any).toISOString()
+      : String(credit.vendorCreditDate),
+    referenceNumber: (credit.referenceBillId as any)?.billNumber || credit.orderNumber || "-",
+    items: (credit.lineItems || [])
+      .filter((li: any) => !li.isHeader)
+      .map((li: any) => ({
+        name: (typeof li.itemId === "object" && li.itemId?.name) || li.name || "Item",
+        description: li.description,
+        quantity: Number(li.quantity || 0),
+        rate: Number(li.rate || 0),
+        amount: Number(li.amount || 0),
+      })),
+    subTotal: Number(credit.subTotal || 0),
+    discountAmount: Number(credit.discountAmount || 0),
+    taxAmount: Number(credit.taxAmount || 0),
+    tdsAmount: Number((credit as any).tdsAmount || 0),
+    tcsAmount: Number((credit as any).tcsAmount || 0),
+    total: Number(credit.total || 0),
+    creditsRemaining: Number(credit.balanceAmount || 0),
+    notes: credit.notes,
+    termsAndConditions: credit.termsAndConditions,
+    currencySymbol: org.baseCurrency === "INR" ? "₹" : org.baseCurrency,
+  });
+
+  const isPreview = req.query.preview === "true";
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `${isPreview ? "inline" : "attachment"}; filename="Vendor-Credit-${credit.vendorCreditNumber}.pdf"`,
+  );
+  res.send(pdfBuffer);
+});
+
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const oid = orgId(req);
   if (!req.body.vendorId) throw new ValidationError("Vendor is required");
@@ -262,11 +345,16 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
   const discountPercent =
     discountLevel === "transaction" ? Math.max(0, toNum(req.body.discountPercent)) : 0;
+  const taxType = req.body.taxType || "none";
+  const tdsAmount = taxType === "TDS" ? Math.max(0, toNum(req.body.tdsAmount)) : 0;
+  const tcsAmount = taxType === "TCS" ? Math.max(0, toNum(req.body.tcsAmount)) : 0;
   const adjustmentAmount = toNum(req.body.adjustmentAmount);
   const totals = computeTotals({
     lineItems,
     discountLevel,
     discountPercent,
+    tdsAmount,
+    tcsAmount,
     adjustmentAmount,
   });
 
@@ -296,12 +384,18 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     discountLevel,
     discountPercent,
     discountAmount: totals.discountAmount,
+    taxType,
+    tdsId: taxType === "TDS" ? req.body.tdsId || null : null,
+    tcsId: taxType === "TCS" ? req.body.tcsId || null : null,
+    tdsAmount,
+    tcsAmount,
     taxAmount: totals.taxAmount,
     adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
     adjustmentAmount,
     subTotal: totals.subTotal,
     total: totals.total,
     appliedAmount: 0,
+    refundedAmount: 0,
     balanceAmount: totals.total,
     notes: req.body.notes || "",
     termsAndConditions: req.body.termsAndConditions || "",
@@ -346,11 +440,22 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     discountLevel === "transaction"
       ? Math.max(0, toNum(req.body.discountPercent ?? credit.discountPercent))
       : 0;
+  const taxType = req.body.taxType ?? (credit as any).taxType ?? "none";
+  const tdsAmount =
+    taxType === "TDS"
+      ? Math.max(0, toNum(req.body.tdsAmount ?? (credit as any).tdsAmount))
+      : 0;
+  const tcsAmount =
+    taxType === "TCS"
+      ? Math.max(0, toNum(req.body.tcsAmount ?? (credit as any).tcsAmount))
+      : 0;
   const adjustmentAmount = toNum(req.body.adjustmentAmount ?? credit.adjustmentAmount);
   const totals = computeTotals({
     lineItems,
     discountLevel,
     discountPercent,
+    tdsAmount,
+    tcsAmount,
     adjustmentAmount,
   });
 
@@ -358,7 +463,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     throw new ValidationError("Total cannot be negative");
   }
 
-  const newBalance = round2(totals.total - toNum(credit.appliedAmount));
+  const newBalance = round2(totals.total - toNum(credit.appliedAmount) - toNum((credit as any).refundedAmount));
   if (newBalance < 0) {
     throw new ValidationError("Total cannot be less than already applied amount");
   }
@@ -368,6 +473,11 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     discountLevel,
     discountPercent,
     discountAmount: totals.discountAmount,
+    taxType,
+    tdsId: taxType === "TDS" ? (req.body.tdsId ?? (credit as any).tdsId ?? null) : null,
+    tcsId: taxType === "TCS" ? (req.body.tcsId ?? (credit as any).tcsId ?? null) : null,
+    tdsAmount,
+    tcsAmount,
     taxAmount: totals.taxAmount,
     adjustmentAmount,
     subTotal: totals.subTotal,
@@ -602,6 +712,9 @@ export const voidVendorCredit = asyncHandler(async (req: AuthenticatedRequest, r
   if (toNum(credit.appliedAmount) > 0) {
     throw new ValidationError("Cannot void vendor credit after it has been applied");
   }
+  if (toNum((credit as any).refundedAmount) > 0) {
+    throw new ValidationError("Cannot void vendor credit after refund is recorded");
+  }
 
   credit.status = "VOID";
   credit.balanceAmount = 0;
@@ -628,6 +741,9 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (toNum(credit.appliedAmount) > 0) {
     throw new ValidationError("Cannot delete a vendor credit that has been applied");
   }
+  if (toNum((credit as any).refundedAmount) > 0) {
+    throw new ValidationError("Cannot delete a vendor credit after refund is recorded");
+  }
   if (!["DRAFT", "OPEN"].includes(String(credit.status))) {
     throw new ValidationError("Only DRAFT or OPEN vendor credits can be deleted");
   }
@@ -638,4 +754,93 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   await credit.save();
 
   res.json({ success: true, message: "Vendor credit deleted successfully" });
+});
+
+export const cloneVendorCredit = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const source = await VendorCredit.findOne({
+    _id: req.params.id,
+    organizationId: orgId(req),
+    isDeleted: false,
+  }).lean();
+  if (!source) throw new NotFoundError("Vendor credit");
+
+  const vendorCreditNumber = await nextVendorCreditNumber((source as any).organizationId);
+  const { _id, __v, ...cloneData } = source as any;
+
+  const credit = new VendorCredit({
+    ...cloneData,
+    vendorCreditNumber,
+    vendorCreditDate: new Date(),
+    status: "OPEN",
+    appliedAmount: 0,
+    refundedAmount: 0,
+    balanceAmount: cloneData.total || 0,
+    comments: [
+      {
+        author: "System",
+        text: `Vendor credit cloned from ${source.vendorCreditNumber}`,
+        time: new Date(),
+        isSystem: true,
+      },
+    ],
+  });
+
+  attachUser(credit, req);
+  await credit.save();
+  res.status(201).json({ success: true, data: credit });
+});
+
+export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const credit = await VendorCredit.findOne({
+    _id: req.params.id,
+    organizationId: orgId(req),
+    isDeleted: false,
+  });
+  if (!credit) throw new NotFoundError("Vendor credit");
+
+  const text = String(req.body.text || "").trim();
+  if (!text) throw new ValidationError("Comment text is required");
+
+  credit.comments.push({
+    author: req.user?.name || req.user?.email || "User",
+    text,
+    time: new Date(),
+    isSystem: false,
+  });
+  attachUser(credit, req);
+  await credit.save();
+
+  res.json({ success: true, data: credit.comments[credit.comments.length - 1] });
+});
+
+export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const credit = await VendorCredit.findOne({
+    _id: req.params.id,
+    organizationId: orgId(req),
+    isDeleted: false,
+  });
+  if (!credit) throw new NotFoundError("Vendor credit");
+  if (credit.status === "VOID") throw new ValidationError("Cannot record refund for a void vendor credit");
+
+  const amount = round2(toNum(req.body.amount));
+  if (amount <= 0) throw new ValidationError("Refund amount must be greater than zero");
+
+  const remaining = round2(toNum(credit.total) - toNum(credit.appliedAmount) - toNum((credit as any).refundedAmount));
+  if (amount > remaining) {
+    throw new ValidationError(`Refund amount exceeds available balance (${remaining.toFixed(2)})`);
+  }
+
+  (credit as any).refundedAmount = round2(toNum((credit as any).refundedAmount) + amount);
+  credit.balanceAmount = round2(toNum(credit.total) - toNum(credit.appliedAmount) - toNum((credit as any).refundedAmount));
+  credit.status = credit.balanceAmount <= 0 ? "CLOSED" : deriveStatus(toNum(credit.appliedAmount), toNum(credit.total));
+  credit.comments.push({
+    author: req.user?.name || req.user?.email || "System",
+    text: `Refund recorded: ${amount.toLocaleString("en-IN")}`,
+    time: new Date(),
+    isSystem: true,
+  });
+
+  attachUser(credit, req);
+  await credit.save();
+  res.json({ success: true, data: credit });
 });

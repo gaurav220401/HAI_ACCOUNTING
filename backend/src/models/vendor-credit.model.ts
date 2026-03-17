@@ -39,12 +39,18 @@ export interface IVendorCredit extends Document {
   discountLevel: "transaction" | "line_item";
   discountPercent: number;
   discountAmount: number;
+  taxType?: "TDS" | "TCS" | "none";
+  tdsId?: Types.ObjectId | null;
+  tcsId?: Types.ObjectId | null;
+  tdsAmount: number;
+  tcsAmount: number;
   taxAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   subTotal: number;
   total: number;
   appliedAmount: number;
+  refundedAmount: number;
   balanceAmount: number;
   lineItems: IVendorCreditLineItem[];
   notes?: string;
@@ -98,12 +104,18 @@ const vendorCreditSchema = new Schema<IVendorCredit>(
     discountLevel: { type: String, enum: ["transaction", "line_item"], default: "transaction" },
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
+    taxType: { type: String, enum: ["TDS", "TCS", "none"], default: "none" },
+    tdsId: { type: Schema.Types.ObjectId, ref: "TdsTax", default: null },
+    tcsId: { type: Schema.Types.ObjectId, ref: "TcsTax", default: null },
+    tdsAmount: { type: Number, default: 0 },
+    tcsAmount: { type: Number, default: 0 },
     taxAmount: { type: Number, default: 0 },
     adjustmentLabel: { type: String, default: "Adjustment" },
     adjustmentAmount: { type: Number, default: 0 },
     subTotal: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
     appliedAmount: { type: Number, default: 0 },
+    refundedAmount: { type: Number, default: 0 },
     balanceAmount: { type: Number, default: 0 },
     lineItems: { type: [vendorCreditLineItemSchema], default: [] },
     notes: { type: String, default: "" },

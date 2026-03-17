@@ -1,4 +1,4 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
 export type VendorCreditStatus =
@@ -39,12 +39,18 @@ export interface VendorCredit {
   discountLevel: "transaction" | "line_item";
   discountPercent: number;
   discountAmount: number;
+  taxType?: "TDS" | "TCS" | "none";
+  tdsId?: any;
+  tcsId?: any;
+  tdsAmount?: number;
+  tcsAmount?: number;
   taxAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   subTotal: number;
   total: number;
   appliedAmount: number;
+  refundedAmount?: number;
   balanceAmount: number;
   lineItems: VendorCreditLineItem[];
   notes?: string;
@@ -83,6 +89,11 @@ export interface CreateVendorCreditInput {
   orderNumber?: string;
   discountLevel?: "transaction" | "line_item";
   discountPercent?: number;
+  taxType?: "TDS" | "TCS" | "none";
+  tdsId?: string | null;
+  tcsId?: string | null;
+  tdsAmount?: number;
+  tcsAmount?: number;
   adjustmentLabel?: string;
   adjustmentAmount?: number;
   lineItems: Array<Omit<VendorCreditLineItem, "_id">>;
@@ -112,6 +123,8 @@ export const vendorCreditApi = {
       `/vendor-credits/${id}`,
     ),
 
+  downloadPdf: (id: string) => apiFetchBlob(`/vendor-credits/${id}/pdf`),
+
   create: (data: CreateVendorCreditInput) =>
     apiFetch<{ data: VendorCredit }>("/vendor-credits", {
       method: "POST",
@@ -124,12 +137,32 @@ export const vendorCreditApi = {
       body: JSON.stringify(data),
     }),
 
+  clone: (id: string) =>
+    apiFetch<{ data: VendorCredit }>(`/vendor-credits/${id}/clone`, {
+      method: "POST",
+    }),
+
   applyToBill: (id: string, billId: string, amount: number, notes?: string) =>
     apiFetch<{ data: { credit: VendorCredit; bill: any; amount: number } }>(
       `/vendor-credits/${id}/apply`,
       {
         method: "POST",
         body: JSON.stringify({ billId, amount, notes }),
+      },
+    ),
+
+  refund: (id: string, amount: number) =>
+    apiFetch<{ data: VendorCredit }>(`/vendor-credits/${id}/refund`, {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    }),
+
+  addComment: (id: string, text: string) =>
+    apiFetch<{ data: { author: string; text: string; time: string; isSystem: boolean } }>(
+      `/vendor-credits/${id}/comments`,
+      {
+        method: "POST",
+        body: JSON.stringify({ text }),
       },
     ),
 

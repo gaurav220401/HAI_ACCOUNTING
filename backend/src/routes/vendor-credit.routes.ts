@@ -8,10 +8,14 @@ router.use(authenticate);
 router.get("/next-number", vendorCreditController.getNextNumber);
 router.get("/", vendorCreditController.list);
 router.get("/:id", vendorCreditController.getOne);
+router.get("/:id/pdf", vendorCreditController.downloadPdf);
 router.post("/", vendorCreditController.create);
 router.patch("/:id", vendorCreditController.update);
+router.post("/:id/clone", vendorCreditController.cloneVendorCredit);
 router.post("/:id/apply", vendorCreditController.applyToBill);
 router.post("/:id/unapply", vendorCreditController.unapplyFromBill);
+router.post("/:id/refund", vendorCreditController.recordRefund);
+router.post("/:id/comments", vendorCreditController.addComment);
 router.post("/:id/void", vendorCreditController.voidVendorCredit);
 router.delete("/:id", vendorCreditController.remove);
 

@@ -14,6 +14,8 @@ import { itemApi, type Item } from "@/lib/api/items";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { settingsApi, type Tax } from "@/lib/api/settings";
 import { billApi, type Bill } from "@/lib/api/bills";
+import { tdsTaxApi, type TdsTax } from "@/lib/api/tds-taxes";
+import { tcsTaxApi, type TcsTax } from "@/lib/api/tcs-taxes";
 import {
   vendorCreditApi,
   type VendorCredit,
@@ -109,6 +111,8 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
   const [items, setItems] = useState<Item[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [taxes, setTaxes] = useState<Tax[]>([]);
+  const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
+  const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [vendorBills, setVendorBills] = useState<Bill[]>([]);
 
   const [vendorId, setVendorId] = useState("");
@@ -121,6 +125,10 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
   const [vendorCreditDate, setVendorCreditDate] = useState(todayIso());
   const [discountMode, setDiscountMode] = useState<"percent" | "amount">("percent");
   const [discountValue, setDiscountValue] = useState(0);
+  const [taxType, setTaxType] = useState<"none" | "TDS" | "TCS">("none");
+  const [tdsId, setTdsId] = useState("");
+  const [tcsId, setTcsId] = useState("");
+  const [adjustmentAmount, setAdjustmentAmount] = useState(0);
   const [notes, setNotes] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([makeRow()]);
@@ -135,6 +143,8 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
     itemApi.list({ page: 1, limit: 200 }).then((res) => setItems(res.data || [])).catch(() => {});
     accountApi.list({ rootType: "Expense", excludeGroups: true }).then((res) => setAccounts(res.data || [])).catch(() => {});
     settingsApi.taxes.list().then((res) => setTaxes(res.data || [])).catch(() => {});
+    tdsTaxApi.list().then((res) => setTdsTaxes(res.data || [])).catch(() => {});
+    tcsTaxApi.list().then((res) => setTcsTaxes(res.data || [])).catch(() => {});
 
     if (mode === "create") {
       vendorCreditApi.getNextNumber().then((res) => setVendorCreditNumber(res.data.vendorCreditNumber)).catch(() => {});
@@ -191,6 +201,10 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
     setVendorCreditDate(initialData.vendorCreditDate?.slice(0, 10) || todayIso());
     setNotes(initialData.notes || "");
     setAttachments(initialData.attachments || []);
+    setTaxType(initialData.taxType || "none");
+    setTdsId(initialData.tdsId ? (typeof initialData.tdsId === "object" ? initialData.tdsId._id : String(initialData.tdsId)) : "");
+    setTcsId(initialData.tcsId ? (typeof initialData.tcsId === "object" ? initialData.tcsId._id : String(initialData.tcsId)) : "");
+    setAdjustmentAmount(Number(initialData.adjustmentAmount || 0));
     if ((initialData.discountPercent || 0) > 0) {
       setDiscountMode("percent");
       setDiscountValue(initialData.discountPercent || 0);
@@ -235,7 +249,21 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
     if (discountMode === "percent") return (subTotal * discountValue) / 100;
     return discountValue;
   }, [discountMode, discountValue, subTotal]);
-  const total = useMemo(() => Math.max(0, subTotal - discountAmount + lineTaxTotal), [subTotal, discountAmount, lineTaxTotal]);
+  const taxableAfterDiscount = useMemo(() => Math.max(0, subTotal - discountAmount), [subTotal, discountAmount]);
+  const tdsAmount = useMemo(() => {
+    if (taxType !== "TDS") return 0;
+    const tax = tdsTaxes.find((t) => t._id === tdsId);
+    return tax ? (taxableAfterDiscount * Number(tax.rate || 0)) / 100 : 0;
+  }, [taxType, tdsId, tdsTaxes, taxableAfterDiscount]);
+  const tcsAmount = useMemo(() => {
+    if (taxType !== "TCS") return 0;
+    const tax = tcsTaxes.find((t) => t._id === tcsId);
+    return tax ? (taxableAfterDiscount * Number(tax.rate || 0)) / 100 : 0;
+  }, [taxType, tcsId, tcsTaxes, taxableAfterDiscount]);
+  const total = useMemo(
+    () => Math.max(0, subTotal - discountAmount + lineTaxTotal - tdsAmount + tcsAmount + adjustmentAmount),
+    [subTotal, discountAmount, lineTaxTotal, tdsAmount, tcsAmount, adjustmentAmount],
+  );
 
   async function uploadAttachment(file: File) {
     try {
@@ -287,6 +315,12 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
       subject: orderNumber || billType || "",
       discountLevel: "transaction",
       discountPercent: discountMode === "percent" ? discountValue : subTotal > 0 ? (discountValue / subTotal) * 100 : 0,
+      taxType,
+      tdsId: taxType === "TDS" ? tdsId || null : null,
+      tcsId: taxType === "TCS" ? tcsId || null : null,
+      tdsAmount,
+      tcsAmount,
+      adjustmentAmount,
       lineItems,
       notes,
       attachments,
@@ -504,6 +538,69 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
             </div>
           </div>
           <div className="flex justify-between text-sm"><span>Tax</span><span>{fmt(lineTaxTotal)}</span></div>
+          <div className="flex items-center gap-3 pt-1">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                checked={taxType === "TDS"}
+                onChange={() => setTaxType("TDS")}
+              />
+              TDS
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                checked={taxType === "TCS"}
+                onChange={() => setTaxType("TCS")}
+              />
+              TCS
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                checked={taxType === "none"}
+                onChange={() => setTaxType("none")}
+              />
+              None
+            </label>
+          </div>
+          {taxType === "TDS" && (
+            <div className="flex justify-between items-center gap-3 text-sm">
+              <Select value={tdsId || "none"} onValueChange={(v) => setTdsId(v === "none" ? "" : v)}>
+                <SelectTrigger className="h-8 bg-white w-[220px]"><SelectValue placeholder="Select a Tax" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select a Tax</SelectItem>
+                  {tdsTaxes.map((t) => (
+                    <SelectItem key={t._id} value={t._id}>{t.taxName} ({t.rate}%)</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>- {fmt(tdsAmount)}</span>
+            </div>
+          )}
+          {taxType === "TCS" && (
+            <div className="flex justify-between items-center gap-3 text-sm">
+              <Select value={tcsId || "none"} onValueChange={(v) => setTcsId(v === "none" ? "" : v)}>
+                <SelectTrigger className="h-8 bg-white w-[220px]"><SelectValue placeholder="Select a Tax" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select a Tax</SelectItem>
+                  {tcsTaxes.map((t) => (
+                    <SelectItem key={t._id} value={t._id}>{t.taxName} ({t.rate}%)</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>{fmt(tcsAmount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center text-sm gap-3">
+            <span>Adjustment</span>
+            <Input
+              type="number"
+              className="w-28 h-8 text-right bg-white"
+              value={adjustmentAmount}
+              onChange={(e) => setAdjustmentAmount(Number(e.target.value || 0))}
+            />
+          </div>
           <div className="pt-2 flex justify-between text-2xl font-semibold"><span>Total ( INR )</span><span>{fmt(total)}</span></div>
         </div>
       </div>
