@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import {
   ChevronDown,
   FileText,
@@ -16,12 +18,12 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import RichTextEditor from "@/components/ui/rich-text-editor";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,9 +38,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { billApi, type Bill } from "@/lib/api/bills";
+import { uploadApi } from "@/lib/api/upload";
 import {
   vendorCreditApi,
   type VendorCredit,
@@ -69,121 +78,266 @@ function getName(field: any): string {
   return String(field);
 }
 
+async function uploadImage(file: File, folder: string = "general"): Promise<string> {
+  const res = await uploadApi.upload(file, folder);
+  return res.url;
+}
+
+interface StatementTemplateConfig {
+  templateId: string;
+  templateName: string;
+  paperSize: "A4" | "A5" | "Letter";
+  margins: { top: number; bottom: number; left: number; right: number };
+  fontFamily: string;
+  fontSize: number;
+  backgroundColor: string;
+  showFooter: boolean;
+  footerFontSize: number;
+  footerFontColor: string;
+  footerCustomContent: string;
+  showOrgLogo: boolean;
+  orgLogoSize: number;
+  showOrgName: boolean;
+  orgNameColor: string;
+  orgNameFontSize: number;
+  showOrgAddress: boolean;
+  vendorNameFontColor: string;
+  vendorNameFontSize: number;
+  showBillTo: boolean;
+  billToLabel: string;
+  showDocTitle: boolean;
+  docTitle: string;
+  docTitleFontSize: number;
+  docTitleFontColor: string;
+  tableHeaderFontSize: number;
+  tableHeaderBgColor: string;
+  tableHeaderFontColor: string;
+  oddRowColor: string;
+  evenRowColor: string;
+}
+
+const DEFAULT_TEMPLATE_CONFIG: StatementTemplateConfig = {
+  templateId: "standard",
+  templateName: "Standard",
+  paperSize: "A4",
+  margins: { top: 0.45, bottom: 0.45, left: 0.5, right: 0.5 },
+  fontFamily: "Inter, sans-serif",
+  fontSize: 12,
+  backgroundColor: "#ffffff",
+  showFooter: true,
+  footerFontSize: 9,
+  footerFontColor: "#666666",
+  footerCustomContent: "This is a computer-generated statement.",
+  showOrgLogo: true,
+  orgLogoSize: 60,
+  showOrgName: true,
+  orgNameColor: "#333333",
+  orgNameFontSize: 10,
+  showOrgAddress: true,
+  vendorNameFontColor: "#333333",
+  vendorNameFontSize: 9,
+  showBillTo: true,
+  billToLabel: "To",
+  showDocTitle: true,
+  docTitle: "Vendor Credits",
+  docTitleFontSize: 16,
+  docTitleFontColor: "#000000",
+  tableHeaderFontSize: 9,
+  tableHeaderBgColor: "#3c3d3a",
+  tableHeaderFontColor: "#ffffff",
+  oddRowColor: "#ffffff",
+  evenRowColor: "#f6f5f5",
+};
+
+const TEMPLATE_STORAGE_KEY = (vendorId: string) => `stmt-tmpl-config-${vendorId}`;
+
+function getVendorId(credit?: VendorCredit | null): string {
+  if (!credit?.vendorId) return "";
+  return typeof credit.vendorId === "object" ? String(credit.vendorId._id || "") : String(credit.vendorId);
+}
+
 function VendorCreditStandardPreview({
   credit,
   orgName,
   orgLogo,
   orgAddress,
+  templateConfig,
 }: {
   credit: VendorCredit;
   orgName: string;
   orgLogo: string;
   orgAddress: any;
+  templateConfig: StatementTemplateConfig;
 }) {
   const vendorName = getName(credit.vendorId) || "Vendor";
+  const previewTitle = "VENDOR CREDITS";
   const vendorAddress =
     typeof credit.vendorId === "object" && credit.vendorId?.billingAddress
       ? credit.vendorId.billingAddress
       : null;
 
+  const paperW =
+    templateConfig.paperSize === "A5"
+      ? "148mm"
+      : templateConfig.paperSize === "Letter"
+        ? "216mm"
+        : "210mm";
+  const paperMinH =
+    templateConfig.paperSize === "A5"
+      ? "210mm"
+      : templateConfig.paperSize === "Letter"
+        ? "279mm"
+        : "297mm";
+
   return (
-    <div className="statement-print-area w-full max-w-[980px] border rounded-sm overflow-hidden bg-white shadow-sm relative">
+    <div
+      className="statement-print-area bg-white mx-auto shadow-sm print:shadow-none flex flex-col relative"
+      style={{
+        width: paperW,
+        minHeight: paperMinH,
+        fontFamily: templateConfig.fontFamily,
+        fontSize: `${templateConfig.fontSize}pt`,
+        backgroundColor: templateConfig.backgroundColor,
+      }}
+    >
       <div className="absolute top-0 left-0 z-10">
-        <div className="bg-blue-500 text-white text-xs px-8 py-2 transform -rotate-45 -translate-x-7 translate-y-4 shadow">
+        <div className="no-print bg-blue-500 text-white text-xs px-8 py-2 transform -rotate-45 -translate-x-7 translate-y-4 shadow">
           {credit.status === "VOID" ? "Void" : "Open"}
         </div>
       </div>
 
-      <div className="p-12">
-        <div className="flex justify-between items-start mb-10">
-          <div className="max-w-[45%]">
-            {orgLogo ? (
-              <img src={orgLogo} alt={orgName} className="h-28 object-contain mb-2" />
-            ) : (
-              <div className="text-xl font-bold">{orgName || "Organization"}</div>
+      <div
+        style={{
+          flex: 1,
+          padding: `${templateConfig.margins.top}in ${templateConfig.margins.right}in 0 ${templateConfig.margins.left}in`,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <div style={{ maxWidth: "45%" }}>
+            {templateConfig.showOrgLogo && orgLogo && (
+              <img
+                src={orgLogo}
+                alt={orgName}
+                crossOrigin="anonymous"
+                style={{ maxHeight: `${templateConfig.orgLogoSize}px`, width: "auto", objectFit: "contain", display: "block" }}
+              />
             )}
-            <div className="text-base font-semibold mt-2">{orgName || "Organization"}</div>
-            <div className="text-sm mt-1 text-muted-foreground">{orgAddress?.street || ""}</div>
-            <div className="text-sm text-muted-foreground">
-              {[orgAddress?.city, orgAddress?.state, orgAddress?.zip].filter(Boolean).join(" ")}
-            </div>
-            <div className="text-sm text-muted-foreground">{orgAddress?.country || ""}</div>
-            <div className="text-sm text-muted-foreground">{orgAddress?.phone || ""}</div>
-            <div className="text-sm text-muted-foreground">{orgAddress?.email || ""}</div>
+
+            {templateConfig.showOrgName && (
+              <p style={{ fontWeight: "700", color: templateConfig.orgNameColor, fontSize: `${templateConfig.orgNameFontSize}pt`, margin: 0, lineHeight: 1.3 }}>
+                {orgName || "Organization"}
+              </p>
+            )}
+
+            {templateConfig.showOrgAddress && (
+              <>
+                {(orgAddress?.city || orgAddress?.state) && (
+                  <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>
+                    {[orgAddress?.city, orgAddress?.state].filter(Boolean).join(", ")}
+                  </p>
+                )}
+                {orgAddress?.zip && <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>{orgAddress.zip}</p>}
+                {orgAddress?.street && <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>{orgAddress.street}</p>}
+                {orgAddress?.phone && <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>Ph: {orgAddress.phone}</p>}
+              </>
+            )}
           </div>
 
-          <div className="text-right">
-            <div className="text-[48px] font-serif leading-none">VENDOR CREDITS</div>
-            <div className="mt-3 text-lg">CreditNote# {credit.vendorCreditNumber}</div>
-            <div className="mt-4 text-sm font-semibold">Credits Remaining</div>
-            <div className="text-3xl font-bold">{fmtCurrency(credit.balanceAmount)}</div>
+          <div style={{ textAlign: "right", maxWidth: "48%" }}>
+            {templateConfig.showDocTitle && (
+              <h1 style={{ fontWeight: "700", color: templateConfig.docTitleFontColor, fontSize: `${templateConfig.docTitleFontSize}pt`, margin: 0, lineHeight: 1.2 }}>
+                {previewTitle}
+              </h1>
+            )}
+            <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "3px 0 0" }}>Credit Note#: {credit.vendorCreditNumber}</p>
+            <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>Credits Remaining: {fmtCurrency(credit.balanceAmount)}</p>
           </div>
         </div>
 
-        <div className="mb-6">
-          <div className="text-base mb-1">Vendor Address</div>
-          <div className="text-blue-600 font-semibold text-[17px]">{vendorName}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
+          <div style={{ maxWidth: "55%" }}>
+            {templateConfig.showBillTo && (
+              <p style={{ fontSize: "8pt", fontWeight: "600", color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 3px" }}>
+                Vendor Details
+              </p>
+            )}
+            <p style={{ fontWeight: "600", color: templateConfig.vendorNameFontColor, fontSize: `${templateConfig.vendorNameFontSize}pt`, margin: 0, lineHeight: 1.35 }}>
+              {vendorName}
+            </p>
+
           {vendorAddress ? (
             <>
-              <div className="text-sm">{vendorAddress.street || ""}</div>
-              <div className="text-sm">{[vendorAddress.city, vendorAddress.state].filter(Boolean).join(" ")}</div>
-              <div className="text-sm">{vendorAddress.zip || ""}</div>
-              <div className="text-sm">{vendorAddress.country || ""}</div>
+              <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>{vendorAddress.street || ""}</p>
+              <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>{[vendorAddress.city, vendorAddress.state].filter(Boolean).join(", ")}</p>
+              <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>{vendorAddress.zip || ""}</p>
+              <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>{vendorAddress.country || ""}</p>
             </>
           ) : (
-            <div className="text-sm text-muted-foreground">Address not available</div>
+            <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "2px 0 0" }}>Address not available</p>
           )}
-        </div>
+          </div>
 
-        <div className="grid grid-cols-2 mb-4 text-sm">
-          <div />
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span>Date :</span>
-              <span>{fmtDate(credit.vendorCreditDate)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Reference number :</span>
-              <span>{credit.referenceBillId?.billNumber || credit.orderNumber || "-"}</span>
-            </div>
+          <div style={{ textAlign: "right", maxWidth: "42%" }}>
+            <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "4px 0 0" }}>Date: {fmtDate(credit.vendorCreditDate)}</p>
+            <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "4px 0 0" }}>
+              Reference: {credit.referenceBillId?.billNumber || credit.orderNumber || "-"}
+            </p>
           </div>
         </div>
 
-        <table className="w-full text-sm border-collapse">
+        <div style={{ borderTop: `1px solid ${templateConfig.tableHeaderBgColor}`, marginBottom: "10px" }} />
+
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt" }}>
           <thead>
-            <tr className="bg-zinc-800 text-white">
-              <th className="px-3 py-2 text-left w-12">#</th>
-              <th className="px-3 py-2 text-left">Item &amp; Description</th>
-              <th className="px-3 py-2 text-right w-24">Qty</th>
-              <th className="px-3 py-2 text-right w-28">Rate</th>
-              <th className="px-3 py-2 text-right w-32">Amount</th>
+            <tr style={{ backgroundColor: templateConfig.tableHeaderBgColor, color: templateConfig.tableHeaderFontColor, fontSize: `${templateConfig.tableHeaderFontSize}pt` }}>
+              <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: 600 }}>#</th>
+              <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: 600 }}>Item & Description</th>
+              <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: 600 }}>Qty</th>
+              <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: 600 }}>Rate</th>
+              <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: 600 }}>Amount</th>
             </tr>
           </thead>
           <tbody>
-            {credit.lineItems.map((line, idx) => (
-              <tr key={line._id || idx} className="border-b">
-                <td className="px-3 py-3">{idx + 1}</td>
-                <td className="px-3 py-3">{line.name || "Item"}</td>
-                <td className="px-3 py-3 text-right">{Number(line.quantity || 0).toFixed(2)}</td>
-                <td className="px-3 py-3 text-right">{fmtCurrency(line.rate)}</td>
-                <td className="px-3 py-3 text-right">{fmtCurrency(line.amount)}</td>
+            {credit.lineItems.filter((line) => !line.isHeader).map((line, idx) => (
+              <tr key={line._id || idx} style={{ backgroundColor: idx % 2 === 0 ? templateConfig.evenRowColor : templateConfig.oddRowColor }}>
+                <td style={{ padding: "6px 10px" }}>{idx + 1}</td>
+                <td style={{ padding: "6px 10px" }}>{line.name || "Item"}</td>
+                <td style={{ padding: "6px 10px", textAlign: "right" }}>{Number(line.quantity || 0).toFixed(2)}</td>
+                <td style={{ padding: "6px 10px", textAlign: "right" }}>{fmtCurrency(line.rate)}</td>
+                <td style={{ padding: "6px 10px", textAlign: "right" }}>{fmtCurrency(line.amount)}</td>
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr style={{ fontWeight: 700, borderTop: `2px solid ${templateConfig.tableHeaderBgColor}` }}>
+              <td colSpan={4} style={{ padding: "7px 10px", textAlign: "right" }}>Sub Total</td>
+              <td style={{ padding: "7px 10px", textAlign: "right" }}>{fmtCurrency(credit.subTotal)}</td>
+            </tr>
+            <tr style={{ fontWeight: 700 }}>
+              <td colSpan={4} style={{ padding: "7px 10px", textAlign: "right" }}>Total</td>
+              <td style={{ padding: "7px 10px", textAlign: "right" }}>{fmtCurrency(credit.total)}</td>
+            </tr>
+            <tr style={{ fontWeight: 700 }}>
+              <td colSpan={4} style={{ padding: "7px 10px", textAlign: "right" }}>Credits Remaining</td>
+              <td style={{ padding: "7px 10px", textAlign: "right" }}>{fmtCurrency(credit.balanceAmount)}</td>
+            </tr>
+          </tfoot>
         </table>
 
-        <div className="mt-3 flex justify-end">
-          <div className="w-[340px] text-sm space-y-2">
-            <div className="flex justify-between"><span>Sub Total</span><span>{fmtCurrency(credit.subTotal)}</span></div>
-            <div className="flex justify-between"><span>Total</span><span className="font-semibold">{fmtCurrency(credit.total)}</span></div>
-            <div className="flex justify-between bg-zinc-100 px-3 py-2 font-semibold"><span>Credits Remaining</span><span>{fmtCurrency(credit.balanceAmount)}</span></div>
-          </div>
+        <div style={{ marginTop: "24px", fontSize: "9.5pt", color: "#4b5563" }}>
+          Authorized Signature ____________________________
         </div>
+      </div>
 
-        <div className="mt-14 text-sm">
-          <span>Authorized Signature</span>
-          <span className="inline-block border-b border-zinc-700 w-56 align-middle ml-2" />
-        </div>
+      <div style={{ padding: `8px ${templateConfig.margins.right}in ${templateConfig.margins.bottom}in ${templateConfig.margins.left}in` }}>
+        {templateConfig.showFooter && (
+          <>
+            <div style={{ borderTop: "1px solid #d1d5db", marginBottom: "6px" }} />
+            <p style={{ fontSize: `${templateConfig.footerFontSize}pt`, color: templateConfig.footerFontColor, textAlign: "center", margin: 0 }}>
+              {templateConfig.footerCustomContent || "This is a computer-generated statement."}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -209,7 +363,13 @@ export default function VendorCreditsPage() {
   const [commentText, setCommentText] = useState("");
   const [showPdf, setShowPdf] = useState(true);
   const [showPrintMenu, setShowPrintMenu] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [showAttachments, setShowAttachments] = useState(false);
+  const [attachments, setAttachments] = useState<Array<{ url: string; publicId: string; name: string }>>([]);
+  const [comments, setComments] = useState<Array<{ id: string; author: string; text: string; time: string; isSystem: boolean }>>([]);
+  const [uploading, setUploading] = useState(false);
+  const attachFileRef = useRef<HTMLInputElement>(null);
+  const [templateConfig, setTemplateConfig] = useState<StatementTemplateConfig>(DEFAULT_TEMPLATE_CONFIG);
 
   const orgName = activeOrganization?.name || "";
   const orgLogo = activeOrganization?.logo || "";
@@ -238,6 +398,65 @@ export default function VendorCreditsPage() {
   useEffect(() => {
     if (firebaseUser && !loading) void loadCredits();
   }, [firebaseUser, loading]);
+
+  useEffect(() => {
+    if (!selectedCredit) {
+      setTemplateConfig(DEFAULT_TEMPLATE_CONFIG);
+      setAttachments([]);
+      setComments([]);
+      return;
+    }
+
+    const vendorId = getVendorId(selectedCredit);
+    if (!vendorId) {
+      setTemplateConfig(DEFAULT_TEMPLATE_CONFIG);
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem(TEMPLATE_STORAGE_KEY(vendorId));
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<StatementTemplateConfig>;
+        setTemplateConfig((prev) => ({
+          ...prev,
+          ...parsed,
+          margins: { ...prev.margins, ...(parsed.margins || {}) },
+        }));
+        return;
+      }
+    } catch {
+      // ignore and use default
+    }
+
+    setTemplateConfig(DEFAULT_TEMPLATE_CONFIG);
+  }, [selectedCredit]);
+
+  useEffect(() => {
+    if (!selectedCredit) return;
+    setAttachments(
+      (selectedCredit.attachments || []).map((url) => ({
+        url,
+        publicId: "",
+        name: decodeURIComponent(url.split("/").pop() || "File"),
+      })),
+    );
+    setComments(
+      [...(selectedCredit.comments || [])].reverse().map((c, idx) => ({
+        id: `c-${idx}`,
+        author: c.author,
+        text: c.text,
+        time: new Date(c.time).toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        isSystem: !!c.isSystem,
+      })),
+    );
+  }, [selectedCredit]);
 
   async function loadDetail(id: string) {
     setSelectedId(id);
@@ -345,21 +564,6 @@ export default function VendorCreditsPage() {
     }
   }
 
-  async function handleAddComment() {
-    if (!selectedCredit?._id || !commentText.trim()) {
-      toast.error("Comment cannot be empty");
-      return;
-    }
-    try {
-      await vendorCreditApi.addComment(selectedCredit._id, commentText.trim());
-      setCommentText("");
-      toast.success("Comment added");
-      await loadDetail(selectedCredit._id);
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to add comment");
-    }
-  }
-
   function handlePrintPreview() {
     const el = document.querySelector("#vendor-credit-pdf-view .statement-print-area") as HTMLElement | null;
     if (!el) {
@@ -377,17 +581,20 @@ export default function VendorCreditsPage() {
       <title>Vendor Credit - ${selectedCredit?.vendorCreditNumber || "Print"}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #f3f4f6; font-family: Arial, sans-serif; }
+        body { background: #f3f4f6; font-family: Arial, sans-serif; margin: 0; padding: 0; }
         .statement-print-area {
           display: block !important;
           background: white;
           margin: 0 auto;
+          width: 210mm !important;
+          min-height: 297mm !important;
         }
         table { border-collapse: collapse; width: 100%; }
         img { max-width: 100%; display: block; }
         @page { size: A4 portrait; margin: 0; }
         @media print {
           body { background: white; }
+          .no-print { display: none !important; }
           .statement-print-area { box-shadow: none !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
@@ -399,55 +606,80 @@ export default function VendorCreditsPage() {
   }
 
   async function handleDownloadPdf() {
-    if (!selectedCredit?._id) return;
+    if (!selectedCredit) return;
+
+    const el = document.querySelector("#vendor-credit-pdf-view .statement-print-area") as HTMLElement | null;
+    if (!el) {
+      toast.error("Please show the PDF View before downloading.");
+      return;
+    }
+
     try {
-      const blob = await vendorCreditApi.downloadPdf(selectedCredit._id);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `Vendor-Credit-${selectedCredit.vendorCreditNumber}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      const hiddenNodes = Array.from(el.querySelectorAll(".no-print")) as HTMLElement[];
+      const prevDisplay = hiddenNodes.map((n) => n.style.display);
+      hiddenNodes.forEach((n) => { n.style.display = "none"; });
+
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+
+      hiddenNodes.forEach((n, i) => { n.style.display = prevDisplay[i] || ""; });
+
+      const imageData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageW = 210;
+      const pageH = 297;
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+
+      if (imgH <= pageH) {
+        pdf.addImage(imageData, "PNG", 0, 0, imgW, imgH, undefined, "FAST");
+      } else {
+        let heightLeft = imgH;
+        let y = 0;
+
+        pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
+        heightLeft -= pageH;
+
+        while (heightLeft > 0) {
+          y = heightLeft - imgH;
+          pdf.addPage();
+          pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
+          heightLeft -= pageH;
+        }
+      }
+
+      pdf.save(`Vendor-Credit-${selectedCredit.vendorCreditNumber}.pdf`);
       toast.success("PDF downloaded");
     } catch {
-      toast.error("Failed to download PDF");
+      try {
+        const blob = await vendorCreditApi.downloadPdf(selectedCredit._id);
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `Vendor-Credit-${selectedCredit.vendorCreditNumber}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        toast.success("PDF downloaded");
+      } catch {
+        toast.error("Failed to download PDF");
+      }
     }
   }
 
-  function handleExportTimeline() {
+  function handleEditTemplate() {
     if (!selectedCredit) return;
-    const rows: string[] = ["Type,Date,Author,Details,Amount"];
-
-    (selectedCredit.comments || []).forEach((c) => {
-      rows.push([
-        "Comment",
-        fmtDate(c.time),
-        (c.author || "").replace(/,/g, " "),
-        (c.text || "").replace(/,/g, " "),
-        "",
-      ].join(","));
-    });
-
-    applications.forEach((ap) => {
-      const billNo = typeof ap.billId === "object" ? ap.billId.billNumber : String(ap.billId || "");
-      rows.push([
-        "Applied",
-        fmtDate(ap.appliedDate),
-        "System",
-        `Applied to ${billNo}`.replace(/,/g, " "),
-        String(ap.amount || 0),
-      ].join(","));
-    });
-
-    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `vendor-credit-${selectedCredit.vendorCreditNumber}-timeline.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const vendorId = getVendorId(selectedCredit);
+    if (!vendorId) {
+      toast.error("Vendor not found for template customization");
+      return;
+    }
+    router.push(`/purchases/vendors/${vendorId}/edit-template`);
   }
 
   return (
@@ -565,18 +797,23 @@ export default function VendorCreditsPage() {
                         type="button"
                         className={`p-2 transition-colors relative hover:text-foreground rounded ${showAttachments ? "text-primary bg-muted/30" : "text-muted-foreground"}`}
                         title="Attachments"
-                        onClick={() => setShowAttachments((v) => !v)}
+                        onClick={() => { setShowAttachments((v) => !v); setShowComments(false); }}
                       >
                         <Paperclip className="h-4 w-4" />
                       </button>
 
                       <button
                         type="button"
-                        className="p-2 transition-colors relative hover:text-foreground rounded text-muted-foreground"
+                        className={`p-2 transition-colors relative hover:text-foreground rounded ${showComments ? "text-primary bg-muted/30" : "text-muted-foreground"}`}
                         title="Comments & History"
-                        onClick={() => document.getElementById("vendor-credit-timeline")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                        onClick={() => { setShowComments((v) => !v); setShowAttachments(false); }}
                       >
                         <MessageSquare className="h-4 w-4" />
+                        {comments.length > 0 && (
+                          <span className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-primary text-[9px] text-white flex items-center justify-center font-bold">
+                            {comments.length}
+                          </span>
+                        )}
                       </button>
 
                       <div className="h-4 w-px bg-border mx-1" />
@@ -603,26 +840,177 @@ export default function VendorCreditsPage() {
                             </button>
                           </div>
                           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 max-h-[300px] bg-white relative z-10">
-                            {(selectedCredit.attachments || []).length === 0 && (
+                            {attachments.length === 0 && (
                               <p className="text-xs text-muted-foreground py-6 text-center border-b border-dashed">No Files Attached</p>
                             )}
-                            {(selectedCredit.attachments || []).map((url, idx) => (
-                              <a
-                                key={idx}
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 border rounded-md px-3 py-2 text-xs text-primary hover:underline"
+                            {attachments.map((a, idx) => {
+                              const isImg = ["jpg", "jpeg", "png", "gif", "webp"].some((e) => a.url.toLowerCase().includes(`.${e}`));
+                              return (
+                                <div key={idx} className="flex items-center gap-2 border rounded-md px-3 py-2 text-xs group">
+                                  {isImg
+                                    ? <img src={a.url} className="h-8 w-8 object-cover rounded shrink-0" alt={a.name} />
+                                    : <span className="text-red-500 text-base shrink-0">📄</span>
+                                  }
+                                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate flex-1">
+                                    {a.name}
+                                  </a>
+                                  {a.publicId && (
+                                    <button
+                                      type="button"
+                                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0"
+                                      onClick={async () => {
+                                        try {
+                                          await uploadApi.remove(a.publicId);
+                                          const next = attachments.filter((_, i) => i !== idx);
+                                          setAttachments(next);
+                                          if (selectedCredit?._id) {
+                                            await vendorCreditApi.update(selectedCredit._id, { attachments: next.map((x) => x.url) });
+                                          }
+                                        } catch {
+                                          toast.error("Failed to remove file");
+                                        }
+                                      }}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <div className="pt-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2 text-primary border-primary/20 text-xs w-full py-4 bg-blue-50/30 hover:bg-blue-50/50 border-dashed"
+                                disabled={uploading || attachments.length >= 10}
+                                onClick={() => attachFileRef.current?.click()}
                               >
-                                <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="truncate">{decodeURIComponent(url.split("/").pop() || "Attachment")}</span>
-                              </a>
-                            ))}
+                                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                                {uploading ? "Uploading..." : "Upload your Files"} <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                              <input
+                                ref={attachFileRef}
+                                type="file"
+                                multiple
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const files = Array.from(e.target.files || []);
+                                  if (!files.length || !selectedCredit?._id) return;
+                                  setUploading(true);
+                                  try {
+                                    const results = await Promise.all(
+                                      files.slice(0, 10 - attachments.length).map((f) => uploadApi.upload(f, "vendor-credits")),
+                                    );
+                                    const next = [
+                                      ...attachments,
+                                      ...results.map((r) => ({
+                                        url: r.url,
+                                        publicId: r.publicId,
+                                        name: decodeURIComponent(r.url.split("/").pop() || "File"),
+                                      })),
+                                    ];
+                                    setAttachments(next);
+                                    await vendorCreditApi.update(selectedCredit._id, { attachments: next.map((x) => x.url) });
+                                    toast.success("Files uploaded");
+                                  } catch {
+                                    toast.error("Upload failed");
+                                  } finally {
+                                    setUploading(false);
+                                    e.target.value = "";
+                                  }
+                                }}
+                              />
+                              <p className="text-[10px] text-muted-foreground mt-2 text-center">You can upload a maximum of 10 files, 10MB each</p>
+                            </div>
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
+
+                  <Sheet open={showComments} onOpenChange={setShowComments}>
+                    <SheetContent side="right" className="p-0 sm:max-w-[400px] flex flex-col gap-0 border-l shadow-xl">
+                      <SheetHeader className="px-5 py-4 border-b">
+                        <SheetTitle className="text-base font-semibold">Comments &amp; History</SheetTitle>
+                      </SheetHeader>
+                      <div className="flex-1 flex flex-col overflow-hidden bg-white">
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                          <RichTextEditor
+                            value={commentText}
+                            onChange={setCommentText}
+                            onImageUpload={(file) => uploadImage(file, "comments")}
+                            placeholder="Type your comment here..."
+                            minHeight="100px"
+                            className="border-none"
+                            toolbarClassName="bg-gray-50/80 border-b"
+                          />
+                          <div className="px-3 py-2.5 bg-gray-50/50 flex justify-start border-t">
+                            <button
+                              disabled={!commentText.replace(/<[^>]*>/g, "").trim()}
+                              className="h-8 px-5 py-0 text-xs font-semibold border border-primary/20 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all shadow-sm"
+                              onClick={async () => {
+                                if (!selectedCredit?._id) return;
+                                const txt = commentText.trim();
+                                if (!txt || !txt.replace(/<[^>]*>/g, "").trim()) return;
+                                try {
+                                  const res = await vendorCreditApi.addComment(selectedCredit._id, txt);
+                                  setComments((prev) => [
+                                    {
+                                      id: Date.now().toString(),
+                                      author: res.data.author || "User",
+                                      text: res.data.text || txt,
+                                      time: new Date(res.data.time || Date.now()).toLocaleString("en-IN", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                        hour12: true,
+                                      }),
+                                      isSystem: !!res.data.isSystem,
+                                    },
+                                    ...prev,
+                                  ]);
+                                  setCommentText("");
+                                  await loadDetail(selectedCredit._id);
+                                  toast.success("Comment added");
+                                } catch {
+                                  toast.error("Failed to add comment");
+                                }
+                              }}
+                            >
+                              Add Comment
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-5 py-6">
+                          <div className="flex items-center justify-between mb-6">
+                            <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/80">ALL COMMENTS</h4>
+                            <span className="bg-primary/10 text-primary rounded-full text-[11px] px-2.5 py-0.5 font-bold">{comments.length}</span>
+                          </div>
+
+                          <div className="space-y-4 pb-10">
+                            {comments.map((c) => (
+                              <div key={c.id} className="border rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-bold text-sm text-gray-800">{c.author.split("@")[0]}</span>
+                                  <span className="text-[11px] text-muted-foreground">• {c.time}</span>
+                                </div>
+                                <div className="text-[13px] leading-relaxed" dangerouslySetInnerHTML={{ __html: c.text }} />
+                              </div>
+                            ))}
+                            {comments.length === 0 && (
+                              <div className="text-center py-10">
+                                <MessageSquare className="h-8 w-8 text-border mx-auto mb-3" />
+                                <p className="text-sm text-muted-foreground">No comments yet</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </SheetContent>
+                  </Sheet>
 
                   <div className="flex items-center justify-end">
                     <span className="text-sm text-muted-foreground mr-2">Show PDF View</span>
@@ -642,44 +1030,13 @@ export default function VendorCreditsPage() {
                         orgName={orgName}
                         orgLogo={orgLogo}
                         orgAddress={orgAddress}
+                        templateConfig={templateConfig}
                       />
                     </div>
                   )}
 
                   <div className="text-center text-xs text-muted-foreground">
-                    PDF Template : &apos;Standard Template&apos; <button type="button" className="text-primary hover:underline ml-1">Change</button>
-                  </div>
-
-                  <div className="border rounded-lg p-4" id="vendor-credit-timeline">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm font-semibold">Timeline & Comments</div>
-                      <Button variant="outline" size="sm" onClick={handleExportTimeline}>Export Timeline</Button>
-                    </div>
-                    <div className="space-y-2 mb-3 max-h-40 overflow-y-auto text-sm">
-                      {(selectedCredit.comments || []).map((c, idx) => (
-                        <div key={idx} className="border rounded px-2 py-1">
-                          <div className="text-xs text-muted-foreground">{c.author} • {fmtDate(c.time)}</div>
-                          <div>{c.text}</div>
-                        </div>
-                      ))}
-                      {applications.map((ap) => (
-                        <div key={ap._id} className="border rounded px-2 py-1">
-                          <div className="text-xs text-muted-foreground">Applied • {fmtDate(ap.appliedDate)}</div>
-                          <div>
-                            Applied {fmtCurrency(ap.amount)} to {typeof ap.billId === "object" ? ap.billId.billNumber : ap.billId}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-[1fr_auto] gap-2">
-                      <Textarea
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        placeholder="Add a comment"
-                        className="min-h-[66px]"
-                      />
-                      <Button onClick={handleAddComment}>Comment</Button>
-                    </div>
+                    PDF Template : &apos;{templateConfig.templateName || "Standard"}&apos; <button type="button" className="text-primary hover:underline ml-1" onClick={handleEditTemplate}>Change</button>
                   </div>
 
                   <div className="border rounded-lg p-4" id="vendor-credit-journal">
