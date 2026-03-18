@@ -606,68 +606,100 @@ export default function VendorCreditsPage() {
   }
 
   async function handleDownloadPdf() {
-    if (!selectedCredit) return;
-
-    const el = document.querySelector("#vendor-credit-pdf-view .statement-print-area") as HTMLElement | null;
-    if (!el) {
-      toast.error("Please show the PDF View before downloading.");
+    if (!selectedCredit?._id) {
+      toast.error("Please select a vendor credit first.");
       return;
     }
 
-    try {
-      const hiddenNodes = Array.from(el.querySelectorAll(".no-print")) as HTMLElement[];
-      const prevDisplay = hiddenNodes.map((n) => n.style.display);
-      hiddenNodes.forEach((n) => { n.style.display = "none"; });
+    const el = document.querySelector("#vendor-credit-pdf-view .statement-print-area") as HTMLElement | null;
+    if (!el) {
+      toast.error("Please enable Show PDF View, then try downloading again.");
+      return;
+    }
+    const safeNo = (selectedCredit.vendorCreditNumber || "vendor-credit").replace(/[^a-zA-Z0-9-_]/g, "-");
+    const fileName = `Vendor-Credit-${safeNo}.pdf`;
 
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
+    const downloadBlob = (blob: Blob, name: string) => {
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    };
+
+    try {
+      // Build a sanitized off-screen clone to avoid unsupported CSS color functions
+      // (e.g. lab/oklch from utility classes) during html2canvas parsing.
+      const cloneWrap = document.createElement("div");
+      cloneWrap.style.position = "fixed";
+      cloneWrap.style.left = "-100000px";
+      cloneWrap.style.top = "0";
+      cloneWrap.style.width = "210mm";
+      cloneWrap.style.background = "#ffffff";
+      cloneWrap.style.pointerEvents = "none";
+
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.style.boxShadow = "none";
+      clone.style.background = "#ffffff";
+
+      // Remove no-print markers and utility classes so renderer relies on inline styles only.
+      clone.querySelectorAll(".no-print").forEach((n) => n.remove());
+      clone.querySelectorAll("*").forEach((node) => {
+        if (node instanceof HTMLElement) {
+          node.removeAttribute("class");
+        }
       });
 
-      hiddenNodes.forEach((n, i) => { n.style.display = prevDisplay[i] || ""; });
+      cloneWrap.appendChild(clone);
+      document.body.appendChild(cloneWrap);
 
-      const imageData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pageW = 210;
-      const pageH = 297;
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
+      try {
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
 
-      if (imgH <= pageH) {
-        pdf.addImage(imageData, "PNG", 0, 0, imgW, imgH, undefined, "FAST");
-      } else {
-        let heightLeft = imgH;
-        let y = 0;
+        const imageData = canvas.toDataURL("image/png");
+        const pdf = new jsPDF("p", "mm", "a4");
+        const pageW = 210;
+        const pageH = 297;
+        const imgW = pageW;
+        const imgH = (canvas.height * imgW) / canvas.width;
 
-        pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
-        heightLeft -= pageH;
-
-        while (heightLeft > 0) {
-          y = heightLeft - imgH;
-          pdf.addPage();
+        if (imgH <= pageH) {
+          pdf.addImage(imageData, "PNG", 0, 0, imgW, imgH, undefined, "FAST");
+        } else {
+          let heightLeft = imgH;
+          let y = 0;
           pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
           heightLeft -= pageH;
-        }
-      }
 
-      pdf.save(`Vendor-Credit-${selectedCredit.vendorCreditNumber}.pdf`);
-      toast.success("PDF downloaded");
+          while (heightLeft > 0) {
+            y = heightLeft - imgH;
+            pdf.addPage();
+            pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
+            heightLeft -= pageH;
+          }
+        }
+
+        pdf.save(fileName);
+        toast.success("PDF downloaded");
+      } finally {
+        cloneWrap.remove();
+      }
     } catch {
       try {
+        // Guaranteed download fallback.
         const blob = await vendorCreditApi.downloadPdf(selectedCredit._id);
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.setAttribute("download", `Vendor-Credit-${selectedCredit.vendorCreditNumber}.pdf`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        toast.success("PDF downloaded");
+        downloadBlob(blob, fileName);
+        toast.success("PDF downloaded (server fallback)");
       } catch {
-        toast.error("Failed to download PDF");
+        toast.error("Failed to download PDF. Please try again.");
       }
     }
   }

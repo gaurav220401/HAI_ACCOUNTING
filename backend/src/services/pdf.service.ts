@@ -682,7 +682,7 @@ export function generateVendorCreditPdf(
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
-      margins: { top: 60, bottom: 60, left: 60, right: 60 },
+      margins: { top: 36, bottom: 36, left: 36, right: 36 },
     });
 
     const chunks: Buffer[] = [];
@@ -690,127 +690,160 @@ export function generateVendorCreditPdf(
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const pageW = doc.page.width - 120;
+    const left = 36;
+    const right = 36;
+    const pageW = doc.page.width - left - right;
     const sym = data.currencySymbol ?? "₹";
+    const orgLines = [
+      data.orgAddress?.city && data.orgAddress?.state
+        ? `${data.orgAddress.city}, ${data.orgAddress.state}`
+        : data.orgAddress?.city || data.orgAddress?.state,
+      data.orgAddress?.zip,
+      data.orgAddress?.street,
+      data.orgAddress?.country || "India",
+    ].filter(Boolean) as string[];
 
-    const orgCity = data.orgAddress?.city || "";
+    let yLeft = 56;
+    doc.font("Helvetica-Bold").fontSize(12).fillColor("#111827").text(data.orgName, left, yLeft);
+    yLeft += 18;
 
-    doc.font("Times-Bold").fontSize(13).fillColor("#000000").text(data.orgName, 60, 60);
-
-    let yOrg = 78;
-    doc.font("Times-Roman").fontSize(10).fillColor("#4b5563");
-    if (orgCity) {
-      doc.text(orgCity, 60, yOrg);
-      yOrg += 14;
+    doc.font("Helvetica").fontSize(9.5).fillColor("#4b5563");
+    orgLines.forEach((line) => {
+      doc.text(line, left, yLeft, { width: pageW * 0.5 });
+      yLeft += 14;
+    });
+    if (data.orgTaxId) {
+      doc.text(`Tax ID: ${data.orgTaxId}`, left, yLeft, { width: pageW * 0.5 });
+      yLeft += 14;
     }
-    doc.text("India", 60, yOrg);
 
     doc
-      .font("Times-Bold")
-      .fontSize(24)
-      .fillColor("#1e3a5f")
-      .text("VENDOR CREDITS", 60, 60, { width: pageW, align: "right" });
+      .font("Helvetica-Bold")
+      .fontSize(22)
+      .fillColor("#1f4d7e")
+      .text("VENDOR CREDITS", left, 56, { width: pageW, align: "right" });
     doc
-      .font("Times-Roman")
+      .font("Helvetica")
       .fontSize(11)
       .fillColor("#4b5563")
-      .text(`CreditNote# ${data.vendorCreditNumber}`, 60, 85, {
+      .text(`Credit Note#: ${data.vendorCreditNumber}`, left, 84, {
         width: pageW,
         align: "right",
       });
     doc
-      .font("Times-Bold")
-      .fontSize(11)
+      .font("Helvetica-Bold")
+      .fontSize(11.5)
       .fillColor("#111827")
-      .text(`Credits Remaining ${sym}${data.creditsRemaining.toFixed(2)}`, 60, 102, {
+      .text(`Credits Remaining  ${fmt(data.creditsRemaining, sym)}`, left, 102, {
         width: pageW,
         align: "right",
       });
 
-    let y = Math.max(yOrg, 115) + 24;
+    let y = Math.max(yLeft, 126) + 14;
 
-    doc.font("Times-Roman").fontSize(9).fillColor("#6b7280").text("Vendor Address", 60, y);
-    y += 14;
-    doc.font("Times-Bold").fontSize(11).fillColor("#2563eb").text(data.vendorName, 60, y, { width: 260 });
-    y += 14;
-    if (data.vendorAddress) {
-      doc.font("Times-Roman").fontSize(10).fillColor("#4b5563").text(data.vendorAddress, 60, y, { width: 260 });
+    doc.font("Helvetica").fontSize(10).fillColor("#6b7280").text("Vendor Address", left, y);
+    y += 16;
+    doc.font("Helvetica-Bold").fontSize(12).fillColor("#2563eb").text(data.vendorName, left, y, { width: pageW * 0.56 });
+    y += 18;
+
+    const vendorLines = (data.vendorAddress || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    doc.font("Helvetica").fontSize(10).fillColor("#4b5563");
+    if (vendorLines.length > 0) {
+      vendorLines.forEach((line) => {
+        doc.text(line, left, y, { width: pageW * 0.56 });
+        y += 14;
+      });
+    } else {
+      doc.text("Address not available", left, y, { width: pageW * 0.56 });
+      y += 14;
     }
 
+    const yMeta = Math.max(y - 28, 180);
     doc
-      .font("Times-Roman")
-      .fontSize(10)
+      .font("Helvetica")
+      .fontSize(11)
       .fillColor("#4b5563")
-      .text(`Date : ${fmtDate(data.vendorCreditDate)}`, 60, y - 10, { width: pageW, align: "right" });
-    doc
-      .text(`Reference number : ${data.referenceNumber || "-"}`, 60, y + 8, { width: pageW, align: "right" });
+      .text(`Date: ${fmtDate(data.vendorCreditDate)}`, left, yMeta, { width: pageW, align: "right" })
+      .text(`Reference: ${data.referenceNumber || "-"}`, left, yMeta + 22, { width: pageW, align: "right" });
 
-    y += 48;
+    y = yMeta + 46;
+    doc.moveTo(left, y).lineTo(left + pageW, y).lineWidth(1).strokeColor("#d1d5db").stroke();
+    y += 10;
 
-    doc.rect(60, y, pageW, 25).fill("#3a3a3a");
-    const colHash = 60;
-    const colItem = 100;
-    const colQty = 340;
-    const colRate = 390;
-    const colAmt = 460;
+    const headerBg = "#3c3d3a";
+    doc.rect(left, y, pageW, 22).fill(headerBg);
 
-    doc.fillColor("#ffffff").font("Times-Bold").fontSize(10);
-    const thY = y + 7;
-    doc.text("#", colHash + 10, thY);
-    doc.text("Item & Description", colItem, thY);
-    doc.text("Qty", colQty, thY, { width: 45, align: "right" });
-    doc.text("Rate", colRate, thY, { width: 60, align: "right" });
-    doc.text("Amount", colAmt, thY, { width: 60 + pageW - colAmt - 10, align: "right" });
-    y += 25;
+    const colHash = left + 8;
+    const colItem = left + 36;
+    const colQty = left + pageW * 0.56;
+    const colRate = left + pageW * 0.69;
+    const colAmt = left + pageW * 0.82;
 
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(10);
+    doc.text("#", colHash, y + 6, { width: 16 });
+    doc.text("Item & Description", colItem, y + 6, { width: 220 });
+    doc.text("Qty", colQty, y + 6, { width: 60, align: "right" });
+    doc.text("Rate", colRate, y + 6, { width: 70, align: "right" });
+    doc.text("Amount", colAmt, y + 6, { width: left + pageW - colAmt - 8, align: "right" });
+    y += 22;
+
+    doc.font("Helvetica").fontSize(10).fillColor("#111827");
     data.items.forEach((item, idx) => {
-      const lineH = item.description ? 35 : 22;
-      const textY = y + 6;
-      doc.fillColor("#111827").font("Times-Roman").fontSize(10).text(String(idx + 1), colHash + 10, textY);
-      doc.font("Times-Bold").text(item.name, colItem, textY, { width: 230 });
-      if (item.description) {
-        doc.font("Times-Roman").fillColor("#6b7280").fontSize(9).text(item.description, colItem, textY + 14, { width: 230 });
+      const hasDesc = !!(item.description && item.description.trim());
+      const rowH = hasDesc ? 32 : 20;
+      const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
+
+      doc.rect(left, y, pageW, rowH).fill(rowBg);
+      doc.fillColor("#111827");
+      doc.text(String(idx + 1), colHash, y + 6, { width: 16 });
+      doc.font("Helvetica").text(item.name || "Item", colItem, y + 6, { width: 220 });
+      if (hasDesc) {
+        doc
+          .font("Helvetica")
+          .fontSize(9)
+          .fillColor("#6b7280")
+          .text(item.description || "", colItem, y + 18, { width: 220 })
+          .fontSize(10)
+          .fillColor("#111827");
       }
 
-      doc.font("Times-Roman").fontSize(10).fillColor("#111827");
-      doc.text(item.quantity.toFixed(2), colQty, textY, { width: 45, align: "right" });
-      doc.text(item.rate.toFixed(2), colRate, textY, { width: 60, align: "right" });
-      doc.text(item.amount.toFixed(2), colAmt, textY, { width: 60 + pageW - colAmt - 10, align: "right" });
+      doc.text(item.quantity.toFixed(2), colQty, y + 6, { width: 60, align: "right" });
+      doc.text(fmt(item.rate, sym), colRate, y + 6, { width: 70, align: "right" });
+      doc.text(fmt(item.amount, sym), colAmt, y + 6, { width: left + pageW - colAmt - 8, align: "right" });
 
-      y += lineH;
-      doc.moveTo(60, y).lineTo(60 + pageW, y).lineWidth(0.5).strokeColor("#e5e7eb").stroke();
+      y += rowH;
+      doc.moveTo(left, y).lineTo(left + pageW, y).lineWidth(0.5).strokeColor("#e5e7eb").stroke();
     });
 
-    y += 20;
+    y += 14;
+    const totalLabelX = left + pageW - 190;
+    const totalValX = left + pageW - 90;
+    const totalValW = 90;
 
-    const totLabelX = 350;
-    const totValX = 450;
-    const totValW = 60 + pageW - totValX - 10;
-
-    const addTotal = (lbl: string, val: string, bold = false) => {
-      doc.font(bold ? "Times-Bold" : "Times-Roman").fontSize(10).fillColor(bold ? "#111827" : "#4b5563");
-      doc.text(lbl, totLabelX, y, { width: 90 });
-      doc.text(val, totValX, y, { width: totValW, align: "right" });
-      y += 16;
+    const addTotalRow = (label: string, value: string, bold = false) => {
+      doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(11);
+      doc.fillColor(bold ? "#111827" : "#4b5563").text(label, totalLabelX, y, { width: 96 });
+      doc.fillColor("#111827").text(value, totalValX, y, { width: totalValW, align: "right" });
+      y += 18;
     };
 
-    addTotal("Sub Total", data.subTotal.toFixed(2));
-    if ((data.discountAmount || 0) > 0) addTotal("Discount", `-${(data.discountAmount || 0).toFixed(2)}`);
-    if ((data.taxAmount || 0) > 0) addTotal("Tax", (data.taxAmount || 0).toFixed(2));
-    if ((data.tdsAmount || 0) > 0) addTotal("TDS", `-${(data.tdsAmount || 0).toFixed(2)}`);
-    if ((data.tcsAmount || 0) > 0) addTotal("TCS", (data.tcsAmount || 0).toFixed(2));
+    addTotalRow("Sub Total", fmt(data.subTotal, sym));
+    if ((data.discountAmount || 0) > 0) addTotalRow("Discount", `-${fmt(data.discountAmount || 0, sym)}`);
+    if ((data.taxAmount || 0) > 0) addTotalRow("Tax", fmt(data.taxAmount || 0, sym));
+    if ((data.tdsAmount || 0) > 0) addTotalRow("TDS", `-${fmt(data.tdsAmount || 0, sym)}`);
+    if ((data.tcsAmount || 0) > 0) addTotalRow("TCS", fmt(data.tcsAmount || 0, sym));
+    addTotalRow("Total", fmt(data.total, sym), true);
+    addTotalRow("Credits Remaining", fmt(data.creditsRemaining, sym), true);
 
-    doc.moveTo(totLabelX, y - 4).lineTo(60 + pageW, y - 4).lineWidth(0.5).strokeColor("#e5e7eb").stroke();
-    y += 4;
-    addTotal("Total", `${sym}${data.total.toFixed(2)}`, true);
-    addTotal("Credits Remaining", `${sym}${data.creditsRemaining.toFixed(2)}`, true);
-
-    y += 34;
-    if (y > doc.page.height - 100) {
-      doc.addPage();
-      y = 60;
-    }
-    doc.font("Times-Roman").fontSize(10).fillColor("#4b5563").text("Authorized Signature ____________________________", 60, y);
+    const sigY = Math.max(y + 30, doc.page.height - 90);
+    doc
+      .font("Helvetica")
+      .fontSize(11)
+      .fillColor("#4b5563")
+      .text("Authorized Signature ____________________________", left, sigY);
 
     doc.end();
   });
