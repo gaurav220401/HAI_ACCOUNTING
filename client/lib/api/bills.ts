@@ -48,6 +48,7 @@ export interface Bill {
   adjustmentLabel: string;
   adjustmentAmount: number;
   total: number;
+  amountPaid?: number;
   balanceDue: number;
   notes?: string;
   termsAndConditions?: string;
@@ -57,6 +58,29 @@ export interface Bill {
     text: string;
     time: string;
     isSystem: boolean;
+  }[];
+  payment_applications?: {
+    _id: string;
+    amount: number;
+    applied_date: string;
+    payment: {
+      _id: string;
+      payment_number: string;
+      payment_date: string;
+      payment_mode?: string;
+      status?: string;
+    } | null;
+  }[];
+  vendor_credit_applications?: {
+    _id: string;
+    amount: number;
+    applied_date: string;
+    vendor_credit: {
+      _id: string;
+      vendorCreditNumber: string;
+      vendorCreditDate: string;
+      status?: string;
+    } | null;
   }[];
   status: BillStatus;
   createdAt: string;

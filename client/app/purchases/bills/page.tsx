@@ -61,6 +61,33 @@ function getName(v: any): string {
   return String(v);
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function linkifySystemComment(text: string): string {
+  const escaped = escapeHtml(text);
+
+  return escaped
+    .replace(
+      /Vendor credit\s+(VCR-\d+)/gi,
+      '<a href="/purchases/vendor-credits" class="text-blue-600 underline underline-offset-2">Vendor credit $1</a>',
+    )
+    .replace(
+      /Payment\s+(\d+)/gi,
+      '<a href="/purchases/payments-made" class="text-blue-600 underline underline-offset-2">Payment $1</a>',
+    )
+    .replace(
+      /bill\s+(BILL-\d+)/gi,
+      '<a href="/purchases/bills" class="text-blue-600 underline underline-offset-2">bill $1</a>',
+    );
+}
+
 async function uploadImage(file: File, folder: string = "general"): Promise<string> {
   try {
     const res = await uploadApi.upload(file, folder);
@@ -273,6 +300,32 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
   const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
   const lineItems = (bill.lineItems || []).filter((li) => !li.isHeader);
   const vendorName = getName(bill.vendorId);
+  const paymentMadeApplied = (bill.payment_applications || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const vendorCreditApplied = (bill.vendor_credit_applications || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const totalApplied = Number(bill.amountPaid || paymentMadeApplied + vendorCreditApplied || 0);
+
+  const appliedRows: Array<{
+    key: string;
+    date: string;
+    type: string;
+    reference: string;
+    amount: number;
+  }> = [
+    ...(bill.payment_applications || []).map((row) => ({
+      key: `pm-${row._id}`,
+      date: row.payment?.payment_date || row.applied_date,
+      type: "Payment Made",
+      reference: row.payment?.payment_number || "-",
+      amount: Number(row.amount || 0),
+    })),
+    ...(bill.vendor_credit_applications || []).map((row) => ({
+      key: `vc-${row._id}`,
+      date: row.vendor_credit?.vendorCreditDate || row.applied_date,
+      type: "Vendor Credit",
+      reference: row.vendor_credit?.vendorCreditNumber || "-",
+      amount: Number(row.amount || 0),
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div
@@ -409,12 +462,56 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
               <span>Total</span>
               <span>₹{(bill.total || 0).toFixed(2)}</span>
             </div>
+            {paymentMadeApplied > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Payments Made</span>
+                <span className="text-red-600">(-) {(paymentMadeApplied || 0).toFixed(2)}</span>
+              </div>
+            )}
+            {vendorCreditApplied > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Vendor Credits</span>
+                <span className="text-red-600">(-) {(vendorCreditApplied || 0).toFixed(2)}</span>
+              </div>
+            )}
+            {totalApplied > 0 && paymentMadeApplied === 0 && vendorCreditApplied === 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Payments Applied</span>
+                <span className="text-red-600">(-) {(totalApplied || 0).toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm text-gray-600">
               <span>Balance Due</span>
               <span className="font-bold text-gray-900">₹{(bill.balanceDue !== undefined ? bill.balanceDue : bill.total || 0).toFixed(2)}</span>
             </div>
           </div>
         </div>
+
+        {appliedRows.length > 0 && (
+          <div className="mt-7">
+            <div className="font-medium mb-2 text-xs text-gray-700 uppercase tracking-wide">Applied Transactions</div>
+            <table className="w-full" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "#f5f5f5" }}>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold">Date</th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold">Type</th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold">Reference</th>
+                  <th className="text-right px-3 py-2 text-[11px] font-semibold">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {appliedRows.map((row) => (
+                  <tr key={row.key} style={{ borderBottom: "1px solid #ececec" }}>
+                    <td className="px-3 py-2 text-xs">{row.date ? fmtDate(row.date) : "-"}</td>
+                    <td className="px-3 py-2 text-xs">{row.type}</td>
+                    <td className="px-3 py-2 text-xs">{row.reference}</td>
+                    <td className="px-3 py-2 text-xs text-right">₹{row.amount.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Notes / T&C */}
         {bill.notes && (
@@ -527,16 +624,14 @@ function BillDetailPanel({
     } catch { toast.error("Failed to void bill"); } finally { setUpdatingStatus(false); }
   }
 
+  function goToPaymentsMade() {
+    onRecordPayment(bill._id);
+  }
+
   async function handleConfirmRecordPayment(data: any) {
-    setUpdatingStatus(true);
-    try {
-      const res = await billApi.recordPayment(bill._id, data);
-      onStatusChange(bill._id, res.data.status);
-      toast.success("Payment recorded");
-      setShowRecordPaymentDialog(false);
-      // Update local state without reload if possible, but status change is handled by parent
-      onStatusChange(bill._id, res.data.status);
-    } catch { toast.error("Failed to record payment"); } finally { setUpdatingStatus(false); }
+    void data;
+    setShowRecordPaymentDialog(false);
+    goToPaymentsMade();
   }
 
   async function handleClone() {
@@ -610,7 +705,7 @@ function BillDetailPanel({
           ) : bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid" ? (
             <button
               type="button"
-              onClick={() => setShowRecordPaymentDialog(true)}
+              onClick={goToPaymentsMade}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-50 transition-colors rounded"
             >
               <CreditCard className="h-3.5 w-3.5" /> Record Payment
@@ -879,7 +974,10 @@ function BillDetailPanel({
                           <div className={cn("text-[13px] leading-relaxed p-3.5 rounded-lg border relative group/msg shadow-sm whitespace-pre-wrap",
                             c.isSystem ? "bg-gray-50/50 border-gray-100 text-gray-600 italic" : "bg-white border-gray-100 text-gray-800"
                           )}>
-                            <div dangerouslySetInnerHTML={{ __html: c.text }} className="rich-text-content" />
+                            <div
+                              dangerouslySetInnerHTML={{ __html: c.isSystem ? linkifySystemComment(c.text) : c.text }}
+                              className="rich-text-content"
+                            />
                             {!c.isSystem && (
                               <button
                                 className="absolute right-3 top-3 opacity-0 group-hover/msg:opacity-100 text-muted-foreground hover:text-destructive transition-all"
@@ -924,7 +1022,7 @@ function BillDetailPanel({
           <span className="text-sm text-muted-foreground">
             <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Record a payment for this bill.
           </span>
-          <Button size="sm" className="ml-auto shrink-0 bg-blue-600 hover:bg-blue-700" onClick={() => setShowRecordPaymentDialog(true)}>
+          <Button size="sm" className="ml-auto shrink-0 bg-blue-600 hover:bg-blue-700" onClick={goToPaymentsMade}>
             Record Payment
           </Button>
         </div>
@@ -1122,9 +1220,11 @@ function BillsPageContent() {
 
   const [bills, setBills] = useState<Bill[]>([]);
   const [fetching, setFetching] = useState(false);
+  const [fetchingSelected, setFetchingSelected] = useState(false);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | BillStatus>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedBillDetails, setSelectedBillDetails] = useState<Bill | null>(null);
   const [toDelete, setToDelete] = useState<Bill | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showFilterDD, setShowFilterDD] = useState(false);
@@ -1154,6 +1254,32 @@ function BillsPageContent() {
     if (paramId) setSelectedId(paramId);
   }, [searchParams]);
 
+  useEffect(() => {
+    if (!selectedId || !firebaseUser || !activeOrganization?._id) {
+      setSelectedBillDetails(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setFetchingSelected(true);
+      try {
+        const res = await billApi.getOne(selectedId);
+        if (cancelled) return;
+        setSelectedBillDetails(res.data || null);
+      } catch {
+        if (cancelled) return;
+        setSelectedBillDetails(null);
+      } finally {
+        if (!cancelled) setFetchingSelected(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, firebaseUser, activeOrganization?._id]);
+
   const filtered = bills.filter((b) => {
     if (filterStatus && b.status !== filterStatus) return false;
     if (!search) return true;
@@ -1161,7 +1287,10 @@ function BillsPageContent() {
     return [(b.billNumber || ""), (b.referenceNumber || ""), getName(b.vendorId)].some((v) => v.toLowerCase().includes(s));
   });
 
-  const selectedBill = bills.find((b) => b._id === selectedId) ?? null;
+  const selectedBillFromList = bills.find((b) => b._id === selectedId) ?? null;
+  const selectedBill = selectedBillDetails && selectedBillDetails._id === selectedId
+    ? selectedBillDetails
+    : selectedBillFromList;
 
   const org = activeOrganization as any;
   const orgName = org?.name || "";
@@ -1485,21 +1614,27 @@ function BillsPageContent() {
             {/* Right detail panel */}
             {selectedBill && (
               <div className="flex-1 overflow-hidden">
-                <BillDetailPanel
-                  bill={selectedBill}
-                  onClose={() => setSelectedId(null)}
-                  onStatusChange={handleStatusChange}
-                  onDelete={(o) => { setToDelete(o); setSelectedId(null); }}
-                  onEdit={(id) => router.push(`/purchases/bills/${id}/edit`)}
-                  onPrint={handlePrint}
-                  onDownloadPdf={handleDownloadPdf}
-                  onRecordPayment={(id) => toast.info("Record Payment for " + id + " coming soon")}
-                  orgName={orgName}
-                  orgAddress={orgAddress}
-                  orgPhone={orgPhone}
-                  orgEmail={orgEmail}
-                  orgCurrency={orgCurrency}
-                />
+                {fetchingSelected && !selectedBillDetails ? (
+                  <div className="h-full flex items-center justify-center bg-white">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <BillDetailPanel
+                    bill={selectedBill}
+                    onClose={() => setSelectedId(null)}
+                    onStatusChange={handleStatusChange}
+                    onDelete={(o) => { setToDelete(o); setSelectedId(null); }}
+                    onEdit={(id) => router.push(`/purchases/bills/${id}/edit`)}
+                    onPrint={handlePrint}
+                    onDownloadPdf={handleDownloadPdf}
+                    onRecordPayment={(id) => router.push(`/purchases/payments-made/new?billId=${id}`)}
+                    orgName={orgName}
+                    orgAddress={orgAddress}
+                    orgPhone={orgPhone}
+                    orgEmail={orgEmail}
+                    orgCurrency={orgCurrency}
+                  />
+                )}
               </div>
             )}
           </div>

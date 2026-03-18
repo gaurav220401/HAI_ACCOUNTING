@@ -1,6 +1,11 @@
 import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
+function makeIdempotencyKey(scope: string): string {
+  const random = Math.random().toString(36).slice(2, 10);
+  return `${scope}-${Date.now()}-${random}`;
+}
+
 export type VendorCreditStatus =
   | "DRAFT"
   | "OPEN"
@@ -129,12 +134,18 @@ export const vendorCreditApi = {
     apiFetch<{ data: VendorCredit }>("/vendor-credits", {
       method: "POST",
       body: JSON.stringify(data),
+      headers: {
+        "Idempotency-Key": makeIdempotencyKey("vendor-credits-create"),
+      },
     }),
 
   update: (id: string, data: UpdateVendorCreditInput) =>
     apiFetch<{ data: VendorCredit }>(`/vendor-credits/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
+      headers: {
+        "Idempotency-Key": makeIdempotencyKey(`vendor-credits-update-${id}`),
+      },
     }),
 
   clone: (id: string) =>
@@ -148,6 +159,9 @@ export const vendorCreditApi = {
       {
         method: "POST",
         body: JSON.stringify({ billId, amount, notes }),
+        headers: {
+          "Idempotency-Key": makeIdempotencyKey(`vendor-credits-apply-${id}`),
+        },
       },
     ),
 
@@ -155,6 +169,9 @@ export const vendorCreditApi = {
     apiFetch<{ data: VendorCredit }>(`/vendor-credits/${id}/refund`, {
       method: "POST",
       body: JSON.stringify({ amount }),
+      headers: {
+        "Idempotency-Key": makeIdempotencyKey(`vendor-credits-refund-${id}`),
+      },
     }),
 
   addComment: (id: string, text: string) =>
@@ -172,6 +189,9 @@ export const vendorCreditApi = {
       {
         method: "POST",
         body: JSON.stringify({ billId, amount }),
+        headers: {
+          "Idempotency-Key": makeIdempotencyKey(`vendor-credits-unapply-${id}`),
+        },
       },
     ),
 
@@ -179,10 +199,16 @@ export const vendorCreditApi = {
     apiFetch<{ data: VendorCredit }>(`/vendor-credits/${id}/void`, {
       method: "POST",
       body: JSON.stringify({ reason }),
+      headers: {
+        "Idempotency-Key": makeIdempotencyKey(`vendor-credits-void-${id}`),
+      },
     }),
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/vendor-credits/${id}`, {
       method: "DELETE",
+      headers: {
+        "Idempotency-Key": makeIdempotencyKey(`vendor-credits-remove-${id}`),
+      },
     }),
 };

@@ -1,6 +1,7 @@
 import mongoose, { ClientSession } from "mongoose";
 import { Response } from "express";
 import Bill from "../models/bill.model";
+import { Counter } from "../models/counter.model";
 import Organization from "../models/organization.model";
 import VendorCredit from "../models/vendor-credit.model";
 import VendorCreditApplication from "../models/vendor-credit-application.model";
@@ -8,6 +9,7 @@ import { generateVendorCreditPdf } from "../services/pdf.service";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
+import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 
 function orgId(req: AuthenticatedRequest) {
@@ -142,16 +144,15 @@ function hasFinancialEdits(payload: any): boolean {
 }
 
 async function nextVendorCreditNumber(organizationId: any): Promise<string> {
-  const last = await VendorCredit.findOne({ organizationId, isDeleted: { $in: [true, false] } })
-    .sort({ vendorCreditNumber: -1 })
-    .select("vendorCreditNumber")
-    .lean();
+  const counterKey = `vendor_credit:${String(organizationId)}`;
+  const counter = await Counter.findOneAndUpdate(
+    { _id: counterKey },
+    { $inc: { seq: 1 } },
+    { upsert: true, new: true },
+  ).lean();
 
-  if (!last) return "VCR-00001";
-  const match = last.vendorCreditNumber.match(/VCR-(\d+)/);
-  if (!match) return "VCR-00001";
-  const next = Number(match[1]) + 1;
-  return `VCR-${String(next).padStart(5, "0")}`;
+  const seq = Number(counter?.seq || 1);
+  return `VCR-${String(seq).padStart(5, "0")}`;
 }
 
 async function runOptionalTransaction<T>(work: (session?: ClientSession) => Promise<T>): Promise<T> {
@@ -173,8 +174,9 @@ async function runOptionalTransaction<T>(work: (session?: ClientSession) => Prom
     if (!txNotSupported) {
       throw error;
     }
-
-    return work(undefined);
+    throw new ValidationError(
+      "This accounting operation requires MongoDB transactions. Configure a replica set and retry.",
+    );
   } finally {
     await session.endSession();
   }
@@ -337,6 +339,8 @@ export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: R
 
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const oid = orgId(req);
+  await reserveIdempotencyKey({ req, organization_id: oid, scope: "vendor-credits:create" });
+
   if (!req.body.vendorId) throw new ValidationError("Vendor is required");
   if (!req.body.vendorCreditDate) throw new ValidationError("Vendor credit date is required");
 
@@ -418,6 +422,12 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 });
 
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  await reserveIdempotencyKey({
+    req,
+    organization_id: orgId(req),
+    scope: `vendor-credits:update:${req.params.id}`,
+  });
+
   const credit = await VendorCredit.findOne({
     _id: req.params.id,
     organizationId: orgId(req),
@@ -504,6 +514,13 @@ export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: R
   if (amountInput <= 0) throw new ValidationError("Amount must be greater than zero");
 
   const result = await runOptionalTransaction(async (session) => {
+    await reserveIdempotencyKey({
+      req,
+      organization_id: oid,
+      scope: `vendor-credits:apply:${req.params.id}`,
+      session,
+    });
+
     const credit = await VendorCredit.findOne(
       { _id: req.params.id, organizationId: oid, isDeleted: false },
       null,
@@ -614,6 +631,13 @@ export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, re
   if (!billId) throw new ValidationError("billId is required");
 
   const result = await runOptionalTransaction(async (session) => {
+    await reserveIdempotencyKey({
+      req,
+      organization_id: oid,
+      scope: `vendor-credits:unapply:${req.params.id}`,
+      session,
+    });
+
     const credit = await VendorCredit.findOne(
       { _id: req.params.id, organizationId: oid, isDeleted: false },
       null,
@@ -702,6 +726,12 @@ export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, re
 });
 
 export const voidVendorCredit = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  await reserveIdempotencyKey({
+    req,
+    organization_id: orgId(req),
+    scope: `vendor-credits:void:${req.params.id}`,
+  });
+
   const credit = await VendorCredit.findOne({
     _id: req.params.id,
     organizationId: orgId(req),
@@ -731,6 +761,12 @@ export const voidVendorCredit = asyncHandler(async (req: AuthenticatedRequest, r
 });
 
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  await reserveIdempotencyKey({
+    req,
+    organization_id: orgId(req),
+    scope: `vendor-credits:remove:${req.params.id}`,
+  });
+
   const credit = await VendorCredit.findOne({
     _id: req.params.id,
     organizationId: orgId(req),
@@ -814,6 +850,12 @@ export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Re
 });
 
 export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  await reserveIdempotencyKey({
+    req,
+    organization_id: orgId(req),
+    scope: `vendor-credits:refund:${req.params.id}`,
+  });
+
   const credit = await VendorCredit.findOne({
     _id: req.params.id,
     organizationId: orgId(req),

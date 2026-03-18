@@ -1,6 +1,8 @@
 import { Response } from "express";
 import Bill from "../models/bill.model";
 import PurchaseOrder from "../models/purchase-order.model";
+import PaymentBillMap from "../models/payment-bill-map.model";
+import VendorCreditApplication from "../models/vendor-credit-application.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -190,7 +192,8 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 
 /** GET /api/bills/:id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false })
+  const oid = orgId(req);
+  const bill = await Bill.findOne({ _id: req.params.id, organizationId: oid, isDeleted: false })
     .populate("vendorId", "displayName companyName email billingAddress phone")
     .populate("paymentTermsId", "name days")
     .populate("lineItems.itemId", "name sku costPrice")
@@ -202,7 +205,65 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!bill) throw new NotFoundError("Bill");
   applyOverdueState(bill);
   await bill.save();
-  res.json({ success: true, data: bill });
+
+  const [paymentMaps, vendorCreditApplications] = await Promise.all([
+    PaymentBillMap.find({
+      organization_id: oid,
+      bill_id: bill._id,
+      is_deleted: false,
+      applied_amount: { $gt: 0 },
+    })
+      .populate("payment_id", "payment_number payment_date payment_mode status")
+      .sort({ applied_date: -1, createdAt: -1 })
+      .lean(),
+    VendorCreditApplication.find({
+      organizationId: oid,
+      billId: bill._id,
+      isDeleted: false,
+      amount: { $gt: 0 },
+    })
+      .populate("vendorCreditId", "vendorCreditNumber vendorCreditDate status")
+      .sort({ appliedDate: -1, createdAt: -1 })
+      .lean(),
+  ]);
+
+  const payment_applications = paymentMaps.map((m: any) => ({
+    _id: String(m._id),
+    amount: toNum(m.applied_amount),
+    applied_date: m.applied_date,
+    payment: m.payment_id && typeof m.payment_id === "object"
+      ? {
+          _id: String(m.payment_id._id),
+          payment_number: m.payment_id.payment_number,
+          payment_date: m.payment_id.payment_date,
+          payment_mode: m.payment_id.payment_mode,
+          status: m.payment_id.status,
+        }
+      : null,
+  }));
+
+  const vendor_credit_applications = vendorCreditApplications.map((a: any) => ({
+    _id: String(a._id),
+    amount: toNum(a.amount),
+    applied_date: a.appliedDate,
+    vendor_credit: a.vendorCreditId && typeof a.vendorCreditId === "object"
+      ? {
+          _id: String(a.vendorCreditId._id),
+          vendorCreditNumber: a.vendorCreditId.vendorCreditNumber,
+          vendorCreditDate: a.vendorCreditId.vendorCreditDate,
+          status: a.vendorCreditId.status,
+        }
+      : null,
+  }));
+
+  res.json({
+    success: true,
+    data: {
+      ...bill.toObject(),
+      payment_applications,
+      vendor_credit_applications,
+    },
+  });
 });
 
 /** POST /api/bills */
@@ -305,40 +366,9 @@ export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Resp
 
 /** POST /api/bills/:id/payments */
 export const recordPayment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
-  if (!bill) throw new NotFoundError("Bill");
-  if (bill.status === "Void") throw new ValidationError("Cannot record payment on a void bill");
-  if (!["Open", "Partially Paid", "Overdue"].includes(bill.status)) {
-    throw new ValidationError("Payment can be recorded only on open bills");
-  }
-  
-  const paymentAmount = toNum(req.body.amount);
-  if (paymentAmount <= 0) throw new ValidationError("Payment amount must be greater than zero");
-  if (paymentAmount > bill.balanceDue) throw new ValidationError("Payment amount exceeds balance due");
-
-  bill.amountPaid = toNum(bill.amountPaid) + paymentAmount;
-  if (bill.amountPaid > bill.total) throw new ValidationError("Payment amount exceeds bill total");
-  bill.balanceDue = bill.total - bill.amountPaid;
-
-  if (bill.amountPaid === 0) {
-    bill.status = "Open";
-  } else if (bill.balanceDue <= 0) {
-    bill.status = "Paid";
-    bill.balanceDue = 0;
-  } else {
-    bill.status = "Partially Paid";
-  }
-
-  const mode = req.body.paymentMode || "Cash";
-  bill.comments.push({
-    author: req.user?.name || req.user?.email || "System",
-    text: `Payment of ${paymentAmount.toLocaleString("en-IN")} recorded via ${mode}`,
-    time: new Date(),
-    isSystem: true,
-  });
-
-  await bill.save();
-  res.json({ success: true, data: bill });
+  throw new ValidationError(
+    "Direct bill payments are disabled. Use Payments Made flow (/api/payments-made) to keep ledger mappings consistent.",
+  );
 });
 
 /** POST /api/bills/:id/clone */

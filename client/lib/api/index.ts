@@ -82,3 +82,13 @@ export type {
   CreateVendorCreditInput,
   UpdateVendorCreditInput,
 } from "./vendor-credits";
+
+export { paymentMadeApi } from "./payments-made";
+export type {
+  PaymentMade,
+  PaymentMadeStatus,
+  PaymentBillMap,
+  CreatePaymentMadeInput,
+  UpdatePaymentMadeInput,
+  PaymentMadeListParams,
+} from "./payments-made";
