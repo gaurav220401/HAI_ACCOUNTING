@@ -14,6 +14,7 @@ export { cloudinary };
 export interface UploadResult {
   url: string;          // optimised delivery URL
   publicId: string;     // used for delete / replace
+  originalName?: string;
   width?: number;
   height?: number;
   format?: string;

@@ -18,6 +18,16 @@ const addressSchema = new Schema(
   { _id: false },
 );
 
+const commentSchema = new Schema(
+  {
+    text: { type: String, required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    userName: { type: String, default: "" },
+    createdAt: { type: Date, default: () => new Date() },
+  },
+  { _id: true },
+);
+
 const contactPersonSchema = new Schema(
   {
     salutation: { type: String, default: "" },
@@ -109,6 +119,7 @@ const contactSchema = new Schema<IContact>(
     contactPersons: { type: [contactPersonSchema], default: [] },
     bankDetails: { type: [bankDetailSchema], default: [] },
     notes: { type: String, default: "" },
+    comments: { type: [commentSchema], default: [] },
     portalEnabled: { type: Boolean, default: false },
     reportingTags: [{ type: Schema.Types.ObjectId, ref: "ReportingTag" }],
     // Customer

@@ -1,6 +1,9 @@
 import { auth } from "../firebase";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_URL =
+  typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+    : "/api";
 
 /**
  * Get the current user's Firebase ID token.
@@ -9,6 +12,23 @@ async function getIdToken(): Promise<string | null> {
   const user = auth.currentUser;
   if (!user) return null;
   return user.getIdToken();
+}
+
+function buildAuthHeaders(
+  token: string | null,
+  options: RequestInit,
+  includeJsonHeader = true,
+): Record<string, string> {
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(includeJsonHeader && !isFormData ? { "Content-Type": "application/json" } : {}),
+    ...(options.headers as Record<string, string>),
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 /**
@@ -42,26 +62,38 @@ export async function apiFetch<T = unknown>(
   options: RequestInit = {},
 ): Promise<T> {
   const token = await getIdToken();
-
-  // When the body is FormData, do NOT set Content-Type — the browser will
-  // automatically add the correct multipart/form-data boundary.
-  const isFormData = options.body instanceof FormData;
-
-  const headers: Record<string, string> = {
-    ...(isFormData ? {} : { "Content-Type": "application/json" }),
-    ...(options.headers as Record<string, string>),
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  const headers = buildAuthHeaders(token, options, true);
 
   const res = await fetch(`${API_URL}${path}`, {
+    cache: "no-store",
     ...options,
     headers,
   });
 
-  const data = await res.json();
+  let data;
+  const contentType = res.headers.get("content-type");
+  
+  try {
+    // Only parse as JSON if the content-type indicates JSON
+    if (contentType && contentType.includes("application/json")) {
+      data = await res.json();
+    } else {
+      // For non-JSON responses, create a generic error object
+      const text = await res.text();
+      data = { 
+        message: text || "Request failed", 
+        code: "NON_JSON_RESPONSE",
+        status: res.status 
+      };
+    }
+  } catch (error) {
+    // If JSON parsing fails, create a generic error object
+    data = { 
+      message: "Failed to parse response", 
+      code: "PARSE_ERROR",
+      status: res.status 
+    };
+  }
 
   if (!res.ok) {
     throw new ApiError(
@@ -73,6 +105,35 @@ export async function apiFetch<T = unknown>(
   }
 
   return data as T;
+}
+
+/**
+ * Authenticated fetch wrapper for binary responses like PDF/CSV.
+ */
+export async function apiFetchBlob(
+  path: string,
+  options: RequestInit = {},
+): Promise<Blob> {
+  const token = await getIdToken();
+  const headers = buildAuthHeaders(token, options, false);
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!res.ok) {
+    let message = "Request failed";
+    try {
+      const json = await res.json();
+      message = json.message || message;
+    } catch {
+      // Ignore JSON parse error for non-JSON error responses.
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  return res.blob();
 }
 
 /**

@@ -2,7 +2,6 @@ import {
   apiFetch,
   buildQuery,
   type ListParams,
-  type PaginatedResponse,
 } from "./client";
 
 // ─── Organization API ───────────────────────────────────────────────────
@@ -22,6 +21,7 @@ export interface Organization {
   language: string;
   taxId?: string;
   logo?: string;
+  email?: string;
   address?: {
     street?: string;
     city?: string;
@@ -65,7 +65,7 @@ export interface UpdateOrganizationInput
 
 export const organizationApi = {
   list: (params?: ListParams) =>
-    apiFetch<PaginatedResponse<Organization>>(
+    apiFetch<{ success: boolean; data: Organization[] }>(
       `/organizations${buildQuery(params || {})}`,
     ),
 

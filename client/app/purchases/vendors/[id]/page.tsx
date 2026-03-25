@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
-import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { VendorForm } from "../_components/vendor-form";
 import { contactApi, type Contact } from "@/lib/api/contacts";
+import { VendorDetailView } from "./vendor-detail-view";
 
 export default function VendorDetailPage() {
   const router = useRouter();
@@ -45,12 +45,12 @@ export default function VendorDetailPage() {
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  if (notFound) {
+  if (notFound || !vendor) {
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-2">
         <p className="text-lg font-medium">Vendor not found</p>
@@ -67,19 +67,13 @@ export default function VendorDetailPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <PageHeader
-          breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <a href="/purchases/vendors" className="hover:underline">Vendors</a>
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">{vendor?.displayName ?? "Edit Vendor"}</span>
-            </span>
-          }
+      <SidebarInset className="flex h-svh min-h-0 flex-col overflow-hidden">
+        <VendorDetailView
+          vendor={vendor}
+          onVendorUpdate={(updated) => setVendor(updated)}
         />
-        {vendor && <VendorForm initialData={{ ...vendor, _id: vendor._id }} />}
       </SidebarInset>
     </SidebarProvider>
   );
 }
+

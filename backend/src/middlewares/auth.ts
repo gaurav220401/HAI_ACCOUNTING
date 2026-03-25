@@ -32,7 +32,52 @@ export const authenticate = asyncHandler(
     req.firebaseUser = decoded;
 
     // Attach MongoDB user if exists
-    const dbUser = await User.findOne({ firebaseUid: decoded.uid });
+    let dbUser = await User.findOne({ firebaseUid: decoded.uid });
+    if (!dbUser) {
+      // If a user already exists with the same email/phone (common during dev
+      // when firebaseUid changes), reuse that record instead of creating a
+      // duplicate that violates unique indexes.
+      if (decoded.email) {
+        dbUser = await User.findOne({ email: decoded.email.toLowerCase() });
+      }
+      if (!dbUser && decoded.phone_number) {
+        dbUser = await User.findOne({ phone: decoded.phone_number });
+      }
+
+      if (dbUser) {
+        const signInProvider = decoded.firebase?.sign_in_provider || "password";
+
+        let provider: "email" | "phone" | "google" = "email";
+        if (signInProvider === "google.com") provider = "google";
+        else if (signInProvider === "phone") provider = "phone";
+
+        if (dbUser.firebaseUid !== decoded.uid) {
+          dbUser.firebaseUid = decoded.uid;
+          if (!(dbUser as any).provider) {
+            (dbUser as any).provider = provider;
+          }
+          await dbUser.save();
+        }
+      } else {
+      const signInProvider = decoded.firebase?.sign_in_provider || "password";
+
+      let provider: "email" | "phone" | "google" = "email";
+      if (signInProvider === "google.com") provider = "google";
+      else if (signInProvider === "phone") provider = "phone";
+
+      dbUser = await User.create({
+        firebaseUid: decoded.uid,
+        name: decoded.name || "",
+        email: decoded.email || undefined,
+        phone: decoded.phone_number || undefined,
+        photoURL: decoded.picture || "",
+        provider,
+        profileComplete: false,
+        roles: [],
+        activeOrganization: null,
+      });
+      }
+    }
     req.user = dbUser;
 
     next();

@@ -65,9 +65,9 @@ export interface IOrganization extends Document {
   fiscalYearStart: FiscalYearMonth; // 1 = Jan, 4 = Apr, etc.
   country: string;
   timezone: string;
-  dateFormat: string;            // e.g. "DD/MM/YYYY"
-  numberFormat: string;          // e.g. "1,234,567.89"
-  language: string;              // ISO 639-1 code e.g. "en"
+  dateFormat: string; // e.g. "DD/MM/YYYY"
+  numberFormat: string; // e.g. "1,234,567.89"
+  language: string; // ISO 639-1 code e.g. "en"
   taxId?: string;
   logo?: string;
   address?: {
@@ -91,6 +91,15 @@ export interface IOrganization extends Document {
     roundOffAccount?: Types.ObjectId;
     exchangeGainLossAccount?: Types.ObjectId;
     retainedEarningsAccount?: Types.ObjectId;
+  };
+  smtpSettings?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    pass: string;
+    fromName: string;
+    fromEmail: string;
   };
   isDeleted: boolean;
   deletedAt?: Date;
@@ -205,19 +214,35 @@ export interface ServiceResult<T = unknown> {
 // ═══════════════════════════════════════════════════════════════════════
 
 // ─── 1.2 Chart of Accounts ────────────────────────────────────────────
-export type AccountRootType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+export type AccountRootType =
+  | "Asset"
+  | "Liability"
+  | "Equity"
+  | "Income"
+  | "Expense";
 
 /** Asset sub-types */
 export type AssetAccountType =
-  | "Other Asset" | "Other Current Asset" | "Cash" | "Bank"
-  | "Fixed Asset" | "Accounts Receivable" | "Stock"
-  | "Payment Clearing Account" | "Intangible Asset"
-  | "Non Current Asset" | "Deferred Tax Asset";
+  | "Other Asset"
+  | "Other Current Asset"
+  | "Cash"
+  | "Bank"
+  | "Fixed Asset"
+  | "Accounts Receivable"
+  | "Stock"
+  | "Payment Clearing Account"
+  | "Intangible Asset"
+  | "Non Current Asset"
+  | "Deferred Tax Asset";
 
 /** Liability sub-types */
 export type LiabilityAccountType =
-  | "Other Current Liability" | "Credit Card" | "Non Current Liability"
-  | "Other Liability" | "Accounts Payable" | "Overseas Tax Payable"
+  | "Other Current Liability"
+  | "Credit Card"
+  | "Non Current Liability"
+  | "Other Liability"
+  | "Accounts Payable"
+  | "Overseas Tax Payable"
   | "Deferred Tax Liability";
 
 /** Equity sub-types */
@@ -227,7 +252,10 @@ export type EquityAccountType = "Equity";
 export type IncomeAccountType = "Income" | "Other Income";
 
 /** Expense sub-types */
-export type ExpenseAccountType = "Expense" | "Cost Of Goods Sold" | "Other Expense";
+export type ExpenseAccountType =
+  | "Expense"
+  | "Cost Of Goods Sold"
+  | "Other Expense";
 
 export type AccountType =
   | AssetAccountType
@@ -247,8 +275,8 @@ export interface IAccount extends Document {
   isGroup: boolean;
   currency?: string;
   description?: string;
-  isSystemAccount: boolean;  // system accounts cannot be deleted
-  balance: number;           // denormalized, updated on GL posting
+  isSystemAccount: boolean; // system accounts cannot be deleted
+  balance: number; // denormalized, updated on GL posting
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date;
@@ -261,18 +289,31 @@ export interface IAccount extends Document {
 // ─── 1.3 Contacts ─────────────────────────────────────────────────────
 export type ContactType = "Customer" | "Vendor" | "Both";
 export type TaxTreatment =
-  | "Taxable" | "TaxExempt" | "ReverseCharge" | "SEZ"
-  | "Overseas" | "Composition" | "UIN";
+  | "Taxable"
+  | "TaxExempt"
+  | "ReverseCharge"
+  | "SEZ"
+  | "Overseas"
+  | "Composition"
+  | "UIN";
+
+export interface IComment {
+  _id: Types.ObjectId;
+  text: string;
+  userId?: Types.ObjectId | null;
+  userName?: string;
+  createdAt: Date;
+}
 
 export interface IContactPerson {
   salutation?: string;
   firstName?: string;
   lastName?: string;
-  name: string;        // kept for backward compat; derived from firstName + lastName
+  name: string; // kept for backward compat; derived from firstName + lastName
   email?: string;
   workPhone?: string;
   mobile?: string;
-  phone?: string;      // kept for backward compat
+  phone?: string; // kept for backward compat
   designation?: string;
   isPrimary: boolean;
 }
@@ -298,18 +339,18 @@ export interface IContact extends Document {
   displayName: string;
   companyName?: string;
   email?: string;
-  phone?: string;      // work phone
+  phone?: string; // work phone
   mobile?: string;
   currency: string;
   language?: string;
   // Financial
   paymentTermsId?: Types.ObjectId | null;
-  accountsPayableId?: Types.ObjectId | null;   // Accounts Payable account
+  accountsPayableId?: Types.ObjectId | null; // Accounts Payable account
   openingBalance?: number;
   taxTreatment: TaxTreatment;
-  taxId?: string;      // GSTIN / VAT
-  gstin?: string;      // GSTIN (primary GST number)
-  pan?: string;        // PAN number
+  taxId?: string; // GSTIN / VAT / PAN
+  gstin?: string; // GSTIN (primary GST number)
+  pan?: string; // PAN number
   tdsCategory?: string;
   msmeRegistered?: boolean;
   // Extra / social details
@@ -320,7 +361,13 @@ export interface IContact extends Document {
   skypeName?: string;
   facebookUrl?: string;
   // Attached documents
-  documents?: { name: string; url: string; publicId: string; size?: number; mimeType?: string }[];
+  documents?: {
+    name: string;
+    url: string;
+    publicId: string;
+    size?: number;
+    mimeType?: string;
+  }[];
   // Address
   billingAddress?: {
     attention?: string;
@@ -330,8 +377,6 @@ export interface IContact extends Document {
     state?: string;
     zip?: string;
     country?: string;
-    phone?: string;
-    fax?: string;
   };
   shippingAddress?: {
     attention?: string;
@@ -347,6 +392,7 @@ export interface IContact extends Document {
   contactPersons: IContactPerson[];
   bankDetails: IBankDetail[];
   notes?: string;
+  comments: IComment[];
   portalEnabled: boolean;
   reportingTags: Types.ObjectId[];
   // Customer-specific
@@ -374,7 +420,7 @@ export interface IItem extends Document {
   itemType: ItemType;
   name: string;
   sku?: string;
-  unit?: Types.ObjectId | null;        // ref: UOM
+  unit?: Types.ObjectId | null; // ref: UOM
   itemGroupId?: Types.ObjectId | null; // ref: ItemGroup
   description?: string;
   sellingPrice: number;
@@ -382,7 +428,7 @@ export interface IItem extends Document {
   costPrice: number;
   purchaseDescription?: string;
   taxPreference: TaxPreference;
-  taxId?: Types.ObjectId | null;       // ref: Tax
+  taxId?: Types.ObjectId | null; // ref: Tax
   hsnSacCode?: string;
   salesAccountId?: Types.ObjectId | null;
   purchaseAccountId?: Types.ObjectId | null;
@@ -415,8 +461,8 @@ export interface IItemGroup extends Document {
 export interface IUnitOfMeasurement extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
-  name: string;           // e.g. "Kilogram"
-  abbreviation: string;   // e.g. "kg"
+  name: string; // e.g. "Kilogram"
+  abbreviation: string; // e.g. "kg"
   isSystemUnit: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -451,9 +497,9 @@ export interface IPriceList extends Document {
 // ─── 1.6 Currency & Exchange Rates ────────────────────────────────────
 export interface ICurrency extends Document {
   _id: Types.ObjectId;
-  code: string;      // ISO 4217: "INR", "USD"
-  name: string;      // "Indian Rupee"
-  symbol: string;    // "₹"
+  code: string; // ISO 4217: "INR", "USD"
+  name: string; // "Indian Rupee"
+  symbol: string; // "₹"
   decimalPlaces: number;
   isEnabled: boolean;
 }
@@ -474,7 +520,7 @@ export interface IExchangeRate extends Document {
 export type TaxType = "Tax" | "TaxGroup" | "CompoundTax";
 
 export interface ITaxComponent {
-  taxId: Types.ObjectId;  // ref to a simple Tax
+  taxId: Types.ObjectId; // ref to a simple Tax
   rate: number;
 }
 
@@ -483,9 +529,9 @@ export interface ITax extends Document {
   organizationId: Types.ObjectId;
   name: string;
   taxType: TaxType;
-  rate: number;               // percentage, 0 for groups
+  rate: number; // percentage, 0 for groups
   taxAuthority?: string;
-  components: ITaxComponent[];   // populated for TaxGroup
+  components: ITaxComponent[]; // populated for TaxGroup
   isCompound: boolean;
   isSystemTax: boolean;
   description?: string;
@@ -501,14 +547,14 @@ export interface ITax extends Document {
 export interface IPaymentTerms extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
-  name: string;          // "Net 30", "Due on Receipt"
+  name: string; // "Net 30", "Due on Receipt"
   termType: "net_days" | "end_of_month" | "end_of_next_month";
-  netDays: number;       // 0 = due on receipt; ignored for end_of_month types
+  netDays: number; // 0 = due on receipt; ignored for end_of_month types
   discountPercentage: number;
   discountDays: number;
   isDefault: boolean;
   isSystemTerm: boolean;
-  isPermanent: boolean;  // true = cannot be deleted or renamed
+  isPermanent: boolean; // true = cannot be deleted or renamed
   createdAt: Date;
   updatedAt: Date;
 }
@@ -518,7 +564,13 @@ export interface IWarehouse extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
   name: string;
-  address?: { street?: string; city?: string; state?: string; zip?: string; country?: string };
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  };
   isPrimary: boolean;
   isActive: boolean;
   createdBy: Types.ObjectId;
@@ -532,7 +584,7 @@ export interface ISalesPerson extends Document {
   name: string;
   email?: string;
   phone?: string;
-  commissionRate: number;   // percentage
+  commissionRate: number; // percentage
   isActive: boolean;
   createdBy: Types.ObjectId;
   createdAt: Date;
@@ -542,8 +594,8 @@ export interface ISalesPerson extends Document {
 export interface IPaymentMode extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
-  name: string;   // "Cash", "Bank Transfer", "UPI", "Credit Card"
-  accountId?: Types.ObjectId | null;   // linked GL account
+  name: string; // "Cash", "Bank Transfer", "UPI", "Credit Card"
+  accountId?: Types.ObjectId | null; // linked GL account
   isSystemMode: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -554,7 +606,7 @@ export interface IExpenseCategory extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
   name: string;
-  accountId?: Types.ObjectId | null;   // linked GL expense account
+  accountId?: Types.ObjectId | null; // linked GL expense account
   description?: string;
   isActive: boolean;
   createdBy: Types.ObjectId;
@@ -567,9 +619,299 @@ export interface IReportingTag extends Document {
   organizationId: Types.ObjectId;
   name: string;
   description?: string;
-  color?: string;   // hex color for UI display
+  color?: string; // hex color for UI display
   isActive: boolean;
   createdBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  PHASE 2 — TRANSACTION TYPES
+// ═══════════════════════════════════════════════════════════════════════
+
+// ─── 2.1 Quote (Estimate) ──────────────────────────────────────────────
+export type QuoteStatus =
+  | "Draft"
+  | "Sent"
+  | "Accepted"
+  | "Rejected"
+  | "Invoiced"
+  | "Expired";
+export type DiscountType = "percent" | "amount";
+export type QuoteTaxType = "TDS" | "TCS" | "none";
+
+export interface IQuoteItem {
+  _id?: Types.ObjectId;
+  itemId?: Types.ObjectId | null;
+  name: string;
+  description?: string;
+  hsnSacCode?: string;
+  quantity: number;
+  rate: number;
+  discountPercent: number;
+  discountAmount: number;
+  taxId?: Types.ObjectId | null;
+  taxPercent: number;
+  taxAmount: number;
+  amount: number;
+}
+
+export interface IQuote extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  quoteNumber: string;
+  referenceNumber?: string;
+  customerId: Types.ObjectId;
+  quoteDate: Date;
+  expiryDate?: Date | null;
+  salesPersonId?: Types.ObjectId | null;
+  subject?: string;
+  items: IQuoteItem[];
+  subTotal: number;
+  discountType: DiscountType;
+  discountValue: number;
+  discountAmount: number;
+  taxType: QuoteTaxType;
+  taxId?: Types.ObjectId | null;
+  taxAmount: number;
+  adjustmentLabel: string;
+  adjustmentAmount: number;
+  total: number;
+  customerNotes: string;
+  termsAndConditions: string;
+  status: QuoteStatus;
+  emailContacts: string[];
+  attachments: string[];
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── 2.2 Invoice ───────────────────────────────────────────────────────
+export type InvoiceStatus =
+  | "Draft"
+  | "Sent"
+  | "Viewed"
+  | "Overdue"
+  | "Partially Paid"
+  | "Paid"
+  | "Void";
+
+export type InvoiceTaxType = "TDS" | "TCS" | "none";
+
+export interface IInvoiceItem {
+  _id?: Types.ObjectId;
+  itemId?: Types.ObjectId | null;
+  name: string;
+  description?: string;
+  hsnSacCode?: string;
+  quantity: number;
+  rate: number;
+  discountPercent: number;
+  discountAmount: number;
+  taxId?: Types.ObjectId | null;
+  taxPercent: number;
+  taxAmount: number;
+  amount: number;
+  accountId?: Types.ObjectId | null;
+  projectId?: Types.ObjectId | null;
+}
+
+export interface IInvoiceJournalEntry {
+  account: string;
+  debit: number;
+  credit: number;
+}
+
+export interface IInvoice extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  invoiceNumber: string;
+  referenceNumber?: string;
+  orderNumber?: string;
+  customerId: Types.ObjectId;
+  invoiceDate: Date;
+  dueDate?: Date | null;
+  paymentTermsId?: Types.ObjectId | null;
+  salesPersonId?: Types.ObjectId | null;
+  subject?: string;
+  items: IInvoiceItem[];
+  subTotal: number;
+  discountType: DiscountType;
+  discountValue: number;
+  discountAmount: number;
+  taxType: InvoiceTaxType;
+  taxId?: Types.ObjectId | null;
+  taxAmount: number;
+  adjustmentLabel: string;
+  adjustmentAmount: number;
+  total: number;
+  balanceDue: number;
+  customerNotes: string;
+  termsAndConditions: string;
+  status: InvoiceStatus;
+  emailContacts: string[];
+  attachments: string[];
+  paymentReceived: boolean;
+  isRecurring: boolean;
+  recurringProfileId?: Types.ObjectId | null;
+  autoGenerated?: boolean;
+  journalEntries?: IInvoiceJournalEntry[];
+  pdfTemplateId?: Types.ObjectId | null;
+  sentAt?: Date | null;
+  paidAt?: Date | null;
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+// ─── 2.3 Bills ───────────────────────────────────────────────────────
+export type BillStatus =
+  | "Draft"
+  | "Open"
+  | "Overdue"
+  | "Partially Paid"
+  | "Paid"
+  | "Void";
+
+export type BillTaxType = "TDS" | "TCS" | "none";
+
+export interface IBillLineItem {
+  _id?: Types.ObjectId;
+  isHeader?: boolean;
+  headerText?: string;
+  itemId?: Types.ObjectId | null;
+  name: string;
+  description?: string;
+  quantity: number;
+  rate: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  amount: number;
+  accountId?: Types.ObjectId | null; // Expense account
+  customerId?: Types.ObjectId | null; // For billable expenses
+}
+
+export interface IBill extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  vendorId: Types.ObjectId;
+  billNumber: string;
+  referenceNumber?: string;
+  orderNumber?: string;
+  billDate: Date;
+  dueDate?: Date | null;
+  paymentTermsId?: Types.ObjectId | null;
+  sourceOfSupply?: string;
+  destinationOfSupply?: string;
+  accountsPayableId?: Types.ObjectId | null; // Accounts Payable account (Liability)
+  subject?: string;
+  lineItems: IBillLineItem[];
+  subTotal: number;
+  discountLevel: "transaction" | "line_item";
+  discountAccountId?: Types.ObjectId | null;
+  discountPercent: number;
+  discountAmount: number;
+  taxType: BillTaxType;
+  tdsId?: Types.ObjectId | null;
+  tcsId?: Types.ObjectId | null;
+  taxAmount: number;
+  tcsAmount: number;
+  adjustmentLabel: string;
+  adjustmentAmount: number;
+  amountPaid: number;
+  total: number;
+  balanceDue: number;
+  notes: string;
+  termsAndConditions: string;
+  status: BillStatus;
+  attachments: string[];
+  comments: {
+    author: string;
+    text: string;
+    time: Date;
+    isSystem: boolean;
+  }[];
+  recurringId?: Types.ObjectId | null;
+  recurringRunDate?: Date | null;
+  recurringRunSequence?: number | null;
+
+export type RecurringInvoiceFrequency =
+  | "weekly"
+  | "every_10_days"
+  | "every_15_days"
+  | "monthly";
+
+export type RecurringInvoiceStatus =
+  | "active"
+  | "paused"
+  | "stopped"
+  | "completed";
+
+export type RecurringInvoiceDeliveryMode = "draft" | "send";
+
+export type RecurringInvoiceActivityType =
+  | "created"
+  | "updated"
+  | "paused"
+  | "resumed"
+  | "stopped"
+  | "completed"
+  | "invoice_generated"
+  | "auto_send_failed";
+
+export interface IRecurringInvoiceActivity {
+  type: RecurringInvoiceActivityType;
+  message: string;
+  invoiceId?: Types.ObjectId | null;
+  createdAt: Date;
+}
+
+export interface IRecurringInvoice extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  profileName: string;
+  referenceNumber?: string;
+  orderNumber?: string;
+  customerId: Types.ObjectId;
+  startDate: Date;
+  endDate?: Date | null;
+  neverExpires: boolean;
+  frequency: RecurringInvoiceFrequency;
+  nextRunDate: Date;
+  lastRunDate?: Date | null;
+  paymentTermsId?: Types.ObjectId | null;
+  salesPersonId?: Types.ObjectId | null;
+  subject?: string;
+  items: IInvoiceItem[];
+  subTotal: number;
+  discountType: DiscountType;
+  discountValue: number;
+  discountAmount: number;
+  taxType: InvoiceTaxType;
+  taxId?: Types.ObjectId | null;
+  taxAmount: number;
+  adjustmentLabel: string;
+  adjustmentAmount: number;
+  total: number;
+  customerNotes: string;
+  termsAndConditions: string;
+  emailContacts: string[];
+  deliveryMode: RecurringInvoiceDeliveryMode;
+  status: RecurringInvoiceStatus;
+  generatedInvoiceCount: number;
+  lastGeneratedInvoiceId?: Types.ObjectId | null;
+  recentActivities: IRecurringInvoiceActivity[];
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }

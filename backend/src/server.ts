@@ -1,8 +1,10 @@
 import "dotenv/config";
 import http from "http";
 import app from "./app";
-import { connectDB } from "./config/db";
+import { connectDB, syncIndexes } from "./config/db";
 import { seedDefaultRoles } from "./models/role.model";
+import { startRecurringBillScheduler } from "./services/recurring-bill.scheduler";
+import { startRecurringInvoiceScheduler } from "./services/recurring-invoice.service";
 
 const PORT = process.env.PORT || 5000;
 
@@ -11,8 +13,16 @@ const startServer = async (): Promise<void> => {
     // Connect to MongoDB
     await connectDB();
 
+    // Sync indexes (drops stale non-sparse indexes, etc.)
+    await syncIndexes();
+
     // Seed default roles on startup
     await seedDefaultRoles();
+
+    // Start recurring bill scheduler
+    startRecurringBillScheduler();
+    // Start recurring invoice processing after the database is ready.
+    startRecurringInvoiceScheduler();
 
     // Create HTTP server
     const server = http.createServer(app);

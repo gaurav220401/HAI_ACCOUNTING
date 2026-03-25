@@ -1,21 +1,41 @@
 import { Response } from "express";
 import Contact from "../models/contact.model";
+import Expense from "../models/expense.model";
+import Organization from "../models/organization.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 
-function orgId(req: AuthenticatedRequest) {
+async function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
-  if (!id) throw new ForbiddenError("No active organization");
-  return id;
+  if (id) return id;
+
+  if (!req.user) throw new ForbiddenError("User not found");
+
+  const firstOrg = await Organization.findOne().select("_id").lean();
+  if (!firstOrg?._id) throw new ForbiddenError("No active organization");
+
+  req.user.activeOrganization = firstOrg._id as any;
+  await req.user.save();
+  return firstOrg._id;
 }
 
 /** GET /api/contacts?type=Customer|Vendor|Both&search=...&page=1&limit=25 */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { type, search, page = 1, limit = 25 } = req.query;
-  const filter: any = { organizationId: orgId(req), isDeleted: false, isActive: true };
-  if (type) filter.contactType = type;
+  const filter: any = { organizationId: await orgId(req), isDeleted: false, isActive: true };
+
+  if (type) {
+    if (type === "Customer") {
+      filter.contactType = { $in: ["Customer", "Both"] };
+    } else if (type === "Vendor") {
+      filter.contactType = { $in: ["Vendor", "Both"] };
+    } else {
+      filter.contactType = type;
+    }
+  }
+
   if (search) filter.$or = [
     { displayName: { $regex: search, $options: "i" } },
     { companyName: { $regex: search, $options: "i" } },
@@ -38,7 +58,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 
 /** GET /api/contacts/:id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const contact = await Contact.findOne({ _id: req.params.id, organizationId: orgId(req) })
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) })
     .populate("paymentTermsId salesPersonId reportingTags");
   if (!contact) throw new NotFoundError("Contact");
   res.json({ success: true, data: contact });
@@ -50,7 +70,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!displayName) throw new ValidationError("displayName is required");
   if (!contactType) throw new ValidationError("contactType is required");
 
-  const contact = new Contact({ organizationId: orgId(req), ...req.body });
+  const contact = new Contact({ organizationId: await orgId(req), ...req.body });
   attachUser(contact, req);
   await contact.save();
   res.status(201).json({ success: true, data: contact });
@@ -58,7 +78,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** PATCH /api/contacts/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const contact = await Contact.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
   if (!contact) throw new NotFoundError("Contact");
 
   const allowed = [
@@ -82,11 +102,83 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** DELETE /api/contacts/:id */
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const contact = await Contact.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
   if (!contact) throw new NotFoundError("Contact");
   contact.isDeleted = true;
   contact.deletedAt = new Date();
   attachUser(contact, req);
   await contact.save();
   res.json({ success: true, message: "Contact deleted" });
+});
+
+/** POST /api/contacts/:id/comments */
+export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
+  if (!contact) throw new NotFoundError("Contact");
+  const { text } = req.body;
+  if (!text?.trim()) throw new ValidationError("Comment text is required");
+
+  const userName = req.user?.name ?? req.user?.email ?? "Unknown";
+  const userId = req.user?._id ?? null;
+
+  (contact as any).comments.push({ text: text.trim(), userId, userName, createdAt: new Date() });
+  await contact.save();
+  res.status(201).json({ success: true, data: (contact as any).comments });
+});
+
+/** GET /api/contacts/:id/activity */
+export const getActivity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = await orgId(req);
+  const contact = await Contact.findOne({ _id: req.params.id, organizationId: oid })
+    .populate("createdBy", "name email");
+  if (!contact) throw new NotFoundError("Contact");
+
+  const expenses = await Expense.find({
+    vendorId: contact._id,
+    organizationId: oid,
+    isDeleted: { $ne: true },
+  })
+    .populate("createdBy", "name email")
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  type ActivityEvent = {
+    type: string;
+    timestamp: string;
+    description: string;
+    amount?: number;
+    currency?: string;
+    ref?: string;
+    userName?: string;
+  };
+
+  const events: ActivityEvent[] = [];
+
+  const contactCreator = (contact as any).createdBy;
+  const contactCreatorName: string = contactCreator?.name ?? contactCreator?.email ?? "Unknown";
+
+  events.push({
+    type: "contact_created",
+    timestamp: (contact as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
+    description: `Vendor "${contact.displayName}" was created`,
+    userName: contactCreatorName,
+  });
+
+  for (const exp of expenses) {
+    const creator = (exp as any).createdBy;
+    const creatorName: string = creator?.name ?? creator?.email ?? "Unknown";
+    events.push({
+      type: "expense_added",
+      timestamp: (exp as any).createdAt?.toISOString?.() ?? exp.date,
+      description: `Expense ${(exp as any).expenseNumber} added`,
+      amount: exp.amount,
+      currency: (exp as any).currency,
+      ref: (exp as any).expenseNumber,
+      userName: creatorName,
+    });
+  }
+
+  events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  res.json({ success: true, data: events });
 });

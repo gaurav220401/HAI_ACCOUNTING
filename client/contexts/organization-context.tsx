@@ -44,6 +44,8 @@ export function OrganizationProvider({
   );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [apiError, setApiError] = useState(false);
 
   const fetchOrganizations = useCallback(async () => {
     if (!firebaseUser) {
@@ -55,6 +57,8 @@ export function OrganizationProvider({
 
     try {
       setLoading(true);
+      setLoadFailed(false);
+      setApiError(false);
       const res = await organizationApi.list();
       const orgs = (res as any).data ?? [];
       setOrganizations(orgs);
@@ -74,6 +78,15 @@ export function OrganizationProvider({
 
       setActiveOrg(matched);
       if (matched) {
+        // Ensure backend also has an active org, otherwise API calls that rely on it
+        // (e.g. contacts/customers) will fail with "No active organization".
+        if (!activeId) {
+          try {
+            await organizationApi.setActive(matched._id);
+          } catch {
+            // best-effort
+          }
+        }
         setActiveOrganization({
           id: matched._id,
           name: matched.name,
@@ -85,9 +98,13 @@ export function OrganizationProvider({
       } else {
         setActiveOrganization(null);
       }
-    } catch {
+    } catch (error: any) {
+      console.error("Failed to fetch organizations:", error);
+      setLoadFailed(true);
       setOrganizations([]);
       setActiveOrg(null);
+      setActiveOrganization(null);
+      setApiError(true);
     } finally {
       setLoading(false);
     }
@@ -119,7 +136,12 @@ export function OrganizationProvider({
     [setActiveOrganization],
   );
 
-  const needsOrgSetup = !loading && firebaseUser != null && organizations.length === 0;
+  const needsOrgSetup =
+    !loading &&
+    !loadFailed &&
+    firebaseUser != null &&
+    dbUser != null &&
+    organizations.length === 0;
 
   return (
     <OrganizationContext.Provider

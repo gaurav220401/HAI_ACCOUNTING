@@ -215,6 +215,7 @@ function getIndianCoATemplate() {
     { name: "Repairs and Maintenance",         rootType: "Expense", accountType: "Expense", description: "Costs of repairing and maintaining business assets." },
     { name: "Other Expenses",                  rootType: "Expense", accountType: "Expense", description: "Miscellaneous business expenses." },
     { name: "Lodging",                         rootType: "Expense", accountType: "Expense", description: "Costs for hotel and accommodation during business trips." },
+    { name: "Fuel/Mileage Expenses",           rootType: "Expense", accountType: "Expense", description: "Fuel costs and mileage-based expenses for business travel." },
     // Cost Of Goods Sold
     { name: "Cost of Goods Sold",              rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Direct costs attributable to the production of goods sold." },
     { name: "Labor",                           rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Labor costs directly related to production." },

@@ -49,5 +49,12 @@ const userSchema = new Schema<IUser>(
   { timestamps: true },
 );
 
+// Ensure null / empty-string email & phone are stored as *absent* so the
+// sparse unique index can allow multiple users without those fields.
+userSchema.pre("validate", function () {
+  if (!this.email) this.email = undefined as any;
+  if (!this.phone) this.phone = undefined as any;
+});
+
 const User: Model<IUser> = model<IUser>("User", userSchema);
 export default User;
