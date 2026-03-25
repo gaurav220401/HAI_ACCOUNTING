@@ -17,7 +17,7 @@ export type InvoiceTaxType = "TDS" | "TCS" | "none";
 
 export interface InvoiceItem {
   _id?: string;
-  itemId?: string | null;
+  itemId?: string | { _id: string; name: string; sku?: string } | null;
   name: string;
   description?: string;
   hsnSacCode?: string;
@@ -25,11 +25,11 @@ export interface InvoiceItem {
   rate: number;
   discountPercent: number;
   discountAmount: number;
-  taxId?: string | null;
+  taxId?: string | { _id: string; name: string; rate?: number } | null;
   taxPercent: number;
   taxAmount: number;
   amount: number;
-  accountId?: string | null;
+  accountId?: string | { _id: string; name?: string } | null;
   projectId?: string | null;
 }
 
@@ -55,7 +55,10 @@ export interface Invoice {
       };
   invoiceDate: string;
   dueDate?: string | null;
-  paymentTermsId?: string | null;
+  paymentTermsId?:
+    | string
+    | { _id: string; name: string; netDays?: number }
+    | null;
   salesPersonId?: string | { _id: string; name: string } | null;
   subject?: string;
   items: InvoiceItem[];
@@ -64,7 +67,7 @@ export interface Invoice {
   discountValue: number;
   discountAmount: number;
   taxType: InvoiceTaxType;
-  taxId?: string | null;
+  taxId?: string | { _id: string; name: string; rate?: number } | null;
   taxAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;

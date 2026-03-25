@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import * as fs from "fs";
 
 export interface InvoiceItemRow {
   name: string;
@@ -23,6 +24,7 @@ export interface InvoicePdfData {
     zip?: string;
     country?: string;
   };
+  orgEmail?: string;
   orgTaxId?: string; // GSTIN / PAN
 
   // Customer
@@ -34,6 +36,7 @@ export interface InvoicePdfData {
   invoiceNumber: string;
   invoiceDate: string; // ISO or any Date string
   dueDate?: string;
+  paymentTerms?: string;
   orderNumber?: string;
   subject?: string;
 
@@ -143,6 +146,46 @@ export interface VendorCreditPdfData {
   termsAndConditions?: string;
   currencySymbol?: string;
 }
+// ── System font discovery (needed for ₹ symbol support) ────────────────
+const FONT_CANDIDATES: {
+  regular: string[];
+  bold: string[];
+  boldItalic: string[];
+} = {
+  regular: [
+    "C:/Windows/Fonts/arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+  ],
+  bold: [
+    "C:/Windows/Fonts/arialbd.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+  ],
+  boldItalic: [
+    "C:/Windows/Fonts/arialbi.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-BoldItalic.ttf",
+  ],
+};
+
+function findFont(paths: string[]): string | null {
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+const _sysRegular = findFont(FONT_CANDIDATES.regular);
+const _sysBold = findFont(FONT_CANDIDATES.bold);
+const _sysBoldItalic = findFont(FONT_CANDIDATES.boldItalic);
 
 function fmt(n: number, symbol = "₹"): string {
   return (
@@ -154,18 +197,102 @@ function fmt(n: number, symbol = "₹"): string {
   );
 }
 
+function fmtNum(n: number): string {
+  return n.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function fmtDate(d: string): string {
   const date = new Date(d);
   if (isNaN(date.getTime())) return d;
   return date.toLocaleDateString("en-IN", {
     day: "2-digit",
-    month: "short",
+    month: "2-digit",
     year: "numeric",
   });
 }
 
+/** Convert a number to Indian Rupee words (e.g. 23 → "Indian Rupee Twenty-Three Only") */
+function numberToWords(n: number): string {
+  if (n === 0) return "Indian Rupee Zero Only";
+
+  const ones = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+
+  function twoDigits(num: number): string {
+    if (num < 20) return ones[num];
+    const t = tens[Math.floor(num / 10)];
+    const o = ones[num % 10];
+    return o ? `${t}-${o}` : t;
+  }
+
+  function threeDigits(num: number): string {
+    if (num === 0) return "";
+    if (num < 100) return twoDigits(num);
+    const h = ones[Math.floor(num / 100)] + " Hundred";
+    const rest = num % 100;
+    return rest ? `${h} ${twoDigits(rest)}` : h;
+  }
+
+  const abs = Math.abs(Math.floor(n));
+  const paise = Math.round((Math.abs(n) - abs) * 100);
+
+  // Indian numbering: crore, lakh, thousand, hundred
+  const crore = Math.floor(abs / 10000000);
+  const lakh = Math.floor((abs % 10000000) / 100000);
+  const thousand = Math.floor((abs % 100000) / 1000);
+  const remainder = abs % 1000;
+
+  const parts: string[] = [];
+  if (crore) parts.push(`${threeDigits(crore)} Crore`);
+  if (lakh) parts.push(`${twoDigits(lakh)} Lakh`);
+  if (thousand) parts.push(`${twoDigits(thousand)} Thousand`);
+  if (remainder) parts.push(threeDigits(remainder));
+
+  let result = "Indian Rupee " + parts.join(" ");
+  if (paise > 0) {
+    result += ` and ${twoDigits(paise)} Paise`;
+  }
+  result += " Only";
+  return result;
+}
+
 /**
- * Generate a clean invoice PDF and return it as a Buffer.
+ * Generate a Tax Invoice PDF and return it as a Buffer.
  */
 export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -179,262 +306,317 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const pageW = doc.page.width - 100; // content width after margins
-    const sym = data.currencySymbol ?? "₹";
+    // ── Register system fonts for ₹ support ────────────────────
+    let F_REG = "Helvetica";
+    let F_BOLD = "Helvetica-Bold";
+    let F_BOLDIT = "Helvetica-BoldOblique";
+    let canRenderRupee = false;
 
-    // ── Header band ────────────────────────────────────────────
-    doc
-      .rect(50, 40, pageW, 70)
-      .fill("#2563eb")
-      .fillColor("#ffffff")
-      .fontSize(18)
-      .font("Helvetica-Bold")
-      .text("INVOICE", 65, 58)
-      .fontSize(10)
-      .font("Helvetica")
-      .text(`#${data.invoiceNumber}`, 65, 82);
-
-    // Org name / address top-right
-    const orgLines = [
-      data.orgName,
-      data.orgAddress?.street,
-      [data.orgAddress?.city, data.orgAddress?.state, data.orgAddress?.zip]
-        .filter(Boolean)
-        .join(", "),
-      data.orgAddress?.country,
-      data.orgTaxId ? `GSTIN: ${data.orgTaxId}` : undefined,
-    ].filter(Boolean) as string[];
-
-    doc
-      .fillColor("#ffffff")
-      .fontSize(9)
-      .font("Helvetica-Bold")
-      .text(orgLines[0], 50, 50, { align: "right", width: pageW })
-      .font("Helvetica");
-    orgLines.slice(1).forEach((line, i) => {
-      doc.text(line, 50, 62 + i * 11, { align: "right", width: pageW });
-    });
-
-    let y = 125;
-
-    // ── Bill To / Invoice Details two-column ───────────────────
-    doc.fillColor("#1e3a5f").fontSize(8).font("Helvetica-Bold");
-    doc.text("BILL TO", 50, y);
-    doc.text("INVOICE DETAILS", 310, y);
-
-    y += 13;
-    doc.fillColor("#111827").font("Helvetica").fontSize(9);
-
-    // Left column: customer
-    const billLines = [
-      data.customerName,
-      data.customerAddress,
-      data.customerEmail,
-    ].filter(Boolean) as string[];
-    billLines.forEach((line, i) => {
-      doc.text(line, 50, y + i * 13, { width: 230 });
-    });
-
-    // Right column: invoice meta
-    const metaRows: [string, string][] = [
-      ["Invoice No:", data.invoiceNumber],
-      ["Invoice Date:", fmtDate(data.invoiceDate)],
-    ];
-    if (data.dueDate) metaRows.push(["Due Date:", fmtDate(data.dueDate)]);
-    if (data.orderNumber) metaRows.push(["Order No:", data.orderNumber]);
-
-    metaRows.forEach(([label, value], i) => {
-      doc.font("Helvetica-Bold").text(label, 310, y + i * 13, { width: 100 });
-      doc.font("Helvetica").text(value, 415, y + i * 13, { width: 145 });
-    });
-
-    y += Math.max(billLines.length, metaRows.length) * 13 + 20;
-
-    // subject
-    if (data.subject) {
-      doc
-        .fillColor("#374151")
-        .font("Helvetica-Oblique")
-        .fontSize(9)
-        .text(data.subject, 50, y, { width: pageW });
-      y += 18;
+    if (_sysRegular && _sysBold) {
+      doc.registerFont("SysReg", _sysRegular);
+      doc.registerFont("SysBold", _sysBold);
+      if (_sysBoldItalic) doc.registerFont("SysBoldIt", _sysBoldItalic);
+      F_REG = "SysReg";
+      F_BOLD = "SysBold";
+      F_BOLDIT = _sysBoldItalic ? "SysBoldIt" : "SysBold";
+      canRenderRupee = true;
     }
 
-    // ── Items table ────────────────────────────────────────────
-    // Header row
-    const colX = {
-      item: 50,
-      hsn: 250,
-      qty: 300,
-      rate: 350,
-      disc: 400,
-      amt: 450,
-    };
-    const rowH = 16;
+    const sym =
+      canRenderRupee ? (data.currencySymbol ?? "₹")
+      : data.currencySymbol === "₹" || !data.currencySymbol ? "Rs."
+      : data.currencySymbol;
 
-    doc.rect(50, y, pageW, rowH).fill("#f3f4f6");
+    const pageW = doc.page.width - 100; // content width after margins
+    const left = 50;
+    const right = left + pageW;
+    const pageH = doc.page.height;
+
+    // ── Organisation info (top-left) ───────────────────────────
+    let y = 45;
     doc
-      .fillColor("#374151")
-      .font("Helvetica-Bold")
-      .fontSize(8)
-      .text("ITEM", colX.item + 4, y + 4)
-      .text("HSN/SAC", colX.hsn, y + 4, { width: 45 })
-      .text("QTY", colX.qty, y + 4, { width: 45, align: "right" })
-      .text("RATE", colX.rate, y + 4, { width: 45, align: "right" })
-      .text("TAX%", colX.disc, y + 4, { width: 45, align: "right" })
-      .text("AMOUNT", colX.amt, y + 4, { width: pageW - 400, align: "right" });
-    y += rowH;
+      .fillColor("#000000")
+      .fontSize(14)
+      .font(F_BOLD)
+      .text(data.orgName, left, y);
+    y += 18;
 
-    // Data rows
-    doc.font("Helvetica").fontSize(8.5);
-    data.items.forEach((item, idx) => {
-      const bg = idx % 2 === 0 ? "#ffffff" : "#f9fafb";
-      const lineH = item.description ? 26 : 16;
-      doc.rect(50, y, pageW, lineH).fill(bg);
-      doc.fillColor("#111827");
-      doc
-        .font("Helvetica-Bold")
-        .text(item.name, colX.item + 4, y + 3, { width: 192 });
-      if (item.description) {
-        doc
-          .font("Helvetica")
-          .fillColor("#6b7280")
-          .fontSize(7.5)
-          .text(item.description, colX.item + 4, y + 14, { width: 192 });
-      }
-      doc
-        .fillColor("#111827")
-        .font("Helvetica")
-        .fontSize(8.5)
-        .text(item.hsnSacCode || "", colX.hsn, y + 3, { width: 45 })
-        .text(String(item.quantity), colX.qty, y + 3, {
-          width: 45,
-          align: "right",
-        })
-        .text(fmt(item.rate, sym), colX.rate, y + 3, {
-          width: 45,
-          align: "right",
-        })
-        .text(item.taxPercent ? `${item.taxPercent}%` : "", colX.disc, y + 3, {
-          width: 45,
-          align: "right",
-        })
-        .text(fmt(item.amount, sym), colX.amt, y + 3, {
-          width: pageW - 400,
-          align: "right",
-        });
-      y += lineH;
+    const orgInfoLines = [
+      data.orgAddress?.state,
+      data.orgAddress?.country,
+      data.orgEmail,
+    ].filter(Boolean) as string[];
+
+    doc.font(F_REG).fontSize(9).fillColor("#333333");
+    orgInfoLines.forEach((line) => {
+      doc.text(line, left, y);
+      y += 12;
     });
 
-    // bottom border of table
+    // ── "TAX INVOICE" title (top-right) ────────────────────────
     doc
-      .moveTo(50, y)
-      .lineTo(50 + pageW, y)
-      .strokeColor("#e5e7eb")
+      .fontSize(22)
+      .font(F_BOLD)
+      .fillColor("#000000")
+      .text("TAX INVOICE", left, 50, { align: "right", width: pageW });
+
+    y = Math.max(y, 100) + 10;
+
+    // ── Invoice meta box (bordered) ────────────────────────────
+    const metaBoxY = y;
+    const metaRows: [string, string][] = [
+      ["#", data.invoiceNumber],
+      ["Invoice Date", fmtDate(data.invoiceDate)],
+    ];
+    if (data.paymentTerms) metaRows.push(["Terms", data.paymentTerms]);
+    if (data.dueDate) metaRows.push(["Due Date", fmtDate(data.dueDate)]);
+    if (data.orderNumber) metaRows.push(["Order No", data.orderNumber]);
+
+    const metaRowH = 15;
+    const metaBoxH = metaRows.length * metaRowH + 10;
+    const metaBoxW = pageW * 0.55;
+
+    doc
+      .rect(left, metaBoxY, metaBoxW, metaBoxH)
+      .strokeColor("#999999")
+      .lineWidth(0.5)
       .stroke();
+
+    doc.fontSize(9).fillColor("#000000");
+    metaRows.forEach(([label, value], i) => {
+      const rowY = metaBoxY + 5 + i * metaRowH;
+      doc.font(F_REG).text(label, left + 8, rowY, { width: 100 });
+      doc
+        .font(F_BOLD)
+        .text(`: ${value}`, left + 100, rowY, { width: metaBoxW - 115 });
+    });
+
+    y = metaBoxY + metaBoxH + 16;
+
+    // ── Bill To ────────────────────────────────────────────────
+    doc.font(F_BOLD).fontSize(9).fillColor("#000000").text("Bill To", left, y);
+    y += 13;
+
+    // full-width underline
+    doc
+      .moveTo(left, y)
+      .lineTo(right, y)
+      .strokeColor("#cccccc")
+      .lineWidth(0.5)
+      .stroke();
+    y += 6;
+
+    doc.font(F_BOLD).fontSize(10).fillColor("#000000");
+    doc.text(data.customerName, left, y);
+    y += 14;
+
+    const custLines = [data.customerAddress, data.customerEmail].filter(
+      Boolean,
+    ) as string[];
+    if (custLines.length) {
+      doc.font(F_REG).fontSize(9).fillColor("#333333");
+      custLines.forEach((line) => {
+        doc.text(line, left, y, { width: pageW });
+        y += 12;
+      });
+    }
+
     y += 10;
 
-    // ── Totals block (right-aligned) ───────────────────────────
-    const totColLabel = 370;
-    const totColValue = 470;
-    const totW = 80;
+    // ── Items table ────────────────────────────────────────────
+    const colNum = left;
+    const colItem = left + 30;
+    const colQty = left + pageW - 180;
+    const colRate = left + pageW - 110;
+    const colAmt = left + pageW - 50;
+    const rowH = 18;
 
-    const addTotalRow = (
-      label: string,
-      value: string,
-      bold = false,
-      color = "#111827",
-    ) => {
-      if (bold) {
-        doc.font("Helvetica-Bold");
-      } else {
-        doc.font("Helvetica");
-      }
+    // Header row with top & bottom border
+    doc
+      .moveTo(left, y)
+      .lineTo(right, y)
+      .strokeColor("#000000")
+      .lineWidth(0.5)
+      .stroke();
+
+    doc
+      .fillColor("#000000")
+      .font(F_BOLD)
+      .fontSize(8.5)
+      .text("#", colNum + 4, y + 5, { width: 25 })
+      .text("Item & Description", colItem, y + 5, {
+        width: colQty - colItem - 5,
+      })
+      .text("Qty", colQty, y + 5, { width: 60, align: "right" })
+      .text("Rate", colRate, y + 5, { width: 55, align: "right" })
+      .text("Amount", colAmt, y + 5, {
+        width: pageW - (colAmt - left),
+        align: "right",
+      });
+
+    y += rowH;
+    doc
+      .moveTo(left, y)
+      .lineTo(right, y)
+      .strokeColor("#000000")
+      .lineWidth(0.5)
+      .stroke();
+
+    // Data rows
+    doc.font(F_REG).fontSize(9);
+    data.items.forEach((item, idx) => {
+      y += 4;
+      const textY = y;
       doc
-        .fillColor("#374151")
-        .fontSize(8.5)
-        .text(label, totColLabel, y, { width: 95 });
+        .fillColor("#000000")
+        .font(F_REG)
+        .fontSize(9)
+        .text(String(idx + 1), colNum + 4, textY, { width: 25 })
+        .text(item.name, colItem, textY, { width: colQty - colItem - 5 });
+
       doc
-        .fillColor(color)
-        .text(value, totColValue, y, { width: totW, align: "right" });
-      y += 14;
+        .text(fmtNum(item.quantity), colQty, textY, {
+          width: 60,
+          align: "right",
+        })
+        .text(fmtNum(item.rate), colRate, textY, {
+          width: 55,
+          align: "right",
+        })
+        .text(fmtNum(item.amount), colAmt, textY, {
+          width: pageW - (colAmt - left),
+          align: "right",
+        });
+
+      y += rowH;
+
+      // row bottom border
+      doc
+        .moveTo(left, y)
+        .lineTo(right, y)
+        .strokeColor("#e0e0e0")
+        .lineWidth(0.3)
+        .stroke();
+    });
+
+    y += 8;
+
+    // ── Total In Words + Totals (side by side) ─────────────────
+    const totalWords = numberToWords(data.total);
+    const dividerX = left + pageW * 0.52;
+    const totalsX = dividerX + 10;
+    const totalsLabelW = 80;
+    const totalsValueW = right - totalsX - totalsLabelW - 5;
+    const wordsX = left;
+    const wordsW = dividerX - left - 10;
+
+    const sectionStartY = y;
+
+    // Total in words - left side
+    doc
+      .font(F_BOLD)
+      .fontSize(8.5)
+      .fillColor("#000000")
+      .text("Total In Words", wordsX, y);
+    y += 13;
+    const wordsY = y;
+    doc
+      .font(F_BOLDIT)
+      .fontSize(8.5)
+      .fillColor("#000000")
+      .text(totalWords, wordsX, y, { width: wordsW });
+    const wordsH = doc.heightOfString(totalWords, { width: wordsW });
+
+    // Totals - right side
+    let totY = sectionStartY;
+
+    const addTotalRow = (label: string, value: string, bold = false) => {
+      doc
+        .font(bold ? F_BOLD : F_REG)
+        .fontSize(9)
+        .fillColor("#000000");
+      doc.text(label, totalsX, totY, { width: totalsLabelW, align: "right" });
+      doc.text(value, totalsX + totalsLabelW + 5, totY, {
+        width: totalsValueW,
+        align: "right",
+      });
+      totY += 15;
     };
 
-    addTotalRow("Sub Total", fmt(data.subTotal, sym));
+    addTotalRow("Sub Total", fmtNum(data.subTotal));
     if (data.discountAmount && data.discountAmount !== 0) {
       const discLabel =
         data.discountType === "percent" ?
           `Discount (${data.discountValue}%)`
         : "Discount";
-      addTotalRow(discLabel, `- ${fmt(data.discountAmount, sym)}`);
+      addTotalRow(discLabel, `- ${fmtNum(data.discountAmount)}`);
     }
     if (data.taxAmount && data.taxAmount !== 0) {
-      addTotalRow("Tax", fmt(data.taxAmount, sym));
+      addTotalRow("Tax", fmtNum(data.taxAmount));
     }
     if (data.adjustmentAmount && data.adjustmentAmount !== 0) {
       addTotalRow(
         data.adjustmentLabel || "Adjustment",
-        fmt(data.adjustmentAmount, sym),
+        fmtNum(data.adjustmentAmount),
       );
     }
-    y += 2;
+    addTotalRow("Total", fmt(data.total, sym), true);
+    addTotalRow("Balance Due", fmt(data.balanceDue ?? data.total, sym), true);
+
+    const sectionEndY = Math.max(wordsY + wordsH + 5, totY);
+
+    // Vertical divider between words and totals
     doc
-      .moveTo(totColLabel, y)
-      .lineTo(totColLabel + 95 + totW, y)
-      .strokeColor("#d1d5db")
+      .moveTo(dividerX, sectionStartY)
+      .lineTo(dividerX, sectionEndY)
+      .strokeColor("#cccccc")
+      .lineWidth(0.5)
       .stroke();
-    y += 4;
-    addTotalRow("TOTAL", fmt(data.total, sym), true, "#2563eb");
-    if (data.balanceDue !== undefined && data.balanceDue !== data.total) {
-      addTotalRow("Balance Due", fmt(data.balanceDue, sym), true, "#dc2626");
-    }
 
-    y += 16;
+    y = sectionEndY + 16;
 
-    // ── Notes / Terms ──────────────────────────────────────────
+    // ── Notes ──────────────────────────────────────────────────
     if (data.customerNotes) {
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(8.5)
-        .fillColor("#374151")
-        .text("Notes", 50, y);
+      doc.font(F_BOLD).fontSize(9).fillColor("#000000").text("Notes", left, y);
       y += 13;
       doc
-        .font("Helvetica")
-        .fontSize(8)
-        .fillColor("#4b5563")
-        .text(data.customerNotes, 50, y, { width: pageW });
+        .font(F_REG)
+        .fontSize(9)
+        .fillColor("#333333")
+        .text(data.customerNotes, left, y, { width: pageW });
       y += doc.heightOfString(data.customerNotes, { width: pageW }) + 10;
     }
 
     if (data.termsAndConditions) {
       doc
-        .font("Helvetica-Bold")
-        .fontSize(8.5)
-        .fillColor("#374151")
-        .text("Terms & Conditions", 50, y);
+        .font(F_BOLD)
+        .fontSize(9)
+        .fillColor("#000000")
+        .text("Terms & Conditions", left, y);
       y += 13;
       doc
-        .font("Helvetica")
-        .fontSize(8)
-        .fillColor("#4b5563")
-        .text(data.termsAndConditions, 50, y, { width: pageW });
+        .font(F_REG)
+        .fontSize(9)
+        .fillColor("#333333")
+        .text(data.termsAndConditions, left, y, { width: pageW });
+      y += doc.heightOfString(data.termsAndConditions, { width: pageW }) + 10;
     }
 
-    // ── Footer ─────────────────────────────────────────────────
-    const footerY = doc.page.height - 50;
+    // ── Authorized Signature (bottom-right) ────────────────────
+    const sigY = Math.max(y + 40, pageH - 120);
     doc
-      .moveTo(50, footerY - 5)
-      .lineTo(50 + pageW, footerY - 5)
-      .strokeColor("#e5e7eb")
+      .moveTo(right - 160, sigY)
+      .lineTo(right, sigY)
+      .strokeColor("#000000")
+      .lineWidth(0.5)
       .stroke();
     doc
-      .font("Helvetica")
-      .fontSize(7.5)
-      .fillColor("#9ca3af")
-      .text("Generated by HAI Accounting", 50, footerY, {
+      .font(F_REG)
+      .fontSize(9)
+      .fillColor("#000000")
+      .text("Authorized Signature", right - 160, sigY + 5, {
+        width: 160,
         align: "center",
-        width: pageW,
       });
 
     doc.end();

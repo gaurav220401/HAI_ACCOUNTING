@@ -106,14 +106,11 @@ const navItems: NavItem[] = [
     url: "/accountant",
     icon: BookOpen,
     items: [
+      { title: "Manual Journals", url: "/accountant/journal-entries" },
+      { title: "Bulk Update", url: "/accountant/bulk-update" },
+      { title: "Currency Adjustments", url: "/accountant/currency-adjustments" },
       { title: "Chart of Accounts", url: "/accountant/chart-of-accounts" },
-      { title: "Journal Entries", url: "/accountant/journal-entries" },
-      { title: "Fixed Assets", url: "/accountant/fixed-assets" },
-      { title: "Budgets", url: "/accountant/budgets" },
-      {
-        title: "Currency Adjustments",
-        url: "/accountant/currency-adjustments",
-      },
+      { title: "Transaction Locking", url: "/accountant/transaction-locking" },
     ],
   },
   {

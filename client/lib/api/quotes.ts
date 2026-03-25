@@ -16,7 +16,7 @@ export type QuoteTaxType = "TDS" | "TCS" | "none";
 
 export interface QuoteItem {
   _id?: string;
-  itemId?: string | null;
+  itemId?: string | { _id: string; name: string; sku?: string } | null;
   name: string;
   description?: string;
   hsnSacCode?: string;
@@ -24,7 +24,7 @@ export interface QuoteItem {
   rate: number;
   discountPercent: number;
   discountAmount: number;
-  taxId?: string | null;
+  taxId?: string | { _id: string; name: string; rate?: number } | null;
   taxPercent: number;
   taxAmount: number;
   amount: number;
@@ -53,7 +53,7 @@ export interface Quote {
   discountValue: number;
   discountAmount: number;
   taxType: QuoteTaxType;
-  taxId?: string | null;
+  taxId?: string | { _id: string; name: string; rate?: number } | null;
   taxAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;

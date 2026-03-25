@@ -64,12 +64,50 @@ export async function apiFetch<T = unknown>(
   const token = await getIdToken();
   const headers = buildAuthHeaders(token, options, true);
 
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string>),
+  };
+
+  // Don't force Content-Type for FormData — the browser sets it automatically
+  // with the correct multipart boundary.
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
+    cache: "no-store",
     ...options,
     headers,
   });
 
-  const data = await res.json();
+  let data;
+  const contentType = res.headers.get("content-type");
+  
+  try {
+    // Only parse as JSON if the content-type indicates JSON
+    if (contentType && contentType.includes("application/json")) {
+      data = await res.json();
+    } else {
+      // For non-JSON responses, create a generic error object
+      const text = await res.text();
+      data = { 
+        message: text || "Request failed", 
+        code: "NON_JSON_RESPONSE",
+        status: res.status 
+      };
+    }
+  } catch (error) {
+    // If JSON parsing fails, create a generic error object
+    data = { 
+      message: "Failed to parse response", 
+      code: "PARSE_ERROR",
+      status: res.status 
+    };
+  }
 
   if (!res.ok) {
     throw new ApiError(

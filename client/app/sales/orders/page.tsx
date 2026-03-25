@@ -22,12 +22,27 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { salesOrderApi, type SalesOrder, type SalesOrderStatus } from "@/lib/api/sales-orders";
+import {
+  salesOrderApi,
+  type SalesOrder,
+  type SalesOrderStatus,
+} from "@/lib/api/sales-orders";
+
+function getCustomerName(
+  customer: SalesOrder["customerId"] | null | undefined,
+): string {
+  if (!customer || typeof customer === "string") return "";
+  return customer.displayName || customer.companyName || "";
+}
 
 function formatDate(d: string) {
   try {
     const dt = new Date(d);
-    return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    return dt.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   } catch {
     return d;
   }
@@ -54,7 +69,8 @@ export default function SalesOrdersPage() {
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+      router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
@@ -65,7 +81,11 @@ export default function SalesOrdersPage() {
   async function fetchOrders() {
     setFetching(true);
     try {
-      const res = await salesOrderApi.list({ page: 1, limit: 100, search: search || undefined });
+      const res = await salesOrderApi.list({
+        page: 1,
+        limit: 100,
+        search: search || undefined,
+      });
       setOrders(res.data ?? []);
     } catch {
       setOrders([]);
@@ -78,7 +98,7 @@ export default function SalesOrdersPage() {
     if (!search.trim()) return orders;
     const q = search.toLowerCase();
     return orders.filter((o) => {
-      const custName = String((o as any).customerId?.displayName || "").toLowerCase();
+      const custName = getCustomerName(o.customerId).toLowerCase();
       return (
         o.salesOrderNumber.toLowerCase().includes(q) ||
         (o.reference || "").toLowerCase().includes(q) ||
@@ -117,10 +137,19 @@ export default function SalesOrdersPage() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Button variant="outline" size="sm" onClick={fetchOrders} disabled={fetching}>
-                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchOrders}
+                disabled={fetching}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`}
+                />
               </Button>
-              <Button size="sm" onClick={() => router.push("/sales/orders/new")}
+              <Button
+                size="sm"
+                onClick={() => router.push("/sales/orders/new")}
               >
                 <Plus className="h-4 w-4 mr-1" />
                 New
@@ -132,7 +161,9 @@ export default function SalesOrdersPage() {
         <div className="flex flex-1 flex-col p-6 gap-4">
           <div>
             <h1 className="text-xl font-bold">All Sales Orders</h1>
-            <p className="text-sm text-muted-foreground">{filtered.length} sales orders</p>
+            <p className="text-sm text-muted-foreground">
+              {filtered.length} sales orders
+            </p>
           </div>
 
           <div className="rounded-lg border overflow-hidden">
@@ -156,20 +187,39 @@ export default function SalesOrdersPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => router.push(`/sales/orders/${o._id}`)}
                   >
-                    <TableCell className="text-sm">{formatDate(o.orderDate)}</TableCell>
-                    <TableCell className="font-medium text-primary">{o.salesOrderNumber}</TableCell>
-                    <TableCell className="text-sm">{o.reference || "—"}</TableCell>
                     <TableCell className="text-sm">
-                      {(o as any).customerId?.displayName || "—"}
+                      {formatDate(o.orderDate)}
+                    </TableCell>
+                    <TableCell className="font-medium text-primary">
+                      {o.salesOrderNumber}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {o.reference || "—"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {getCustomerName(o.customerId) || "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusBadgeVariant(o.status)}>{o.status}</Badge>
+                      <Badge variant={statusBadgeVariant(o.status)}>
+                        {o.status}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums">
-                      {o.total != null ? `₹${Number(o.total).toLocaleString("en-IN")}` : "—"}
+                      {o.total != null ?
+                        `₹${Number(o.total).toLocaleString("en-IN")}`
+                      : "—"}
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/30" />
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          o.status === "INVOICED" || o.status === "CLOSED" ?
+                            "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                          : o.status === "PARTIALLY_INVOICED" ?
+                            "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
+                          : "bg-muted-foreground/30"
+                        }`}
+                        title={o.status}
+                      />
                     </TableCell>
                     <TableCell className="text-center">
                       <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/30" />
@@ -177,13 +227,16 @@ export default function SalesOrdersPage() {
                   </TableRow>
                 ))}
 
-                {filtered.length === 0 ? (
+                {filtered.length === 0 ?
                   <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
                       No sales orders found.
                     </TableCell>
                   </TableRow>
-                ) : null}
+                : null}
               </TableBody>
             </Table>
           </div>

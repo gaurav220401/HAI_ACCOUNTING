@@ -1,0 +1,55 @@
+src/controllers/delivery-challan.controller.ts(126,43): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(filter?: _QueryFilter<{ items: IDeliveryChallanItem[]; _id: ObjectId; $assertPopulated: <Paths = {}>(path: string | string[], values?: Partial<Paths> | undefined) => Omit<...> & Paths; ... 359 more ...; "invoiceId.validateAll": (validators: (RegExp | ... 1 more ... | ValidatorFunction<...>)[]) => ObjectId; }> | undefined, projection?: ProjectionType<...> | ... 1 more ... | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Type 'ObjectId' is not assignable to type 'Condition<ApplyBasicQueryCasting<ObjectId>> | undefined'.
+      Type 'ObjectId' is not assignable to type 'FilterOperators<ObjectId | ObjectId[] | null>'.
+        Types of property 'id' are incompatible.
+          Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'undefined'.
+  Overload 2 of 4, '(filter?: Query<any, any, {}, unknown, "find", Record<string, never>> | undefined, projection?: ProjectionType<IDeliveryChallan> | null | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Object literal may only specify known properties, and '_id' does not exist in type 'Query<any, any, {}, unknown, "find", Record<string, never>>'.
+src/controllers/delivery-challan.controller.ts(201,43): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(filter?: _QueryFilter<{ items: IDeliveryChallanItem[]; _id: ObjectId; $assertPopulated: <Paths = {}>(path: string | string[], values?: Partial<Paths> | undefined) => Omit<...> & Paths; ... 359 more ...; "invoiceId.validateAll": (validators: (RegExp | ... 1 more ... | ValidatorFunction<...>)[]) => ObjectId; }> | undefined, projection?: ProjectionType<...> | ... 1 more ... | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Type 'ObjectId' is not assignable to type 'Condition<ApplyBasicQueryCasting<ObjectId>> | undefined'.
+      Type 'ObjectId' is not assignable to type 'FilterOperators<ObjectId | ObjectId[] | null>'.
+        Types of property 'id' are incompatible.
+          Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'undefined'.
+  Overload 2 of 4, '(filter?: Query<any, any, {}, unknown, "find", Record<string, never>> | undefined, projection?: ProjectionType<IDeliveryChallan> | null | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Object literal may only specify known properties, and '_id' does not exist in type 'Query<any, any, {}, unknown, "find", Record<string, never>>'.
+src/controllers/delivery-challan.controller.ts(258,43): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(filter?: _QueryFilter<{ items: IDeliveryChallanItem[]; _id: ObjectId; $assertPopulated: <Paths = {}>(path: string | string[], values?: Partial<Paths> | undefined) => Omit<...> & Paths; ... 359 more ...; "invoiceId.validateAll": (validators: (RegExp | ... 1 more ... | ValidatorFunction<...>)[]) => ObjectId; }> | undefined, projection?: ProjectionType<...> | ... 1 more ... | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Type 'ObjectId' is not assignable to type 'Condition<ApplyBasicQueryCasting<ObjectId>> | undefined'.
+      Type 'ObjectId' is not assignable to type 'FilterOperators<ObjectId | ObjectId[] | null>'.
+        Types of property 'id' are incompatible.
+          Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'undefined'.
+  Overload 2 of 4, '(filter?: Query<any, any, {}, unknown, "find", Record<string, never>> | undefined, projection?: ProjectionType<IDeliveryChallan> | null | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Object literal may only specify known properties, and '_id' does not exist in type 'Query<any, any, {}, unknown, "find", Record<string, never>>'.
+src/controllers/delivery-challan.controller.ts(283,41): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(filter?: _QueryFilter<{ items: IDeliveryChallanItem[]; _id: ObjectId; $assertPopulated: <Paths = {}>(path: string | string[], values?: Partial<Paths> | undefined) => Omit<...> & Paths; ... 359 more ...; "invoiceId.validateAll": (validators: (RegExp | ... 1 more ... | ValidatorFunction<...>)[]) => ObjectId; }> | undefined, projection?: ProjectionType<...> | ... 1 more ... | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Type 'ObjectId' is not assignable to type 'Condition<ApplyBasicQueryCasting<ObjectId>> | undefined'.
+      Type 'ObjectId' is not assignable to type 'FilterOperators<ObjectId | ObjectId[] | null>'.
+        Types of property 'id' are incompatible.
+          Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'undefined'.
+  Overload 2 of 4, '(filter?: Query<any, any, {}, unknown, "find", Record<string, never>> | undefined, projection?: ProjectionType<IDeliveryChallan> | null | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Object literal may only specify known properties, and '_id' does not exist in type 'Query<any, any, {}, unknown, "find", Record<string, never>>'.
+src/routes/projects.ts(44,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(97,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(122,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(170,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(181,38): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(filter?: _QueryFilter<{ name: string; _id: ObjectId; createdAt: Date; updatedAt: Date; $assertPopulated: <Paths = {}>(path: string | string[], values?: Partial<Paths> | undefined) => Omit<...> & Paths; ... 244 more ...; totalUnbilledHours: string; }> | undefined, projection?: ProjectionType<...> | ... 1 more ... | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Type '{ $ne: string | string[]; }' is not assignable to type 'Condition<ApplyBasicQueryCasting<ObjectId>> | undefined'.
+      Types of property '$ne' are incompatible.
+        Type 'string | string[]' is not assignable to type 'string | RegExp | ObjectId | ObjectId[] | BSONRegExp | null | undefined'.
+          Type 'string[]' is not assignable to type 'string | RegExp | ObjectId | ObjectId[] | BSONRegExp | null | undefined'.
+            Type 'string[]' is not assignable to type 'ObjectId[]'.
+              Type 'string' is not assignable to type 'ObjectId'.
+  Overload 2 of 4, '(filter?: Query<any, any, {}, unknown, "find", Record<string, never>> | undefined, projection?: ProjectionType<IProject> | null | undefined, options?: (QueryOptions<...> & Abortable) | ... 1 more ... | undefined): Query<...>', gave the following error.
+    Object literal may only specify known properties, and 'projectCode' does not exist in type 'Query<any, any, {}, unknown, "find", Record<string, never>>'.
+src/routes/projects.ts(221,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(249,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(304,23): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(330,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(374,25): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(389,32): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/projects.ts(404,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
+src/routes/projects.ts(462,24): error TS2339: Property 'user' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.

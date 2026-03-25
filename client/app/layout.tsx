@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AppSidebar } from "@/components/app-sidebar";
+import { PageHeader } from "@/components/page-header";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { TimeTrackingProvider } from "@/contexts/time-tracking-context";
+import { QueryProvider } from "@/contexts/query-provider";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
 import { OrganizationProvider } from "@/contexts/organization-context";
-import { QueryProvider } from "@/contexts/query-provider";
-import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,8 +38,10 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             <OrganizationProvider>
-              {children}
-              <Toaster/>
+              <TimeTrackingProvider>
+                {children}
+                <Toaster/>
+              </TimeTrackingProvider>
             </OrganizationProvider>
           </AuthProvider>
         </QueryProvider>
