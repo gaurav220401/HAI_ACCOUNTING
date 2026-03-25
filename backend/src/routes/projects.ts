@@ -3,6 +3,7 @@ import { authenticate } from '../middlewares/auth';
 import Project from '../models/Project';
 import TimeLog from '../models/TimeLog';
 import TimesheetEntry from '../models/TimesheetEntry';
+import { AuthenticatedRequest } from '../types';
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ function addDurations(duration1: string, duration2: string): string {
 }
 
 // Get all projects for the authenticated user
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { page = 1, limit = 10, search, status } = req.query;
     const userId = req.user!.id;
@@ -91,7 +92,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Get a specific project
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
@@ -117,7 +118,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Create a new project
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
     const projectData = {
@@ -164,7 +165,7 @@ router.post('/', authenticate, async (req, res) => {
 });
 
 // Update a project
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
@@ -180,7 +181,7 @@ router.put('/:id', authenticate, async (req, res) => {
     if (updateData.projectCode) {
       const existing = await Project.findOne({ 
         projectCode: updateData.projectCode,
-        _id: { $ne: id as string }
+        _id: { $ne: id as any }
       });
       if (existing) {
         return res.status(400).json({ message: 'Project code already exists' });
@@ -215,7 +216,7 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 // Delete a project
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
@@ -243,7 +244,7 @@ router.delete('/:id', authenticate, async (req, res) => {
 // Time tracking routes
 
 // Start time tracking for a project
-router.post('/:projectId/time-logs/start', authenticate, async (req, res) => {
+router.post('/:projectId/time-logs/start', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { projectId } = req.params;
     const userId = req.user!.id;
@@ -295,7 +296,7 @@ router.post('/:projectId/time-logs/start', authenticate, async (req, res) => {
 });
 
 // Stop time tracking for a project
-router.put('/:projectId/time-logs/:timeLogId/stop', authenticate, async (req, res) => {
+router.put('/:projectId/time-logs/:timeLogId/stop', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { projectId, timeLogId } = req.params;
     const userId = req.user!.id;
@@ -357,7 +358,7 @@ router.put('/:projectId/time-logs/:timeLogId/stop', authenticate, async (req, re
       }
 
       // Update project totals
-      await updateProjectHours(projectId);
+      await updateProjectHours(projectId as string);
     }
 
     await timeLog.populate('projectId', 'name');
@@ -370,7 +371,7 @@ router.put('/:projectId/time-logs/:timeLogId/stop', authenticate, async (req, re
 });
 
 // Get active time logs
-router.get('/time-logs/active', authenticate, async (req, res) => {
+router.get('/time-logs/active', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
     const { projectId } = req.query;
@@ -427,7 +428,7 @@ async function updateProjectHours(projectId: string) {
 }
 
 // Fetch all timesheets across all projects
-router.get('/timesheets/all', authenticate, async (req, res) => {
+router.get('/timesheets/all', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const userId = req.user!.id;
@@ -466,7 +467,7 @@ router.get('/timesheets/all', authenticate, async (req, res) => {
 });
 
 // Get timesheets for a specific project
-router.get('/:projectId/timesheets', authenticate, async (req, res) => {
+router.get('/:projectId/timesheets', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { projectId } = req.params;
     const { page = 1, limit = 10 } = req.query;
@@ -494,7 +495,7 @@ router.get('/:projectId/timesheets', authenticate, async (req, res) => {
 });
 
 // Get project users
-router.get('/:projectId/users', authenticate, async (req, res) => {
+router.get('/:projectId/users', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { projectId } = req.params;
     const project = await Project.findById(projectId)
@@ -520,7 +521,7 @@ router.get('/:projectId/users', authenticate, async (req, res) => {
 });
 
 // Add project user
-router.post('/:projectId/users', authenticate, async (req, res) => {
+router.post('/:projectId/users', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { projectId } = req.params;
     const { userId } = req.body;
@@ -547,7 +548,7 @@ router.post('/:projectId/users', authenticate, async (req, res) => {
 });
 
 // Remove project user
-router.delete('/:projectId/users/:userId', authenticate, async (req, res) => {
+router.delete('/:projectId/users/:userId', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
     const { projectId, userId } = req.params;
     
