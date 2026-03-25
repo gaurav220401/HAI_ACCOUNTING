@@ -124,9 +124,9 @@ export const list = asyncHandler(
 export const getOne = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const challan = await DeliveryChallan.findOne({
-      _id: req.params.id,
+      _id: req.params.id as any,
       organizationId: orgId(req),
-    })
+    } as any)
       .populate("customerId")
       .populate("items.itemId", "name sku")
       .populate("items.taxId", "name rate")
@@ -199,9 +199,9 @@ export const create = asyncHandler(
 export const update = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const challan = await DeliveryChallan.findOne({
-      _id: req.params.id,
+      _id: req.params.id as any,
       organizationId: orgId(req),
-    });
+    } as any);
     if (!challan) throw new NotFoundError("Delivery Challan");
 
     const allowed = [
@@ -256,9 +256,9 @@ export const update = asyncHandler(
 export const remove = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const challan = await DeliveryChallan.findOne({
-      _id: req.params.id,
+      _id: req.params.id as any,
       organizationId: orgId(req),
-    });
+    } as any);
     if (!challan) throw new NotFoundError("Delivery Challan");
 
     challan.isDeleted = true;
@@ -281,9 +281,9 @@ export const getNextNumber = asyncHandler(
 // ─── Status Actions ────────────────────────────────────────────────────
 async function requireChallan(req: AuthenticatedRequest) {
   const challan = await DeliveryChallan.findOne({
-    _id: req.params.id,
+    _id: req.params.id as any,
     organizationId: orgId(req),
-  });
+  } as any);
   if (!challan) throw new NotFoundError("Delivery Challan");
   return challan;
 }

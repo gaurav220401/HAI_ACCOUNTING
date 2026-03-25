@@ -20,6 +20,7 @@ export type AuthProvider = "email" | "phone" | "google";
 
 export interface IUser extends Document {
   _id: Types.ObjectId;
+  id: string; // Mongoose virtual getter
   firebaseUid: string;
   name: string;
   email?: string;
@@ -841,6 +842,13 @@ export interface IBill extends Document {
   recurringId?: Types.ObjectId | null;
   recurringRunDate?: Date | null;
   recurringRunSequence?: number | null;
+  isDeleted?: boolean;
+  deletedAt?: Date | null;
+  createdBy: Types.ObjectId;
+  updatedBy: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export type RecurringInvoiceFrequency =
   | "weekly"

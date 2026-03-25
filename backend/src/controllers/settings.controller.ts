@@ -172,7 +172,7 @@ export const setDefaultPaymentTerm = asyncHandler(async (req: AuthenticatedReque
   const updated = await PaymentTerms.findOneAndUpdate(
     { _id: id, organizationId: organization },
     { isDefault: true },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!updated) return res.status(404).json({ success: false, message: "Term not found" });
   res.json({ success: true, data: updated });

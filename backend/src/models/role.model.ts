@@ -223,7 +223,7 @@ export async function seedDefaultRoles(): Promise<void> {
     await Role.findOneAndUpdate(
       { name: role.name, isSystemRole: true },
       { $setOnInsert: role },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
   }
 

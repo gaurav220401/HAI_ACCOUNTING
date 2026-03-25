@@ -245,7 +245,6 @@ export const executeBulkUpdate = asyncHandler(
         { $set: { "items.$[elem].accountId": newAccObjId } },
         {
           arrayFilters: [{ "elem.accountId": oldAccObjId }],
-          multi: true,
         }
       );
       updatedCount = result.modifiedCount;

@@ -114,7 +114,7 @@ expenseSchema.pre("save", async function () {
     const counter = await Counter.findByIdAndUpdate(
       `expense-${this.organizationId}`,
       { $inc: { seq: 1 } },
-      { new: true, upsert: true },
+      { returnDocument: 'after', upsert: true },
     );
     this.expenseNumber = `EXP-${String(counter!.seq).padStart(4, "0")}`;
   }
