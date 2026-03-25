@@ -17,6 +17,9 @@ import uploadRoutes from "./upload.routes";
 import gstinRoutes from "./gstin.routes";
 import expenseRoutes from "./expense.routes";
 import recurringExpenseRoutes from "./recurring-expense.routes";
+import projectRoutes from "./projects";
+import currencyAdjustmentRoutes from "./currency-adjustment.routes";
+import bulkUpdateRoutes from "./bulk-update.routes";
 
 const router = Router();
 
@@ -38,5 +41,8 @@ router.use("/upload", uploadRoutes);
 router.use("/gstin", gstinRoutes);
 router.use("/expenses", expenseRoutes);
 router.use("/recurring-expenses", recurringExpenseRoutes);
+router.use("/projects", projectRoutes);
+router.use("/currency-adjustments", currencyAdjustmentRoutes);
+router.use("/bulk-update", bulkUpdateRoutes);
 
 export default router;
