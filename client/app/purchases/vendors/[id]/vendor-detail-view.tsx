@@ -1954,7 +1954,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col flex-1 overflow-hidden">
       {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex items-center justify-between px-5 py-3 border-b bg-background shrink-0 gap-3">
         <div className="min-w-0">
@@ -2045,7 +2045,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
             router.replace(`/purchases/vendors/${vendor._id}?tab=${tab}`, { scroll: false });
           }
         }}
-        className="flex flex-col flex-1 overflow-hidden"
+        className="flex h-full min-h-0 flex-col flex-1 overflow-hidden"
       >
         <TabsList className="shrink-0 w-full justify-start rounded-none border-b bg-transparent px-5 h-10">
           {[
@@ -2067,8 +2067,8 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsList>
 
         {/* â•â• OVERVIEW â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="overview" className="flex-1 overflow-hidden mt-0">
-          <div className="flex h-full overflow-hidden">
+        <TabsContent value="overview" className="mt-0 flex-1 min-h-0 overflow-hidden">
+          <div className="flex h-full min-h-0 overflow-hidden">
             {/* â”€â”€ LEFT column: contact info, addresses, details â”€â”€ */}
             <div className="flex-1 overflow-y-auto px-5 py-4 border-r min-w-0">
               {/* Primary contact banner */}
@@ -2441,7 +2441,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* â•â• COMMENTS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="comments" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="comments" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-2xl space-y-4">
             <div className="border rounded-lg overflow-hidden">
               <div className="flex gap-3 px-3 py-2 border-b bg-muted/20">
@@ -2491,7 +2491,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* â•â• TRANSACTIONS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="transactions" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="transactions" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-5xl">
             <EmptySection title="Bills" />
             <EmptySection title="Bill Payments" />
@@ -2504,7 +2504,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* RECURRING EXPENSES */}
-        <TabsContent value="recurring" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="recurring" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-3xl">
             <div className="border rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b bg-muted/10 flex items-center justify-between">
@@ -2567,7 +2567,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* â•â• MAILS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="mails" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="mails" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-2xl">
             <div className="border rounded-lg">
               <div className="px-4 py-3 border-b bg-muted/20">
@@ -2582,7 +2582,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* ══ STATEMENT ══════════════════════════════════════════════ */}
-        <TabsContent value="statement" className="flex-1 flex flex-col overflow-hidden mt-0">
+        <TabsContent value="statement" className="mt-0 flex flex-1 min-h-0 flex-col overflow-hidden">
           {/* Action bar */}
           <div className="px-5 py-3 border-b bg-background flex items-center gap-2 flex-wrap shrink-0 print:hidden">
             <div className="flex items-center gap-1.5 border rounded px-2.5 py-1.5 text-xs bg-muted/20">

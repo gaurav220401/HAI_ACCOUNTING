@@ -67,7 +67,7 @@ export default function VendorDetailPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col overflow-hidden h-svh">
+      <SidebarInset className="flex h-svh min-h-0 flex-col overflow-hidden">
         <VendorDetailView
           vendor={vendor}
           onVendorUpdate={(updated) => setVendor(updated)}
