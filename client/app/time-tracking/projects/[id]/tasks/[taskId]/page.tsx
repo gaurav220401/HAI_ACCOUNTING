@@ -49,7 +49,7 @@ interface Task {
 
 export default function TaskDetailPage({ params }: { params: { id: string; taskId: string } }) {
   const router = useRouter();
-  const { firebaseUser, dbUser, loading } = useAuth();
+  const { firebaseUser, dbUser, loading: authLoading } = useAuth();
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
   const { startTimer, stopTimer } = useTimeTracking();
   
@@ -66,7 +66,7 @@ export default function TaskDetailPage({ params }: { params: { id: string; taskI
 
   // Mock task data - replace with API call
   useEffect(() => {
-    if (!loading) {
+    if (!authLoading) {
       if (!firebaseUser) { router.push("/login"); return; }
       
       if (!orgLoading && firebaseUser && needsOrgSetup) {
@@ -99,7 +99,7 @@ export default function TaskDetailPage({ params }: { params: { id: string; taskI
       setTask(mockTask);
       setLoading(false);
     }
-  }, [loading, orgLoading, firebaseUser, needsOrgSetup, router, params]);
+  }, [authLoading, orgLoading, firebaseUser, needsOrgSetup, router, params]);
 
   // Timer functions
   const handleStartTimer = async () => {
@@ -210,7 +210,7 @@ export default function TaskDetailPage({ params }: { params: { id: string; taskI
     }
   };
 
-  if (loading || orgLoading || !firebaseUser) {
+  if (authLoading || loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />

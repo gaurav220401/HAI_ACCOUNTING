@@ -98,38 +98,12 @@ export function OrganizationProvider({
       } else {
         setActiveOrganization(null);
       }
-    } catch {
+    } catch (error: any) {
+      console.error("Failed to fetch organizations:", error);
       setLoadFailed(true);
       setOrganizations([]);
       setActiveOrg(null);
-    } catch (error: any) {
-      console.error('Failed to fetch organizations:', error);
-      // Create a mock organization for development when backend is not available
-      const mockOrg: Organization = {
-        _id: 'mock-org-1',
-        name: 'Demo Organization',
-        industry: 'Technology',
-        baseCurrency: 'USD',
-        fiscalYearStart: 1,
-        country: 'US',
-        timezone: 'America/New_York',
-        dateFormat: 'MM/DD/YYYY',
-        numberFormat: 'en-US',
-        language: 'en',
-        createdBy: firebaseUser.uid,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setOrganizations([mockOrg]);
-      setActiveOrg(mockOrg);
-      setActiveOrganization({
-        id: mockOrg._id,
-        name: mockOrg.name,
-        baseCurrency: mockOrg.baseCurrency,
-        country: mockOrg.country,
-        timezone: mockOrg.timezone,
-        fiscalYearStart: mockOrg.fiscalYearStart,
-      });
+      setActiveOrganization(null);
       setApiError(true);
     } finally {
       setLoading(false);
@@ -168,7 +142,6 @@ export function OrganizationProvider({
     firebaseUser != null &&
     dbUser != null &&
     organizations.length === 0;
-  const needsOrgSetup = !loading && firebaseUser != null && organizations.length === 0 && !apiError;
 
   return (
     <OrganizationContext.Provider

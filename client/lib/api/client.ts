@@ -64,20 +64,6 @@ export async function apiFetch<T = unknown>(
   const token = await getIdToken();
   const headers = buildAuthHeaders(token, options, true);
 
-  const headers: Record<string, string> = {
-    ...(options.headers as Record<string, string>),
-  };
-
-  // Don't force Content-Type for FormData — the browser sets it automatically
-  // with the correct multipart boundary.
-  if (!(options.body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
   const res = await fetch(`${API_URL}${path}`, {
     cache: "no-store",
     ...options,

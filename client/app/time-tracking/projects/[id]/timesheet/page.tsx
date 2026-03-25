@@ -583,7 +583,7 @@ export default function ProjectTimesheetPage({ params }: { params: Promise<{ id:
                       <Checkbox
                         id="billable"
                         checked={formData.isBillable}
-                        onCheckedChange={(checked) => setFormData({...formData, isBillable: checked})}
+                        onCheckedChange={(checked) => setFormData({ ...formData, isBillable: checked === true })}
                       />
                       <Label htmlFor="billable">Billable</Label>
                     </div>

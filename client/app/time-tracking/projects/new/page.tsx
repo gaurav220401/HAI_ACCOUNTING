@@ -107,11 +107,11 @@ export default function NewProjectPage() {
       newErrors.customerName = "Customer name is required";
     }
 
-    if (formData.billingMethod === "Hourly Rate" && !formData.rate.trim()) {
+    if (formData.billingMethod === "Hourly Rate" && !(formData.rate ?? "").trim()) {
       newErrors.rate = "Rate is required for hourly billing";
     }
 
-    if (formData.billingMethod === "Fixed Rate" && !formData.rate.trim()) {
+    if (formData.billingMethod === "Fixed Rate" && !(formData.rate ?? "").trim()) {
       newErrors.rate = "Fixed rate is required";
     }
 

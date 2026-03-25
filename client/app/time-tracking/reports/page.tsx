@@ -52,6 +52,7 @@ interface TimeReport {
   projectName: string;
   customerName: string;
   taskName: string;
+  userId?: string;
   userName: string;
   date: string;
   duration: string;
@@ -72,7 +73,7 @@ interface ReportFilters {
 
 export default function TimeTrackingReportsPage() {
   const router = useRouter();
-  const { firebaseUser, dbUser, loading } = useAuth();
+  const { firebaseUser, dbUser, loading: authLoading } = useAuth();
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
   
   // State
@@ -89,7 +90,7 @@ export default function TimeTrackingReportsPage() {
 
   // Mock data - replace with API call
   useEffect(() => {
-    if (!loading) {
+    if (!authLoading) {
       if (!firebaseUser) { router.push("/login"); return; }
       
       if (!orgLoading && firebaseUser && needsOrgSetup) {
@@ -146,11 +147,11 @@ export default function TimeTrackingReportsPage() {
       setReports(mockReports);
       setLoading(false);
     }
-  }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
+  }, [authLoading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   // Filter reports
   const filteredReports = reports.filter(report => {
-    const matchesUser = filters.userId === "all" || report.userId === filters.userId;
+    const matchesUser = filters.userId === "all" || (report.userId ?? report.userName) === filters.userId;
     const matchesBillable = filters.billableFilter === "all" || 
                            (filters.billableFilter === "billable" && report.isBillable) ||
                            (filters.billableFilter === "non-billable" && !report.isBillable);

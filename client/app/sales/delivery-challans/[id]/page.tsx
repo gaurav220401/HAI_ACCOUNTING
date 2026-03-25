@@ -377,7 +377,7 @@ export default function DeliveryChallanDetailPage() {
                     {activeOrganization?.name || "Organization"}
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    {activeOrganization?.state || ""}
+                    {activeOrganization?.address?.state || ""}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {activeOrganization?.country || "India"}
@@ -575,9 +575,9 @@ export default function DeliveryChallanDetailPage() {
                     <h2 className="text-lg font-bold">
                       {activeOrganization?.name || "Organization"}
                     </h2>
-                    {activeOrganization?.state && (
+                    {activeOrganization?.address?.state && (
                       <p className="text-sm text-gray-600">
-                        {activeOrganization.state}
+                        {activeOrganization.address.state}
                       </p>
                     )}
                     <p className="text-sm text-gray-600">

@@ -21,6 +21,7 @@ export interface Organization {
   language: string;
   taxId?: string;
   logo?: string;
+  email?: string;
   address?: {
     street?: string;
     city?: string;
