@@ -152,3 +152,13 @@ export type {
   ReportingTag,
   PriceList,
 } from "./api/settings";
+
+export { projectApi } from "./api/projects";
+export type {
+  Project,
+  CreateProjectInput,
+  UpdateProjectInput,
+  TimesheetEntry,
+  CreateTimesheetEntryInput,
+  TimeLog,
+} from "./api/projects";

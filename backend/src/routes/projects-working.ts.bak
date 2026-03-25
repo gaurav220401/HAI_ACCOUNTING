@@ -1,0 +1,252 @@
+import express from 'express';
+import { authenticate } from '../middlewares/auth';
+import { AuthenticatedRequest } from '../types';
+
+const router = express.Router();
+
+// Mock data for now
+const mockProjects = [
+  {
+    _id: "1",
+    name: "Website Development",
+    customerName: "John Doe",
+    billingMethod: "Fixed Rate",
+    rate: "$5,000",
+    status: "active",
+    totalLoggedHours: "15:30",
+    totalBilledHours: "12:00",
+    totalUnbilledHours: "03:30",
+    createdBy: "user1",
+    createdAt: "2024-03-01T00:00:00Z",
+    updatedAt: "2024-03-12T00:00:00Z"
+  },
+  {
+    _id: "2",
+    name: "Mobile App Design",
+    customerName: "Jane Smith",
+    billingMethod: "Hourly Rate",
+    rate: "$75/hr",
+    status: "active",
+    totalLoggedHours: "08:45",
+    totalBilledHours: "06:00",
+    totalUnbilledHours: "02:45",
+    createdBy: "user1",
+    createdAt: "2024-03-02T00:00:00Z",
+    updatedAt: "2024-03-12T00:00:00Z"
+  }
+];
+
+// Store projects in memory (for demo purposes)
+let projects = [...mockProjects];
+let projectIdCounter = mockProjects.length + 1;
+
+// Store active time logs in memory (for demo purposes)
+let activeTimeLogs: any[] = [];
+
+// Get all projects
+router.get('/', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    res.json({
+      data: projects,
+      pagination: {
+        total: projects.length,
+        page: 1,
+        limit: 10,
+        pages: 1
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    res.status(500).json({ message: 'Failed to fetch projects' });
+  }
+});
+
+// Create a new project
+router.post('/', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?._id?.toString() || req.firebaseUser?.uid;
+    const projectData = {
+      ...req.body,
+      _id: (projectIdCounter++).toString(),
+      status: "active",
+      totalLoggedHours: "00:00",
+      totalBilledHours: "00:00",
+      totalUnbilledHours: "00:00",
+      createdBy: userId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Generate project code if not provided
+    if (!projectData.projectCode) {
+      projectData.projectCode = `project_${projectData._id.padStart(4, '0')}`;
+    }
+
+    // Check if project code already exists
+    const existingProject = projects.find(p => p.projectCode === projectData.projectCode);
+    if (existingProject) {
+      return res.status(400).json({ 
+        code: 'PROJECT_CODE_EXISTS',
+        message: 'Project code already exists' 
+      });
+    }
+
+    // Add to projects array
+    projects.push(projectData);
+
+    res.status(201).json({ data: projectData });
+  } catch (error: any) {
+    console.error('Error creating project:', error);
+    res.status(500).json({ message: 'Failed to create project' });
+  }
+});
+
+// Get a specific project
+router.get('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    const project = projects.find(p => p._id === id);
+
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    res.json({ data: project });
+  } catch (error) {
+    console.error('Error fetching project:', error);
+    res.status(500).json({ message: 'Failed to fetch project' });
+  }
+});
+
+// Start time tracking
+router.post('/:projectId/time-logs/start', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user?._id?.toString() || req.firebaseUser?.uid;
+    const { description } = req.body;
+
+    // Check if user already has an active time log
+    const existingActiveLog = activeTimeLogs.find(
+      log => log.userId === userId && log.isActive
+    );
+
+    if (existingActiveLog) {
+      return res.status(400).json({ message: 'Timer already running for another project' });
+    }
+
+    // Create new time log
+    const timeLog = {
+      _id: Date.now().toString(),
+      projectId,
+      userId,
+      startTime: new Date(),
+      isActive: true,
+      description,
+      createdAt: new Date()
+    };
+
+    activeTimeLogs.push(timeLog);
+
+    res.status(201).json({ data: timeLog });
+  } catch (error) {
+    console.error('Error starting timer:', error);
+    res.status(500).json({ message: 'Failed to start timer' });
+  }
+});
+
+// Update a project
+router.put('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?._id?.toString() || req.firebaseUser?.uid;
+    const updateData = req.body;
+
+    // Find the project
+    const projectIndex = projects.findIndex(p => p._id === id);
+    if (projectIndex === -1) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Update project
+    const updatedProject = {
+      ...projects[projectIndex],
+      ...updateData,
+      updatedAt: new Date().toISOString()
+    };
+
+    projects[projectIndex] = updatedProject;
+
+    res.json({ data: updatedProject });
+  } catch (error: any) {
+    console.error('Error updating project:', error);
+    res.status(500).json({ message: 'Failed to update project' });
+  }
+});
+
+// Stop time tracking
+router.put('/:projectId/time-logs/:timeLogId/stop', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { projectId, timeLogId } = req.params;
+    const userId = req.user?._id?.toString() || req.firebaseUser?.uid;
+
+    const timeLogIndex = activeTimeLogs.findIndex(
+      log => log._id === timeLogId && log.userId === userId && log.isActive
+    );
+
+    if (timeLogIndex === -1) {
+      return res.status(404).json({ message: 'Active time log not found' });
+    }
+
+    const timeLog = activeTimeLogs[timeLogIndex];
+    const endTime = new Date();
+    const duration = calculateDuration(timeLog.startTime, endTime);
+
+    // Update time log
+    timeLog.endTime = endTime;
+    timeLog.duration = duration;
+    timeLog.isActive = false;
+
+    // Remove from active logs
+    activeTimeLogs.splice(timeLogIndex, 1);
+
+    res.json({ data: timeLog });
+  } catch (error) {
+    console.error('Error stopping timer:', error);
+    res.status(500).json({ message: 'Failed to stop timer' });
+  }
+});
+
+// Get active time logs
+router.get('/time-logs/active', authenticate, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?._id?.toString() || req.firebaseUser?.uid;
+    const { projectId } = req.query;
+
+    let logs = activeTimeLogs.filter(log => log.userId === userId && log.isActive);
+
+    if (projectId) {
+      logs = logs.filter(log => log.projectId === projectId);
+    }
+
+    res.json({ data: logs });
+  } catch (error) {
+    console.error('Error fetching active time logs:', error);
+    res.status(500).json({ message: 'Failed to fetch active time logs' });
+  }
+});
+
+// Helper function to calculate duration in days::hours::minutes::seconds format
+function calculateDuration(startTime: Date, endTime: Date): string {
+  const diffMs = endTime.getTime() - startTime.getTime();
+  const totalSeconds = Math.floor(diffMs / 1000);
+  
+  const days = Math.floor(totalSeconds / (24 * 60 * 60));
+  const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60));
+  const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+  const seconds = Math.floor((totalSeconds % 60));
+  
+  return `${days.toString().padStart(2, '0')}:${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+export default router;

@@ -46,12 +46,7 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const token = await getIdToken();
 
-  // When the body is FormData, do NOT set Content-Type — the browser will
-  // automatically add the correct multipart/form-data boundary.
-  const isFormData = options.body instanceof FormData;
-
   const headers: Record<string, string> = {
-    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers as Record<string, string>),
   };
 
@@ -66,11 +61,35 @@ export async function apiFetch<T = unknown>(
   }
 
   const res = await fetch(`${API_URL}${path}`, {
+    cache: "no-store",
     ...options,
     headers,
   });
 
-  const data = await res.json();
+  let data;
+  const contentType = res.headers.get("content-type");
+  
+  try {
+    // Only parse as JSON if the content-type indicates JSON
+    if (contentType && contentType.includes("application/json")) {
+      data = await res.json();
+    } else {
+      // For non-JSON responses, create a generic error object
+      const text = await res.text();
+      data = { 
+        message: text || "Request failed", 
+        code: "NON_JSON_RESPONSE",
+        status: res.status 
+      };
+    }
+  } catch (error) {
+    // If JSON parsing fails, create a generic error object
+    data = { 
+      message: "Failed to parse response", 
+      code: "PARSE_ERROR",
+      status: res.status 
+    };
+  }
 
   if (!res.ok) {
     throw new ApiError(
