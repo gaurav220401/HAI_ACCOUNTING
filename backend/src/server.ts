@@ -3,6 +3,7 @@ import http from "http";
 import app from "./app";
 import { connectDB, syncIndexes } from "./config/db";
 import { seedDefaultRoles } from "./models/role.model";
+import { startRecurringBillScheduler } from "./services/recurring-bill.scheduler";
 import { startRecurringInvoiceScheduler } from "./services/recurring-invoice.service";
 
 const PORT = process.env.PORT || 5000;
@@ -18,6 +19,8 @@ const startServer = async (): Promise<void> => {
     // Seed default roles on startup
     await seedDefaultRoles();
 
+    // Start recurring bill scheduler
+    startRecurringBillScheduler();
     // Start recurring invoice processing after the database is ready.
     startRecurringInvoiceScheduler();
 

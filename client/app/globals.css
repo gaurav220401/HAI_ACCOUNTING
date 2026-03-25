@@ -49,6 +49,9 @@
 
 :root {
   --radius: 0.625rem;
+  --scrollbar-thumb: #c2c8d3;
+  --scrollbar-thumb-hover: #a9b2c0;
+  --scrollbar-track: transparent;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -83,6 +86,9 @@
 }
 
 .dark {
+  --scrollbar-thumb: #4b5563;
+  --scrollbar-thumb-hover: #6b7280;
+  --scrollbar-track: transparent;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -119,7 +125,36 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -142,4 +177,35 @@
     size: A4 portrait;
     margin: 0;
   }
+}
+
+/* ── Rich Text Content Styles ────────────────────────────────── */
+.rich-text-content {
+  line-height: 1.6;
+}
+.rich-text-content ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin-bottom: 1rem;
+}
+.rich-text-content ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin-bottom: 1rem;
+}
+.rich-text-content blockquote {
+  border-left: 4px solid #e2e8f0;
+  padding-left: 1rem;
+  margin-bottom: 1rem;
+  color: #64748b;
+  font-style: italic;
+}
+.rich-text-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.rich-text-content[contenteditable]:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  cursor: text;
 }

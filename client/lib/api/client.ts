@@ -14,6 +14,23 @@ async function getIdToken(): Promise<string | null> {
   return user.getIdToken();
 }
 
+function buildAuthHeaders(
+  token: string | null,
+  options: RequestInit,
+  includeJsonHeader = true,
+): Record<string, string> {
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(includeJsonHeader && !isFormData ? { "Content-Type": "application/json" } : {}),
+    ...(options.headers as Record<string, string>),
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 /**
  * Custom error class for API responses.
  */
@@ -45,6 +62,7 @@ export async function apiFetch<T = unknown>(
   options: RequestInit = {},
 ): Promise<T> {
   const token = await getIdToken();
+  const headers = buildAuthHeaders(token, options, true);
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -101,6 +119,35 @@ export async function apiFetch<T = unknown>(
   }
 
   return data as T;
+}
+
+/**
+ * Authenticated fetch wrapper for binary responses like PDF/CSV.
+ */
+export async function apiFetchBlob(
+  path: string,
+  options: RequestInit = {},
+): Promise<Blob> {
+  const token = await getIdToken();
+  const headers = buildAuthHeaders(token, options, false);
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!res.ok) {
+    let message = "Request failed";
+    try {
+      const json = await res.json();
+      message = json.message || message;
+    } catch {
+      // Ignore JSON parse error for non-JSON error responses.
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  return res.blob();
 }
 
 /**

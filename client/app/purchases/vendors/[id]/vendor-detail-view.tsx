@@ -68,6 +68,12 @@ import { contactApi, type Contact, type ContactPerson, type BankDetail, type Con
 } from "@/lib/api/contacts";
 import { expenseApi, type Expense } from "@/lib/api/expenses";
 import { recurringExpenseApi, type RecurringExpense } from "@/lib/api/recurring-expenses";
+import { billApi, type Bill } from "@/lib/api/bills";
+import { paymentMadeApi, type PaymentMade } from "@/lib/api/payments-made";
+import { purchaseOrderApi, type PurchaseOrder } from "@/lib/api/purchase-orders";
+import { recurringBillApi, type RecurringBill } from "@/lib/api/recurring-bills";
+import { vendorCreditApi, type VendorCredit } from "@/lib/api/vendor-credits";
+import { journalApi, type Journal } from "@/lib/api/journals";
 import { smtpApi } from "@/lib/api/smtp";
 import * as XLSX from "xlsx";
 
@@ -1529,66 +1535,410 @@ function LogoAddressDialog({
 function computeStatement(expenses: Expense[], openingBalance: number, startDate: Date, endDate: Date) {
   const rows: StatementRow[] = [];
   let runningBalance = openingBalance;
+  const from = new Date(startDate);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(endDate);
+  to.setHours(23, 59, 59, 999);
+
   rows.push({ date: format(startDate, "dd/MM/yyyy"), type: "***Opening Balance***", details: "", amount: openingBalance, payments: 0, balance: openingBalance });
   const filtered = expenses
-    .filter((e) => { const d = new Date(e.date); return d >= startDate && d <= endDate; })
+    .filter((e) => { const d = new Date(e.date); return d >= from && d <= to; })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   for (const exp of filtered) {
-    runningBalance += exp.amount - exp.amount;
-    rows.push({ date: fmtDate(exp.date), type: "Expense", details: exp.expenseNumber, amount: exp.amount, payments: exp.amount, balance: runningBalance });
+    runningBalance += exp.amount;
+    rows.push({ date: fmtDate(exp.date), type: "Expense", details: exp.expenseNumber, amount: exp.amount, payments: 0, balance: runningBalance });
   }
   const totalBilled = filtered.reduce((s, e) => s + e.amount, 0);
-  return { rows, openingBalance, totalBilled, totalPaid: totalBilled, balanceDue: openingBalance + totalBilled - totalBilled };
+  return { rows, openingBalance, totalBilled, totalPaid: 0, balanceDue: openingBalance + totalBilled };
 }
 
 // â”€â”€â”€ ExpensesSection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function ExpensesSection({ expenses, vendorId, loading }: { expenses: Expense[]; vendorId: string; loading: boolean }) {
+function ExpensesSection({ expenses, loading }: { expenses: Expense[]; loading: boolean }) {
   const router = useRouter();
+  const [open, setOpen] = useState(true);
   return (
     <div className="border rounded-lg mb-4">
       <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
-        <span className="text-sm font-semibold">Expenses</span>
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Expenses</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push(`/purchases/expenses/new`)}>
           <Plus className="h-3 w-3 mr-1" />New
         </Button>
       </div>
+      {open && (
+        <>
+          <Separator />
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : expenses.length === 0 ? (
+            <div className="text-center py-6 text-sm text-muted-foreground">
+              No expenses found.{" "}
+              <button className="text-primary underline" onClick={() => router.push(`/purchases/expenses/new`)}>Add New</button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="text-xs">
+                  <TableHead>Date</TableHead><TableHead>Expense #</TableHead><TableHead>Account</TableHead>
+                  <TableHead>Paid Through</TableHead><TableHead>Customer</TableHead>
+                  <TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {expenses.map((e) => {
+                  const account = typeof e.expenseAccountId === "object" && e.expenseAccountId ? e.expenseAccountId.name : "â€”";
+                  const paidThrough = typeof e.paidThroughAccountId === "object" && e.paidThroughAccountId ? e.paidThroughAccountId.name : "â€”";
+                  const customer = typeof e.customerId === "object" && e.customerId ? e.customerId.displayName : "â€”";
+                  return (
+                    <TableRow key={e._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/expenses/${e.expenseNumber}`)}>
+                      <TableCell>{fmtDate(e.date)}</TableCell>
+                      <TableCell className="font-mono text-xs text-primary">{e.expenseNumber}</TableCell>
+                      <TableCell>{account}</TableCell><TableCell>{paidThrough}</TableCell><TableCell>{customer}</TableCell>
+                      <TableCell className="text-right font-medium">{fmt(e.amount, e.currency)}</TableCell>
+                      <TableCell>
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${expenseStatus(e.status)}`}>{e.status}</span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function BillsSection({ bills, loading }: { bills: Bill[]; loading: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border rounded-lg mb-4">
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Bills</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push("/purchases/bills/new")}>
+          <Plus className="h-3 w-3 mr-1" />New
+        </Button>
+      </div>
+      {open && (
+      <>
       <Separator />
       {loading ? (
         <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-      ) : expenses.length === 0 ? (
-        <div className="text-center py-6 text-sm text-muted-foreground">
-          No expenses found.{" "}
-          <button className="text-primary underline" onClick={() => router.push(`/purchases/expenses/new`)}>Add New</button>
-        </div>
+      ) : bills.length === 0 ? (
+        <div className="text-center py-5 text-sm text-muted-foreground">No data to display</div>
       ) : (
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
-              <TableHead>Date</TableHead><TableHead>Expense #</TableHead><TableHead>Account</TableHead>
-              <TableHead>Paid Through</TableHead><TableHead>Customer</TableHead>
-              <TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead>
+              <TableHead>Bill #</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead>
+              <TableHead className="text-right">Total</TableHead><TableHead className="text-right">Balance</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {expenses.map((e) => {
-              const account = typeof e.expenseAccountId === "object" && e.expenseAccountId ? e.expenseAccountId.name : "â€”";
-              const paidThrough = typeof e.paidThroughAccountId === "object" && e.paidThroughAccountId ? e.paidThroughAccountId.name : "â€”";
-              const customer = typeof e.customerId === "object" && e.customerId ? e.customerId.displayName : "â€”";
-              return (
-                <TableRow key={e._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/expenses/${e.expenseNumber}`)}>
-                  <TableCell>{fmtDate(e.date)}</TableCell>
-                  <TableCell className="font-mono text-xs text-primary">{e.expenseNumber}</TableCell>
-                  <TableCell>{account}</TableCell><TableCell>{paidThrough}</TableCell><TableCell>{customer}</TableCell>
-                  <TableCell className="text-right font-medium">{fmt(e.amount, e.currency)}</TableCell>
-                  <TableCell>
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${expenseStatus(e.status)}`}>{e.status}</span>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {bills.map((b) => (
+              <TableRow key={b._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/bills/${b._id}/edit`)}>
+                <TableCell className="font-medium text-primary">{b.billNumber}</TableCell>
+                <TableCell>{fmtDate(b.billDate)}</TableCell>
+                <TableCell>{b.status}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(b.total, "INR")}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(b.balanceDue, "INR")}</TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+function BillPaymentsSection({ payments, loading }: { payments: PaymentMade[]; loading: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border rounded-lg mb-4">
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Bill Payments</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push("/purchases/payments-made/new")}>
+          <Plus className="h-3 w-3 mr-1" />New
+        </Button>
+      </div>
+      {open && (
+      <>
+      <Separator />
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : payments.length === 0 ? (
+        <div className="text-center py-5 text-sm text-muted-foreground">No data to display</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead>Payment #</TableHead><TableHead>Date</TableHead><TableHead>Mode</TableHead>
+              <TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {payments.map((p) => (
+              <TableRow key={p._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/payments-made/${p._id}/edit`)}>
+                <TableCell className="font-medium text-primary">{p.payment_number}</TableCell>
+                <TableCell>{fmtDate(p.payment_date)}</TableCell>
+                <TableCell>{p.payment_mode}</TableCell>
+                <TableCell>{p.status}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(p.total_amount_paid, "INR")}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+function RecurringBillsSection({ recurringBills, loading }: { recurringBills: RecurringBill[]; loading: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border rounded-lg mb-4">
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Recurring Bills</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push("/purchases/recurring-bills/new")}>
+          <Plus className="h-3 w-3 mr-1" />New
+        </Button>
+      </div>
+      {open && (
+      <>
+      <Separator />
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : recurringBills.length === 0 ? (
+        <div className="text-center py-5 text-sm text-muted-foreground">No data to display</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead>Profile</TableHead><TableHead>Frequency</TableHead><TableHead>Status</TableHead><TableHead>Next Bill</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {recurringBills.map((rb) => (
+              <TableRow key={rb._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/recurring-bills/${rb._id}/edit`)}>
+                <TableCell className="font-medium text-primary">{rb.profileName}</TableCell>
+                <TableCell>{rb.repeatEvery === 1 ? rb.frequency : `Every ${rb.repeatEvery} ${rb.frequency}`}</TableCell>
+                <TableCell>{rb.status}</TableCell>
+                <TableCell>{fmtDate(rb.nextBillDate ?? undefined)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+function RecurringExpensesSection({ recurringExpenses, loading }: { recurringExpenses: RecurringExpense[]; loading: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border rounded-lg mb-4">
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Recurring Expenses</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push("/purchases/recurring-expenses/new")}>
+          <Plus className="h-3 w-3 mr-1" />New
+        </Button>
+      </div>
+      {open && (
+      <>
+      <Separator />
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : recurringExpenses.length === 0 ? (
+        <div className="text-center py-5 text-sm text-muted-foreground">No data to display</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead>Profile</TableHead><TableHead>Frequency</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {recurringExpenses.map((re) => (
+              <TableRow key={re._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/recurring-expenses/${re._id}/edit`)}>
+                <TableCell className="font-medium text-primary">{re.profileName}</TableCell>
+                <TableCell>{re.repeatEvery === 1 ? re.frequency : `Every ${re.repeatEvery} ${re.frequency}`}</TableCell>
+                <TableCell>{re.status}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(re.amount, re.currency)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+function PurchaseOrdersSection({ purchaseOrders, loading }: { purchaseOrders: PurchaseOrder[]; loading: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border rounded-lg mb-4">
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Purchase Orders</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push("/purchases/orders/new")}>
+          <Plus className="h-3 w-3 mr-1" />New
+        </Button>
+      </div>
+      {open && (
+      <>
+      <Separator />
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : purchaseOrders.length === 0 ? (
+        <div className="text-center py-5 text-sm text-muted-foreground">No data to display</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead>PO #</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Total</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {purchaseOrders.map((po) => (
+              <TableRow key={po._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/orders/${po._id}/edit`)}>
+                <TableCell className="font-medium text-primary">{po.purchaseOrderNumber}</TableCell>
+                <TableCell>{fmtDate(po.purchaseOrderDate)}</TableCell>
+                <TableCell>{po.status}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(po.total, "INR")}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+function VendorCreditsSection({ vendorCredits, loading }: { vendorCredits: VendorCredit[]; loading: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border rounded-lg mb-4">
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Vendor Credits</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push("/purchases/vendor-credits/new")}>
+          <Plus className="h-3 w-3 mr-1" />New
+        </Button>
+      </div>
+      {open && (
+      <>
+      <Separator />
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : vendorCredits.length === 0 ? (
+        <div className="text-center py-5 text-sm text-muted-foreground">No data to display</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead>Credit #</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead>
+              <TableHead className="text-right">Total</TableHead><TableHead className="text-right">Balance</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {vendorCredits.map((vc) => (
+              <TableRow key={vc._id} className="text-sm cursor-pointer hover:bg-muted/30" onClick={() => router.push(`/purchases/vendor-credits/${vc._id}/edit`)}>
+                <TableCell className="font-medium text-primary">{vc.vendorCreditNumber}</TableCell>
+                <TableCell>{fmtDate(vc.vendorCreditDate)}</TableCell>
+                <TableCell>{vc.status}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(vc.total, "INR")}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(vc.balanceAmount, "INR")}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+function JournalsSection({ journals, loading }: { journals: Journal[]; loading: boolean }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border rounded-lg mb-4">
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/20 rounded-t-lg">
+        <button type="button" className="inline-flex items-center gap-2" onClick={() => setOpen((v) => !v)}>
+          <span className="text-sm font-semibold">Journals</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+      </div>
+      {open && (
+      <>
+      <Separator />
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : journals.length === 0 ? (
+        <div className="text-center py-5 text-sm text-muted-foreground">No data to display</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead>Journal #</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Debit</TableHead>
+              <TableHead className="text-right">Credit</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {journals.map((j) => (
+              <TableRow key={j._id} className="text-sm">
+                <TableCell className="font-medium">{j.journalNumber}</TableCell>
+                <TableCell>{fmtDate(j.date)}</TableCell>
+                <TableCell>{j.description || "-"}</TableCell>
+                <TableCell>{j.status}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(j.totalDebit, "INR")}</TableCell>
+                <TableCell className="text-right tabular-nums">{fmt(j.totalCredit, "INR")}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      </>
       )}
     </div>
   );
@@ -1634,6 +1984,14 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [paymentsMade, setPaymentsMade] = useState<PaymentMade[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
+  const [txRecurringExpenses, setTxRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [vendorCredits, setVendorCredits] = useState<VendorCredit[]>([]);
+  const [journals, setJournals] = useState<Journal[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   const [recurringProfiles, setRecurringProfiles] = useState<RecurringExpense[]>([]);
   const [recurringLoading, setRecurringLoading] = useState(false);
@@ -1751,6 +2109,31 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
       .then((res) => setRecurringProfiles(res.data ?? []))
       .catch(() => {})
       .finally(() => setRecurringLoading(false));
+  }, [activeTab, vendor._id]);
+
+  useEffect(() => {
+    if (activeTab !== "transactions" || !vendor._id) return;
+    setTransactionsLoading(true);
+    Promise.all([
+      billApi.list({ vendorId: vendor._id, limit: 200 }),
+      paymentMadeApi.list({ vendor_id: vendor._id, limit: 200 }),
+      purchaseOrderApi.list({ vendorId: vendor._id, limit: 200 }),
+      recurringBillApi.list({ vendorId: vendor._id, limit: 200 }),
+      recurringExpenseApi.list({ vendorId: vendor._id, limit: 200 }),
+      vendorCreditApi.list({ vendorId: vendor._id, limit: 200 }),
+      journalApi.list({ vendorId: vendor._id, limit: 200 }),
+    ])
+      .then(([billsRes, paymentsRes, poRes, recBillsRes, recExpRes, creditsRes, journalsRes]) => {
+        setBills(billsRes.data ?? []);
+        setPaymentsMade(paymentsRes.data ?? []);
+        setPurchaseOrders(poRes.data ?? []);
+        setRecurringBills(recBillsRes.data ?? []);
+        setTxRecurringExpenses(recExpRes.data ?? []);
+        setVendorCredits(creditsRes.data ?? []);
+        setJournals(journalsRes.data ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setTransactionsLoading(false));
   }, [activeTab, vendor._id]);
 
   useEffect(() => {
@@ -1954,7 +2337,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col flex-1 overflow-hidden">
       {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex items-center justify-between px-5 py-3 border-b bg-background shrink-0 gap-3">
         <div className="min-w-0">
@@ -2045,7 +2428,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
             router.replace(`/purchases/vendors/${vendor._id}?tab=${tab}`, { scroll: false });
           }
         }}
-        className="flex flex-col flex-1 overflow-hidden"
+        className="flex h-full min-h-0 flex-col flex-1 overflow-hidden"
       >
         <TabsList className="shrink-0 w-full justify-start rounded-none border-b bg-transparent px-5 h-10">
           {[
@@ -2067,8 +2450,8 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsList>
 
         {/* â•â• OVERVIEW â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="overview" className="flex-1 overflow-hidden mt-0">
-          <div className="flex h-full overflow-hidden">
+        <TabsContent value="overview" className="mt-0 flex-1 min-h-0 overflow-hidden">
+          <div className="flex h-full min-h-0 overflow-hidden">
             {/* â”€â”€ LEFT column: contact info, addresses, details â”€â”€ */}
             <div className="flex-1 overflow-y-auto px-5 py-4 border-r min-w-0">
               {/* Primary contact banner */}
@@ -2441,7 +2824,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* â•â• COMMENTS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="comments" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="comments" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-2xl space-y-4">
             <div className="border rounded-lg overflow-hidden">
               <div className="flex gap-3 px-3 py-2 border-b bg-muted/20">
@@ -2491,20 +2874,21 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* â•â• TRANSACTIONS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="transactions" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="transactions" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-5xl">
-            <EmptySection title="Bills" />
-            <EmptySection title="Bill Payments" />
-            <ExpensesSection expenses={expenses} vendorId={vendor._id} loading={expensesLoading} />
-            <EmptySection title="Recurring Bills" />
-            <EmptySection title="Purchase Orders" />
-            <EmptySection title="Vendor Credits" />
-            <EmptySection title="Journals" />
+            <BillsSection bills={bills} loading={transactionsLoading} />
+            <BillPaymentsSection payments={paymentsMade} loading={transactionsLoading} />
+            <ExpensesSection expenses={expenses} loading={expensesLoading || transactionsLoading} />
+            <RecurringBillsSection recurringBills={recurringBills} loading={transactionsLoading} />
+            <RecurringExpensesSection recurringExpenses={txRecurringExpenses} loading={transactionsLoading} />
+            <PurchaseOrdersSection purchaseOrders={purchaseOrders} loading={transactionsLoading} />
+            <VendorCreditsSection vendorCredits={vendorCredits} loading={transactionsLoading} />
+            <JournalsSection journals={journals} loading={transactionsLoading} />
           </div>
         </TabsContent>
 
         {/* RECURRING EXPENSES */}
-        <TabsContent value="recurring" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="recurring" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-3xl">
             <div className="border rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b bg-muted/10 flex items-center justify-between">
@@ -2567,7 +2951,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* â•â• MAILS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <TabsContent value="mails" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+        <TabsContent value="mails" className="mt-0 flex-1 min-h-0 overflow-y-auto px-6 py-4">
           <div className="max-w-2xl">
             <div className="border rounded-lg">
               <div className="px-4 py-3 border-b bg-muted/20">
@@ -2582,7 +2966,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
         </TabsContent>
 
         {/* ══ STATEMENT ══════════════════════════════════════════════ */}
-        <TabsContent value="statement" className="flex-1 flex flex-col overflow-hidden mt-0">
+        <TabsContent value="statement" className="mt-0 flex flex-1 min-h-0 flex-col overflow-hidden">
           {/* Action bar */}
           <div className="px-5 py-3 border-b bg-background flex items-center gap-2 flex-wrap shrink-0 print:hidden">
             <div className="flex items-center gap-1.5 border rounded px-2.5 py-1.5 text-xs bg-muted/20">

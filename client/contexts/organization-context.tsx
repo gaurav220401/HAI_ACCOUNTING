@@ -44,6 +44,7 @@ export function OrganizationProvider({
   );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [apiError, setApiError] = useState(false);
 
   const fetchOrganizations = useCallback(async () => {
@@ -56,6 +57,7 @@ export function OrganizationProvider({
 
     try {
       setLoading(true);
+      setLoadFailed(false);
       setApiError(false);
       const res = await organizationApi.list();
       const orgs = (res as any).data ?? [];
@@ -96,6 +98,10 @@ export function OrganizationProvider({
       } else {
         setActiveOrganization(null);
       }
+    } catch {
+      setLoadFailed(true);
+      setOrganizations([]);
+      setActiveOrg(null);
     } catch (error: any) {
       console.error('Failed to fetch organizations:', error);
       // Create a mock organization for development when backend is not available
@@ -156,6 +162,12 @@ export function OrganizationProvider({
     [setActiveOrganization],
   );
 
+  const needsOrgSetup =
+    !loading &&
+    !loadFailed &&
+    firebaseUser != null &&
+    dbUser != null &&
+    organizations.length === 0;
   const needsOrgSetup = !loading && firebaseUser != null && organizations.length === 0 && !apiError;
 
   return (

@@ -96,7 +96,7 @@ export default function VendorsPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col overflow-hidden h-svh">
+      <SidebarInset className="flex h-svh min-h-0 flex-col overflow-hidden">
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
@@ -127,7 +127,7 @@ export default function VendorsPage() {
           }
         />
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* ── LEFT panel ── */}
           <div className={cn(
             "flex flex-col border-r transition-all duration-200 overflow-hidden",
@@ -296,7 +296,7 @@ export default function VendorsPage() {
 
           {/* ── RIGHT: vendor detail panel ── */}
           {panelOpen && (
-            <div className="flex-1 overflow-hidden">
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
               {loadingVendor && !selectedVendor ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

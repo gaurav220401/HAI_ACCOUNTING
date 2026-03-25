@@ -73,6 +73,35 @@ export type {
   InvoiceTaxType,
 } from "./invoices";
 
+export { vendorCreditApi } from "./vendor-credits";
+export type {
+  VendorCredit,
+  VendorCreditLineItem,
+  VendorCreditStatus,
+  VendorCreditApplication,
+  CreateVendorCreditInput,
+  UpdateVendorCreditInput,
+} from "./vendor-credits";
+
+export { paymentMadeApi } from "./payments-made";
+export type {
+  PaymentMade,
+  PaymentMadeStatus,
+  PaymentBillMap,
+  CreatePaymentMadeInput,
+  UpdatePaymentMadeInput,
+  PaymentMadeListParams,
+} from "./payments-made";
+
+export { journalApi } from "./journals";
+export type {
+  Journal,
+  JournalStatus,
+  JournalLine,
+  JournalListParams,
+  CreateJournalInput,
+  UpdateJournalInput,
+} from "./journals";
 export { deliveryChallanApi } from "./delivery-challans";
 export type {
   DeliveryChallan,

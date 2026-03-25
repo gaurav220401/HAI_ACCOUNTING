@@ -1,4 +1,4 @@
-﻿import { Response } from "express";
+import { Response } from "express";
 import Organization from "../models/organization.model";
 import User from "../models/user.model";
 import asyncHandler from "../utils/asyncHandler";
@@ -352,7 +352,7 @@ export const sendEmail = asyncHandler(
       );
     }
 
-    const { to, subject, body, vendorName } = req.body;
+    const { to, subject, body, vendorName, attachments } = req.body;
     if (!to) throw new ValidationError("Recipient email (to) is required");
 
     const nodemailer = await import("nodemailer");
@@ -363,13 +363,18 @@ export const sendEmail = asyncHandler(
       auth: { user: smtp.user, pass: smtp.pass },
     });
 
-    const bodyHtml = (body ?? "").replace(/\n/g, "<br/>");
+    const bodyHtml = body ?? "";
 
     await transporter.sendMail({
       from: `"${smtp.fromName || org.name}" <${smtp.fromEmail || smtp.user}>`,
       to,
       subject: subject || `Statement of Accounts - ${vendorName || "Vendor"}`,
       html: `<div style="font-family:Arial,sans-serif;font-size:13px;color:#333;">${bodyHtml}</div>`,
+      attachments: attachments?.map((a: any) => ({
+        filename: a.filename,
+        path: a.path, // Supports URLs (Cloudinary)
+        content: a.content, // Supports Buffer/String
+      })),
     });
 
     res.json({ success: true, message: `Email sent to ${to}` });

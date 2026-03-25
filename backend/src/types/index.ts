@@ -771,6 +771,76 @@ export interface IInvoice extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+// ─── 2.3 Bills ───────────────────────────────────────────────────────
+export type BillStatus =
+  | "Draft"
+  | "Open"
+  | "Overdue"
+  | "Partially Paid"
+  | "Paid"
+  | "Void";
+
+export type BillTaxType = "TDS" | "TCS" | "none";
+
+export interface IBillLineItem {
+  _id?: Types.ObjectId;
+  isHeader?: boolean;
+  headerText?: string;
+  itemId?: Types.ObjectId | null;
+  name: string;
+  description?: string;
+  quantity: number;
+  rate: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  amount: number;
+  accountId?: Types.ObjectId | null; // Expense account
+  customerId?: Types.ObjectId | null; // For billable expenses
+}
+
+export interface IBill extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  vendorId: Types.ObjectId;
+  billNumber: string;
+  referenceNumber?: string;
+  orderNumber?: string;
+  billDate: Date;
+  dueDate?: Date | null;
+  paymentTermsId?: Types.ObjectId | null;
+  sourceOfSupply?: string;
+  destinationOfSupply?: string;
+  accountsPayableId?: Types.ObjectId | null; // Accounts Payable account (Liability)
+  subject?: string;
+  lineItems: IBillLineItem[];
+  subTotal: number;
+  discountLevel: "transaction" | "line_item";
+  discountAccountId?: Types.ObjectId | null;
+  discountPercent: number;
+  discountAmount: number;
+  taxType: BillTaxType;
+  tdsId?: Types.ObjectId | null;
+  tcsId?: Types.ObjectId | null;
+  taxAmount: number;
+  tcsAmount: number;
+  adjustmentLabel: string;
+  adjustmentAmount: number;
+  amountPaid: number;
+  total: number;
+  balanceDue: number;
+  notes: string;
+  termsAndConditions: string;
+  status: BillStatus;
+  attachments: string[];
+  comments: {
+    author: string;
+    text: string;
+    time: Date;
+    isSystem: boolean;
+  }[];
+  recurringId?: Types.ObjectId | null;
+  recurringRunDate?: Date | null;
+  recurringRunSequence?: number | null;
 
 export type RecurringInvoiceFrequency =
   | "weekly"
