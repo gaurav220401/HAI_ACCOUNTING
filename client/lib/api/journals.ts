@@ -1,0 +1,79 @@
+import { apiFetch, buildQuery } from "./client";
+import type { ListParams, PaginatedResponse } from "./client";
+
+export type JournalStatus = "Draft" | "Posted" | "Voided";
+
+export interface JournalLine {
+  accountId: string | { _id: string; name: string; accountType?: string };
+  debit: number;
+  credit: number;
+  narration?: string;
+}
+
+export interface Journal {
+  _id: string;
+  organizationId: string;
+  journalNumber: string;
+  date: string;
+  vendorId?: string | { _id: string; displayName?: string; companyName?: string } | null;
+  description?: string;
+  referenceNumber?: string;
+  lineItems: JournalLine[];
+  totalDebit: number;
+  totalCredit: number;
+  status: JournalStatus;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JournalListParams extends ListParams {
+  vendorId?: string;
+  status?: JournalStatus;
+  search?: string;
+  dateStart?: string;
+  dateEnd?: string;
+}
+
+export interface CreateJournalInput {
+  date: string;
+  vendorId?: string | null;
+  description?: string;
+  referenceNumber?: string;
+  lineItems: Array<{ accountId: string; debit: number; credit: number; narration?: string }>;
+  notes?: string;
+  status?: JournalStatus;
+}
+
+export type UpdateJournalInput = Partial<CreateJournalInput>;
+
+export const journalApi = {
+  list: (params?: JournalListParams) =>
+    apiFetch<PaginatedResponse<Journal>>(`/journals${buildQuery(params || {})}`),
+
+  getOne: (id: string) =>
+    apiFetch<{ data: Journal }>(`/journals/${id}`),
+
+  create: (data: CreateJournalInput) =>
+    apiFetch<{ data: Journal }>("/journals", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  update: (id: string, data: UpdateJournalInput) =>
+    apiFetch<{ data: Journal }>(`/journals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  post: (id: string) =>
+    apiFetch<{ data: Journal }>(`/journals/${id}/post`, { method: "POST" }),
+
+  void: (id: string) =>
+    apiFetch<{ data: Journal }>(`/journals/${id}/void`, { method: "POST" }),
+
+  remove: (id: string) =>
+    apiFetch<{ success: boolean; message: string }>(`/journals/${id}`, { method: "DELETE" }),
+};

@@ -92,3 +92,13 @@ export type {
   UpdatePaymentMadeInput,
   PaymentMadeListParams,
 } from "./payments-made";
+
+export { journalApi } from "./journals";
+export type {
+  Journal,
+  JournalStatus,
+  JournalLine,
+  JournalListParams,
+  CreateJournalInput,
+  UpdateJournalInput,
+} from "./journals";

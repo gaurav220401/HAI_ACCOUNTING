@@ -21,6 +21,7 @@ import purchaseOrderRoutes from "./purchase-order.routes";
 import billRoutes from "./bill.routes";
 import vendorCreditRoutes from "./vendor-credit.routes";
 import paymentMadeRoutes from "./payment-made.routes";
+import journalRoutes from "./journal.routes";
 
 const router = Router();
 
@@ -46,5 +47,6 @@ router.use("/purchase-orders", purchaseOrderRoutes);
 router.use("/bills", billRoutes);
 router.use("/vendor-credits", vendorCreditRoutes);
 router.use("/payments-made", paymentMadeRoutes);
+router.use("/journals", journalRoutes);
 
 export default router;
