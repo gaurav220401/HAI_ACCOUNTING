@@ -85,7 +85,7 @@ async function nextPaymentNumber(organization_id: Types.ObjectId): Promise<strin
   const counter = await Counter.findOneAndUpdate(
     { _id: counterKey },
     { $inc: { seq: 1 } },
-    { upsert: true, new: true },
+    { upsert: true, returnDocument: 'after' },
   ).lean();
 
   const seq = Number(counter?.seq || 1);

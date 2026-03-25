@@ -148,7 +148,7 @@ async function nextVendorCreditNumber(organizationId: any): Promise<string> {
   const counter = await Counter.findOneAndUpdate(
     { _id: counterKey },
     { $inc: { seq: 1 } },
-    { upsert: true, new: true },
+    { upsert: true, returnDocument: 'after' },
   ).lean();
 
   const seq = Number(counter?.seq || 1);

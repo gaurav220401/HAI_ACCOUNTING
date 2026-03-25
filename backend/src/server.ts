@@ -6,7 +6,31 @@ import { seedDefaultRoles } from "./models/role.model";
 import { startRecurringBillScheduler } from "./services/recurring-bill.scheduler";
 import { startRecurringInvoiceScheduler } from "./services/recurring-invoice.service";
 
-const PORT = process.env.PORT || 5000;
+const DEFAULT_PORT = Number(process.env.PORT || 5000);
+
+function listenWithFallback(server: http.Server, startPort: number): void {
+  let currentPort = startPort;
+
+  const tryListen = () => {
+    server.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") {
+        console.warn(`Port ${currentPort} is in use. Trying ${currentPort + 1}...`);
+        currentPort += 1;
+        tryListen();
+        return;
+      }
+
+      throw error;
+    });
+
+    server.listen(currentPort, () => {
+      console.log(`Server ready on port ${currentPort}`);
+      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+  };
+
+  tryListen();
+}
 
 const startServer = async (): Promise<void> => {
   try {
@@ -27,10 +51,7 @@ const startServer = async (): Promise<void> => {
     // Create HTTP server
     const server = http.createServer(app);
 
-    server.listen(PORT, () => {
-      console.log(`Server ready on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
-    });
+    listenWithFallback(server, DEFAULT_PORT);
 
     // Graceful shutdown
     const shutdown = (signal: string) => {

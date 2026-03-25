@@ -68,7 +68,7 @@ journalSchema.pre("save", async function () {
     const counter = await Counter.findByIdAndUpdate(
       `journal-${this.organizationId}`,
       { $inc: { seq: 1 } },
-      { new: true, upsert: true },
+      { returnDocument: 'after', upsert: true },
     );
     this.journalNumber = `JRN-${String(counter!.seq).padStart(4, "0")}`;
   }

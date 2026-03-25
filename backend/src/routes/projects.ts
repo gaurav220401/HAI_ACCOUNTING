@@ -197,7 +197,7 @@ router.put('/:id', authenticate, async (req: AuthenticatedRequest, res) => {
         ]
       },
       updateData,
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).populate('owner', 'name email')
       .populate('members', 'name email');
 

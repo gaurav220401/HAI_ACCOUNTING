@@ -65,7 +65,7 @@ currencyAdjustmentSchema.pre("save", async function () {
     const counter = await Counter.findByIdAndUpdate(
       `currency-adj-${this.organizationId}`,
       { $inc: { seq: 1 } },
-      { new: true, upsert: true }
+      { returnDocument: 'after', upsert: true }
     );
     this.adjustmentNumber = `CA-${String(counter!.seq).padStart(4, "0")}`;
   }

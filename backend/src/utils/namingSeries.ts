@@ -60,7 +60,7 @@ export async function generateName(
       organizationId,
     },
     { $inc: { currentValue: 1 } },
-    { upsert: true, new: true },
+    { upsert: true, returnDocument: 'after' },
   );
 
   // Determine counter padding from pattern
