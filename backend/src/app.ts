@@ -3,15 +3,39 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
+import type { Request } from "express";
 
 // Initialize Firebase Admin (must happen before routes use it)
 import "./config/firebase";
+import { ensureDBConnection } from "./config/db";
 
 import routes from "./routes";
 import notFound from "./middlewares/notFound";
 import errorHandler from "./middlewares/errorHandler";
 
 const app = express();
+
+// Trust upstream proxy headers in production/serverless deployments.
+// This enables correct client IP detection for rate limiting.
+app.set("trust proxy", process.env.NODE_ENV === "production" ? 1 : false);
+
+const getClientIp = (req: Request): string => {
+  const forwarded = req.headers.forwarded;
+  if (typeof forwarded === "string") {
+    const match = forwarded.match(/for=(?:"?)(\[[^\]]+\]|[^;,"]+)/i);
+    if (match?.[1]) {
+      return match[1].replace(/^\[|\]$/g, "");
+    }
+  }
+
+  const xForwardedFor = req.headers["x-forwarded-for"];
+  if (typeof xForwardedFor === "string") {
+    const first = xForwardedFor.split(",")[0]?.trim();
+    if (first) return first;
+  }
+
+  return req.ip || req.socket.remoteAddress || "unknown";
+};
 
 // ─── Security ──────────────────────────────────────────────────────────
 app.use(helmet());
@@ -22,12 +46,28 @@ const limiter = rateLimit({
   max: 200, // limit each IP to 200 requests per window
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => getClientIp(req),
   message: {
     success: false,
     message: "Too many requests, please try again later",
   },
 });
 app.use(limiter);
+
+// Ensure a live DB connection for environments where startup is not centralized
+// (for example, serverless handlers invoking the app directly).
+app.use(async (_req, res, next) => {
+  try {
+    await ensureDBConnection();
+    next();
+  } catch (error) {
+    console.error("Database connection error:", error);
+    res.status(503).json({
+      success: false,
+      message: "Database temporarily unavailable",
+    });
+  }
+});
 
 // ─── CORS ──────────────────────────────────────────────────────────────
 app.use(

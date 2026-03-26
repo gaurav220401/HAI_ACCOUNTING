@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+let connectPromise: Promise<typeof mongoose> | null = null;
+
 const connectDB = async (): Promise<void> => {
   const uri = process.env.MONGODB_URI;
 
@@ -7,9 +9,30 @@ const connectDB = async (): Promise<void> => {
     throw new Error("MONGODB_URI is missing. Set it in your .env file");
   }
 
-  mongoose.set("strictQuery", true);
-  await mongoose.connect(uri);
-  console.log("MongoDB connected");
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
+
+  if (!connectPromise) {
+    mongoose.set("strictQuery", true);
+    connectPromise = mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 10000,
+      maxPoolSize: 10,
+    });
+  }
+
+  try {
+    await connectPromise;
+    console.log("MongoDB connected");
+  } finally {
+    connectPromise = null;
+  }
+};
+
+const ensureDBConnection = async (): Promise<void> => {
+  if (mongoose.connection.readyState !== 1) {
+    await connectDB();
+  }
 };
 
 /**
@@ -25,4 +48,4 @@ const syncIndexes = async (): Promise<void> => {
   console.log("Indexes synced");
 };
 
-export { connectDB, syncIndexes };
+export { connectDB, ensureDBConnection, syncIndexes };
