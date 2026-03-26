@@ -139,14 +139,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar collapsible="icon" variant="sidebar" {...props}>
       {/* ── Header: App brand only ── */}
       <SidebarHeader>
-        <div className="flex items-center gap-2.5 px-2 py-3 group-data-[collapsible=icon]:justify-center">
+        <div className="flex items-center gap-2.5 px-2 py-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-1">
           {/* Logo mark */}
           <Image
             src="/hailogo.png"
             alt="HAI Accounting"
             width={28}
             height={28}
-            className="h-7 w-7 shrink-0 rounded-md"
+            className="h-12 w-12 shrink-0 rounded-md object-contain group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8"
           />
           {/* Logotype — hidden when sidebar is icon-only */}
           <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
