@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { projectApi, type TimeLog, type Project } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 
 interface TimeTrackingContextType {
   activeTimeLogs: TimeLog[];
@@ -19,6 +20,7 @@ interface TimeTrackingContextType {
 const TimeTrackingContext = createContext<TimeTrackingContextType | undefined>(undefined);
 
 export function TimeTrackingProvider({ children }: { children: React.ReactNode }) {
+  const { firebaseUser } = useAuth();
   const [activeTimeLogs, setActiveTimeLogs] = useState<TimeLog[]>([]);
   const [elapsedTimes, setElapsedTimes] = useState<Record<string, string>>({});
 
@@ -32,13 +34,18 @@ export function TimeTrackingProvider({ children }: { children: React.ReactNode }
   const elapsedTime = currentProjectId ? elapsedTimes[currentProjectId] || "00:00:00" : "00:00:00";
 
   const refreshActiveLogs = useCallback(async () => {
+    if (!firebaseUser) {
+      setActiveTimeLogs([]);
+      return;
+    }
+
     try {
       const response = await projectApi.getActiveTimeLogs();
       setActiveTimeLogs(response.data || []);
     } catch (error) {
       console.error('Failed to fetch active time logs:', error);
     }
-  }, []);
+  }, [firebaseUser]);
 
   const startTimer = useCallback(async (projectId: string, description?: string) => {
     try {

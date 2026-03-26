@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 
 type Tab = "email" | "phone" | "emaillink";
 
+const COUNTRY_CODES = ["+91", "+1", "+44", "+61", "+971"];
+
 export function LoginForm({ className }: { className?: string }) {
   const router = useRouter();
   const { signInWithEmail, sendEmailOtp, sendPhoneOtp, confirmPhoneOtp, signInWithGoogle } =
@@ -30,7 +32,8 @@ export function LoginForm({ className }: { className?: string }) {
   const [mlSent, setMlSent] = useState(false);
 
   // phone
-  const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState("");
   const [confirm, setConfirm] = useState<ConfirmationResult | null>(null);
   const rcRef = useRef<HTMLDivElement>(null);
@@ -72,7 +75,9 @@ export function LoginForm({ className }: { className?: string }) {
     e.preventDefault();
     wrap(async () => {
       if (!rcRef.current) throw new Error("reCAPTCHA not ready");
-      const c = await sendPhoneOtp(phone, rcRef.current);
+      const normalized = phoneNumber.replace(/\D/g, "");
+      if (!normalized) throw new Error("Please enter a valid phone number");
+      const c = await sendPhoneOtp(`${countryCode}${normalized}`, rcRef.current);
       setConfirm(c);
     });
   };
@@ -164,14 +169,32 @@ export function LoginForm({ className }: { className?: string }) {
           {!confirm ? (
             <div className="space-y-1.5">
               <Label htmlFor="l-phone">Phone Number</Label>
-              <Input id="l-phone" type="tel" placeholder="+91 98765 43210" required value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <p className="text-muted-foreground text-xs">Include country code e.g. +91</p>
+              <div className="flex gap-2">
+                <select
+                  value={countryCode}
+                  onChange={(e) => setCountryCode(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                >
+                  {COUNTRY_CODES.map((code) => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+                <Input
+                  id="l-phone"
+                  type="tel"
+                  placeholder="9876543210"
+                  required
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                />
+              </div>
+              {/* <p className="text-muted-foreground text-xs">Default is +91. You can change it.</p> */}
             </div>
           ) : (
             <div className="space-y-1.5">
               <Label htmlFor="l-otp">Enter OTP</Label>
               <Input id="l-otp" type="text" inputMode="numeric" maxLength={6} placeholder="123456" required value={otp} onChange={(e) => setOtp(e.target.value)} />
-              <p className="text-muted-foreground text-xs">6-digit code sent to {phone}</p>
+              <p className="text-muted-foreground text-xs">6-digit code sent to {countryCode}{phoneNumber.replace(/\D/g, "")}</p>
             </div>
           )}
           {err && <p className="text-destructive text-sm">{err}</p>}
