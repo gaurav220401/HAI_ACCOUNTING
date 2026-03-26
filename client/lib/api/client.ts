@@ -1,3 +1,4 @@
+import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../firebase";
 
 const API_URL =
@@ -8,8 +9,26 @@ const API_URL =
 /**
  * Get the current user's Firebase ID token.
  */
+async function waitForCurrentUser(timeoutMs = 3000) {
+  if (auth.currentUser) return auth.currentUser;
+
+  return new Promise<User | null>((resolve) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      resolve(auth.currentUser);
+    }, timeoutMs);
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) return;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(user);
+    });
+  });
+}
+
 async function getIdToken(): Promise<string | null> {
-  const user = auth.currentUser;
+  const user = auth.currentUser ?? (await waitForCurrentUser());
   if (!user) return null;
   return user.getIdToken();
 }
