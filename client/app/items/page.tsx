@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
+import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,41 +179,43 @@ export default function ItemsPage() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col overflow-hidden h-svh">
-
-        {/* ── Shared top bar ── */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b bg-background shrink-0">
-          <h1 className="text-sm font-semibold flex-1">All Items</h1>
-          <div className="relative w-52">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search items…"
-              className="pl-7 h-7 text-xs"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-1">
-            {(["All", "Goods", "Service"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setTypeFilter(f)}
-                className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
-                  typeFilter === f
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60"
-                }`}
-              >
-                {f === "Service" ? "Services" : f}
-              </button>
-            ))}
-          </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={fetchItems} disabled={fetching}>
-            <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
-          </Button>
-          <Button size="sm" className="h-7 text-xs gap-1" onClick={() => router.push("/items/new")}>
-            <Plus className="h-3.5 w-3.5" /> New
-          </Button>
-        </div>
+        <PageHeader
+          breadcrumb={<span className="text-sm font-medium">Items</span>}
+          actions={
+            <>
+              <div className="relative w-52">
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search items..."
+                  className="pl-7 h-8 text-xs"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-1">
+                {(["All", "Goods", "Service"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setTypeFilter(f)}
+                    className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
+                      typeFilter === f
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60"
+                    }`}
+                  >
+                    {f === "Service" ? "Services" : f}
+                  </button>
+                ))}
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchItems} disabled={fetching}>
+                <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
+              </Button>
+              <Button size="sm" className="h-8 text-xs gap-1" onClick={() => router.push("/items/new")}>
+                <Plus className="h-3.5 w-3.5" /> New
+              </Button>
+            </>
+          }
+        />
 
         {/* ── Body: table OR split panel ── */}
         {!selectedId ? (

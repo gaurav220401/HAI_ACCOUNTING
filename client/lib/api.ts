@@ -49,6 +49,7 @@ export async function apiFetch(
   }
 
   return fetch(`${API_URL}${path}`, {
+    credentials: "include",
     ...options,
     headers,
   });

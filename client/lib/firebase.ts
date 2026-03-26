@@ -1,5 +1,10 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, RecaptchaVerifier } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  getAuth,
+  RecaptchaVerifier,
+  setPersistence,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -13,6 +18,10 @@ const firebaseConfig = {
 // Initialize Firebase (prevent duplicate initialization in dev/HMR)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
+
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.error("Failed to set Firebase auth persistence:", err);
+});
 
 export { app, auth, RecaptchaVerifier };
 export default app;

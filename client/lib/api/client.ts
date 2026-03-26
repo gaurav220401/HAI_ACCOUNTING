@@ -85,6 +85,7 @@ export async function apiFetch<T = unknown>(
 
   const res = await fetch(`${API_URL}${path}`, {
     cache: "no-store",
+    credentials: "include",
     ...options,
     headers,
   });
@@ -137,6 +138,7 @@ export async function apiFetchBlob(
   const headers = buildAuthHeaders(token, options, false);
 
   const res = await fetch(`${API_URL}${path}`, {
+    credentials: "include",
     ...options,
     headers,
   });

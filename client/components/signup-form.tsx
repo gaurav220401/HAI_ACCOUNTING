@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 type Method = "email" | "phone";
 type Step = "profile" | "credential" | "otp";
 
+const COUNTRY_CODES = ["+91", "+1", "+44", "+61", "+971"];
+
 export function SignupForm({ className }: { className?: string }) {
   const router = useRouter();
   const { signUpWithEmail, sendPhoneOtp, confirmPhoneOtp, signInWithGoogle } = useAuth();
@@ -33,7 +35,8 @@ export function SignupForm({ className }: { className?: string }) {
   const [pass2, setPass2] = useState("");
 
   // Phone
-  const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState("");
   const [confirm, setConfirm] = useState<ConfirmationResult | null>(null);
   const rcRef = useRef<HTMLDivElement>(null);
@@ -74,7 +77,9 @@ export function SignupForm({ className }: { className?: string }) {
     e.preventDefault();
     wrap(async () => {
       if (!rcRef.current) throw new Error("reCAPTCHA not ready");
-      const c = await sendPhoneOtp(phone, rcRef.current);
+      const normalized = phoneNumber.replace(/\D/g, "");
+      if (!normalized) throw new Error("Please enter a valid phone number");
+      const c = await sendPhoneOtp(`${countryCode}${normalized}`, rcRef.current);
       setConfirm(c);
       setStep("otp");
     });
@@ -219,8 +224,26 @@ export function SignupForm({ className }: { className?: string }) {
             <form onSubmit={handleSendOtp} className="flex flex-col gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="s-phone">Phone Number</Label>
-                <Input id="s-phone" type="tel" placeholder="+91 98765 43210" required value={phone} onChange={(e) => setPhone(e.target.value)} />
-                <p className="text-muted-foreground text-xs">Include country code e.g. +91</p>
+                <div className="flex gap-2">
+                  <select
+                    value={countryCode}
+                    onChange={(e) => setCountryCode(e.target.value)}
+                    className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                  >
+                    {COUNTRY_CODES.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                  <Input
+                    id="s-phone"
+                    type="tel"
+                    placeholder="9876543210"
+                    required
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                  />
+                </div>
+                {/* <p className="text-muted-foreground text-xs">Default is +91. You can change it.</p> */}
               </div>
               {err && <p className="text-destructive text-sm">{err}</p>}
               <div className="flex gap-2">
@@ -236,7 +259,7 @@ export function SignupForm({ className }: { className?: string }) {
       {step === "otp" && (
         <form onSubmit={handleVerifyOtp} className="flex flex-col gap-4">
           <div className="rounded-lg border bg-muted/40 p-3 text-center">
-            <p className="text-sm font-medium">OTP sent to {phone}</p>
+            <p className="text-sm font-medium">OTP sent to {countryCode}{phoneNumber.replace(/\D/g, "")}</p>
             <p className="text-muted-foreground text-xs">Enter the 6-digit code below</p>
           </div>
           <div className="space-y-1.5">

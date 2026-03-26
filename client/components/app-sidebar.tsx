@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
@@ -140,9 +141,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <div className="flex items-center gap-2.5 px-2 py-3 group-data-[collapsible=icon]:justify-center">
           {/* Logo mark */}
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background text-xs font-black tracking-tight select-none">
-            H
-          </div>
+          <Image
+            src="/hailogo.png"
+            alt="HAI Accounting"
+            width={28}
+            height={28}
+            className="h-7 w-7 shrink-0 rounded-md"
+          />
           {/* Logotype — hidden when sidebar is icon-only */}
           <span className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             HAI Accounting

@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import {
   User as FirebaseUser,
-  onAuthStateChanged,
+  onIdTokenChanged,
   signOut as firebaseSignOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -105,7 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Auth state listener (restore session on page load) ──
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = onIdTokenChanged(auth, async (user) => {
       setFirebaseUser(user);
       if (user) {
         // Restore existing session — do NOT auto-create (signup handles that)
@@ -144,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profile: { name: string; dob: string; gender: string }
   ): Promise<AuthResult> => {
     await createUserWithEmailAndPassword(auth, email, password);
+    await auth.currentUser?.getIdToken(true);
     const u = await syncUser(profile);
     return { dbUser: u };
   };
@@ -151,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /** LOGIN: sign in to Firebase, then require existing DB account */
   const signInWithEmail = async (email: string, password: string): Promise<AuthResult> => {
     await signInWithEmailAndPassword(auth, email, password);
+    await auth.currentUser?.getIdToken(true);
     const u = await loginFetch();
     return { dbUser: u };
   };
@@ -182,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profile?: { name?: string; dob?: string; gender?: string }
   ): Promise<AuthResult> => {
     await confirmation.confirm(code);
+    await auth.currentUser?.getIdToken(true);
     const u = profile ? await syncUser(profile) : await loginFetch();
     return { dbUser: u };
   };
@@ -195,6 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     provider.addScope("profile");
     provider.addScope("email");
     await signInWithPopup(auth, provider);
+    await auth.currentUser?.getIdToken(true);
     const u = profile ? await syncUser(profile) : await loginFetch();
     return { dbUser: u };
   };
