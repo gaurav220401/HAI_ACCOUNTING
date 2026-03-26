@@ -3,19 +3,26 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useOrganization } from "@/contexts/organization-context";
 import { LoginForm } from "@/components/login-form";
 
 export default function LoginPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
+  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+
+  const isUnverifiedEmailPasswordUser =
+    !!firebaseUser &&
+    firebaseUser.providerData.some((p) => p.providerId === "password") &&
+    !firebaseUser.emailVerified;
 
   useEffect(() => {
-    if (!loading && firebaseUser) {
-      router.push("/dashboard");
+    if (!loading && !orgLoading && firebaseUser && !isUnverifiedEmailPasswordUser) {
+      router.replace(needsOrgSetup ? "/org-setup" : "/dashboard");
     }
-  }, [loading, firebaseUser, router]);
+  }, [loading, orgLoading, firebaseUser, isUnverifiedEmailPasswordUser, needsOrgSetup, router]);
 
-  if (loading) {
+  if (loading || (firebaseUser && orgLoading)) {
     return (
       <div className="flex min-h-svh items-center justify-center">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />

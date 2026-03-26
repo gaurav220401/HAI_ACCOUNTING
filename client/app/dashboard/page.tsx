@@ -22,11 +22,20 @@ export default function DashboardPage() {
   const { firebaseUser, dbUser, loading } = useAuth();
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
+  const isUnverifiedEmailPasswordUser =
+    !!firebaseUser &&
+    firebaseUser.providerData.some((p) => p.providerId === "password") &&
+    !firebaseUser.emailVerified;
+
   useEffect(() => {
     if (!loading) {
       if (!firebaseUser) { router.push("/login"); return; }
+      if (isUnverifiedEmailPasswordUser) {
+        router.replace("/login");
+        return;
+      }
     }
-  }, [loading, firebaseUser, router]);
+  }, [loading, firebaseUser, isUnverifiedEmailPasswordUser, router]);
 
   useEffect(() => {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup) {
@@ -34,7 +43,7 @@ export default function DashboardPage() {
     }
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
-  if (loading || orgLoading || !firebaseUser) {
+  if (loading || orgLoading || !firebaseUser || isUnverifiedEmailPasswordUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />

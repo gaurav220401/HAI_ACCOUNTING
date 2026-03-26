@@ -15,6 +15,7 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { registerUser, getMe } from "@/lib/api";
@@ -59,6 +60,28 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+type RecaptchaEntry = {
+  verifier: RecaptchaVerifier;
+  renderPromise: Promise<number> | null;
+};
+
+// Reuse verifiers per DOM container to avoid
+// "reCAPTCHA has already been rendered in this element" errors.
+const recaptchaVerifierMap = new WeakMap<HTMLElement, RecaptchaEntry>();
+
+function getOrCreateRecaptchaEntry(container: HTMLElement): RecaptchaEntry {
+  const existing = recaptchaVerifierMap.get(container);
+  if (existing) return existing;
+
+  const verifier = new RecaptchaVerifier(auth, container, {
+    size: "normal",
+  });
+
+  const entry: RecaptchaEntry = { verifier, renderPromise: null };
+  recaptchaVerifierMap.set(container, entry);
+  return entry;
+}
 
 // ── Provider ───────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -143,15 +166,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
     profile: { name: string; dob: string; gender: string }
   ): Promise<AuthResult> => {
-    await createUserWithEmailAndPassword(auth, email, password);
+    const creds = await createUserWithEmailAndPassword(auth, email, password);
+    await sendEmailVerification(creds.user);
     await auth.currentUser?.getIdToken(true);
     const u = await syncUser(profile);
+    await firebaseSignOut(auth);
+    setFirebaseUser(null);
+    setDbUser(null);
     return { dbUser: u };
   };
 
   /** LOGIN: sign in to Firebase, then require existing DB account */
   const signInWithEmail = async (email: string, password: string): Promise<AuthResult> => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const creds = await signInWithEmailAndPassword(auth, email, password);
+    await creds.user.reload();
+    if (!creds.user.emailVerified) {
+      await sendEmailVerification(creds.user).catch(() => undefined);
+      await firebaseSignOut(auth);
+      setFirebaseUser(null);
+      setDbUser(null);
+      const error = new Error("Please verify your email first. A verification email has been sent.") as Error & { code?: string };
+      error.code = "auth/email-not-verified";
+      throw error;
+    }
     await auth.currentUser?.getIdToken(true);
     const u = await loginFetch();
     return { dbUser: u };
@@ -170,8 +207,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     phoneNumber: string,
     container: HTMLElement
   ): Promise<ConfirmationResult> => {
-    const verifier = new RecaptchaVerifier(auth, container, { size: "invisible" });
-    return signInWithPhoneNumber(auth, phoneNumber, verifier);
+    if (!container.isConnected) {
+      throw new Error("reCAPTCHA is not ready. Please wait and try again.");
+    }
+
+    const entry = getOrCreateRecaptchaEntry(container);
+    if (!entry.renderPromise) {
+      entry.renderPromise = entry.verifier.render();
+    }
+
+    await entry.renderPromise;
+    return signInWithPhoneNumber(auth, phoneNumber, entry.verifier);
   };
 
   /**
