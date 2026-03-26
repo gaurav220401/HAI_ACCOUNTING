@@ -79,6 +79,14 @@ export const register = asyncHandler(
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
 
+    if (!user) {
+      user = await User.findOne({ firebaseUid: uid });
+    }
+
+    if (!user) {
+      throw new Error("Failed to create or load user");
+    }
+
     res.status(201).json({
       success: true,
       user: formatUser(user),
