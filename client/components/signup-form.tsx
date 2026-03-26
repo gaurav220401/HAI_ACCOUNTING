@@ -9,6 +9,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { getAuthErrorMessage } from "@/lib/auth-error";
 
 type Method = "email" | "phone";
 type Step = "profile" | "credential" | "otp";
@@ -47,7 +49,9 @@ export function SignupForm({ className }: { className?: string }) {
     try {
       await fn();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Something went wrong");
+      const message = getAuthErrorMessage(e);
+      setErr(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -56,7 +60,9 @@ export function SignupForm({ className }: { className?: string }) {
   const handleProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !dob || !gender) {
-      setErr("Please fill in all profile fields.");
+      const message = "Please fill in all profile fields.";
+      setErr(message);
+      toast.error(message);
       return;
     }
     setErr("");
@@ -65,11 +71,22 @@ export function SignupForm({ className }: { className?: string }) {
 
   const handleEmailSignup = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pass !== pass2) { setErr("Passwords do not match."); return; }
-    if (pass.length < 6) { setErr("Password must be at least 6 characters."); return; }
+    if (pass !== pass2) {
+      const message = "Passwords do not match.";
+      setErr(message);
+      toast.error(message);
+      return;
+    }
+    if (pass.length < 6) {
+      const message = "Password must be at least 6 characters.";
+      setErr(message);
+      toast.error(message);
+      return;
+    }
     wrap(async () => {
       await signUpWithEmail(email, pass, { name, dob, gender });
-      router.push("/dashboard");
+      toast.success("Verification email sent. Please verify your email before signing in.");
+      router.push("/login");
     });
   };
 
@@ -82,6 +99,7 @@ export function SignupForm({ className }: { className?: string }) {
       const c = await sendPhoneOtp(`${countryCode}${normalized}`, rcRef.current);
       setConfirm(c);
       setStep("otp");
+      toast.success("OTP sent successfully");
     });
   };
 
@@ -90,20 +108,24 @@ export function SignupForm({ className }: { className?: string }) {
     wrap(async () => {
       if (!confirm) return;
       await confirmPhoneOtp(confirm, otp, { name, dob, gender });
-      router.push("/dashboard");
+      router.push("/org-setup");
     });
   };
 
   const handleGoogle = () => {
     if (!name.trim() || !dob || !gender) {
-      setErr("Fill in your name, date of birth, and gender to continue with Google.");
+      const message = "Fill in your name, date of birth, and gender to continue with Google.";
+      setErr(message);
+      toast.error(message);
       return;
     }
     wrap(async () => {
       await signInWithGoogle({ name, dob, gender });
-      router.push("/dashboard");
+      router.push("/org-setup");
     });
   };
+
+  const showPhoneCaptcha = step === "credential" && method === "phone";
 
   return (
     <div className={cn("flex w-full flex-col gap-6", className)}>
@@ -285,7 +307,10 @@ export function SignupForm({ className }: { className?: string }) {
         </form>
       )}
 
-      <div ref={rcRef} id="recaptcha-signup" />
+      <div className={cn("rounded-md border p-2", showPhoneCaptcha ? "block" : "hidden")}>
+        <p className="text-muted-foreground mb-2 text-xs">Complete captcha to continue</p>
+        <div ref={rcRef} id="recaptcha-signup" />
+      </div>
     </div>
   );
 }

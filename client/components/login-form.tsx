@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ConfirmationResult } from "firebase/auth";
 import { cn } from "@/lib/utils";
@@ -9,13 +8,14 @@ import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { getAuthErrorMessage } from "@/lib/auth-error";
 
 type Tab = "email" | "phone" | "emaillink";
 
 const COUNTRY_CODES = ["+91", "+1", "+44", "+61", "+971"];
 
 export function LoginForm({ className }: { className?: string }) {
-  const router = useRouter();
   const { signInWithEmail, sendEmailOtp, sendPhoneOtp, confirmPhoneOtp, signInWithGoogle } =
     useAuth();
 
@@ -38,17 +38,15 @@ export function LoginForm({ className }: { className?: string }) {
   const [confirm, setConfirm] = useState<ConfirmationResult | null>(null);
   const rcRef = useRef<HTMLDivElement>(null);
 
-  const go = () => {
-    router.push("/dashboard");
-  };
-
   const wrap = async (fn: () => Promise<void>) => {
     setBusy(true);
     setErr("");
     try {
       await fn();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Something went wrong");
+      const message = getAuthErrorMessage(e);
+      setErr(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -59,7 +57,6 @@ export function LoginForm({ className }: { className?: string }) {
     wrap(async () => {
       const { dbUser } = await signInWithEmail(email, pass);
       void dbUser;
-      go();
     });
   };
 
@@ -79,6 +76,7 @@ export function LoginForm({ className }: { className?: string }) {
       if (!normalized) throw new Error("Please enter a valid phone number");
       const c = await sendPhoneOtp(`${countryCode}${normalized}`, rcRef.current);
       setConfirm(c);
+      toast.success("OTP sent successfully");
     });
   };
 
@@ -88,14 +86,12 @@ export function LoginForm({ className }: { className?: string }) {
       if (!confirm) return;
       const { dbUser } = await confirmPhoneOtp(confirm, otp);
       void dbUser;
-      go();
     });
   };
 
   const handleGoogle = () => {
     wrap(async () => {
       await signInWithGoogle();
-      go();
     });
   };
 
@@ -104,6 +100,8 @@ export function LoginForm({ className }: { className?: string }) {
     { key: "phone", label: "Phone OTP" },
     { key: "emaillink", label: "Magic Link" },
   ];
+
+  const showPhoneCaptcha = tab === "phone" && !confirm;
 
   return (
     <div className={cn("flex w-full flex-col gap-6", className)}>
@@ -206,6 +204,7 @@ export function LoginForm({ className }: { className?: string }) {
               Change number
             </button>
           )}
+
         </form>
       )}
 
@@ -241,8 +240,11 @@ export function LoginForm({ className }: { className?: string }) {
         </a>
       </p>
 
-      {/* Invisible reCAPTCHA container */}
-      <div ref={rcRef} id="recaptcha-login" />
+      <div className={cn("rounded-md border p-2", showPhoneCaptcha ? "block" : "hidden")}>
+        <p className="text-muted-foreground mb-2 text-xs">Complete captcha to continue</p>
+        <div ref={rcRef} id="recaptcha-login" />
+      </div>
+
     </div>
   );
 }

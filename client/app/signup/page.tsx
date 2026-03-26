@@ -9,11 +9,16 @@ export default function SignupPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
 
+  const isUnverifiedEmailPasswordUser =
+    !!firebaseUser &&
+    firebaseUser.providerData.some((p) => p.providerId === "password") &&
+    !firebaseUser.emailVerified;
+
   useEffect(() => {
-    if (!loading && firebaseUser) {
+    if (!loading && firebaseUser && !isUnverifiedEmailPasswordUser) {
       router.push("/dashboard");
     }
-  }, [loading, firebaseUser, router]);
+  }, [loading, firebaseUser, isUnverifiedEmailPasswordUser, router]);
 
   if (loading) {
     return (

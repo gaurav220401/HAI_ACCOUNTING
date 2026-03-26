@@ -73,7 +73,11 @@ export const register = asyncHandler(
       userData.roles = ["System Manager"];
     }
 
-    user = await User.create(userData);
+    user = await User.findOneAndUpdate(
+      { firebaseUid: uid },
+      { $setOnInsert: userData },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
 
     res.status(201).json({
       success: true,

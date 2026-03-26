@@ -31,6 +31,12 @@ export const authenticate = asyncHandler(
 
     req.firebaseUser = decoded;
 
+    const signInProvider = decoded.firebase?.sign_in_provider || "password";
+
+    let provider: "email" | "phone" | "google" = "email";
+    if (signInProvider === "google.com") provider = "google";
+    else if (signInProvider === "phone") provider = "phone";
+
     // Attach MongoDB user if exists
     let dbUser = await User.findOne({ firebaseUid: decoded.uid });
     if (!dbUser) {
@@ -45,12 +51,6 @@ export const authenticate = asyncHandler(
       }
 
       if (dbUser) {
-        const signInProvider = decoded.firebase?.sign_in_provider || "password";
-
-        let provider: "email" | "phone" | "google" = "email";
-        if (signInProvider === "google.com") provider = "google";
-        else if (signInProvider === "phone") provider = "phone";
-
         if (dbUser.firebaseUid !== decoded.uid) {
           dbUser.firebaseUid = decoded.uid;
           if (!(dbUser as any).provider) {
@@ -59,23 +59,32 @@ export const authenticate = asyncHandler(
           await dbUser.save();
         }
       } else {
-      const signInProvider = decoded.firebase?.sign_in_provider || "password";
-
-      let provider: "email" | "phone" | "google" = "email";
-      if (signInProvider === "google.com") provider = "google";
-      else if (signInProvider === "phone") provider = "phone";
-
-      dbUser = await User.create({
-        firebaseUid: decoded.uid,
-        name: decoded.name || "",
-        email: decoded.email || undefined,
-        phone: decoded.phone_number || undefined,
-        photoURL: decoded.picture || "",
-        provider,
-        profileComplete: false,
-        roles: [],
-        activeOrganization: null,
-      });
+        try {
+          dbUser = await User.findOneAndUpdate(
+            { firebaseUid: decoded.uid },
+            {
+              $setOnInsert: {
+                firebaseUid: decoded.uid,
+                name: decoded.name || "",
+                email: decoded.email || undefined,
+                phone: decoded.phone_number || undefined,
+                photoURL: decoded.picture || "",
+                provider,
+                profileComplete: false,
+                roles: [],
+                activeOrganization: null,
+              },
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true },
+          );
+        } catch (error: any) {
+          // Concurrent insert race: fetch the winner document.
+          if (error?.code === 11000) {
+            dbUser = await User.findOne({ firebaseUid: decoded.uid });
+          } else {
+            throw error;
+          }
+        }
       }
     }
     req.user = dbUser;
