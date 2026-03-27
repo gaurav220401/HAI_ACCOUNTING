@@ -28,6 +28,7 @@ import journalRoutes from "./journal.routes";
 import projectRoutes from "./projects";
 import currencyAdjustmentRoutes from "./currency-adjustment.routes";
 import bulkUpdateRoutes from "./bulk-update.routes";
+import documentRoutes from "./document.routes";
 
 const router = Router();
 
@@ -60,5 +61,6 @@ router.use("/journals", journalRoutes);
 router.use("/projects", projectRoutes);
 router.use("/currency-adjustments", currencyAdjustmentRoutes);
 router.use("/bulk-update", bulkUpdateRoutes);
+router.use("/documents", documentRoutes);
 
 export default router;

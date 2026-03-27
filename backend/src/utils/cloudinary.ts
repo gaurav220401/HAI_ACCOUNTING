@@ -33,11 +33,13 @@ export function uploadBuffer(
   folder: string,
   publicId?: string,
   resourceType: "image" | "raw" | "video" | "auto" = "image",
+  deliveryType: "upload" | "authenticated" | "private" = "upload",
 ): Promise<UploadResult> {
   return new Promise((resolve, reject) => {
     const opts: Record<string, unknown> = {
       folder: `hai/${folder}`,
       resource_type: resourceType,
+      type: deliveryType,
       ...(resourceType === "image"
         ? { transformation: [{ quality: "auto", fetch_format: "auto" }] }
         : {}),
@@ -66,4 +68,24 @@ export function uploadBuffer(
  */
 export async function deleteAsset(publicId: string): Promise<void> {
   await cloudinary.uploader.destroy(publicId);
+}
+
+/**
+ * Build a short-lived signed URL for secure previews/downloads.
+ */
+export function buildSignedAssetUrl(
+  publicId: string,
+  resourceType: "image" | "raw" | "video" | "auto" = "raw",
+  ttlSeconds = 300,
+): string {
+  const safeTtl = Math.max(30, Math.min(900, Number(ttlSeconds) || 300));
+  const expiresAt = Math.floor(Date.now() / 1000) + safeTtl;
+
+  return cloudinary.url(publicId, {
+    secure: true,
+    sign_url: true,
+    type: "authenticated",
+    resource_type: resourceType,
+    expires_at: expiresAt,
+  });
 }

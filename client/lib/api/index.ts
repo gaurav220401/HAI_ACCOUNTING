@@ -102,6 +102,14 @@ export type {
   CreateJournalInput,
   UpdateJournalInput,
 } from "./journals";
+export { documentsApi } from "./documents";
+export type {
+  DocumentItem,
+  DocumentFolder,
+  DocumentListParams,
+  DocumentProcessingStatus,
+  DocumentInbox,
+} from "./documents";
 export { deliveryChallanApi } from "./delivery-challans";
 export type {
   DeliveryChallan,
