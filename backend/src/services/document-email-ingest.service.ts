@@ -36,14 +36,24 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
   const host = inferImapHost(org.smtpSettings.host);
   if (!host) return;
 
+  const imapDebug = process.env.DOCUMENTS_EMAIL_IMAP_DEBUG === "true";
+
   const client = new ImapFlow({
     host,
     port: 993,
     secure: true,
+    logger: imapDebug ? undefined : false,
+    logRaw: imapDebug,
+    emitLogs: false,
+    socketTimeout: Number(process.env.DOCUMENTS_EMAIL_IMAP_TIMEOUT_MS || 45000),
     auth: {
       user: org.smtpSettings.user,
       pass: org.smtpSettings.pass,
     },
+  });
+
+  client.on("error", (err) => {
+    console.warn(`IMAP connection error for org ${orgId}:`, err?.message || err);
   });
 
   try {
@@ -59,6 +69,8 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
           publicId: string;
           mimeType?: string;
           sizeBytes?: number;
+          contentDisposition?: string;
+          inline?: boolean;
         }>;
 
         for (const attachment of parsed.attachments || []) {
@@ -76,6 +88,8 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
             publicId: uploaded.publicId,
             mimeType: attachment.contentType,
             sizeBytes: attachment.size,
+            contentDisposition: attachment.contentDisposition,
+            inline: Boolean((attachment as unknown as { related?: boolean }).related),
           });
         }
 

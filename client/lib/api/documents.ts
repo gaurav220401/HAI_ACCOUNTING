@@ -50,6 +50,7 @@ export interface DocumentItem {
   processingMode: ProcessingMode;
   documentType: "generic" | "invoice" | "receipt" | "bank_statement" | "other";
   uploadedAt: string;
+  deletedAt?: string;
   url: string;
   folderId?: { _id: string; name: string } | null;
   uploadedBy?: { _id: string; name?: string; email?: string } | null;
@@ -79,9 +80,22 @@ export interface DocumentListParams extends ListParams {
   q?: string;
 }
 
+export interface DocumentMailboxInfo {
+  mailboxAddress: string;
+  isActive: boolean;
+  smtpConfigured: boolean;
+  pollingEnabled: boolean;
+  inferredImapHost?: string;
+  inboundReady: boolean;
+  forwardingInstructions: string[];
+}
+
 export const documentsApi = {
   list: (params?: DocumentListParams) =>
     apiFetch<PaginatedResponse<DocumentItem>>(`/documents${buildQuery(params || {})}`),
+
+  listTrash: (params?: Pick<DocumentListParams, "q" | "page" | "limit">) =>
+    apiFetch<PaginatedResponse<DocumentItem>>(`/documents/trash${buildQuery(params || {})}`),
 
   getById: (id: string) => apiFetch<{ data: DocumentItem }>(`/documents/${id}`),
 
@@ -102,6 +116,11 @@ export const documentsApi = {
 
   remove: (id: string) => apiFetch<{ success: boolean; message: string }>(`/documents/${id}`, { method: "DELETE" }),
 
+  restore: (id: string) =>
+    apiFetch<{ data: DocumentItem }>(`/documents/${id}/restore`, {
+      method: "POST",
+    }),
+
   listFolders: () => apiFetch<{ data: DocumentFolder[] }>("/documents/folders"),
 
   createFolder: (payload: {
@@ -121,9 +140,7 @@ export const documentsApi = {
     }),
 
   getMailbox: () =>
-    apiFetch<{
-      data: { mailboxAddress: string; isActive: boolean; forwardingInstructions: string[] };
-    }>("/documents/mailbox"),
+    apiFetch<{ data: DocumentMailboxInfo }>("/documents/mailbox"),
 
   regenerateMailbox: () =>
     apiFetch<{ data: { mailboxAddress: string; isActive: boolean } }>(

@@ -6,7 +6,10 @@ import {
   ChevronLeft,
   Copy,
   FileText,
+  Landmark,
+  Mail,
   FolderPlus,
+  Image,
   Loader2,
   Plus,
   RefreshCw,
@@ -97,6 +100,30 @@ function fmtSize(bytes?: number) {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
+function formatMimeLabel(mimeType?: string, extension?: string) {
+  const ext = (extension || "").toLowerCase();
+  const normalizedMime = (mimeType || "").trim().toLowerCase();
+  const knownByMime: Record<string, string> = {
+    "application/pdf": "PDF Document",
+    "application/msword": "Word Document (.doc)",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word Document (.docx)",
+    "application/vnd.ms-excel": "Excel Spreadsheet (.xls)",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "Excel Spreadsheet (.xlsx)",
+    "image/png": "PNG Image",
+    "image/jpeg": "JPEG Image",
+    "image/jpg": "JPG Image",
+  };
+
+  if (normalizedMime && knownByMime[normalizedMime]) return knownByMime[normalizedMime];
+  if (ext === "docx") return "Word Document (.docx)";
+  if (ext === "doc") return "Word Document (.doc)";
+  if (ext === "xlsx") return "Excel Spreadsheet (.xlsx)";
+  if (ext === "xls") return "Excel Spreadsheet (.xls)";
+  if (ext === "pdf") return "PDF Document";
+  if (ext) return `${ext.toUpperCase()} File`;
+  return mimeType || "File";
+}
+
 export default function DocumentsPage() {
   const { loading: authLoading, dbUser } = useAuth();
   const { loading: orgLoading, activeOrganization } = useOrganization();
@@ -106,6 +133,7 @@ export default function DocumentsPage() {
   const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
 
   const [inbox, setInbox] = useState<DocumentInbox>("all");
+  const [isTrashView, setIsTrashView] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fileTypeFilter, setFileTypeFilter] = useState<string>("all");
@@ -113,6 +141,10 @@ export default function DocumentsPage() {
 
   const [mailboxAddress, setMailboxAddress] = useState("");
   const [forwardingInstructions, setForwardingInstructions] = useState<string[]>([]);
+  const [smtpConfigured, setSmtpConfigured] = useState(false);
+  const [pollingEnabled, setPollingEnabled] = useState(false);
+  const [inboundReady, setInboundReady] = useState(false);
+  const [inferredImapHost, setInferredImapHost] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -147,25 +179,67 @@ export default function DocumentsPage() {
     setLoading(true);
 
     try {
-      // Add small delays between parallel requests to avoid rate limiting
-      const [docRes, folderRes, mailboxRes] = await Promise.all([
-        documentsApi.list({
-          inbox,
-          folderId: selectedFolderId || undefined,
-          status: statusFilter === "all" ? undefined : (statusFilter as DocumentProcessingStatus),
-          fileType: fileTypeFilter === "all" ? undefined : fileTypeFilter,
-          q: search || undefined,
-          limit: 100,
-        }),
-        new Promise(resolve => setTimeout(resolve, 100)).then(() => documentsApi.listFolders()),
-        new Promise(resolve => setTimeout(resolve, 200)).then(() => documentsApi.getMailbox()),
-      ]);
+      // Add small delays between requests to avoid rate limiting.
+      const docRes = isTrashView
+        ? await documentsApi.listTrash({
+            q: search || undefined,
+            limit: 100,
+          })
+        : await documentsApi.list({
+            inbox,
+            folderId: selectedFolderId || undefined,
+            status: statusFilter === "all" ? undefined : (statusFilter as DocumentProcessingStatus),
+            fileType: fileTypeFilter === "all" ? undefined : fileTypeFilter,
+            q: search || undefined,
+            limit: 100,
+          });
+
+      const folderRes = await new Promise<{ data: DocumentFolder[] }>((resolve) => {
+        setTimeout(() => {
+          documentsApi.listFolders().then(resolve).catch(() => resolve({ data: [] }));
+        }, 100);
+      });
+
+      const mailboxRes = !isTrashView && inbox === "bank_statements"
+        ? await new Promise<{ data: {
+            mailboxAddress: string;
+            forwardingInstructions: string[];
+            smtpConfigured: boolean;
+            pollingEnabled: boolean;
+            inboundReady: boolean;
+            inferredImapHost?: string;
+          } }>((resolve) => {
+            setTimeout(() => {
+              documentsApi
+                .getMailbox()
+                .then(resolve)
+                .catch(() =>
+                  resolve({
+                    data: {
+                      mailboxAddress: "",
+                      forwardingInstructions: [],
+                      smtpConfigured: false,
+                      pollingEnabled: false,
+                      inboundReady: false,
+                      inferredImapHost: "",
+                    },
+                  }),
+                );
+            }, 200);
+          })
+        : null;
 
       const loadedDocs = docRes.data || [];
       setDocuments(loadedDocs);
       setFolders(folderRes.data || []);
-      setMailboxAddress(mailboxRes.data.mailboxAddress);
-      setForwardingInstructions(mailboxRes.data.forwardingInstructions || []);
+      if (mailboxRes) {
+        setMailboxAddress(mailboxRes.data.mailboxAddress);
+        setForwardingInstructions(mailboxRes.data.forwardingInstructions || []);
+        setSmtpConfigured(Boolean(mailboxRes.data.smtpConfigured));
+        setPollingEnabled(Boolean(mailboxRes.data.pollingEnabled));
+        setInboundReady(Boolean(mailboxRes.data.inboundReady));
+        setInferredImapHost(mailboxRes.data.inferredImapHost || "");
+      }
 
       setSelectedDocument((prev) => {
         if (!prev) return loadedDocs[0] || null;
@@ -178,7 +252,7 @@ export default function DocumentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeOrganization?._id, fileTypeFilter, inbox, search, selectedFolderId, statusFilter]);
+  }, [activeOrganization?._id, fileTypeFilter, inbox, isTrashView, search, selectedFolderId, statusFilter]);
 
   useEffect(() => {
     if (!activeOrganization?._id) return;
@@ -266,6 +340,17 @@ export default function DocumentsPage() {
     }
   };
 
+  const onRestoreDocumentById = async (documentId: string) => {
+    try {
+      await documentsApi.restore(documentId);
+      toast.success("Document restored");
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Restore failed");
+    }
+  };
+
   const onCreateFolder = async () => {
     if (!newFolderName.trim()) {
       toast.error("Folder name is required");
@@ -332,6 +417,18 @@ export default function DocumentsPage() {
     }
   };
 
+  const onAddToBankById = async (documentId: string) => {
+    try {
+      const res = await documentsApi.addToBank(documentId);
+      const count = res.data.journalsCreated || 0;
+      toast.success(`${count} journal entries created`);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Add to bank failed");
+    }
+  };
+
   const onReprocess = async () => {
     if (!selectedDocument) return;
     try {
@@ -376,9 +473,12 @@ export default function DocumentsPage() {
           <div className="space-y-1">
             <button
               type="button"
-              onClick={() => setInbox("all")}
+              onClick={() => {
+                setIsTrashView(false);
+                setInbox("all");
+              }}
               className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm ${
-                inbox === "all"
+                !isTrashView && inbox === "all"
                   ? "bg-sidebar-primary text-sidebar-primary-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               }`}
@@ -392,9 +492,12 @@ export default function DocumentsPage() {
           <div className="space-y-1">
             <button
               type="button"
-              onClick={() => setInbox("files")}
+              onClick={() => {
+                setIsTrashView(false);
+                setInbox("files");
+              }}
               className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm ${
-                inbox === "files"
+                !isTrashView && inbox === "files"
                   ? "bg-sidebar-primary text-sidebar-primary-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               }`}
@@ -404,9 +507,12 @@ export default function DocumentsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setInbox("bank_statements")}
+              onClick={() => {
+                setIsTrashView(false);
+                setInbox("bank_statements");
+              }}
               className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm ${
-                inbox === "bank_statements"
+                !isTrashView && inbox === "bank_statements"
                   ? "bg-sidebar-primary text-sidebar-primary-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               }`}
@@ -416,7 +522,7 @@ export default function DocumentsPage() {
             </button>
           </div>
 
-          <div className="mt-5 flex items-center justify-between px-2">
+          {!isTrashView ? <div className="mt-5 flex items-center justify-between px-2">
             <p className="text-[11px] tracking-wide text-sidebar-foreground/60 uppercase">Folders</p>
             <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
               <DialogTrigger asChild>
@@ -469,8 +575,8 @@ export default function DocumentsPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </div>
-          <button
+          </div> : null}
+          {!isTrashView ? <button
             type="button"
             onClick={() => setSelectedFolderId(null)}
             className={`mt-2 w-full rounded-md px-2 py-1 text-left text-xs ${
@@ -480,8 +586,8 @@ export default function DocumentsPage() {
             }`}
           >
             All folders
-          </button>
-          {folders.length === 0 ? (
+          </button> : null}
+          {!isTrashView && (folders.length === 0 ? (
             <p className="px-2 pt-4 text-xs text-sidebar-foreground/60">There are no folders.</p>
           ) : (
             <div className="mt-2 space-y-1 px-2">
@@ -500,11 +606,19 @@ export default function DocumentsPage() {
                 </button>
               ))}
             </div>
-          )}
+          ))}
 
           <button
             type="button"
-            className="mt-6 rounded-md px-2 py-1 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            onClick={() => {
+              setIsTrashView(true);
+              setSelectedDocument(null);
+            }}
+            className={`mt-6 rounded-md px-2 py-1 text-sm ${
+              isTrashView
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            }`}
           >
             Trash
           </button>
@@ -521,12 +635,18 @@ export default function DocumentsPage() {
               Select an organization to manage documents.
             </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div
+              className={`grid gap-4 ${
+                !isTrashView && inbox === "files" ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "lg:grid-cols-[minmax(0,1fr)]"
+              }`}
+            >
               <div className="space-y-4">
                 <div className="rounded-lg border bg-background p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <h2 className="text-2xl font-semibold text-slate-900">
-                      {inbox === "bank_statements"
+                      {isTrashView
+                        ? "Trash"
+                        : inbox === "bank_statements"
                         ? "Bank Statements"
                         : inbox === "files"
                           ? "Files"
@@ -542,7 +662,7 @@ export default function DocumentsPage() {
                         Refresh
                       </Button>
 
-                      <Button asChild size="sm">
+                      {!isTrashView ? <Button asChild size="sm">
                         <label className="cursor-pointer">
                           <Upload className="h-4 w-4" />
                           Upload File
@@ -554,11 +674,11 @@ export default function DocumentsPage() {
                             disabled={uploading}
                           />
                         </label>
-                      </Button>
+                      </Button> : null}
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_180px]">
+                  <div className={`mt-4 grid gap-2 ${isTrashView ? "md:grid-cols-[minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)_180px_180px]"}`}>
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input
@@ -569,7 +689,7 @@ export default function DocumentsPage() {
                       />
                     </div>
 
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    {!isTrashView ? <Select value={statusFilter} onValueChange={setStatusFilter}>
                       <SelectTrigger>
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
@@ -580,9 +700,9 @@ export default function DocumentsPage() {
                         <SelectItem value="UNREADABLE">Unreadable</SelectItem>
                         <SelectItem value="SCAN_IN_PROGRESS">Scan in progress</SelectItem>
                       </SelectContent>
-                    </Select>
+                    </Select> : null}
 
-                    <Select value={fileTypeFilter} onValueChange={setFileTypeFilter}>
+                    {!isTrashView ? <Select value={fileTypeFilter} onValueChange={setFileTypeFilter}>
                       <SelectTrigger>
                         <SelectValue placeholder="File Type" />
                       </SelectTrigger>
@@ -594,7 +714,7 @@ export default function DocumentsPage() {
                           </SelectItem>
                         ))}
                       </SelectContent>
-                    </Select>
+                    </Select> : null}
                   </div>
                 </div>
 
@@ -612,60 +732,169 @@ export default function DocumentsPage() {
                   }}
                 >
                   {documents.length === 0 ? (
-                    <div
-                      className={`m-6 rounded-lg border border-dashed p-10 text-center transition ${
-                        dragOver ? "border-blue-500 bg-blue-50" : "border-muted-foreground/30"
-                      }`}
-                    >
-                      <Upload className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                      <p className="text-lg font-semibold">Drag and Drop Files Here</p>
-                      <p className="text-sm text-muted-foreground">
-                        Upload images, PDFs, docs, and sheets. Autoscan starts automatically.
-                      </p>
-                      <Button asChild className="mt-4" disabled={uploading}>
-                        <label className="cursor-pointer">
-                          Choose files to upload
-                          <input
-                            type="file"
-                            className="hidden"
-                            multiple
-                            onChange={(e) => onUploadFiles(e.target.files, "manual")}
-                          />
-                        </label>
-                      </Button>
-                    </div>
+                    isTrashView ? (
+                      <div className="m-6 rounded-lg border border-dashed p-10 text-center">
+                        <p className="text-lg font-semibold">Trash is empty</p>
+                        <p className="text-sm text-muted-foreground">Deleted documents will appear here for restore.</p>
+                      </div>
+                    ) : inbox === "bank_statements" ? (
+                      <div className="m-6 rounded-xl border p-8">
+                        <div className="mx-auto max-w-3xl space-y-6 text-center">
+                          <h3 className="text-2xl font-semibold tracking-tight">Auto-upload your bank statements from email</h3>
+                          <div className="grid gap-3 text-sm md:grid-cols-2">
+                            <div className="rounded-lg border bg-muted/20 p-4">
+                              <Mail className="mx-auto mb-2 h-5 w-5 text-blue-600" />
+                              <p className="font-medium">1. Set up auto-forwarding</p>
+                              <p className="text-muted-foreground">Forward statement emails to your secure inbox.</p>
+                            </div>
+                            <div className="rounded-lg border bg-muted/20 p-4">
+                              <Landmark className="mx-auto mb-2 h-5 w-5 text-emerald-600" />
+                              <p className="font-medium">2. Add Statements to Bank</p>
+                              <p className="text-muted-foreground">We extract transactions, then you push entries to bank books.</p>
+                            </div>
+                          </div>
+
+                          <div className="mx-auto flex max-w-xl flex-wrap items-center justify-center gap-2 rounded-lg border bg-muted/30 p-3">
+                            <Input value={mailboxAddress} readOnly className="max-w-md bg-background" />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                if (!mailboxAddress) return;
+                                await navigator.clipboard.writeText(mailboxAddress);
+                                toast.success("Mailbox address copied");
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copy
+                            </Button>
+                          </div>
+
+                          <p className="text-xs text-muted-foreground">
+                            Supported for auto-ingestion: PDF, CSV, XLS/XLSX, JPG/PNG statement attachments. Inline email images and normal letter emails are ignored.
+                          </p>
+
+                          <div className="mx-auto grid max-w-xl gap-2 text-left text-sm text-muted-foreground md:grid-cols-2">
+                            <div className="rounded-md border p-3">
+                              <p className="mb-1 font-medium text-foreground">Auto-Forward Statements</p>
+                              <p>Use Gmail/Outlook rule to forward bank statement emails to the inbox above.</p>
+                            </div>
+                            <div className="rounded-md border p-3">
+                              <p className="mb-1 font-medium text-foreground">Upload Manually</p>
+                              <p>Upload statement PDF/image directly if email forwarding is not enabled.</p>
+                            </div>
+                          </div>
+
+                          <Button asChild disabled={uploading}>
+                            <label className="cursor-pointer">
+                              <Image className="h-4 w-4" />
+                              Upload Statement File
+                              <input
+                                type="file"
+                                className="hidden"
+                                multiple
+                                onChange={(e) => onUploadFiles(e.target.files, "manual")}
+                              />
+                            </label>
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={`m-6 rounded-lg border border-dashed p-10 text-center transition ${
+                          dragOver ? "border-blue-500 bg-blue-50" : "border-muted-foreground/30"
+                        }`}
+                      >
+                        <Upload className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                        <p className="text-lg font-semibold">Drag and Drop Files Here</p>
+                        <p className="text-sm text-muted-foreground">
+                          Upload images, PDFs, docs, and sheets. Autoscan starts automatically.
+                        </p>
+                        <Button asChild className="mt-4" disabled={uploading}>
+                          <label className="cursor-pointer">
+                            Choose files to upload
+                            <input
+                              type="file"
+                              className="hidden"
+                              multiple
+                              onChange={(e) => onUploadFiles(e.target.files, "manual")}
+                            />
+                          </label>
+                        </Button>
+                      </div>
+                    )
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>File Name</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Uploaded On</TableHead>
+                          {isTrashView ? <TableHead>Status</TableHead> : inbox === "files" ? <TableHead>Details</TableHead> : <TableHead>Status</TableHead>}
+                          <TableHead>{isTrashView ? "Deleted On" : "Uploaded On"}</TableHead>
                           <TableHead>Uploaded By</TableHead>
-                          <TableHead>Associated To</TableHead>
-                          <TableHead>Folder</TableHead>
+                          <TableHead>{isTrashView ? "Action" : inbox === "bank_statements" ? "Action" : "Associated To"}</TableHead>
+                          {!isTrashView && inbox !== "bank_statements" ? <TableHead>Folder</TableHead> : null}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {documents.map((doc) => (
                           <TableRow
                             key={doc._id}
-                            className={selectedDocument?._id === doc._id ? "bg-muted/40" : ""}
-                            onClick={() => setSelectedDocument(doc)}
+                            className={!isTrashView && inbox === "files" && selectedDocument?._id === doc._id ? "bg-muted/40" : ""}
+                            onClick={() => {
+                              if (!isTrashView && inbox === "files") setSelectedDocument(doc);
+                            }}
                           >
                             <TableCell>
                               <div className="font-medium">{doc.fileName}</div>
-                              <div className="text-xs text-muted-foreground uppercase">{doc.extension || "file"}</div>
+                              {!isTrashView && inbox === "bank_statements" && doc.emailSubject ? (
+                                <div className="text-xs text-muted-foreground">Email Subject: {doc.emailSubject}</div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground uppercase">{doc.extension || "file"}</div>
+                              )}
                             </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={statusColors[doc.processingStatus]}>
-                                {statusLabels[doc.processingStatus]}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{fmtDate(doc.uploadedAt)}</TableCell>
+                            {!isTrashView && inbox === "files" ? (
+                              <TableCell className="text-muted-foreground">
+                                {formatMimeLabel(doc.mimeType, doc.extension)}
+                              </TableCell>
+                            ) : (
+                              <TableCell>
+                                <Badge variant="outline" className={statusColors[doc.processingStatus]}>
+                                  {statusLabels[doc.processingStatus]}
+                                </Badge>
+                              </TableCell>
+                            )}
+                            <TableCell>{fmtDate(isTrashView ? (doc.deletedAt || doc.uploadedAt) : doc.uploadedAt)}</TableCell>
                             <TableCell>{doc.uploadedBy?.name || doc.uploadedBy?.email || "-"}</TableCell>
-                            <TableCell>{doc.links?.[0]?.entityType || "-"}</TableCell>
-                            <TableCell>{doc.folderId?.name || "-"}</TableCell>
+                            {isTrashView ? (
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRestoreDocumentById(doc._id);
+                                  }}
+                                >
+                                  Restore
+                                </Button>
+                              </TableCell>
+                            ) : inbox === "bank_statements" ? (
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAddToBankById(doc._id);
+                                  }}
+                                >
+                                  Add to Bank
+                                </Button>
+                              </TableCell>
+                            ) : (
+                              <TableCell>{doc.links?.[0]?.entityType || "-"}</TableCell>
+                            )}
+                            {!isTrashView && inbox !== "bank_statements" ? <TableCell>{doc.folderId?.name || "-"}</TableCell> : null}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -673,7 +902,7 @@ export default function DocumentsPage() {
                   )}
                 </div>
 
-                <div className="rounded-lg border bg-background p-4">
+                {!isTrashView && inbox === "bank_statements" ? <div className="rounded-lg border bg-background p-4">
                   <div className="mb-2 flex items-center justify-between">
                     <h3 className="text-sm font-semibold">Email Auto-Ingestion</h3>
                     <Button variant="outline" size="sm" onClick={onRegenerateMailbox}>
@@ -684,6 +913,16 @@ export default function DocumentsPage() {
                   <p className="mb-2 text-xs text-muted-foreground">
                     Realtime stream: {eventsConnected ? "Connected" : "Disconnected"}
                   </p>
+
+                  <div className="mb-3 rounded-md border bg-muted/30 p-3 text-xs">
+                    <p className="font-medium text-foreground">
+                      Inbound Status: {inboundReady ? "Ready" : "Needs Setup"}
+                    </p>
+                    <p className="text-muted-foreground">
+                      SMTP configured: {smtpConfigured ? "Yes" : "No"} | Polling enabled: {pollingEnabled ? "Yes" : "No"}
+                      {inferredImapHost ? ` | IMAP host: ${inferredImapHost}` : ""}
+                    </p>
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Input value={mailboxAddress} readOnly className="max-w-md" />
@@ -710,9 +949,10 @@ export default function DocumentsPage() {
                       <li key={step}>{step}</li>
                     ))}
                   </ol>
-                </div>
+                </div> : null}
               </div>
 
+              {!isTrashView && inbox === "files" ? (
               <aside className="h-fit rounded-lg border bg-background">
                 <div className="border-b p-4">
                   <h2 className="text-sm font-semibold">Preview</h2>
@@ -725,7 +965,7 @@ export default function DocumentsPage() {
                   <div className="space-y-4 p-4 text-sm">
                     <div>
                       <p className="font-medium">{selectedDocument.fileName}</p>
-                      <p className="text-xs text-muted-foreground">{selectedDocument.mimeType}</p>
+                      <p className="text-xs text-muted-foreground">{formatMimeLabel(selectedDocument.mimeType, selectedDocument.extension)}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -837,7 +1077,7 @@ export default function DocumentsPage() {
                       </Button>
                     </div>
 
-                    <div className="rounded-md border p-3">
+                    {/* <div className="rounded-md border p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <p className="font-medium">Advanced Autoscan</p>
                         <Button
@@ -855,7 +1095,7 @@ export default function DocumentsPage() {
                         <Plus className="h-4 w-4" />
                         Buy Addon
                       </Button>
-                    </div>
+                    </div> */}
 
                     <div className="rounded-md border p-3 text-xs text-muted-foreground">
                       <div className="mb-1 flex items-center gap-1 font-medium text-foreground">
@@ -871,6 +1111,7 @@ export default function DocumentsPage() {
                   </div>
                 )}
               </aside>
+              ) : null}
             </div>
           )}
 

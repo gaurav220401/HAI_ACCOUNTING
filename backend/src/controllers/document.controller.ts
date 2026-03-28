@@ -354,6 +354,80 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
   res.json({ success: true, message: "Document deleted" });
 });
 
+/** GET /api/documents/trash */
+export const listTrashDocuments = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const { q, page = "1", limit = "25" } = req.query as Record<string, string>;
+
+  const filter: Record<string, unknown> = {
+    organizationId,
+    isDeleted: true,
+  };
+
+  if (q) {
+    filter.$or = [
+      { fileName: { $regex: q, $options: "i" } },
+      { emailSubject: { $regex: q, $options: "i" } },
+      { emailSender: { $regex: q, $options: "i" } },
+    ];
+  }
+
+  const pageNum = Math.max(1, Number(page || 1));
+  const limitNum = Math.max(1, Math.min(100, Number(limit || 25)));
+
+  const [total, data] = await Promise.all([
+    DocumentModel.countDocuments(filter),
+    DocumentModel.find(filter)
+      .populate("uploadedBy", "name email")
+      .populate("folderId", "name visibilityType")
+      .sort({ deletedAt: -1, updatedAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+  ]);
+
+  res.json({
+    success: true,
+    data,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum),
+    },
+  });
+});
+
+/** POST /api/documents/:id/restore */
+export const restoreDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const document = await DocumentModel.findOne({
+    _id: req.params.id,
+    organizationId,
+    isDeleted: true,
+  });
+  if (!document) throw new NotFoundError("Document");
+
+  // For restore we only need folder read access to avoid restoring to inaccessible folder.
+  const canRestore = await canAccessFolder(req, document.folderId || null, "read");
+  if (!canRestore) {
+    throw new ForbiddenError("You do not have permission to restore this document");
+  }
+
+  document.isDeleted = false;
+  document.deletedAt = null;
+  document.activityLogs.push({
+    eventType: "restored",
+    message: "Document restored from trash",
+    actorId: req.user?._id,
+    createdAt: new Date(),
+  });
+  attachUser(document as unknown as { $locals?: Record<string, unknown> }, req);
+  await document.save();
+
+  res.json({ success: true, data: document });
+});
+
 /** GET /api/documents/folders */
 export const listFolders = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -423,18 +497,30 @@ export const moveToFolder = asyncHandler(async (req: AuthenticatedRequest, res: 
 /** GET /api/documents/mailbox */
 export const getMailbox = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const mailbox = await getOrCreateMailbox(req);
-  const smtpHost = (req.user?.activeOrganization
+  const smtp = (req.user?.activeOrganization
     ? (await (await import("../models/organization.model")).default
         .findById(req.user.activeOrganization)
-        .select("smtpSettings.host")
+        .select("smtpSettings.host smtpSettings.user smtpSettings.pass")
         .lean())
-    : null) as { smtpSettings?: { host?: string } } | null;
-  const imapHost = guessImapHost(smtpHost?.smtpSettings?.host || "");
+    : null) as { smtpSettings?: { host?: string; user?: string; pass?: string } } | null;
+
+  const smtpHost = smtp?.smtpSettings?.host || "";
+  const imapHost = guessImapHost(smtpHost);
+  const smtpConfigured = Boolean(
+    smtp?.smtpSettings?.host && smtp?.smtpSettings?.user && smtp?.smtpSettings?.pass,
+  );
+  const pollingEnabled = process.env.DOCUMENTS_EMAIL_POLLING_ENABLED === "true";
+  const inboundReady = smtpConfigured && pollingEnabled && Boolean(imapHost);
+
   res.json({
     success: true,
     data: {
       mailboxAddress: mailbox.mailboxAddress,
       isActive: mailbox.isActive,
+      smtpConfigured,
+      pollingEnabled,
+      inferredImapHost: imapHost,
+      inboundReady,
       forwardingInstructions: [
         "Use Settings > Email (SMTP) credentials for inbound polling",
         imapHost
@@ -1006,6 +1092,8 @@ export async function ingestEmailPayload(payload: {
     publicId: string;
     mimeType?: string;
     sizeBytes?: number;
+    contentDisposition?: string;
+    inline?: boolean;
   }>;
 }) {
   const { mailbox, sender, subject, messageId, attachments } = payload;
@@ -1014,48 +1102,73 @@ export async function ingestEmailPayload(payload: {
   const mailboxDoc = await DocumentMailbox.findOne({ mailboxAddress: mailbox, isActive: true });
   if (!mailboxDoc) throw new NotFoundError("Mailbox");
 
-  if (!attachments || attachments.length === 0) {
-    await DocumentModel.create({
-      organizationId: mailboxDoc.organizationId,
-      source: "email",
-      inboxType: "all",
-      fileName: `[NO ATTACHMENT] ${subject || "Untitled"}`,
-      mimeType: "text/plain",
-      extension: "txt",
-      sizeBytes: 0,
-      cloudinaryPublicId: "",
-      url: "",
-      uploadStatus: "failed",
-      processingStatus: "UNREADABLE",
-      emailSender: sender || "",
-      emailSubject: subject || "",
-      emailMessageId: messageId || "",
-      activityLogs: [
-        {
-          eventType: "email_ignored",
-          message: "Email ignored because no attachments were found",
-          payload: { sender, subject, messageId },
-        },
-      ],
-      processingLogs: [
-        {
-          stage: "email_ingestion",
-          status: "warn",
-          message: "No attachments in email",
-        },
-      ],
-    });
+  const isBankContext = (() => {
+    const text = `${sender || ""} ${subject || ""}`.toLowerCase();
+    const keywords = [
+      "bank statement",
+      "statement",
+      "account summary",
+      "mini statement",
+      "passbook",
+      "hdfc",
+      "icici",
+      "sbi",
+      "axis",
+      "kotak",
+      "indusind",
+      "yes bank",
+      "transaction summary",
+    ];
+    return keywords.some((k) => text.includes(k));
+  })();
 
-    return { ingested: 0, ignoredNoAttachment: true };
+  const minAttachmentBytes = Math.max(0, Number(process.env.DOCUMENTS_EMAIL_MIN_ATTACHMENT_BYTES || 8192));
+  const onlyBankStatements = process.env.DOCUMENTS_EMAIL_ONLY_BANK_STATEMENTS === "true";
+  const allowedExtensions = new Set(["pdf", "csv", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "tif", "tiff"]);
+  const allowedMimePrefixes = [
+    "application/pdf",
+    "image/",
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml",
+  ];
+
+  const usableAttachments = (attachments || []).filter((item) => {
+    if (!item.url || !item.publicId) return false;
+    if ((item.sizeBytes || 0) < minAttachmentBytes) return false;
+    if (item.inline || String(item.contentDisposition || "").toLowerCase() === "inline") return false;
+
+    const extension = path.extname(item.name || "").replace(".", "").toLowerCase();
+    const mime = String(item.mimeType || "").toLowerCase();
+    const extAllowed = extension ? allowedExtensions.has(extension) : false;
+    const mimeAllowed = allowedMimePrefixes.some((prefix) => mime.startsWith(prefix));
+    return extAllowed || mimeAllowed;
+  });
+
+  if (usableAttachments.length === 0) {
+    return {
+      ingested: 0,
+      ignoredNoAttachment: !attachments || attachments.length === 0,
+      ignoredUnsupported: Boolean(attachments && attachments.length > 0),
+    };
   }
 
   const createdIds: string[] = [];
-  for (const item of attachments) {
+  for (const item of usableAttachments) {
     const extension = path.extname(item.name || "").replace(".", "").toLowerCase();
+    const lowerName = `${item.name || ""} ${item.mimeType || ""}`.toLowerCase();
+    const bankByName =
+      lowerName.includes("bank") ||
+      lowerName.includes("statement") ||
+      lowerName.includes("txn") ||
+      lowerName.includes("transaction");
+    const isBankStatement = isBankContext || bankByName;
+    if (onlyBankStatements && !isBankStatement) continue;
+
     const document = await DocumentModel.create({
       organizationId: mailboxDoc.organizationId,
       source: "email",
-      inboxType: "all",
+      inboxType: isBankStatement ? "bank_statements" : "files",
       fileName: item.name,
       mimeType: item.mimeType || "application/octet-stream",
       extension,
@@ -1071,7 +1184,7 @@ export async function ingestEmailPayload(payload: {
         {
           eventType: "email_ingested",
           message: "Attachment ingested from email",
-          payload: { sender, subject, messageId },
+          payload: { sender, subject, messageId, routedTo: isBankStatement ? "bank_statements" : "files" },
         },
       ],
       processingLogs: [
@@ -1084,6 +1197,15 @@ export async function ingestEmailPayload(payload: {
     });
     createdIds.push(String(document._id));
     await enqueueDocumentProcessing(String(document._id));
+  }
+
+  if (createdIds.length === 0) {
+    return {
+      ingested: 0,
+      ignoredNoAttachment: false,
+      ignoredUnsupported: true,
+      ignoredByRule: onlyBankStatements,
+    };
   }
 
   return { ingested: createdIds.length, documentIds: createdIds };

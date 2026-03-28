@@ -15,6 +15,7 @@ router.post("/mailbox/regenerate", documentController.regenerateMailbox);
 
 router.get("/folders", documentController.listFolders);
 router.post("/folders", documentController.createFolder);
+router.get("/trash", documentController.listTrashDocuments);
 
 router.post("/upload", documentController.uploadDocumentFile, documentController.uploadDocument);
 
@@ -22,6 +23,7 @@ router.get("/", documentController.listDocuments);
 router.get("/:id", documentController.getDocument);
 router.get("/:id/signed-url", documentController.getSignedPreviewUrl);
 router.delete("/:id", documentController.deleteDocument);
+router.post("/:id/restore", documentController.restoreDocument);
 
 router.patch("/:id/move-folder", documentController.moveToFolder);
 router.post("/:id/reprocess", documentController.reprocessDocument);
