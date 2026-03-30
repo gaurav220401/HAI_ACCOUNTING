@@ -47,7 +47,7 @@ export default function VendorsPage() {
   async function fetchContacts() {
     setFetching(true);
     try {
-      const res = await contactApi.list({ type: "Vendor", page: 1, limit: 100 });
+      const res = await contactApi.list({ type: "Vendor", page: 1, limit: 200, includeInactive: true });
       setContacts(res.data ?? []);
     } catch {
       // noop
@@ -141,7 +141,7 @@ export default function VendorsPage() {
               {panelOpen ? (
                 <>
                   <button className="flex items-center gap-1.5 text-sm font-semibold">
-                    Active Vendors
+                    All Vendors
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                   </button>
                   <div className="flex items-center gap-1">
@@ -156,7 +156,7 @@ export default function VendorsPage() {
               ) : (
                 <>
                   <button className="flex items-center gap-1.5 text-sm font-medium">
-                    Active Vendors
+                    All Vendors
                     <ChevronDown className="h-4 w-4 text-muted-foreground" />
                   </button>
                   <span className="text-xs text-muted-foreground">{filtered.length} vendor{filtered.length !== 1 ? "s" : ""}</span>
@@ -198,18 +198,20 @@ export default function VendorsPage() {
                     key={c._id}
                     className={cn(
                       "w-full text-left px-3 py-3 transition-colors hover:bg-muted/20 border-l-2",
+                      c.isActive === false && "bg-muted/60 text-muted-foreground",
                       selectedId === c._id ? "bg-blue-50 border-l-primary" : "border-l-transparent",
                     )}
                     onClick={() => selectVendor(c._id)}
                   >
                     <div className="flex items-center justify-between gap-2 min-w-0">
                       <div className="min-w-0 flex-1">
-                        <p className={cn("text-xs font-medium truncate", selectedId === c._id && "text-primary")}>
+                        <p className={cn("text-xs font-medium truncate", selectedId === c._id && c.isActive !== false && "text-primary")}>
                           {c.displayName}
                         </p>
                         {c.companyName && c.companyName !== c.displayName && (
                           <p className="text-[10px] text-muted-foreground truncate">{c.companyName}</p>
                         )}
+                        {c.isActive === false && <p className="text-[10px] text-muted-foreground">Inactive</p>}
                       </div>
                       <span className="text-[10px] tabular-nums text-muted-foreground shrink-0">
                         {fmt(c.openingBalance ?? 0, c.currency ?? "INR")}
@@ -241,6 +243,7 @@ export default function VendorsPage() {
                       <tr className="border-b bg-muted/30">
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Name</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Company Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Email</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Work Phone</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payables (BCY)</th>
@@ -255,13 +258,17 @@ export default function VendorsPage() {
                         return (
                           <tr
                             key={c._id}
-                            className="border-b last:border-0 hover:bg-muted/40 cursor-pointer transition-colors"
+                            className={cn(
+                              "border-b last:border-0 hover:bg-muted/40 cursor-pointer transition-colors",
+                              c.isActive === false && "bg-muted/60 text-muted-foreground",
+                            )}
                             onClick={() => selectVendor(c._id)}
                           >
                             <td className="px-4 py-3">
-                              <span className="text-primary font-medium hover:underline">{c.displayName}</span>
+                              <span className={cn("font-medium hover:underline", c.isActive === false ? "text-muted-foreground" : "text-primary")}>{c.displayName}</span>
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">{c.companyName ?? "—"}</td>
+                            <td className="px-4 py-3 text-muted-foreground">{c.isActive === false ? "Inactive" : "Active"}</td>
                             <td className="px-4 py-3 text-muted-foreground">
                               {email ? (
                                 <span className="flex items-center gap-1">
@@ -309,7 +316,7 @@ export default function VendorsPage() {
                     setContacts((cs) =>
                       cs.map((c) =>
                         c._id === v._id
-                          ? { ...c, displayName: v.displayName, companyName: v.companyName }
+                          ? { ...c, displayName: v.displayName, companyName: v.companyName, isActive: v.isActive }
                           : c,
                       ),
                     );

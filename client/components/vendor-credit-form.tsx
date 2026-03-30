@@ -153,7 +153,14 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
 
   useEffect(() => {
     if (mode !== "create" || typeof window === "undefined") return;
-    const billId = new URLSearchParams(window.location.search).get("billId");
+    const search = new URLSearchParams(window.location.search);
+    const billId = search.get("billId");
+    const vId = search.get("vendorId");
+
+    if (vId && !vendorId) {
+      setVendorId(vId);
+    }
+
     if (!billId) return;
 
     billApi

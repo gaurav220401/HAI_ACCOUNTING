@@ -7,8 +7,8 @@
  * submit button says "Update". All 3 tabs visible in both modes.
  */
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Upload, X, ChevronDown, Search, MoreVertical, Tag, ArrowLeft, Settings2,
 } from "lucide-react";
@@ -472,7 +472,17 @@ export interface ExpenseFormProps {
 }
 
 export function ExpenseForm({ mode, expenseNumber }: ExpenseFormProps) {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground text-sm">Loading form...</div>}>
+      <ExpenseFormInner mode={mode} expenseNumber={expenseNumber} />
+    </Suspense>
+  );
+}
+
+function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialVendorId = searchParams.get("vendorId") || "";
   const isEdit = mode === "edit";
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("expense");
@@ -520,7 +530,7 @@ export function ExpenseForm({ mode, expenseNumber }: ExpenseFormProps) {
   const [lineItems, setLineItems]   = useState<LineItem[]>([newLineItem()]);
   const [expForm, setExpForm] = useState({
     date: today, expenseAccountId: "", currency: "INR", amount: "",
-    paidThroughAccountId: "", vendorId: "", invoiceNumber: "", notes: "",
+    paidThroughAccountId: "", vendorId: initialVendorId, invoiceNumber: "", notes: "",
     customerId: "", isBillable: false, projectId: "",
   });
 
@@ -529,7 +539,7 @@ export function ExpenseForm({ mode, expenseNumber }: ExpenseFormProps) {
     date: today, employeeId: "",
     mileageCalcMethod: "DistanceTravelled" as "DistanceTravelled" | "OdometerReading",
     distance: "", mileageUnit: "Km" as "Km" | "Mile",
-    paidThroughAccountId: "", vendorId: "", invoiceNumber: "", notes: "",
+    paidThroughAccountId: "", vendorId: initialVendorId, invoiceNumber: "", notes: "",
     customerId: "", isBillable: false, projectId: "",
   });
 
@@ -540,7 +550,7 @@ export function ExpenseForm({ mode, expenseNumber }: ExpenseFormProps) {
   // Bulk rows
   const emptyBulkRow = () => ({
     date: today, expenseAccountId: "", currency: "INR", amount: "",
-    paidThroughAccountId: "", vendorId: "", customerId: "", isBillable: false,
+    paidThroughAccountId: "", vendorId: initialVendorId, customerId: "", isBillable: false,
   });
   const [bulkRows, setBulkRows] = useState(() => Array.from({ length: 10 }, emptyBulkRow));
 

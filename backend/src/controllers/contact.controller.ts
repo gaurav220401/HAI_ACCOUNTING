@@ -2,6 +2,14 @@ import { Response } from "express";
 import Contact from "../models/contact.model";
 import Expense from "../models/expense.model";
 import Organization from "../models/organization.model";
+import Bill from "../models/bill.model";
+import PurchaseOrder from "../models/purchase-order.model";
+import RecurringBill from "../models/recurring-bill.model";
+import RecurringExpense from "../models/recurring-expense.model";
+import VendorCredit from "../models/vendor-credit.model";
+import Journal from "../models/journal.model";
+import PaymentMade from "../models/payment-made.model";
+import Item from "../models/item.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -23,8 +31,11 @@ async function orgId(req: AuthenticatedRequest) {
 
 /** GET /api/contacts?type=Customer|Vendor|Both&search=...&page=1&limit=25 */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { type, search, page = 1, limit = 25 } = req.query;
-  const filter: any = { organizationId: await orgId(req), isDeleted: false, isActive: true };
+  const { type, search, page = 1, limit = 25, includeInactive } = req.query;
+  const filter: any = { organizationId: await orgId(req), isDeleted: false };
+
+  const includeInactiveBool = String(includeInactive ?? "false").toLowerCase() === "true";
+  if (!includeInactiveBool) filter.isActive = true;
 
   if (type) {
     if (type === "Customer") {
@@ -53,6 +64,119 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
     success: true,
     data: contacts,
     pagination: { total, page: +page, limit: +limit, pages: Math.ceil(total / +limit) },
+  });
+});
+
+/** POST /api/contacts/:id/clone */
+export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = await orgId(req);
+  const source = await Contact.findOne({ _id: req.params.id, organizationId: oid, isDeleted: false });
+  if (!source) throw new NotFoundError("Contact");
+
+  const sourceObj = source.toObject();
+  const baseName = source.displayName || source.companyName || "Vendor";
+  let candidateName = `Copy of ${baseName}`;
+  let suffix = 2;
+
+  while (await Contact.exists({ organizationId: oid, displayName: candidateName, isDeleted: false })) {
+    candidateName = `Copy (${suffix}) of ${baseName}`;
+    suffix += 1;
+  }
+
+  const clonePayload: any = {
+    ...sourceObj,
+    _id: undefined,
+    createdAt: undefined,
+    updatedAt: undefined,
+    deletedAt: null,
+    isDeleted: false,
+    isActive: true,
+    displayName: candidateName,
+    linkedContactId: sourceObj.linkedContactId ?? null,
+  };
+
+  const cloned = new Contact(clonePayload);
+  attachUser(cloned, req);
+  await cloned.save();
+
+  res.status(201).json({ success: true, data: cloned });
+});
+
+/** POST /api/contacts/:id/merge */
+export const merge = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = await orgId(req);
+  const sourceId = req.params.id;
+  const targetVendorId = String(req.body?.targetVendorId || "").trim();
+
+  if (!targetVendorId) throw new ValidationError("targetVendorId is required");
+  if (targetVendorId === sourceId) throw new ValidationError("Cannot merge a vendor into itself");
+
+  const [source, target] = await Promise.all([
+    Contact.findOne({ _id: sourceId, organizationId: oid, isDeleted: false }),
+    Contact.findOne({ _id: targetVendorId, organizationId: oid, isDeleted: false }),
+  ]);
+
+  if (!source) throw new NotFoundError("Source vendor");
+  if (!target) throw new NotFoundError("Target vendor");
+
+  if (source.contactType !== "Vendor" && source.contactType !== "Both") {
+    throw new ValidationError("Source contact is not a vendor");
+  }
+  if (target.contactType !== "Vendor" && target.contactType !== "Both") {
+    throw new ValidationError("Target contact is not a vendor");
+  }
+
+  const [
+    bills,
+    expenses,
+    purchaseOrders,
+    recurringBills,
+    recurringExpenses,
+    vendorCredits,
+    journals,
+    payments,
+    items,
+    linkedContacts,
+  ] = await Promise.all([
+    Bill.updateMany({ organizationId: oid, vendorId: source._id }, { $set: { vendorId: target._id } }),
+    Expense.updateMany({ organizationId: oid, vendorId: source._id }, { $set: { vendorId: target._id } }),
+    PurchaseOrder.updateMany({ organizationId: oid, vendorId: source._id }, { $set: { vendorId: target._id } }),
+    RecurringBill.updateMany({ organizationId: oid, vendorId: source._id }, { $set: { vendorId: target._id } }),
+    RecurringExpense.updateMany({ organizationId: oid, vendorId: source._id }, { $set: { vendorId: target._id } }),
+    VendorCredit.updateMany({ organizationId: oid, vendorId: source._id }, { $set: { vendorId: target._id } }),
+    Journal.updateMany({ organizationId: oid, vendorId: source._id }, { $set: { vendorId: target._id } }),
+    PaymentMade.updateMany({ organization_id: oid, vendor_id: source._id }, { $set: { vendor_id: target._id } }),
+    Item.updateMany({ organizationId: oid, preferredVendorId: source._id }, { $set: { preferredVendorId: target._id } }),
+    Contact.updateMany({ organizationId: oid, linkedContactId: source._id }, { $set: { linkedContactId: target._id } }),
+  ]);
+
+  source.isActive = false;
+  source.deletedAt = undefined;
+  source.isDeleted = false;
+  source.notes = [source.notes || "", `Merged into ${target.displayName} on ${new Date().toISOString()}`]
+    .filter(Boolean)
+    .join("\n");
+  attachUser(source, req);
+  await source.save();
+
+  res.json({
+    success: true,
+    data: {
+      sourceVendorId: source._id,
+      targetVendorId: target._id,
+      reassignedCounts: {
+        bills: bills.modifiedCount,
+        expenses: expenses.modifiedCount,
+        purchaseOrders: purchaseOrders.modifiedCount,
+        recurringBills: recurringBills.modifiedCount,
+        recurringExpenses: recurringExpenses.modifiedCount,
+        vendorCredits: vendorCredits.modifiedCount,
+        journals: journals.modifiedCount,
+        paymentsMade: payments.modifiedCount,
+        itemsPreferredVendor: items.modifiedCount,
+        linkedContacts: linkedContacts.modifiedCount,
+      },
+    },
   });
 });
 

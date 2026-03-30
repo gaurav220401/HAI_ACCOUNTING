@@ -316,6 +316,9 @@ export interface IContactPerson {
   mobile?: string;
   phone?: string; // kept for backward compat
   designation?: string;
+  department?: string;
+  skypeName?: string;
+  photoUrl?: string;
   isPrimary: boolean;
 }
 
@@ -399,6 +402,7 @@ export interface IContact extends Document {
   // Customer-specific
   creditLimit?: number;
   salesPersonId?: Types.ObjectId | null;
+  linkedContactId?: Types.ObjectId | null;
   // Calculated
   outstandingPayable: number;
   outstandingReceivable: number;

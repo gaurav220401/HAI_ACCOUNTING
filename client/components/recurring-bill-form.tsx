@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, Fragment } from "react";
+import { useEffect, useMemo, useState, useRef, Fragment, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2, Plus, Trash2, GripVertical, ChevronDown, Search, CircleDot, X, Info } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -610,7 +611,17 @@ interface RecurringBillFormProps {
   onCancel: () => void;
 }
 
-export function RecurringBillForm({ mode, initialData, onSuccess, onCancel }: RecurringBillFormProps) {
+export function RecurringBillForm(props: RecurringBillFormProps) {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground text-sm">Loading form...</div>}>
+      <RecurringBillFormInner {...props} />
+    </Suspense>
+  );
+}
+
+export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel }: RecurringBillFormProps) {
+  const searchParams = useSearchParams();
+  const defaultVendorId = searchParams.get("vendorId");
   const [saving, setSaving] = useState(false);
   const [vendors, setVendors] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -620,7 +631,7 @@ export function RecurringBillForm({ mode, initialData, onSuccess, onCancel }: Re
   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
 
   const [profileName, setProfileName] = useState(initialData?.profileName || "");
-  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || "");
+  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || defaultVendorId || "");
   const [freqKeyValue, setFreqKeyValue] = useState(() => {
     if (!initialData) return "Weekly_1";
     const fo = findFreqOption(initialData.frequency, initialData.repeatEvery);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Trash2, Copy, ChevronDown, ChevronUp,
@@ -166,9 +166,32 @@ const emptyBankDetail = (): BankDetail => ({
 // ─── Helper: derive display name ─────────────────────────────────────────────
 
 function deriveDisplayName(salutation: string, firstName: string, lastName: string, companyName: string): string {
+  // Company name is the primary default display name
+  if (companyName) return companyName;
   const personal = [salutation, firstName, lastName].filter(Boolean).join(" ");
-  if (personal && companyName) return `${personal} (${companyName})`;
-  return personal || companyName || "";
+  return personal || "";
+}
+
+/** Generate 4-5 display name suggestions from name parts. Company name is shown first. */
+function generateDisplayNameSuggestions(salutation: string, firstName: string, lastName: string, companyName: string): string[] {
+  const suggestions: string[] = [];
+  const seen = new Set<string>();
+  const add = (s: string) => { const t = s.trim(); if (t && !seen.has(t)) { seen.add(t); suggestions.push(t); } };
+
+  // 1. Company name first (primary suggestion)
+  if (companyName) add(companyName);
+  // 2. Full personal name with company
+  const personalFull = [salutation, firstName, lastName].filter(Boolean).join(" ");
+  if (personalFull && companyName) add(`${personalFull} (${companyName})`);
+  // 3. First Last
+  const firstLast = [firstName, lastName].filter(Boolean).join(" ");
+  if (firstLast) add(firstLast);
+  // 4. Salutation + First Last
+  if (salutation && firstLast) add(`${salutation} ${firstLast}`);
+  // 5. LastName, FirstName
+  if (firstName && lastName) add(`${lastName}, ${firstName}`);
+
+  return suggestions.slice(0, 5);
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -189,6 +212,8 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [mobile, setMobile] = useState(initialData?.mobile ?? "");
   const [language, setLanguage] = useState(initialData?.language ?? "en");
   const [displayNameManual, setDisplayNameManual] = useState(isEdit);
+  const [displayNameFocused, setDisplayNameFocused] = useState(false);
+  const displayNameRef = useRef<HTMLDivElement>(null);
 
   // ── GSTIN Prefill Dialog ─────────────────────────────────────────────────
   const [gstinDialogOpen, setGstinDialogOpen] = useState(false);
@@ -768,15 +793,43 @@ export function VendorForm({ initialData }: VendorFormProps) {
           <label className="text-sm font-medium text-muted-foreground pt-2">
             Display Name <span className="text-destructive">*</span>
           </label>
-          <Input
-            placeholder="Select or type to add"
-            className="h-9"
-            value={displayName}
-            onChange={(e) => {
-              setDisplayName(e.target.value);
-              setDisplayNameManual(true);
-            }}
-          />
+          <div className="relative" ref={displayNameRef}>
+            <Input
+              placeholder="Select or type to add"
+              className="h-9"
+              value={displayName}
+              onChange={(e) => {
+                setDisplayName(e.target.value);
+                setDisplayNameManual(true);
+              }}
+              onFocus={() => setDisplayNameFocused(true)}
+              onBlur={() => setTimeout(() => setDisplayNameFocused(false), 200)}
+            />
+            {displayNameFocused && (() => {
+              const suggestions = generateDisplayNameSuggestions(salutation, firstName, lastName, companyName);
+              return suggestions.length > 0 ? (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors ${
+                        i === 0 ? "font-medium text-primary bg-primary/5" : "text-foreground"
+                      } ${displayName === s ? "bg-primary/10" : ""}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setDisplayName(s);
+                        setDisplayNameManual(true);
+                        setDisplayNameFocused(false);
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : null;
+            })()}
+          </div>
 
           {/* Email */}
           <label className="text-sm font-medium text-muted-foreground pt-2">Email Address</label>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -6,7 +6,7 @@ import {
   Building2, Mail, MapPin, CreditCard, User, Plus, Edit2,
   Pencil, Trash2, ExternalLink, ChevronDown, ChevronUp, Loader2,
   MessageSquare, AlertCircle, Paperclip, X, Clock,
-  Printer, Download, FileSpreadsheet, Send, Settings2, Upload,
+  Printer, Download, FileSpreadsheet, Send, Settings, Settings2, Upload,
   ImagePlus, Palette, Layout, FileText, Grid, AlignLeft,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -167,68 +167,227 @@ function ContactPersonDialog({
   const [workPhone, setWorkPhone] = useState(initial?.workPhone ?? "");
   const [mobile, setMobile] = useState(initial?.mobile ?? "");
   const [designation, setDesignation] = useState(initial?.designation ?? "");
+  const [department, setDepartment] = useState(initial?.department ?? "");
+  const [skypeName, setSkypeName] = useState(initial?.skypeName ?? "");
+  const [photoUrl, setPhotoUrl] = useState(initial?.photoUrl ?? "");
   const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const profileImageInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync state when initial prop changes
+  useEffect(() => {
+    if (open) {
+      setSalutation(initial?.salutation ?? "");
+      setFirstName(initial?.firstName ?? "");
+      setLastName(initial?.lastName ?? "");
+      setEmail(initial?.email ?? "");
+      setWorkPhone(initial?.workPhone ?? "");
+      setMobile(initial?.mobile ?? "");
+      setDesignation(initial?.designation ?? "");
+      setDepartment(initial?.department ?? "");
+      setSkypeName(initial?.skypeName ?? "");
+      setPhotoUrl(initial?.photoUrl ?? "");
+      setIsPrimary(initial?.isPrimary ?? false);
+    }
+  }, [initial, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onClose]);
+
+  async function handleProfileImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files?.length) return;
+    const file = e.target.files[0];
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Profile image must be 5MB or less");
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await apiFetch<{ data: { url: string; publicId: string } }>(
+        "/upload?folder=contacts/contact-persons&resourceType=image",
+        { method: "POST", body: formData },
+      );
+
+      setPhotoUrl(res.data.url);
+      toast.success("Profile image uploaded");
+    } catch {
+      toast.error("Failed to upload profile image");
+    } finally {
+      setUploadingImage(false);
+      if (profileImageInputRef.current) profileImageInputRef.current.value = "";
+    }
+  }
 
   function handleSave() {
-    const name = [salutation, firstName, lastName].filter(Boolean).join(" ");
+    const name = [salutation, firstName, lastName].filter((s) => s && s !== "__").join(" ");
     if (!firstName && !lastName) { toast.error("Please enter at least a first or last name"); return; }
-    onSave({ salutation, firstName, lastName, name, email, workPhone, mobile, designation, isPrimary });
+    onSave({
+      salutation: salutation === "__" ? "" : salutation,
+      firstName,
+      lastName,
+      name,
+      email,
+      workPhone,
+      mobile,
+      designation,
+      department,
+      skypeName,
+      photoUrl,
+      isPrimary,
+    });
     onClose();
   }
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Add Contact Person</DialogTitle></DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <Label className="text-xs mb-1 block">Salutation</Label>
-              <Select value={salutation} onValueChange={setSalutation}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="â€”" /></SelectTrigger>
-                <SelectContent>
-                  {SALUTATIONS.map((s) => <SelectItem key={s || "__"} value={s || "__"}>{s || "â€”"}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">First Name</Label>
-              <Input className="h-8 text-sm" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Last Name</Label>
-              <Input className="h-8 text-sm" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs mb-1 block">Email Address</Label>
-            <Input className="h-8 text-sm" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs mb-1 block">Work Phone</Label>
-              <Input className="h-8 text-sm" value={workPhone} onChange={(e) => setWorkPhone(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Mobile</Label>
-              <Input className="h-8 text-sm" value={mobile} onChange={(e) => setMobile(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs mb-1 block">Designation</Label>
-            <Input className="h-8 text-sm" value={designation} onChange={(e) => setDesignation(e.target.value)} />
-          </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} className="h-4 w-4" />
-            Set as primary contact
-          </label>
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-6">
+      <div className="absolute inset-0 bg-black/35" onClick={onClose} />
+
+      <div className="relative z-10 w-[min(1100px,98vw)] max-h-[92vh] overflow-hidden rounded-md border bg-background shadow-2xl">
+        <div className="flex items-center justify-between border-b px-6 py-4">
+          <h2 className="text-3xl font-normal tracking-tight">{initial ? "Edit Contact Person" : "New Contact Person"}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-red-400 transition hover:bg-red-50 hover:text-red-500"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={handleSave}>Save</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+        <div className="grid max-h-[calc(92vh-130px)] overflow-hidden lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="overflow-y-auto p-6">
+            <div className="space-y-4">
+              <div className="grid gap-2 md:grid-cols-[170px_minmax(0,1fr)] md:items-center md:gap-4">
+                <Label className="text-sm font-normal">Name</Label>
+                <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)]">
+                  <Select value={salutation} onValueChange={setSalutation}>
+                    <SelectTrigger className="h-11"><SelectValue placeholder="Mr." /></SelectTrigger>
+                    <SelectContent>
+                      {SALUTATIONS.map((s) => <SelectItem key={s || "__"} value={s || "__"}>{s || "—"}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input className="h-11" placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                  <Input className="h-11" placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[170px_minmax(0,1fr)] md:items-center md:gap-4">
+                <Label className="text-sm font-normal">Email Address</Label>
+                <Input className="h-11" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[170px_minmax(0,1fr)] md:items-start md:gap-4">
+                <Label className="text-sm font-normal md:mt-3">Phone</Label>
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-[86px_minmax(0,1fr)]">
+                    <Select defaultValue="+91">
+                      <SelectTrigger className="h-11"><SelectValue placeholder="+91" /></SelectTrigger>
+                      <SelectContent><SelectItem value="+91">+91</SelectItem></SelectContent>
+                    </Select>
+                    <Input className="h-11" placeholder="Mobile Number" value={mobile} onChange={(e) => setMobile(e.target.value)} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-[86px_minmax(0,1fr)]">
+                    <Select defaultValue="Mobile">
+                      <SelectTrigger className="h-11"><SelectValue placeholder="Mobile" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Mobile">Mobile</SelectItem>
+                        <SelectItem value="Work">Work</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input className="h-11" placeholder="Work Number" value={workPhone} onChange={(e) => setWorkPhone(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[170px_minmax(0,1fr)] md:items-center md:gap-4">
+                <Label className="text-sm font-normal">Skype Name/Number</Label>
+                <Input className="h-11" placeholder="Skype Name/Number" value={skypeName} onChange={(e) => setSkypeName(e.target.value)} />
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[170px_minmax(0,1fr)] md:items-center md:gap-4">
+                <Label className="text-sm font-normal">Other Details</Label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input className="h-11" placeholder="Designation" value={designation} onChange={(e) => setDesignation(e.target.value)} />
+                  <Input className="h-11" placeholder="Department" value={department} onChange={(e) => setDepartment(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid gap-2 pt-1 md:grid-cols-[170px_minmax(0,1fr)] md:items-center md:gap-4">
+                <div />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={isPrimary}
+                    onChange={(e) => setIsPrimary(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Set as primary contact
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t bg-muted/10 p-6 lg:border-l lg:border-t-0">
+            <Label className="mb-4 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Profile Image</Label>
+            <div
+              className="rounded-md border border-dashed border-blue-400 bg-background p-6 text-center transition hover:bg-blue-50/40"
+              onClick={() => profileImageInputRef.current?.click()}
+            >
+              {photoUrl ? (
+                <div className="flex flex-col items-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photoUrl} className="h-28 w-28 rounded-full border object-cover" alt="Profile" />
+                  <p className="mt-3 text-sm text-muted-foreground">Click to change</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-4">
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 text-white">
+                    {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  </div>
+                  <p className="text-xl font-medium">Drag &amp; Drop Profile Image</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Supported Files: jpg, jpeg, png, gif, bmp</p>
+                  <p className="text-sm text-muted-foreground">Maximum File Size: 5MB</p>
+                  <p className="mt-6 text-lg underline">Upload File</p>
+                </div>
+              )}
+            </div>
+            <input
+              ref={profileImageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleProfileImageUpload}
+            />
+          </div>
+        </div>
+
+        <div className="border-t bg-muted/20 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Button size="sm" onClick={handleSave} className="bg-blue-500 hover:bg-blue-600">Save</Button>
+            <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1970,6 +2129,7 @@ const TMPL_KEY = (id: string) => `stmt-tmpl-config-${id}`;
 
 export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClose, initialTab }: VendorDetailViewProps) {
   const router = useRouter();
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const [vendor, setVendor] = useState<Contact>(initialVendor);
   const [saving, setSaving] = useState(false);
@@ -1977,6 +2137,15 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   const [cpDialogOpen, setCpDialogOpen] = useState(false);
   const [editingCpIdx, setEditingCpIdx] = useState<number | null>(null);
   const [bankDialogOpen, setBankDialogOpen] = useState(false);
+
+  const [attachmentPopupOpen, setAttachmentPopupOpen] = useState(false);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [linkCustomerDialogOpen, setLinkCustomerDialogOpen] = useState(false);
+  const [associateTemplatesDialogOpen, setAssociateTemplatesDialogOpen] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeTargetVendorId, setMergeTargetVendorId] = useState("");
+  const [mergeCandidates, setMergeCandidates] = useState<Contact[]>([]);
+  const [merging, setMerging] = useState(false);
 
   const [commentText, setCommentText] = useState("");
   const [addingComment, setAddingComment] = useState(false);
@@ -2147,6 +2316,79 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   }, [vendor._id]);
 
   // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  
+  async function handleAttachmentUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files?.length) return;
+    const files = Array.from(e.target.files);
+    
+    // Check limits: max 10 files, 10MB each
+    const currentCount = vendor.documents?.length || 0;
+    if (currentCount + files.length > 10) {
+      toast.error("Maximum 10 files allowed");
+      return;
+    }
+    const oversize = files.find(f => f.size > 10 * 1024 * 1024);
+    if (oversize) {
+      toast.error("File size cannot exceed 10MB");
+      return;
+    }
+
+    setAttachmentUploading(true);
+    try {
+      const formData = new FormData();
+      files.forEach(f => formData.append("files", f));
+      
+      const res = await fetch(`/api/upload?folder=vendors/${vendor._id}`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      
+      const newDocs = data.urls.map((u: any, i: number) => ({
+        name: files[i].name,
+        url: u.url,
+        publicId: u.publicId,
+        size: files[i].size,
+        mimeType: files[i].type
+      }));
+
+      const updatedDocs = [...(vendor.documents || []), ...newDocs];
+      const updateRes = await contactApi.update(vendor._id, { documents: updatedDocs } as any);
+      const u = (updateRes as any).data ?? updateRes;
+      setVendor(u); onVendorUpdate(u);
+      toast.success("Files uploaded successfully");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload files");
+    } finally {
+      setAttachmentUploading(false);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    }
+  }
+
+  async function handleRemoveAttachment(idx: number) {
+    if (!confirm("Remove this attachment?")) return;
+    try {
+      const updatedDocs = (vendor.documents || []).filter((_, i) => i !== idx);
+      const res = await contactApi.update(vendor._id, { documents: updatedDocs } as any);
+      const u = (res as any).data ?? res;
+      setVendor(u); onVendorUpdate(u);
+      toast.success("Attachment removed");
+    } catch {
+      toast.error("Failed to remove attachment");
+    }
+  }
+
+  async function handleCloneVendor() {
+    try {
+      const res = await contactApi.clone(vendor._id);
+      const cloned = (res as any).data ?? res;
+      toast.success("Vendor cloned successfully");
+      router.push(`/purchases/vendors/${cloned._id}/edit`);
+    } catch {
+      toast.error("Failed to clone vendor");
+    }
+  }
 
   async function saveContactPersons(updated: ContactPerson[]) {
     setSaving(true);
@@ -2202,6 +2444,12 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   }
 
   async function handleMarkInactive() {
+    if (vendor.isActive === false) {
+      toast.info("Vendor is already inactive");
+      return;
+    }
+
+    if (!confirm(`Mark vendor "${vendor.displayName}" as inactive?`)) return;
     try {
       const res = await contactApi.update(vendor._id, { isActive: false });
       const u = (res as any).data ?? res;
@@ -2220,12 +2468,52 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
     } catch { toast.error("Failed to delete vendor"); }
   }
 
+  async function openMergeDialog() {
+    setMergeTargetVendorId("");
+    setMergeDialogOpen(true);
+    try {
+      const res = await contactApi.list({ type: "Vendor", page: 1, limit: 500 });
+      const candidates = (res.data ?? []).filter((c) => c._id !== vendor._id && c.isActive !== false);
+      setMergeCandidates(candidates);
+    } catch {
+      setMergeCandidates([]);
+      toast.error("Failed to load vendors for merge");
+    }
+  }
+
+  async function handleMergeVendors() {
+    if (!mergeTargetVendorId) {
+      toast.error("Please select a vendor to merge into");
+      return;
+    }
+    setMerging(true);
+    try {
+      await contactApi.mergeVendors(vendor._id, mergeTargetVendorId);
+      toast.success("Vendor merged successfully");
+      setMergeDialogOpen(false);
+      onClose?.();
+      router.push("/purchases/vendors");
+    } catch {
+      toast.error("Failed to merge vendors");
+    } finally {
+      setMerging(false);
+    }
+  }
+
   // â”€â”€ Computed: monthly chart data & activity timeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const monthlyData = useMemo(() => getMonthlyData(expenses, chartPeriod), [expenses, chartPeriod]);
   const chartTotal = useMemo(() => monthlyData.reduce((s, d) => s + d.total, 0), [monthlyData]);
 
   // â”€â”€ Derived display values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const primaryContact = vendor.contactPersons?.find((p) => p.isPrimary) ?? vendor.contactPersons?.[0];
+  const primaryContactIndex = useMemo(() => {
+    if (!vendor.contactPersons?.length || !primaryContact) return -1;
+    const byPrimary = vendor.contactPersons.findIndex((p) => p.isPrimary);
+    if (byPrimary >= 0) return byPrimary;
+    return vendor.contactPersons.findIndex(
+      (p) => p.name === primaryContact.name && p.email === primaryContact.email,
+    );
+  }, [primaryContact, vendor.contactPersons]);
   const stmt = computeStatement(expenses, vendor.openingBalance ?? 0, stmtStart, stmtEnd);
 
   // ── Email dialog state ────────────────────────────────────────────────────
@@ -2352,11 +2640,59 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
             <Edit2 className="h-3.5 w-3.5 mr-1" />Edit
           </Button>
 
-          {/* Attachment count */}
-          <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs px-2">
-            <Paperclip className="h-3.5 w-3.5" />
-            <span>{vendor.documents?.length ?? 0}</span>
-          </Button>
+          {/* Attachment count with popup */}
+          <DropdownMenu open={attachmentPopupOpen} onOpenChange={setAttachmentPopupOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs px-2">
+                <Paperclip className="h-3.5 w-3.5" />
+                <span>{vendor.documents?.length ?? 0}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
+              <div className="px-4 py-3 border-b flex items-center justify-between">
+                <span className="text-sm font-semibold">Attachments</span>
+                <button onClick={() => setAttachmentPopupOpen(false)} className="text-destructive hover:text-destructive/80">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="px-4 py-3">
+                {(vendor.documents?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-3">No Files Attached</p>
+                ) : (
+                  <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+                    {vendor.documents?.map((doc, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-sm bg-muted/30 rounded px-2.5 py-1.5">
+                        <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-primary hover:underline text-xs">{doc.name}</a>
+                        <button onClick={() => handleRemoveAttachment(idx)} className="text-destructive hover:text-destructive/80 shrink-0">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  className="flex items-center justify-center gap-2 w-full py-2.5 text-sm text-primary hover:bg-primary/5 rounded-md border border-dashed border-primary/30 transition-colors"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  disabled={attachmentUploading}
+                >
+                  {attachmentUploading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</>
+                  ) : (
+                    <><Upload className="h-4 w-4" /> Upload your Files <span className="text-primary">✓</span></>
+                  )}
+                </button>
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleAttachmentUpload}
+                />
+                <p className="text-[10px] text-muted-foreground text-center mt-2">You can upload a maximum of 10 files, 10MB each</p>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* New Transaction dropdown */}
           <DropdownMenu>
@@ -2366,14 +2702,26 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onClick={() => router.push(`/purchases/expenses/new`)}>
+              <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Purchases</p>
+              <DropdownMenuItem onClick={() => router.push(`/purchases/bills/new?vendorId=${vendor._id}`)}>
+                Bill
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/purchases/payments-made/new?vendorId=${vendor._id}`)}>
+                Bill Payment
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/purchases/expenses/new?vendorId=${vendor._id}`)}>
                 Expense
               </DropdownMenuItem>
-              <DropdownMenuItem disabled>Bill</DropdownMenuItem>
-              <DropdownMenuItem disabled>Purchase Order</DropdownMenuItem>
-              <DropdownMenuItem disabled>Vendor Credit</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/purchases/orders/new?vendorId=${vendor._id}`)}>
+                Purchase Order
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/purchases/vendor-credits/new?vendorId=${vendor._id}`)}>
+                Vendor Credit
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled>Payment</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/accountant/journal-entries/new?vendorId=${vendor._id}`)}>
+                Journal
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -2385,15 +2733,14 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem disabled>Associate Templates</DropdownMenuItem>
-              <DropdownMenuItem disabled>Configure Vendor Portal</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAssociateTemplatesDialogOpen(true)}>Associate Templates</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setBankDialogOpen(true)}>
                 Add Bank Account
               </DropdownMenuItem>
-              <DropdownMenuItem disabled>Link to Customer</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLinkCustomerDialogOpen(true)}>Link to Customer</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled>Clone</DropdownMenuItem>
-              <DropdownMenuItem disabled>Merge Vendors</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCloneVendor}>Clone</DropdownMenuItem>
+              <DropdownMenuItem onClick={openMergeDialog}>Merge Vendors</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
@@ -2454,34 +2801,69 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
           <div className="flex h-full min-h-0 overflow-hidden">
             {/* â”€â”€ LEFT column: contact info, addresses, details â”€â”€ */}
             <div className="flex-1 overflow-y-auto px-5 py-4 border-r min-w-0">
-              {/* Primary contact banner */}
-              {!primaryContact && !vendor.email && !vendor.phone ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 border border-dashed rounded-lg px-4 py-3 mb-4">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>There is no primary contact information.</span>
-                  <button className="text-primary underline" onClick={() => setCpDialogOpen(true)}>Add New</button>
-                </div>
-              ) : primaryContact ? (
-                <div className="flex items-center gap-3 bg-muted/20 rounded-lg px-4 py-3 mb-4">
-                  <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary" />
+              {/* Profile Section */}
+              <div className="mb-6 flex items-start justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border shadow-sm overflow-hidden">
+                    {primaryContact?.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={primaryContact.photoUrl} alt={primaryContact.name} className="h-full w-full object-cover" />
+                    ) : vendor.companyName ? (
+                      <span className="text-2xl font-bold text-primary">{vendor.companyName.charAt(0).toUpperCase()}</span>
+                    ) : (
+                      <User className="h-8 w-8 text-primary" />
+                    )}
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">{primaryContact.name}</p>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      {primaryContact.email && <span>{primaryContact.email}</span>}
-                      {primaryContact.workPhone && <span>{primaryContact.workPhone}</span>}
+                  <div className="pt-1">
+                    <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">{vendor.companyName}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h2 className="text-xl font-semibold leading-none">{primaryContact?.name ?? "No Primary Contact"}</h2>
+                      {primaryContact && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="text-muted-foreground hover:text-primary transition-colors active:scale-95">
+                              <Settings className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-32">
+                            <DropdownMenuItem onClick={() => {
+                              const pIdx = primaryContactIndex;
+                              setEditingCpIdx(typeof pIdx === "number" && pIdx >= 0 ? pIdx : null);
+                              setCpDialogOpen(true);
+                            }}>
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => {
+                                const idx = primaryContactIndex;
+                                if (typeof idx === "number" && idx >= 0) handleRemoveContactPerson(idx);
+                              }}
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
+                    {primaryContact?.email && <p className="text-sm text-muted-foreground mb-0.5">{primaryContact.email}</p>}
+                    {(primaryContact?.mobile || primaryContact?.workPhone) && (
+                      <p className="text-sm text-muted-foreground">{primaryContact.mobile || primaryContact.workPhone}</p>
+                    )}
                   </div>
-                  <Badge variant="secondary" className="ml-auto text-xs">Primary</Badge>
                 </div>
-              ) : null}
+              </div>
 
               {/* ADDRESS */}
               <Section title="Address">
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <p className="text-xs font-semibold text-muted-foreground mb-2">Billing Address</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-muted-foreground">Billing Address</p>
+                      <button className="text-muted-foreground hover:text-primary transition-colors" onClick={() => router.push(`/purchases/vendors/${vendor._id}/edit`)}>
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                     {vendor.billingAddress?.street ? (
                       <div className="text-sm space-y-0.5">
                         {vendor.billingAddress.attention && <p className="font-medium">{vendor.billingAddress.attention}</p>}
@@ -2493,9 +2875,6 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                         {vendor.billingAddress.country && <p>{vendor.billingAddress.country}</p>}
                       </div>
                     ) : <p className="text-sm text-muted-foreground">No billing address</p>}
-                    <button className="mt-2 text-xs text-primary underline" onClick={() => router.push(`/purchases/vendors/${vendor._id}/edit`)}>
-                      Edit Address
-                    </button>
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground mb-2">Shipping Address</p>
@@ -3337,6 +3716,174 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
           )}
         </DialogContent>
       </Dialog>
+      
+      <LinkCustomerDialog 
+        open={linkCustomerDialogOpen} 
+        onClose={() => setLinkCustomerDialogOpen(false)} 
+        vendor={vendor} 
+        onSave={async (customerId) => {
+          try {
+            await contactApi.update(vendor._id, { linkedContactId: customerId } as any);
+            toast.success("Vendor linked to customer successfully");
+          } catch {
+            toast.error("Failed to link vendor");
+          }
+        }} 
+      />
+      <AssociateTemplatesDialog open={associateTemplatesDialogOpen} onClose={() => setAssociateTemplatesDialogOpen(false)} />
+
+      <Dialog open={mergeDialogOpen} onOpenChange={(open) => { if (!merging) setMergeDialogOpen(open); }}>
+        <DialogContent className="max-w-[900px] p-0 overflow-hidden">
+          <div className="flex items-center justify-between border-b px-6 py-4">
+            <h3 className="text-3xl font-normal">Merge Vendors</h3>
+            <button
+              type="button"
+              className="text-red-500 hover:text-red-600 disabled:opacity-50"
+              onClick={() => setMergeDialogOpen(false)}
+              disabled={merging}
+              aria-label="Close"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="px-6 py-8">
+            <p className="text-lg leading-relaxed text-foreground/90">
+              Select a vendor profile with whom you'd like to merge <strong>{vendor.displayName}</strong>. Once merged,
+              the transactions of <strong>{vendor.displayName}</strong> will be transferred, and this vendor record will be marked as inactive.
+            </p>
+            <div className="mt-8">
+              <Select value={mergeTargetVendorId} onValueChange={setMergeTargetVendorId}>
+                <SelectTrigger className="h-10 text-sm">
+                  <SelectValue placeholder="Select Vendor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mergeCandidates.map((candidate) => (
+                    <SelectItem key={candidate._id} value={candidate._id}>
+                      {candidate.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="border-t px-6 py-6">
+            <div className="flex items-center gap-3">
+              <Button
+                className="h-10 px-5 bg-blue-500 hover:bg-blue-600"
+                onClick={handleMergeVendors}
+                disabled={merging || !mergeTargetVendorId}
+              >
+                {merging ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Merging...</> : "Continue"}
+              </Button>
+              <Button variant="outline" className="h-10 px-5" onClick={() => setMergeDialogOpen(false)} disabled={merging}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function LinkCustomerDialog({ open, onClose, vendor, onSave }: { open: boolean, onClose: () => void, vendor: Contact, onSave: (customerId: string) => void }) {
+  const [customers, setCustomers] = useState<{_id: string, displayName: string}[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+       setLoading(true);
+       contactApi.list({ type: "Customer" }).then(res => {
+         setCustomers(res.data || []);
+         setLoading(false);
+       }).catch(() => setLoading(false));
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Link {vendor.displayName} to Customer</DialogTitle>
+        </DialogHeader>
+        <div className="py-2 text-sm text-muted-foreground space-y-4">
+          <p>You're about to link this vendor to a customer. As a result the vendor profile of the contact will be linked to the customer profile of the other contact. This process will allow you to view receivables and payables for the contact from the contact's overview section.</p>
+          <div>
+            <Label>Customer</Label>
+            <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+              <SelectTrigger className="w-full mt-1.5"><SelectValue placeholder="Select Customer" /></SelectTrigger>
+              <SelectContent>
+                {customers.map(c => <SelectItem key={c._id} value={c._id}>{c.displayName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!selectedCustomerId || loading} onClick={() => { onSave(selectedCustomerId); onClose(); }}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AssociateTemplatesDialog({ open, onClose }: { open: boolean, onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Associate Templates</DialogTitle>
+        </DialogHeader>
+        <div className="py-2 text-sm text-muted-foreground space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+          <p>You can associate specific templates for transaction PDFs and emails that will be sent to your vendors.</p>
+          
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-medium text-foreground">PDF Templates</h3>
+              <Button variant="ghost" size="sm" className="h-8 text-primary"><Plus className="w-4 h-4 mr-1" />New PDF Template</Button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-[200px_1fr] items-center gap-4">
+                <span className="text-foreground">Vendor Statement</span>
+                <Select defaultValue="standard"><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="standard">Standard</SelectItem></SelectContent></Select>
+              </div>
+              <div className="grid grid-cols-[200px_1fr] items-center gap-4">
+                <span className="text-foreground">Purchase Order</span>
+                <Select defaultValue="standard"><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="standard">Standard Template</SelectItem></SelectContent></Select>
+              </div>
+              <div className="grid grid-cols-[200px_1fr] items-center gap-4">
+                <span className="text-foreground">Bills</span>
+                <Select defaultValue="standard"><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="standard">Standard Template</SelectItem></SelectContent></Select>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-medium text-foreground">Email Notifications</h3>
+              <Button variant="ghost" size="sm" className="h-8 text-primary"><Plus className="w-4 h-4 mr-1" />New Email Template</Button>
+            </div>
+            <div className="mb-4 text-xs font-medium flex items-center text-primary">
+              <Settings className="w-3.5 h-3.5 mr-1.5" />Vendor Language: English
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-[200px_1fr] items-center gap-4">
+                <span className="text-foreground">Purchase Order</span>
+                <Select defaultValue="default"><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="default">Default</SelectItem></SelectContent></Select>
+              </div>
+              <div className="grid grid-cols-[200px_1fr] items-center gap-4">
+                <span className="text-foreground">Payments Made</span>
+                <Select defaultValue="default"><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="default">Default</SelectItem></SelectContent></Select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="mt-4">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onClose}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

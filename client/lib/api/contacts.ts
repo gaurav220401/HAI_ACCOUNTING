@@ -1,4 +1,4 @@
-﻿import { apiFetch, buildQuery } from "./client";
+import { apiFetch, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -29,6 +29,9 @@ export interface ContactPerson {
   workPhone?: string;
   mobile?: string;
   designation?: string;
+  department?: string;
+  skypeName?: string;
+  photoUrl?: string;
   isPrimary?: boolean;
 }
 
@@ -169,6 +172,7 @@ export type UpdateContactInput = Partial<CreateContactInput> & { isActive?: bool
 export interface ContactListParams extends ListParams {
   type?: ContactType | "All";
   search?: string;
+  includeInactive?: boolean;
 }
 // ─── GSTIN Lookup ────────────────────────────────────────────────────────
 
@@ -235,6 +239,15 @@ export const contactApi = {
     apiFetch<{ data: Contact }>(`/contacts/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
+    }),
+
+  clone: (id: string) =>
+    apiFetch<{ data: Contact }>(`/contacts/${id}/clone`, { method: "POST" }),
+
+  mergeVendors: (sourceVendorId: string, targetVendorId: string) =>
+    apiFetch<{ success: boolean; data: { sourceVendorId: string; targetVendorId: string } }>(`/contacts/${sourceVendorId}/merge`, {
+      method: "POST",
+      body: JSON.stringify({ targetVendorId }),
     }),
 
   remove: (id: string) =>

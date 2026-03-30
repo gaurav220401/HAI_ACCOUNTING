@@ -39,6 +39,9 @@ const contactPersonSchema = new Schema(
     mobile: { type: String, default: "" },
     phone: { type: String, default: "" },   // backward compat alias
     designation: { type: String, default: "" },
+    department: { type: String, default: "" },
+    skypeName: { type: String, default: "" },
+    photoUrl: { type: String, default: "" },
     isPrimary: { type: Boolean, default: false },
   },
   { _id: false },
@@ -128,6 +131,7 @@ const contactSchema = new Schema<IContact>(
     // Calculated
     outstandingPayable: { type: Number, default: 0 },
     outstandingReceivable: { type: Number, default: 0 },
+    linkedContactId: { type: Schema.Types.ObjectId, ref: "Contact", default: null },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
