@@ -6,6 +6,7 @@ import DocumentModel, { IDocument, DocumentType, ProcessingMode } from "../model
 
 interface ProcessJobPayload {
   documentId: string;
+  pdfPassword?: string;
 }
 
 interface GeminiExtraction {
@@ -117,6 +118,7 @@ function parseGeminiJsonPayload(text: string): GeminiExtraction | null {
 async function extractWithGemini(
   document: IDocument,
   mode: ProcessingMode,
+  pdfPassword?: string,
 ): Promise<GeminiExtraction | null> {
   const ai = getGeminiClient();
   if (!ai) return null;
@@ -138,6 +140,7 @@ async function extractWithGemini(
     `mimeType: ${document.mimeType}`,
     `documentType: ${document.documentType}`,
     `emailSubject: ${document.emailSubject || ""}`,
+    pdfPassword ? `pdfPassword: ${pdfPassword}` : "",
   ].join("\n");
 
   const inlineDoc = await loadInlineDocumentPart(document);
@@ -146,11 +149,26 @@ async function extractWithGemini(
     parts.push({ inlineData: inlineDoc });
   }
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: [{ role: "user", parts }],
-    config: { responseMimeType: "application/json" },
-  });
+  let response;
+  try {
+    response = await ai.models.generateContent({
+      model,
+      contents: [{ role: "user", parts }],
+      config: { responseMimeType: "application/json" },
+    });
+  } catch (error: any) {
+    const message = String(error?.message || error || "");
+    if (
+      message.includes("RESOURCE_EXHAUSTED") ||
+      message.toLowerCase().includes("quota") ||
+      message.includes("429")
+    ) {
+      console.warn("Gemini quota exhausted; continuing with fallback extraction only.");
+      return null;
+    }
+    console.warn("Gemini extraction failed; continuing with fallback extraction:", message);
+    return null;
+  }
 
   const textField = (response as unknown as { text?: string | (() => string) }).text;
   const text =
@@ -204,7 +222,22 @@ function parseTransactionsFromText(text: string) {
   return txns;
 }
 
-async function processDocument(document: IDocument): Promise<void> {
+async function markProcessingFailure(doc: IDocument, error: any): Promise<void> {
+  doc.processingStatus = "UNREADABLE";
+  doc.errorMessage = "Simple failed: scan could not be completed";
+  doc.processingLogs.push(
+    nowLog("pipeline", "error", `Simple failed: ${error?.message || "Unknown processing error"}`),
+  );
+  doc.activityLogs.push({
+    eventType: "processing_failed",
+    message: "Simple failed",
+    payload: { reason: error?.message || "Unknown processing error" },
+    createdAt: new Date(),
+  });
+  await doc.save();
+}
+
+async function processDocument(document: IDocument, pdfPassword?: string): Promise<void> {
   document.processingStatus = "SCAN_IN_PROGRESS";
   document.processingLogs.push(nowLog("pipeline", "ok", "Scan started"));
   document.documentType = inferDocumentType(
@@ -219,7 +252,7 @@ async function processDocument(document: IDocument): Promise<void> {
     `${document.emailSubject || ""} ${document.emailSender || ""}`,
   );
 
-  const gemini = await extractWithGemini(document, document.processingMode);
+  const gemini = await extractWithGemini(document, document.processingMode, pdfPassword);
   if (gemini?.rawText) {
     document.processingLogs.push(nowLog("ocr", "ok", "Gemini extracted OCR text"));
   } else {
@@ -269,7 +302,11 @@ async function processDocument(document: IDocument): Promise<void> {
 
   if (confidence < 0.35 && !amount && !vendorName && !invoiceNumber) {
     document.processingStatus = "UNREADABLE";
-    document.errorMessage = "Could not extract structured fields from this file";
+    if (document.extension?.toLowerCase() === "pdf" && !pdfPassword) {
+      document.errorMessage = "Could not extract fields. If this PDF is password-protected, submit password and reprocess.";
+    } else {
+      document.errorMessage = "Could not extract structured fields from this file";
+    }
     document.processingLogs.push(nowLog("ai_extract", "warn", "Low confidence extraction"));
   } else {
     document.processingStatus = "PROCESSED";
@@ -298,20 +335,9 @@ async function processDocumentJob(job: Job<ProcessJobPayload>) {
   const doc = await DocumentModel.findById(job.data.documentId);
   if (!doc || doc.isDeleted) return;
   try {
-    await processDocument(doc);
+    await processDocument(doc, job.data.pdfPassword);
   } catch (error: any) {
-    doc.processingStatus = "UNREADABLE";
-    doc.errorMessage = "Simple failed: scan could not be completed";
-    doc.processingLogs.push(
-      nowLog("pipeline", "error", `Simple failed: ${error?.message || "Unknown processing error"}`),
-    );
-    doc.activityLogs.push({
-      eventType: "processing_failed",
-      message: "Simple failed",
-      payload: { reason: error?.message || "Unknown processing error" },
-      createdAt: new Date(),
-    });
-    await doc.save();
+    await markProcessingFailure(doc, error);
   }
 }
 
@@ -399,15 +425,19 @@ export function startDocumentScanRecoveryCron() {
   }, intervalMs);
 }
 
-export async function enqueueDocumentProcessing(documentId: string): Promise<void> {
+export async function enqueueDocumentProcessing(documentId: string, pdfPassword?: string): Promise<void> {
   ensureQueue();
 
   if (queue) {
-    await queue.add("process", { documentId }, { removeOnComplete: 100, removeOnFail: 200 });
+    await queue.add("process", { documentId, pdfPassword }, { removeOnComplete: 100, removeOnFail: 200 });
     return;
   }
 
   const doc = await DocumentModel.findById(documentId);
   if (!doc || doc.isDeleted) return;
-  await processDocument(doc);
+  try {
+    await processDocument(doc, pdfPassword);
+  } catch (error: any) {
+    await markProcessingFailure(doc, error);
+  }
 }

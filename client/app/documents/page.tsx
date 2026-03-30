@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Upload,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -55,6 +56,7 @@ import {
   type DocumentInbox,
   type DocumentItem,
   type DocumentProcessingStatus,
+  type DocumentStats,
 } from "@/lib/api/documents";
 import { auth } from "@/lib/firebase";
 
@@ -124,13 +126,66 @@ function formatMimeLabel(mimeType?: string, extension?: string) {
   return mimeType || "File";
 }
 
+function getPreviewKind(
+  mimeType?: string,
+  extension?: string,
+): "image" | "pdf" | "audio" | "video" | "office" | "text" | "archive" | "other" {
+  const mime = (mimeType || "").toLowerCase();
+  const ext = (extension || "").toLowerCase();
+
+  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff"].includes(ext)) {
+    return "image";
+  }
+  if (mime === "application/pdf" || ext === "pdf") return "pdf";
+  if (mime.startsWith("audio/") || ["mp3", "wav", "aac", "m4a", "ogg", "flac"].includes(ext)) return "audio";
+  if (mime.startsWith("video/") || ["mp4", "webm", "mov", "avi", "mkv", "m4v"].includes(ext)) return "video";
+  if (
+    mime.startsWith("text/") ||
+    ["txt", "csv", "json", "xml", "log", "md", "html", "htm"].includes(ext)
+  ) {
+    return "text";
+  }
+  if (
+    mime.includes("zip") ||
+    mime.includes("rar") ||
+    mime.includes("7z") ||
+    ["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(ext)
+  ) {
+    return "archive";
+  }
+  if (["doc", "docx", "xls", "xlsx", "ppt", "pptx"].includes(ext)) return "office";
+  return "other";
+}
+
 export default function DocumentsPage() {
   const { loading: authLoading, dbUser } = useAuth();
   const { loading: orgLoading, activeOrganization } = useOrganization();
 
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [docStats, setDocStats] = useState<DocumentStats>({ all: 0, files: 0, bank: 0 });
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [fullScreenPreview, setFullScreenPreview] = useState(false);
+  const [pinPreview, setPinPreview] = useState(false);
+  const [userSelectedDocument, setUserSelectedDocument] = useState(false);
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setFullScreenPreview(false);
+    setUserSelectedDocument(false);
+    setPinPreview(false);
+    setSelectedDocumentId(null);
+    setSelectedDocument(null);
+  };
+  const resetSelection = () => {
+    setSelectedDocument(null);
+    setSelectedDocumentId(null);
+    setUserSelectedDocument(false);
+    setPreviewOpen(false);
+    setFullScreenPreview(false);
+    setPinPreview(false);
+  };
 
   const [inbox, setInbox] = useState<DocumentInbox>("all");
   const [isTrashView, setIsTrashView] = useState(false);
@@ -150,6 +205,10 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [advancedMode, setAdvancedMode] = useState(false);
+  const [pdfPasswordInput, setPdfPasswordInput] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -166,13 +225,7 @@ export default function DocumentsPage() {
     return Array.from(set).sort();
   }, [documents]);
 
-  const docsCount = useMemo(() => {
-    return {
-      all: documents.length,
-      files: documents.filter((d) => d.documentType !== "bank_statement").length,
-      bank: documents.filter((d) => d.documentType === "bank_statement").length,
-    };
-  }, [documents]);
+  const docsCount = useMemo(() => docStats, [docStats]);
 
   const loadData = useCallback(async () => {
     if (!activeOrganization?._id) return;
@@ -229,8 +282,13 @@ export default function DocumentsPage() {
           })
         : null;
 
+      const statsRes = !isTrashView ? await documentsApi.getStats().catch(() => null) : null;
+
       const loadedDocs = docRes.data || [];
       setDocuments(loadedDocs);
+      if (statsRes?.data) {
+        setDocStats(statsRes.data);
+      }
       setFolders(folderRes.data || []);
       if (mailboxRes) {
         setMailboxAddress(mailboxRes.data.mailboxAddress);
@@ -242,17 +300,39 @@ export default function DocumentsPage() {
       }
 
       setSelectedDocument((prev) => {
-        if (!prev) return loadedDocs[0] || null;
-        const stillExists = loadedDocs.find((d) => d._id === prev._id);
-        return stillExists || loadedDocs[0] || null;
+        if (!selectedDocumentId) return null;
+
+        // Lock to the selected document id even when list order changes.
+        const stillExists = loadedDocs.find((d) => d._id === selectedDocumentId);
+        if (stillExists) return stillExists;
+
+        // In pin mode, keep showing last loaded preview until user changes it.
+        if (pinPreview) return prev;
+
+        return null;
       });
+
+      if (loadedDocs.length === 0) {
+        setPreviewOpen(false);
+      }
     } catch (error) {
       console.error(error);
       toast.error("Failed to load documents");
     } finally {
       setLoading(false);
     }
-  }, [activeOrganization?._id, fileTypeFilter, inbox, isTrashView, search, selectedFolderId, statusFilter]);
+  }, [
+    activeOrganization?._id,
+    fileTypeFilter,
+    inbox,
+    isTrashView,
+    pinPreview,
+    search,
+    selectedDocumentId,
+    selectedFolderId,
+    statusFilter,
+    userSelectedDocument,
+  ]);
 
   useEffect(() => {
     if (!activeOrganization?._id) return;
@@ -294,6 +374,58 @@ export default function DocumentsPage() {
       source?.close();
     };
   }, [loadData]);
+
+  useEffect(() => {
+    if (selectedDocument && !isTrashView && (userSelectedDocument || pinPreview)) {
+      setPreviewOpen(true);
+    } else if (!selectedDocument || isTrashView) {
+      setPreviewOpen(false);
+    }
+  }, [pinPreview, selectedDocument, isTrashView, userSelectedDocument]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (previewOpen && !selectedDocument) {
+      console.warn("[documents-preview-check] Preview is open without selected document");
+    }
+    if (previewOpen && isTrashView) {
+      console.warn("[documents-preview-check] Preview opened while trash view is active");
+    }
+    if (previewOpen && !(inbox === "files" || inbox === "bank_statements")) {
+      console.warn("[documents-preview-check] Preview opened outside supported inboxes");
+    }
+  }, [inbox, isTrashView, previewOpen, selectedDocument]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPreviewUrl = async () => {
+      if (!selectedDocument || isTrashView || !previewOpen) {
+        setPreviewUrl("");
+        setPreviewError("");
+        return;
+      }
+
+      setPreviewLoading(true);
+      setPreviewError("");
+      try {
+        const res = await documentsApi.getSignedUrl(selectedDocument._id, 600);
+        if (!cancelled) setPreviewUrl(res.data.url);
+      } catch (error) {
+        if (!cancelled) {
+          setPreviewUrl("");
+          setPreviewError("Preview could not be loaded. Use Secure Preview URL as fallback.");
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    };
+
+    loadPreviewUrl().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isTrashView, previewOpen, selectedDocument?._id]);
 
   const onUploadFiles = async (files: FileList | File[] | null, source: "manual" | "drag_drop") => {
     if (!files || files.length === 0) return;
@@ -429,11 +561,12 @@ export default function DocumentsPage() {
     }
   };
 
-  const onReprocess = async () => {
+  const onReprocess = async (pdfPassword?: string) => {
     if (!selectedDocument) return;
     try {
-      await documentsApi.reprocess(selectedDocument._id);
+      await documentsApi.reprocess(selectedDocument._id, pdfPassword ? { pdfPassword } : undefined);
       toast.success("Reprocess queued");
+      setPdfPasswordInput("");
       await loadData();
     } catch (error) {
       console.error(error);
@@ -474,6 +607,7 @@ export default function DocumentsPage() {
             <button
               type="button"
               onClick={() => {
+                resetSelection();
                 setIsTrashView(false);
                 setInbox("all");
               }}
@@ -493,6 +627,7 @@ export default function DocumentsPage() {
             <button
               type="button"
               onClick={() => {
+                resetSelection();
                 setIsTrashView(false);
                 setInbox("files");
               }}
@@ -508,6 +643,7 @@ export default function DocumentsPage() {
             <button
               type="button"
               onClick={() => {
+                resetSelection();
                 setIsTrashView(false);
                 setInbox("bank_statements");
               }}
@@ -611,6 +747,7 @@ export default function DocumentsPage() {
           <button
             type="button"
             onClick={() => {
+              resetSelection();
               setIsTrashView(true);
               setSelectedDocument(null);
             }}
@@ -637,7 +774,7 @@ export default function DocumentsPage() {
           ) : (
             <div
               className={`grid gap-4 ${
-                !isTrashView && inbox === "files" ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "lg:grid-cols-[minmax(0,1fr)]"
+                "lg:grid-cols-[minmax(0,1fr)]"
               }`}
             >
               <div className="space-y-4">
@@ -839,9 +976,13 @@ export default function DocumentsPage() {
                         {documents.map((doc) => (
                           <TableRow
                             key={doc._id}
-                            className={!isTrashView && inbox === "files" && selectedDocument?._id === doc._id ? "bg-muted/40" : ""}
+                            className={!isTrashView && selectedDocument?._id === doc._id ? "bg-muted/40" : ""}
                             onClick={() => {
-                              if (!isTrashView && inbox === "files") setSelectedDocument(doc);
+                              if (!isTrashView) {
+                                setSelectedDocumentId(doc._id);
+                                setSelectedDocument(doc);
+                                setUserSelectedDocument(true);
+                              }
                             }}
                           >
                             <TableCell>
@@ -880,16 +1021,30 @@ export default function DocumentsPage() {
                               </TableCell>
                             ) : inbox === "bank_statements" ? (
                               <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onAddToBankById(doc._id);
-                                  }}
-                                >
-                                  Add to Bank
-                                </Button>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedDocumentId(doc._id);
+                                      setSelectedDocument(doc);
+                                      setUserSelectedDocument(true);
+                                    }}
+                                  >
+                                    Preview
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onAddToBankById(doc._id);
+                                    }}
+                                  >
+                                    Add to Bank
+                                  </Button>
+                                </div>
                               </TableCell>
                             ) : (
                               <TableCell>{doc.links?.[0]?.entityType || "-"}</TableCell>
@@ -952,16 +1107,22 @@ export default function DocumentsPage() {
                 </div> : null}
               </div>
 
-              {!isTrashView && inbox === "files" ? (
-              <aside className="h-fit rounded-lg border bg-background">
-                <div className="border-b p-4">
-                  <h2 className="text-sm font-semibold">Preview</h2>
-                  <p className="text-xs text-muted-foreground">Right-side document details and smart actions</p>
-                </div>
+              {!isTrashView && (inbox === "files" || inbox === "bank_statements") && previewOpen && selectedDocument ? (
+              <>
+                <div className="fixed inset-0 z-40 bg-black/25" aria-hidden="true" />
+                <aside className="fixed right-0 top-0 z-50 h-screen w-full max-w-[460px] overflow-y-auto border-l bg-background shadow-2xl">
+                  <div className="sticky top-0 z-10 border-b bg-background p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-semibold">Preview</h2>
+                        <p className="text-xs text-muted-foreground">Right-side document details and smart actions</p>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={closePreview}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
 
-                {!selectedDocument ? (
-                  <div className="p-4 text-sm text-muted-foreground">Select a document to view details.</div>
-                ) : (
                   <div className="space-y-4 p-4 text-sm">
                     <div>
                       <p className="font-medium">{selectedDocument.fileName}</p>
@@ -988,6 +1149,73 @@ export default function DocumentsPage() {
                             ? `${selectedDocument.extraction.currency || "INR"} ${selectedDocument.extraction.amount}`
                             : "-"}
                         </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-md border p-2">
+                      <p className="text-xs font-medium text-muted-foreground">Document Preview</p>
+                      <div className="h-[320px] overflow-hidden rounded border bg-muted/20">
+                        {previewLoading ? (
+                          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading preview...
+                          </div>
+                        ) : previewError ? (
+                          <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                            {previewError}
+                          </div>
+                        ) : !previewUrl ? (
+                          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                            No preview available
+                          </div>
+                        ) : (() => {
+                          const kind = getPreviewKind(selectedDocument.mimeType, selectedDocument.extension);
+                          if (kind === "image") {
+                            return (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={previewUrl} alt={selectedDocument.fileName} className="h-full w-full object-contain" />
+                            );
+                          }
+                          if (kind === "pdf") {
+                            return <embed src={previewUrl} type="application/pdf" className="h-full w-full" />;
+                          }
+                          if (kind === "audio") {
+                            return (
+                              <div className="flex h-full items-center justify-center p-3">
+                                <audio controls className="w-full" src={previewUrl}>
+                                  <track kind="captions" />
+                                </audio>
+                              </div>
+                            );
+                          }
+                          if (kind === "video") {
+                            return (
+                              <div className="flex h-full items-center justify-center bg-black">
+                                <video controls className="h-full w-full" src={previewUrl}>
+                                  <track kind="captions" />
+                                </video>
+                              </div>
+                            );
+                          }
+                          if (kind === "text") {
+                            return <iframe title="Text Preview" src={previewUrl} className="h-full w-full" />;
+                          }
+                          if (kind === "office") {
+                            const officeUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewUrl)}`;
+                            return <iframe title="Office Preview" src={officeUrl} className="h-full w-full" />;
+                          }
+                          if (kind === "archive") {
+                            return (
+                              <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center text-xs text-muted-foreground">
+                                <p>This is an archive file (ZIP/RAR/7Z). Inline preview is not available.</p>
+                                <Button variant="link" className="h-auto p-0 text-xs" onClick={() => window.open(previewUrl, "_blank")}>Download archive</Button>
+                              </div>
+                            );
+                          }
+                          return (
+                            <iframe title="File Preview" src={previewUrl} className="h-full w-full" />
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -1053,6 +1281,20 @@ export default function DocumentsPage() {
 
                     <div className="space-y-2 border-t pt-2">
                       <Button
+                        variant={pinPreview ? "default" : "outline"}
+                        className="w-full"
+                        onClick={() => setPinPreview((v) => !v)}
+                      >
+                        {pinPreview ? "Pinned Preview Enabled" : "Pin Preview"}
+                      </Button>
+                      <Button
+                        variant="default"
+                        className="w-full"
+                        onClick={() => setFullScreenPreview(true)}
+                      >
+                        Full Screen Preview
+                      </Button>
+                      <Button
                         variant="outline"
                         className="w-full"
                         onClick={async () => {
@@ -1068,10 +1310,31 @@ export default function DocumentsPage() {
                       >
                         Secure Preview URL
                       </Button>
-                      <Button variant="outline" className="w-full" onClick={onReprocess}>
+                      <Button variant="outline" className="w-full" onClick={() => onReprocess()}>
                         <RefreshCw className="h-4 w-4" />
                         Reprocess
                       </Button>
+
+                      {selectedDocument.extension?.toLowerCase() === "pdf" ? (
+                        <div className="space-y-2 rounded-md border p-2">
+                          <Label className="text-xs text-muted-foreground">PDF Password (if protected)</Label>
+                          <Input
+                            type="password"
+                            placeholder="Enter PDF password"
+                            value={pdfPasswordInput}
+                            onChange={(e) => setPdfPasswordInput(e.target.value)}
+                          />
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => onReprocess(pdfPasswordInput)}
+                            disabled={!pdfPasswordInput.trim()}
+                          >
+                            Reprocess With Password
+                          </Button>
+                        </div>
+                      ) : null}
+
                       <Button variant="destructive" className="w-full" onClick={onDeleteDocument}>
                         Delete
                       </Button>
@@ -1109,9 +1372,93 @@ export default function DocumentsPage() {
                       ))}
                     </div>
                   </div>
-                )}
-              </aside>
+                </aside>
+              </>
               ) : null}
+            </div>
+          )}
+
+          {/* Full Screen Preview Dialog */}
+          {fullScreenPreview && selectedDocument && (
+            <div className="fixed inset-0 z-50 bg-black/90">
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between border-b bg-background p-4">
+                  <h2 className="text-lg font-semibold">{selectedDocument.fileName}</h2>
+                  <Button variant="ghost" size="icon" onClick={() => setFullScreenPreview(false)}>
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  {previewLoading ? (
+                    <div className="flex h-full items-center justify-center">
+                      <Loader2 className="h-8 w-8 animate-spin" />
+                      <span className="ml-2">Loading preview...</span>
+                    </div>
+                  ) : previewError ? (
+                    <div className="flex h-full items-center justify-center text-white">
+                      <div className="text-center">
+                        <p className="text-lg mb-2">Preview Error</p>
+                        <p>{previewError}</p>
+                      </div>
+                    </div>
+                  ) : !previewUrl ? (
+                    <div className="flex h-full items-center justify-center text-white">
+                      <p>No preview available</p>
+                    </div>
+                  ) : (() => {
+                    const kind = getPreviewKind(selectedDocument.mimeType, selectedDocument.extension);
+                    if (kind === "image") {
+                      return (
+                        <div className="flex h-full items-center justify-center p-4">
+                          <img src={previewUrl} alt={selectedDocument.fileName} className="max-h-full max-w-full object-contain" />
+                        </div>
+                      );
+                    }
+                    if (kind === "pdf") {
+                      return <embed src={previewUrl} type="application/pdf" className="h-full w-full" />;
+                    }
+                    if (kind === "audio") {
+                      return (
+                        <div className="flex h-full items-center justify-center p-6">
+                          <audio controls className="w-full max-w-2xl" src={previewUrl}>
+                            <track kind="captions" />
+                          </audio>
+                        </div>
+                      );
+                    }
+                    if (kind === "video") {
+                      return (
+                        <div className="flex h-full items-center justify-center bg-black">
+                          <video controls className="max-h-full max-w-full" src={previewUrl}>
+                            <track kind="captions" />
+                          </video>
+                        </div>
+                      );
+                    }
+                    if (kind === "text") {
+                      return <iframe title="Full Screen Text Preview" src={previewUrl} className="h-full w-full" />;
+                    }
+                    if (kind === "office") {
+                      const officeUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewUrl)}`;
+                      return <iframe title="Full Screen Office Preview" src={officeUrl} className="h-full w-full" />;
+                    }
+                    if (kind === "archive") {
+                      return (
+                        <div className="flex h-full items-center justify-center text-white">
+                          <div className="text-center">
+                            <p className="text-lg mb-4">This is an archive file (ZIP/RAR/7Z)</p>
+                            <p className="mb-4 text-sm text-white/80">Preview is not available for archive files.</p>
+                            <Button onClick={() => window.open(previewUrl, "_blank")}>
+                              Download archive
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return <iframe title="Full Screen File Preview" src={previewUrl} className="h-full w-full" />;
+                  })()}
+                </div>
+              </div>
             </div>
           )}
 

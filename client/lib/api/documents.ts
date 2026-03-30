@@ -90,9 +90,17 @@ export interface DocumentMailboxInfo {
   forwardingInstructions: string[];
 }
 
+export interface DocumentStats {
+  all: number;
+  files: number;
+  bank: number;
+}
+
 export const documentsApi = {
   list: (params?: DocumentListParams) =>
     apiFetch<PaginatedResponse<DocumentItem>>(`/documents${buildQuery(params || {})}`),
+
+  getStats: () => apiFetch<{ data: DocumentStats }>("/documents/stats"),
 
   listTrash: (params?: Pick<DocumentListParams, "q" | "page" | "limit">) =>
     apiFetch<PaginatedResponse<DocumentItem>>(`/documents/trash${buildQuery(params || {})}`),
@@ -148,9 +156,10 @@ export const documentsApi = {
       { method: "POST" },
     ),
 
-  reprocess: (documentId: string) =>
+  reprocess: (documentId: string, payload?: { pdfPassword?: string }) =>
     apiFetch<{ data: DocumentItem }>(`/documents/${documentId}/reprocess`, {
       method: "POST",
+      body: JSON.stringify(payload || {}),
     }),
 
   getLinkSuggestions: (documentId: string) =>

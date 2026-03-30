@@ -312,6 +312,46 @@ export const listDocuments = asyncHandler(async (req: AuthenticatedRequest, res:
   });
 });
 
+/** GET /api/documents/stats */
+export const getDocumentStats = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+
+  const allFolders = await DocumentFolder.find({ organizationId, isDeleted: false })
+    .select("_id")
+    .lean();
+  const visibleFolderIds: mongoose.Types.ObjectId[] = [];
+  for (const folder of allFolders) {
+    if (await canAccessFolder(req, folder._id as mongoose.Types.ObjectId, "read")) {
+      visibleFolderIds.push(folder._id as mongoose.Types.ObjectId);
+    }
+  }
+
+  const baseFilter: Record<string, unknown> = {
+    organizationId,
+    isDeleted: false,
+    $or: [
+      { folderId: null },
+      { folderId: { $exists: false } },
+      { folderId: { $in: visibleFolderIds } },
+    ],
+  };
+
+  const [allCount, filesCount, bankCount] = await Promise.all([
+    DocumentModel.countDocuments(baseFilter),
+    DocumentModel.countDocuments({ ...baseFilter, documentType: { $ne: "bank_statement" } }),
+    DocumentModel.countDocuments({ ...baseFilter, documentType: "bank_statement" }),
+  ]);
+
+  res.json({
+    success: true,
+    data: {
+      all: allCount,
+      files: filesCount,
+      bank: bankCount,
+    },
+  });
+});
+
 /** GET /api/documents/:id */
 export const getDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -557,22 +597,25 @@ export const reprocessDocument = asyncHandler(async (req: AuthenticatedRequest, 
   if (!document) throw new NotFoundError("Document");
   await ensureDocumentAccess(req, document, "write");
 
+  const pdfPassword = typeof req.body?.pdfPassword === "string" ? req.body.pdfPassword.trim() : "";
+
   document.processingStatus = "PROCESSING";
   document.processingLogs.push({
     stage: "manual_reprocess",
     status: "ok",
-    message: "Manual reprocess requested",
+    message: pdfPassword ? "Manual reprocess requested with PDF password" : "Manual reprocess requested",
     createdAt: new Date(),
   });
   document.activityLogs.push({
     eventType: "reprocess_requested",
-    message: "Document queued for reprocessing",
+    message: pdfPassword ? "Document queued for reprocessing with PDF password" : "Document queued for reprocessing",
     actorId: req.user?._id,
+    payload: { hasPdfPassword: Boolean(pdfPassword) },
     createdAt: new Date(),
   });
   attachUser(document as unknown as { $locals?: Record<string, unknown> }, req);
   await document.save();
-  await enqueueDocumentProcessing(String(document._id));
+  await enqueueDocumentProcessing(String(document._id), pdfPassword || undefined);
 
   res.json({ success: true, data: document });
 });
@@ -1022,6 +1065,14 @@ export const getSignedPreviewUrl = asyncHandler(async (req: AuthenticatedRequest
   if (!document) throw new NotFoundError("Document");
   await ensureDocumentAccess(req, document, "read");
 
+  if (!document.cloudinaryPublicId && document.url) {
+    return res.json({ success: true, data: { url: document.url, ttl } });
+  }
+
+  if (!document.cloudinaryPublicId) {
+    throw new ValidationError("Preview is unavailable for this document");
+  }
+
   const resourceType = document.mimeType?.startsWith("image/") ? "image" : "raw";
   const signedUrl = buildSignedAssetUrl(document.cloudinaryPublicId, resourceType, ttl);
   res.json({ success: true, data: { url: signedUrl, ttl } });
@@ -1107,6 +1158,8 @@ export async function ingestEmailPayload(payload: {
     const keywords = [
       "bank statement",
       "statement",
+      "e-statement",
+      "accountstatement",
       "account summary",
       "mini statement",
       "passbook",
@@ -1122,7 +1175,7 @@ export async function ingestEmailPayload(payload: {
     return keywords.some((k) => text.includes(k));
   })();
 
-  const minAttachmentBytes = Math.max(0, Number(process.env.DOCUMENTS_EMAIL_MIN_ATTACHMENT_BYTES || 8192));
+  const minAttachmentBytes = Math.max(0, Number(process.env.DOCUMENTS_EMAIL_MIN_ATTACHMENT_BYTES || 2048));
   const onlyBankStatements = process.env.DOCUMENTS_EMAIL_ONLY_BANK_STATEMENTS === "true";
   const allowedExtensions = new Set(["pdf", "csv", "xls", "xlsx", "jpg", "jpeg", "png", "webp", "tif", "tiff"]);
   const allowedMimePrefixes = [
@@ -1160,6 +1213,8 @@ export async function ingestEmailPayload(payload: {
     const bankByName =
       lowerName.includes("bank") ||
       lowerName.includes("statement") ||
+      lowerName.includes("e-statement") ||
+      lowerName.includes("accountstatement") ||
       lowerName.includes("txn") ||
       lowerName.includes("transaction");
     const isBankStatement = isBankContext || bankByName;

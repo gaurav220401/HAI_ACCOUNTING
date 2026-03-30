@@ -20,6 +20,7 @@ router.get("/trash", documentController.listTrashDocuments);
 router.post("/upload", documentController.uploadDocumentFile, documentController.uploadDocument);
 
 router.get("/", documentController.listDocuments);
+router.get("/stats", documentController.getDocumentStats);
 router.get("/:id", documentController.getDocument);
 router.get("/:id/signed-url", documentController.getSignedPreviewUrl);
 router.delete("/:id", documentController.deleteDocument);
