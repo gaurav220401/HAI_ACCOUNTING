@@ -8,6 +8,7 @@ import {
   MessageSquare, AlertCircle, Paperclip, X, Clock,
   Printer, Download, FileSpreadsheet, Send, Settings, Settings2, Upload,
   ImagePlus, Palette, Layout, FileText, Grid, AlignLeft,
+  Cloud, CloudCheck, CloudOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -810,9 +811,21 @@ function EditTemplatePanel({
 
   useEffect(() => { if (open) { setLocal(config); setEtTab("general"); } }, [config, open]);
 
-  const update = (patch: Partial<TemplateConfig>) => setLocal((prev) => ({ ...prev, ...patch }));
-  const updateMargin = (k: keyof TemplateConfig["margins"], v: number) =>
-    setLocal((prev) => ({ ...prev, margins: { ...prev.margins, [k]: v } }));
+  const update = (patch: Partial<TemplateConfig>) => {
+    setLocal((prev) => {
+      const next = { ...prev, ...patch };
+      onChange(next);
+      return next;
+    });
+  };
+
+  const updateMargin = (k: keyof TemplateConfig["margins"], v: number) => {
+    setLocal((prev) => {
+      const next = { ...prev, margins: { ...prev.margins, [k]: v } };
+      onChange(next);
+      return next;
+    });
+  };
 
   const etTabs: { id: EditTemplateTab; label: string; icon: React.ReactNode }[] = [
     { id: "general", label: "General", icon: <Settings2 className="h-4 w-4" /> },
@@ -2189,6 +2202,8 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   const [templateConfig, setTemplateConfig] = useState<TemplateConfig>(DEFAULT_TEMPLATE_CONFIG);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [logoAddressOpen, setLogoAddressOpen] = useState(false);
+  const [templateSyncStatus, setTemplateSyncStatus] = useState<"idle" | "saving" | "synced" | "error">("idle");
+  const templateSyncResetTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Org logo/address (local state, loaded from activeOrganization context)
   const { activeOrganization, refreshOrganizations } = useOrganization();
@@ -2215,28 +2230,34 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   // render where save effect would fire with the stale DEFAULT config.
   const hasLoadedConfigRef = useRef(false);
 
-  // Load template config from localStorage on mount (or when vendor changes)
+  // Load statement template config from vendor data or localStorage when vendor changes
   useEffect(() => {
-    if (!initialVendor._id) return;
-    hasLoadedConfigRef.current = false; // block saving until load is processed
+    if (!vendor._id) return;
+    hasLoadedConfigRef.current = false;
+
+    if (vendor.statementTemplate) {
+      setTemplateConfig((prev) => {
+        hasLoadedConfigRef.current = true;
+        return { ...prev, ...vendor.statementTemplate };
+      });
+      return;
+    }
+
     try {
-      const stored = localStorage.getItem(TMPL_KEY(initialVendor._id));
+      const stored = localStorage.getItem(TMPL_KEY(vendor._id));
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<TemplateConfig>;
-        // Set hasLoadedConfigRef INSIDE the functional update — it runs during React's
-        // next render (before effects), so save effect on that re-render will see true.
         setTemplateConfig((prev) => {
           hasLoadedConfigRef.current = true;
           return { ...prev, ...parsed, margins: { ...prev.margins, ...(parsed.margins ?? {}) } };
         });
       } else {
-        // No stored config — safe to allow saving immediately (DEFAULT is correct)
         hasLoadedConfigRef.current = true;
       }
     } catch {
       hasLoadedConfigRef.current = true;
     }
-  }, [initialVendor._id]);
+  }, [vendor._id, vendor.statementTemplate]);
 
   // Also reload from localStorage whenever the statement tab becomes active.
   // This ensures that changes saved in the edit-template page are picked up
@@ -2252,12 +2273,40 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
     } catch { /* ignore */ }
   }, [activeTab, vendor._id]);
 
-  // Save template config to localStorage — only after initial load to avoid overwriting with defaults
+  const saveTemplateTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  // Save template config to localStorage + server-side vendor statementTemplate
   useEffect(() => {
     if (!vendor._id || !hasLoadedConfigRef.current) return;
+
     try {
       localStorage.setItem(TMPL_KEY(vendor._id), JSON.stringify(templateConfig));
     } catch { /* ignore */ }
+
+    setTemplateSyncStatus("saving");
+
+    if (saveTemplateTimeout.current) {
+      clearTimeout(saveTemplateTimeout.current);
+    }
+
+    saveTemplateTimeout.current = setTimeout(async () => {
+      try {
+        await contactApi.update(vendor._id, { statementTemplate: templateConfig });
+        setTemplateSyncStatus("synced");
+
+        if (templateSyncResetTimeout.current) {
+          clearTimeout(templateSyncResetTimeout.current);
+        }
+        templateSyncResetTimeout.current = setTimeout(() => setTemplateSyncStatus("idle"), 2000);
+      } catch {
+        setTemplateSyncStatus("error");
+      }
+    }, 500);
+
+    return () => {
+      if (saveTemplateTimeout.current) clearTimeout(saveTemplateTimeout.current);
+      if (templateSyncResetTimeout.current) clearTimeout(templateSyncResetTimeout.current);
+    };
   }, [templateConfig, vendor._id]);
 
   useEffect(() => {
@@ -3361,6 +3410,32 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                 value={format(stmtEnd, "yyyy-MM-dd")}
                 onChange={(e) => setStmtEnd(e.target.value ? new Date(e.target.value) : stmtEnd)}
               />
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              {templateSyncStatus === "saving" && (
+                <span className="flex items-center gap-1 text-blue-600">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Syncing
+                </span>
+              )}
+              {templateSyncStatus === "synced" && (
+                <span className="flex items-center gap-1 text-green-600">
+                  <CloudCheck className="h-3.5 w-3.5" />
+                  Saved
+                </span>
+              )}
+              {templateSyncStatus === "error" && (
+                <span className="flex items-center gap-1 text-rose-600">
+                  <CloudOff className="h-3.5 w-3.5" />
+                  Save failed
+                </span>
+              )}
+              {templateSyncStatus === "idle" && (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Cloud className="h-3.5 w-3.5" />
+                  Up to date
+                </span>
+              )}
             </div>
             <div className="flex-1" />
             {/* Color Theme Selector */}

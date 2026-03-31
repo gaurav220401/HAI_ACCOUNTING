@@ -119,6 +119,7 @@ export interface Contact {
   documents?: ContactDocument[];
   isActive: boolean;
   legalComplianceLocked?: boolean;
+  statementTemplate?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -169,7 +170,7 @@ export interface CreateContactInput {
   isActive?: boolean;
 }
 
-export type UpdateContactInput = Partial<CreateContactInput> & { isActive?: boolean };
+export type UpdateContactInput = Partial<CreateContactInput> & { isActive?: boolean; statementTemplate?: Record<string, any> };
 
 export interface ContactListParams extends ListParams {
   type?: ContactType | "All";

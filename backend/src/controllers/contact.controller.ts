@@ -237,7 +237,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     "reportingTags", "creditLimit", "salesPersonId",
     "isActive", "contactType",
     "websiteUrl", "department", "designation", "twitterHandle", "skypeName", "facebookUrl",
-    "documents",
+    "statementTemplate", "documents",
   ];
   allowed.forEach((f) => { if (req.body[f] !== undefined) (contact as any)[f] = req.body[f]; });
   attachUser(contact, req);

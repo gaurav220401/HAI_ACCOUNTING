@@ -411,6 +411,7 @@ export interface IContact extends Document {
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date;
+  statementTemplate?: Record<string, any>;
   createdBy: Types.ObjectId;
   updatedBy: Types.ObjectId;
   createdAt: Date;
