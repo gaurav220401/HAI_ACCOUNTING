@@ -119,6 +119,10 @@ export const merge = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   if (!source) throw new NotFoundError("Source vendor");
   if (!target) throw new NotFoundError("Target vendor");
 
+  if (source.legalComplianceLocked) {
+    throw new ValidationError("Cannot merge vendor while legal compliance lock is active on source vendor");
+  }
+
   if (source.contactType !== "Vendor" && source.contactType !== "Both") {
     throw new ValidationError("Source contact is not a vendor");
   }
@@ -156,8 +160,25 @@ export const merge = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   source.notes = [source.notes || "", `Merged into ${target.displayName} on ${new Date().toISOString()}`]
     .filter(Boolean)
     .join("\n");
+
+  const actorName = req.user?.name ?? req.user?.email ?? "System";
+  const sourceMergeComment = {
+    text: `Vendor merged into ${target.displayName} by ${actorName}`,
+    userId: req.user?._id ?? null,
+    userName: actorName,
+    createdAt: new Date(),
+  };
+  (source as any).comments = [...(source as any).comments, sourceMergeComment];
+  (target as any).comments = [...(target as any).comments, {
+    text: `Vendor ${source.displayName} merged into this vendor by ${actorName}`,
+    userId: req.user?._id ?? null,
+    userName: actorName,
+    createdAt: new Date(),
+  }];
+
   attachUser(source, req);
-  await source.save();
+  attachUser(target, req);
+  await Promise.all([source.save(), target.save()]);
 
   res.json({
     success: true,
@@ -288,6 +309,15 @@ export const getActivity = asyncHandler(async (req: AuthenticatedRequest, res: R
     description: `Vendor "${contact.displayName}" was created`,
     userName: contactCreatorName,
   });
+
+  for (const cmt of (contact as any).comments ?? []) {
+    events.push({
+      type: cmt.text?.includes("merged") ? "vendor_merged" : "comment",
+      timestamp: (cmt as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
+      description: cmt.text,
+      userName: (cmt as any).userName ?? "System",
+    });
+  }
 
   for (const exp of expenses) {
     const creator = (exp as any).createdBy;

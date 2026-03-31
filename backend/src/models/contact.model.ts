@@ -132,6 +132,7 @@ const contactSchema = new Schema<IContact>(
     outstandingPayable: { type: Number, default: 0 },
     outstandingReceivable: { type: Number, default: 0 },
     linkedContactId: { type: Schema.Types.ObjectId, ref: "Contact", default: null },
+    legalComplianceLocked: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },

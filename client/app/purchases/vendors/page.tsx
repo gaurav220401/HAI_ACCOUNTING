@@ -25,6 +25,7 @@ export default function VendorsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"Active" | "Inactive" | "All">("All");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Contact | null>(null);
   const [loadingVendor, setLoadingVendor] = useState(false);
@@ -42,12 +43,13 @@ export default function VendorsPage() {
   useEffect(() => {
     if (firebaseUser && !loading && activeOrganization?._id) fetchContacts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading, activeOrganization?._id]);
+  }, [firebaseUser, loading, activeOrganization?._id, statusFilter]);
 
   async function fetchContacts() {
     setFetching(true);
     try {
-      const res = await contactApi.list({ type: "Vendor", page: 1, limit: 200, includeInactive: true });
+      const includeInactive = statusFilter !== "Active";
+      const res = await contactApi.list({ type: "Vendor", page: 1, limit: 200, includeInactive });
       setContacts(res.data ?? []);
     } catch {
       // noop
@@ -85,13 +87,19 @@ export default function VendorsPage() {
     );
   }
 
-  const filtered = contacts.filter(
-    (c) =>
-      !search ||
-      c.displayName.toLowerCase().includes(search.toLowerCase()) ||
-      c.companyName?.toLowerCase().includes(search.toLowerCase()) ||
-      c.email?.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = contacts
+    .filter((c) => {
+      if (statusFilter === "Active") return c.isActive !== false;
+      if (statusFilter === "Inactive") return c.isActive === false;
+      return true;
+    })
+    .filter(
+      (c) =>
+        !search ||
+        c.displayName.toLowerCase().includes(search.toLowerCase()) ||
+        c.companyName?.toLowerCase().includes(search.toLowerCase()) ||
+        c.email?.toLowerCase().includes(search.toLowerCase()),
+    );
 
   return (
     <SidebarProvider>
@@ -107,14 +115,25 @@ export default function VendorsPage() {
           actions={
             !panelOpen ? (
               <>
-                <div className="relative w-52">
-                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-8 h-8 text-sm"
-                    placeholder="Search vendors…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative w-52">
+                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      className="pl-8 h-8 text-sm"
+                      placeholder="Search vendors…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as "Active" | "Inactive" | "All")}
+                    className="h-8 rounded border border-muted px-2 text-xs"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="All">All</option>
+                  </select>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching} className="px-2">
                   <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />

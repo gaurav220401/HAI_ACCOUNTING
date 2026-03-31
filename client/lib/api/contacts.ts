@@ -118,6 +118,7 @@ export interface Contact {
   // Documents
   documents?: ContactDocument[];
   isActive: boolean;
+  legalComplianceLocked?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -155,6 +156,7 @@ export interface CreateContactInput {
   reportingTags?: string[];
   notes?: string;
   portalEnabled?: boolean;
+  legalComplianceLocked?: boolean;
   // Extra / social
   websiteUrl?: string;
   department?: string;

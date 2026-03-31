@@ -2443,19 +2443,16 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
     finally { setAddingComment(false); }
   }
 
-  async function handleMarkInactive() {
-    if (vendor.isActive === false) {
-      toast.info("Vendor is already inactive");
-      return;
-    }
-
-    if (!confirm(`Mark vendor "${vendor.displayName}" as inactive?`)) return;
+  async function handleToggleActive() {
+    const nextState = !vendor.isActive;
     try {
-      const res = await contactApi.update(vendor._id, { isActive: false });
+      const res = await contactApi.update(vendor._id, { isActive: nextState });
       const u = (res as any).data ?? res;
       setVendor(u); onVendorUpdate(u);
-      toast.success("Vendor marked as inactive");
-    } catch { toast.error("Failed to update vendor"); }
+      toast.success(`Vendor marked as ${nextState ? "active" : "inactive"}`);
+    } catch {
+      toast.error("Failed to update vendor");
+    }
   }
 
   async function handleDelete() {
@@ -2744,9 +2741,9 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onClick={handleMarkInactive}
+                onClick={handleToggleActive}
               >
-                Mark as Inactive
+                {vendor.isActive ? "Mark as Inactive" : "Mark as Active"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"

@@ -403,6 +403,8 @@ export interface IContact extends Document {
   creditLimit?: number;
   salesPersonId?: Types.ObjectId | null;
   linkedContactId?: Types.ObjectId | null;
+  // Legal/compliance lock status
+  legalComplianceLocked?: boolean;
   // Calculated
   outstandingPayable: number;
   outstandingReceivable: number;
