@@ -27,6 +27,7 @@ export default function VendorsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"Active" | "Inactive" | "All">("All");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Contact | null>(null);
   const [loadingVendor, setLoadingVendor] = useState(false);
 
@@ -45,6 +46,22 @@ export default function VendorsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, activeOrganization?._id, statusFilter]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const query = new URLSearchParams(window.location.search);
+    const selected = query.get("selectedId");
+    const tab = query.get("tab");
+
+    setSelectedTab(tab);
+
+    if (selected) {
+      selectVendor(selected);
+    } else {
+      setSelectedId(null);
+      setSelectedVendor(null);
+    }
+  }, []);
+
   async function fetchContacts() {
     setFetching(true);
     try {
@@ -60,6 +77,9 @@ export default function VendorsPage() {
 
   async function selectVendor(id: string) {
     setSelectedId(id);
+    const tabQuery = selectedTab ? `&tab=${encodeURIComponent(selectedTab)}` : "";
+    router.replace(`/purchases/vendors?selectedId=${encodeURIComponent(id)}${tabQuery}`);
+
     const quick = contacts.find((c) => c._id === id);
     if (quick) setSelectedVendor(quick);
     setLoadingVendor(true);
@@ -77,6 +97,7 @@ export default function VendorsPage() {
   function handleClose() {
     setSelectedId(null);
     setSelectedVendor(null);
+    router.push("/purchases/vendors");
   }
 
   if (loading || orgLoading || !firebaseUser) {
@@ -330,6 +351,7 @@ export default function VendorsPage() {
               ) : selectedVendor ? (
                 <VendorDetailView
                   vendor={selectedVendor}
+                  initialTab={selectedTab ?? undefined}
                   onVendorUpdate={(v) => {
                     setSelectedVendor(v);
                     setContacts((cs) =>

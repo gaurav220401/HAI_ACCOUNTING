@@ -310,6 +310,14 @@ export default function EditTemplatePage() {
       .finally(() => setFetching(false));
   }, [firebaseUser, loading, params]);
 
+  useEffect(() => {
+    return () => {
+      if (statusResetTimeout.current) {
+        clearTimeout(statusResetTimeout.current);
+      }
+    };
+  }, []);
+
   const update = (patch: Partial<TemplateConfig>) => {
     setConfig((prev) => ({ ...prev, ...patch }));
     setIsDirty(true);
@@ -334,7 +342,7 @@ export default function EditTemplatePage() {
       if (statusResetTimeout.current) clearTimeout(statusResetTimeout.current);
       statusResetTimeout.current = setTimeout(() => setTemplateSyncStatus("idle"), 2500);
       toast.success("Template synced to cloud");
-      router.push(`/purchases/vendors/${params?.id}?tab=statement`);
+      router.push(`/purchases/vendors?selectedId=${params?.id}&tab=statement`);
     } catch (err) {
       setTemplateSyncStatus("error");
       toast.error("Failed to sync template. Please try again.");
@@ -342,7 +350,7 @@ export default function EditTemplatePage() {
   }
 
   function handleClose() {
-    router.push(`/purchases/vendors/${params?.id}?tab=statement`);
+    router.push(`/purchases/vendors?selectedId=${params?.id}&tab=statement`);
   }
 
   if (loading || orgLoading || !firebaseUser || fetching) {
@@ -369,14 +377,6 @@ export default function EditTemplatePage() {
        (vendor as any).billingAddress.state, (vendor as any).billingAddress.country]
         .filter(Boolean).join(", ")
     : "";
-
-  useEffect(() => {
-    return () => {
-      if (statusResetTimeout.current) {
-        clearTimeout(statusResetTimeout.current);
-      }
-    };
-  }, []);
 
   const activeColCount = [
     config.colDate, config.colTransactionType, config.colTransactionDetails,
