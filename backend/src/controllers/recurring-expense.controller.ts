@@ -5,6 +5,10 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
+import {
+  computeNextExpenseDate,
+  executeRecurringExpenseRun,
+} from "../services/recurring-expense.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -12,30 +16,59 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
-/** Calculate next expense date based on frequency */
-function computeNextDate(from: Date, frequency: string, repeatEvery: number): Date {
-  const d = new Date(from);
-  switch (frequency) {
-    case "Daily":
-      d.setDate(d.getDate() + repeatEvery);
-      break;
-    case "Weekly":
-      d.setDate(d.getDate() + repeatEvery * 7);
-      break;
-    case "Monthly":
-      d.setMonth(d.getMonth() + repeatEvery);
-      break;
-    case "Yearly":
-      d.setFullYear(d.getFullYear() + repeatEvery);
-      break;
-  }
+function endOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function isPastEndDate(now: Date, endsOn: Date): boolean {
+  return now > endOfDay(new Date(endsOn));
+}
+
+function isRunAfterEndDate(runDate: Date, endsOn: Date): boolean {
+  return runDate > endOfDay(new Date(endsOn));
+}
+
+function applyExpiry(rec: any) {
+  if (!rec.neverExpires && rec.endsOn) {
+    const now = new Date();
+    if (isPastEndDate(now, rec.endsOn)) {
+      rec.status = "Expired";
+      rec.nextExpenseDate = null;
+    }
+  }
 }
 
 /** GET /api/recurring-expenses */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { status, search, vendorId, page = 1, limit = 50 } = req.query;
-  const filter: any = { organizationId: orgId(req), isDeleted: false };
+  const organizationId = orgId(req);
+  const todayStart = startOfDay(new Date());
+
+  await RecurringExpense.updateMany(
+    {
+      organizationId,
+      isDeleted: false,
+      status: "Active",
+      neverExpires: false,
+      endsOn: { $ne: null, $lt: todayStart },
+    },
+    {
+      $set: {
+        status: "Expired",
+        nextExpenseDate: null,
+      },
+    },
+  );
+
+  const filter: any = { organizationId, isDeleted: false };
   if (status) filter.status = status;
   if (search) filter.profileName = { $regex: search, $options: "i" };
   if (vendorId) filter.vendorId = vendorId;
@@ -45,8 +78,9 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
     .populate("expenseAccountId paidThroughAccountId vendorId customerId")
     .sort({ createdAt: -1 })
     .skip((+page - 1) * +limit)
-    .limit(+limit)
-    .lean();
+    .limit(+limit);
+
+  data.forEach(applyExpiry);
 
   res.json({ success: true, data, pagination: { total, page: +page, limit: +limit, pages: Math.ceil(total / +limit) } });
 });
@@ -56,6 +90,17 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const rec = await RecurringExpense.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false })
     .populate("expenseAccountId paidThroughAccountId vendorId customerId");
   if (!rec) throw new NotFoundError("Recurring expense");
+
+  const prevStatus = rec.status;
+  const prevNextExpenseDate = rec.nextExpenseDate ? new Date(rec.nextExpenseDate).getTime() : null;
+  applyExpiry(rec);
+
+  const nextExpenseDate = rec.nextExpenseDate ? new Date(rec.nextExpenseDate).getTime() : null;
+  if (prevStatus !== rec.status || prevNextExpenseDate !== nextExpenseDate) {
+    attachUser(rec as any, req);
+    await rec.save();
+  }
+
   res.json({ success: true, data: rec });
 });
 
@@ -74,7 +119,7 @@ export const getGeneratedExpenses = asyncHandler(async (req: AuthenticatedReques
 
 /** POST /api/recurring-expenses */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { profileName, startDate, amount, frequency, repeatEvery } = req.body;
+  const { profileName, startDate, amount } = req.body;
   if (!profileName) throw new ValidationError("profileName is required");
   if (!startDate) throw new ValidationError("startDate is required");
   if (amount == null) throw new ValidationError("amount is required");
@@ -85,6 +130,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     nextExpenseDate: new Date(startDate),
     status: "Active",
   });
+  applyExpiry(recurringExpense);
   attachUser(recurringExpense as any, req);
   await recurringExpense.save();
   await recurringExpense.populate("expenseAccountId paidThroughAccountId vendorId customerId");
@@ -104,10 +150,37 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   for (const key of allowed) {
     if (key in req.body) (rec as any)[key] = req.body[key];
   }
-  // Recalculate nextExpenseDate if start date changes and no expenses yet
-  if (req.body.startDate && !rec.lastExpenseDate) {
-    rec.nextExpenseDate = new Date(req.body.startDate);
+
+  const shouldRecomputeNextDate = [
+    "startDate",
+    "frequency",
+    "repeatEvery",
+    "neverExpires",
+    "endsOn",
+  ].some((key) => key in req.body);
+
+  if (shouldRecomputeNextDate) {
+    if (rec.lastExpenseDate) {
+      rec.nextExpenseDate = computeNextExpenseDate(
+        new Date(rec.lastExpenseDate),
+        rec.frequency,
+        rec.repeatEvery,
+      );
+    } else {
+      rec.nextExpenseDate = rec.startDate ? new Date(rec.startDate) : null;
+    }
   }
+
+  if (rec.status === "Expired" && (rec.neverExpires || !rec.endsOn || new Date() <= rec.endsOn)) {
+    rec.status = "Active";
+    if (!rec.nextExpenseDate) {
+      rec.nextExpenseDate = rec.lastExpenseDate
+        ? computeNextExpenseDate(new Date(rec.lastExpenseDate), rec.frequency, rec.repeatEvery)
+        : new Date(rec.startDate);
+    }
+  }
+
+  applyExpiry(rec);
   attachUser(rec as any, req);
   await rec.save();
   await rec.populate("expenseAccountId paidThroughAccountId vendorId customerId");
@@ -128,7 +201,31 @@ export const stop = asyncHandler(async (req: AuthenticatedRequest, res: Response
 export const resume = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const rec = await RecurringExpense.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!rec) throw new NotFoundError("Recurring expense");
+
+  if (!rec.neverExpires && rec.endsOn && isPastEndDate(new Date(), rec.endsOn)) {
+    rec.status = "Expired";
+    rec.nextExpenseDate = null;
+    attachUser(rec as any, req);
+    await rec.save();
+    throw new ValidationError("Recurring expense has expired");
+  }
+
   rec.status = "Active";
+  if (!rec.nextExpenseDate) {
+    const baseDate = rec.lastExpenseDate ? new Date(rec.lastExpenseDate) : new Date(rec.startDate);
+    rec.nextExpenseDate = rec.lastExpenseDate
+      ? computeNextExpenseDate(baseDate, rec.frequency, rec.repeatEvery)
+      : baseDate;
+  }
+
+  if (!rec.neverExpires && rec.endsOn && rec.nextExpenseDate && isRunAfterEndDate(new Date(rec.nextExpenseDate), rec.endsOn)) {
+    rec.status = "Expired";
+    rec.nextExpenseDate = null;
+    attachUser(rec as any, req);
+    await rec.save();
+    throw new ValidationError("Recurring expense has expired");
+  }
+
   attachUser(rec as any, req);
   await rec.save();
   res.json({ success: true, data: rec });
@@ -139,33 +236,29 @@ export const createExpenseNow = asyncHandler(async (req: AuthenticatedRequest, r
   const rec = await RecurringExpense.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false })
     .populate("expenseAccountId paidThroughAccountId vendorId customerId");
   if (!rec) throw new NotFoundError("Recurring expense");
+  if (rec.status !== "Active") throw new ValidationError("Recurring expense is not active");
 
-  const today = new Date();
-  const expense = new Expense({
-    organizationId: orgId(req),
-    expenseAccountId: rec.expenseAccountId,
-    amount: rec.amount,
-    currency: rec.currency,
-    paidThroughAccountId: rec.paidThroughAccountId,
-    vendorId: rec.vendorId,
-    customerId: rec.customerId,
-    isBillable: rec.isBillable,
-    projectId: rec.projectId,
-    notes: rec.notes ? `[Recurring: ${rec.profileName}] ${rec.notes}` : `[Recurring: ${rec.profileName}]`,
-    date: today,
-    status: "Draft",
-    isItemized: false,
+  const scheduledRunDate = rec.nextExpenseDate ? new Date(rec.nextExpenseDate) : new Date();
+  if (!rec.neverExpires && rec.endsOn && isRunAfterEndDate(scheduledRunDate, rec.endsOn)) {
+    rec.status = "Expired";
+    rec.nextExpenseDate = null;
+    attachUser(rec as any, req);
+    await rec.save();
+    throw new ValidationError("Recurring expense has expired");
+  }
+
+  const result = await executeRecurringExpenseRun(rec, scheduledRunDate, req.user?._id);
+  if (!result.expense) throw new ValidationError("No expense was created for this run");
+
+  await result.expense.populate("expenseAccountId paidThroughAccountId vendorId customerId");
+  await rec.populate("expenseAccountId paidThroughAccountId vendorId customerId");
+
+  res.status(result.skipped ? 200 : 201).json({
+    success: true,
+    data: result.expense,
+    recurringExpense: rec,
+    skipped: result.skipped,
   });
-  attachUser(expense as any, req);
-  await expense.save();
-
-  rec.lastExpenseDate = today;
-  rec.nextExpenseDate = computeNextDate(today, rec.frequency, rec.repeatEvery);
-  rec.generatedExpenseIds.push(expense._id as any);
-  await rec.save();
-
-  await expense.populate("expenseAccountId paidThroughAccountId vendorId customerId");
-  res.status(201).json({ success: true, data: expense });
 });
 
 /** DELETE /api/recurring-expenses/:id */

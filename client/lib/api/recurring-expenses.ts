@@ -5,7 +5,7 @@ import type { Expense } from "./expenses";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type RecurringFrequency = "Daily" | "Weekly" | "Monthly" | "Yearly";
-export type RecurringStatus = "Active" | "Stopped";
+export type RecurringStatus = "Active" | "Stopped" | "Expired";
 
 export interface RecurringExpense {
   _id: string;
@@ -90,7 +90,7 @@ export const recurringExpenseApi = {
     apiFetch<{ data: RecurringExpense }>(`/recurring-expenses/${id}/resume`, { method: "POST" }),
 
   createExpenseNow: (id: string) =>
-    apiFetch<{ data: Expense }>(`/recurring-expenses/${id}/create-expense`, { method: "POST" }),
+    apiFetch<{ data: Expense; recurringExpense?: RecurringExpense; skipped?: boolean }>(`/recurring-expenses/${id}/create-expense`, { method: "POST" }),
 
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/recurring-expenses/${id}`, { method: "DELETE" }),

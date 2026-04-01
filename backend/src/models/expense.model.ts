@@ -43,6 +43,8 @@ export interface IExpense extends Document {
   projectId?: Types.ObjectId | null;
   reportingTagIds?: Types.ObjectId[];
   employeeId?: Types.ObjectId | null;
+  recurringId?: Types.ObjectId | null;
+  recurringRunDate?: Date | null;
   receiptUrls?: string[];
   status: "Draft" | "Submitted" | "Approved" | "Rejected" | "Reimbursed";
   isActive: boolean;
@@ -96,6 +98,8 @@ const expenseSchema = new Schema<IExpense>(
     projectId: { type: Schema.Types.ObjectId, ref: "Project", default: null },
     reportingTagIds: [{ type: Schema.Types.ObjectId, ref: "ReportingTag" }],
     employeeId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    recurringId: { type: Schema.Types.ObjectId, ref: "RecurringExpense", default: null },
+    recurringRunDate: { type: Date, default: null },
     receiptUrls: [{ type: String }],
     status: { type: String, enum: ["Draft", "Submitted", "Approved", "Rejected", "Reimbursed"], default: "Draft" },
     isActive: { type: Boolean, default: true },
@@ -107,6 +111,16 @@ const expenseSchema = new Schema<IExpense>(
 
 expenseSchema.plugin(auditTrailPlugin);
 expenseSchema.index({ organizationId: 1, date: -1 });
+expenseSchema.index(
+  { organizationId: 1, recurringId: 1, recurringRunDate: 1, isDeleted: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      recurringId: { $exists: true, $ne: null },
+      recurringRunDate: { $exists: true, $ne: null },
+    },
+  },
+);
 
 // Auto-generate expenseNumber before first save
 expenseSchema.pre("save", async function () {

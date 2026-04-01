@@ -3350,7 +3350,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                       <tr
                         key={rp._id}
                         className="border-b hover:bg-muted/20 cursor-pointer"
-                        onClick={() => router.push(`/purchases/recurring-expenses?id=${rp._id}`)}
+                        onClick={() => router.push(`/purchases/recurring-expenses/${rp._id}/edit`)}
                       >
                         <td className="px-4 py-2.5 font-medium text-primary">{rp.profileName}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">
@@ -3360,8 +3360,8 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                           {fmt(rp.amount, rp.currency)}
                         </td>
                         <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${rp.status === "Active" ? "text-green-600" : "text-gray-500"}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${rp.status === "Active" ? "bg-green-500" : "bg-gray-400"}`} />
+                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${rp.status === "Active" ? "text-green-600" : rp.status === "Expired" ? "text-amber-600" : "text-gray-500"}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${rp.status === "Active" ? "bg-green-500" : rp.status === "Expired" ? "bg-amber-500" : "bg-gray-400"}`} />
                             {rp.status}
                           </span>
                         </td>

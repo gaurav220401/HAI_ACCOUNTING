@@ -4,6 +4,10 @@ import app from "./app";
 import { connectDB, syncIndexes } from "./config/db";
 import { seedDefaultRoles } from "./models/role.model";
 import { startRecurringBillScheduler } from "./services/recurring-bill.scheduler";
+import {
+  dedupeRecurringRunExpenses,
+  startRecurringExpenseScheduler,
+} from "./services/recurring-expense.service";
 import { startRecurringInvoiceScheduler } from "./services/recurring-invoice.service";
 import {
   startDocumentProcessingWorker,
@@ -42,6 +46,10 @@ const startServer = async (): Promise<void> => {
     // Connect to MongoDB
     await connectDB();
 
+    // One-time cleanup: archive legacy duplicate recurring expense runs
+    // before syncing unique recurring run indexes.
+    await dedupeRecurringRunExpenses();
+
     // Sync indexes (drops stale non-sparse indexes, etc.)
     await syncIndexes();
 
@@ -50,6 +58,8 @@ const startServer = async (): Promise<void> => {
 
     // Start recurring bill scheduler
     startRecurringBillScheduler();
+    // Start recurring expense scheduler
+    startRecurringExpenseScheduler();
     // Start recurring invoice processing after the database is ready.
     startRecurringInvoiceScheduler();
     // Start documents worker if Redis is configured.
