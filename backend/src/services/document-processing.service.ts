@@ -3,6 +3,8 @@ import { Queue, Worker, Job } from "bullmq";
 import Redis from "ioredis";
 import { GoogleGenAI } from "@google/genai";
 import DocumentModel, { IDocument, DocumentType, ProcessingMode } from "../models/document.model";
+import Contact from "../models/contact.model";
+import Expense from "../models/expense.model";
 
 interface ProcessJobPayload {
   documentId: string;
@@ -25,6 +27,8 @@ interface GeminiExtraction {
   rawText?: string;
 }
 
+type ObjectIdLike = string | { toString(): string } | null | undefined;
+
 let queue: Queue<ProcessJobPayload> | null = null;
 let workerStarted = false;
 let geminiClient: GoogleGenAI | null = null;
@@ -32,6 +36,199 @@ let recoveryTimer: NodeJS.Timeout | null = null;
 
 function nowLog(stage: string, status: "ok" | "warn" | "error", message: string) {
   return { stage, status, message, createdAt: new Date() };
+}
+
+function idToString(value: ObjectIdLike): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return value.toString();
+}
+
+function isDuplicateKeyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: number; name?: string };
+  return maybeError.code === 11000 || maybeError.name === "MongoServerError";
+}
+
+function parseInvoiceDate(value: unknown, fallback: Date): Date {
+  if (!value) return fallback;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  return parsed;
+}
+
+async function resolveOrCreateVendor(
+  organizationId: IDocument["organizationId"],
+  displayName: string,
+  userId?: IDocument["uploadedBy"],
+) {
+  const trimmed = displayName.trim();
+  if (!trimmed) return null;
+
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let existing = await Contact.findOne({
+    organizationId,
+    isDeleted: false,
+    displayName: { $regex: `^${escaped}$`, $options: "i" },
+  });
+
+  if (!existing) {
+    existing = new Contact({
+      organizationId,
+      displayName: trimmed,
+      companyName: trimmed,
+      contactType: "Vendor",
+      currency: "INR",
+      email: "",
+      createdBy: userId || undefined,
+      updatedBy: userId || undefined,
+    });
+    await existing.save();
+  }
+
+  return existing;
+}
+
+function upsertExpenseDocumentLink(document: IDocument, expenseId: string, linkedBy?: IDocument["uploadedBy"]) {
+  const existingIndex = document.links.findIndex((link) => link.entityType === "expense");
+  if (existingIndex >= 0) {
+    document.links[existingIndex].entityId = expenseId;
+    document.links[existingIndex].linkedAt = new Date();
+    document.links[existingIndex].linkedBy = linkedBy || undefined;
+    document.links[existingIndex].linkSource = "auto";
+    return;
+  }
+
+  document.links.push({
+    entityType: "expense",
+    entityId: expenseId,
+    linkedAt: new Date(),
+    linkedBy: linkedBy || undefined,
+    linkSource: "auto",
+  });
+}
+
+async function autoCreateExpenseFromDocument(document: IDocument): Promise<void> {
+  const autoCreateEnabled = process.env.DOCUMENTS_AUTO_CREATE_EXPENSE !== "false";
+  if (!autoCreateEnabled) return;
+  if (document.processingStatus !== "PROCESSED") return;
+  if (document.documentType === "bank_statement") return;
+
+  const linkedExpenseId = document.links.find((link) => link.entityType === "expense")?.entityId;
+  if (linkedExpenseId) return;
+
+  const extractedAmount = Number(document.extraction?.amount || 0);
+  if (!Number.isFinite(extractedAmount) || extractedAmount <= 0) {
+    document.processingLogs.push(
+      nowLog("auto_create_expense", "warn", "Skipped auto-create: extracted amount is missing"),
+    );
+    document.activityLogs.push({
+      eventType: "expense_auto_create_skipped",
+      message: "Expense auto-create skipped: amount missing",
+      payload: {
+        documentType: document.documentType,
+        amount: document.extraction?.amount ?? null,
+      },
+      createdAt: new Date(),
+    });
+    return;
+  }
+
+  const existing = await Expense.findOne({
+    organizationId: document.organizationId,
+    sourceDocumentId: document._id,
+    isDeleted: false,
+  })
+    .select("_id expenseNumber")
+    .lean();
+
+  if (existing) {
+    upsertExpenseDocumentLink(document, String(existing._id), document.uploadedBy);
+    document.processingLogs.push(
+      nowLog("auto_create_expense", "ok", `Linked existing expense ${existing.expenseNumber}`),
+    );
+    return;
+  }
+
+  const actorId = document.uploadedBy || document.createdBy || undefined;
+  const vendorName = (document.extraction?.vendorName || "").trim();
+  const vendor = vendorName
+    ? await resolveOrCreateVendor(document.organizationId, vendorName, actorId)
+    : null;
+
+  const invoiceDate = parseInvoiceDate(document.extraction?.invoiceDate, document.uploadedAt || new Date());
+  const currency = (document.extraction?.currency || "INR").trim().toUpperCase() || "INR";
+  const invoiceNumber = (document.extraction?.invoiceNumber || "").trim();
+
+  const expense = new Expense({
+    organizationId: document.organizationId,
+    expenseType: "Regular",
+    date: invoiceDate,
+    amount: extractedAmount,
+    currency,
+    vendorId: vendor?._id || null,
+    invoiceNumber,
+    notes: `Auto-created from document ${document.fileName}`,
+    receiptUrls: document.url ? [document.url] : [],
+    sourceDocumentId: document._id,
+    status: "Draft",
+    createdBy: actorId,
+    updatedBy: actorId,
+  });
+
+  try {
+    await expense.save();
+    upsertExpenseDocumentLink(document, idToString(expense._id), document.uploadedBy);
+    document.processingLogs.push(
+      nowLog("auto_create_expense", "ok", `Expense ${expense.expenseNumber} created automatically`),
+    );
+    document.activityLogs.push({
+      eventType: "expense_auto_created",
+      message: `Expense ${expense.expenseNumber} auto-created from document`,
+      payload: {
+        expenseId: String(expense._id),
+        expenseNumber: expense.expenseNumber,
+        amount: extractedAmount,
+        currency,
+      },
+      actorId: actorId || undefined,
+      createdAt: new Date(),
+    });
+  } catch (error: unknown) {
+    if (isDuplicateKeyError(error)) {
+      const duplicateExpense = await Expense.findOne({
+        organizationId: document.organizationId,
+        sourceDocumentId: document._id,
+        isDeleted: false,
+      })
+        .select("_id expenseNumber")
+        .lean();
+
+      if (duplicateExpense) {
+        upsertExpenseDocumentLink(document, String(duplicateExpense._id), document.uploadedBy);
+        document.processingLogs.push(
+          nowLog(
+            "auto_create_expense",
+            "ok",
+            `Linked existing expense ${duplicateExpense.expenseNumber} after duplicate retry`,
+          ),
+        );
+        return;
+      }
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error";
+    document.processingLogs.push(
+      nowLog("auto_create_expense", "error", `Failed to auto-create expense: ${message}`),
+    );
+    document.activityLogs.push({
+      eventType: "expense_auto_create_failed",
+      message: "Expense auto-create failed",
+      payload: { reason: message },
+      actorId: actorId || undefined,
+      createdAt: new Date(),
+    });
+  }
 }
 
 function inferDocumentType(fileName: string, mimeType: string, inboxType: string): DocumentType {
@@ -312,6 +509,8 @@ async function processDocument(document: IDocument, pdfPassword?: string): Promi
     document.processingStatus = "PROCESSED";
     document.processingLogs.push(nowLog("ai_extract", "ok", "Document extracted successfully"));
   }
+
+  await autoCreateExpenseFromDocument(document);
 
   document.activityLogs.push({
     eventType: "processed",

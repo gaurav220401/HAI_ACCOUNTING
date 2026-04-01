@@ -45,6 +45,7 @@ export interface IExpense extends Document {
   employeeId?: Types.ObjectId | null;
   recurringId?: Types.ObjectId | null;
   recurringRunDate?: Date | null;
+  sourceDocumentId?: Types.ObjectId | null;
   receiptUrls?: string[];
   status: "Draft" | "Submitted" | "Approved" | "Rejected" | "Reimbursed";
   isActive: boolean;
@@ -100,6 +101,7 @@ const expenseSchema = new Schema<IExpense>(
     employeeId: { type: Schema.Types.ObjectId, ref: "User", default: null },
     recurringId: { type: Schema.Types.ObjectId, ref: "RecurringExpense", default: null },
     recurringRunDate: { type: Date, default: null },
+    sourceDocumentId: { type: Schema.Types.ObjectId, ref: "DocumentInbox", default: null },
     receiptUrls: [{ type: String }],
     status: { type: String, enum: ["Draft", "Submitted", "Approved", "Rejected", "Reimbursed"], default: "Draft" },
     isActive: { type: Boolean, default: true },
@@ -116,13 +118,21 @@ expenseSchema.index(
   {
     unique: true,
     partialFilterExpression: {
-      recurringId: { $exists: true, $ne: null },
-      recurringRunDate: { $exists: true, $ne: null },
+      recurringId: { $type: "objectId" },
+      recurringRunDate: { $type: "date" },
     },
   },
-);
+ );
+ expenseSchema.index(
+   { organizationId: 1, sourceDocumentId: 1, isDeleted: 1 },
+   {
+     unique: true,
+     partialFilterExpression: {
+       sourceDocumentId: { $type: "objectId" },
+     },
+   },
+ );
 
-// Auto-generate expenseNumber before first save
 expenseSchema.pre("save", async function () {
   if (this.isNew && !this.expenseNumber) {
     const counter = await Counter.findByIdAndUpdate(

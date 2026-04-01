@@ -34,6 +34,12 @@ function parseDateValue(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function isDuplicateKeyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: number; name?: string };
+  return maybeError.code === 11000 || maybeError.name === "MongoServerError";
+}
+
 function mailboxDomain() {
   return process.env.DOCUMENTS_MAILBOX_DOMAIN || "inbox.myapp.com";
 }
@@ -724,28 +730,55 @@ export const addToEntity = asyncHandler(async (req: AuthenticatedRequest, res: R
   let created: Record<string, unknown> | null = null;
 
   if (entityType === "expense") {
-    const vendor = await resolveOrCreateContact(organizationId, vendorName, "Vendor");
-    const expense = new Expense({
+    let expense = await Expense.findOne({
       organizationId,
-      expenseType: "Regular",
-      date,
-      amount,
-      currency: prefill.currency,
-      vendorId: vendor?._id || null,
-      invoiceNumber: prefill.invoiceNumber,
-      notes: `Created from document ${document.fileName}`,
-      status: "Draft",
+      sourceDocumentId: document._id,
+      isDeleted: false,
     });
-    attachUser(expense as unknown as { $locals?: Record<string, unknown> }, req);
-    await expense.save();
+
+    if (!expense) {
+      const vendor = await resolveOrCreateContact(organizationId, vendorName, "Vendor");
+      expense = new Expense({
+        organizationId,
+        expenseType: "Regular",
+        date,
+        amount,
+        currency: prefill.currency,
+        vendorId: vendor?._id || null,
+        invoiceNumber: prefill.invoiceNumber,
+        notes: `Created from document ${document.fileName}`,
+        receiptUrls: document.url ? [document.url] : [],
+        sourceDocumentId: document._id,
+        status: "Draft",
+      });
+      attachUser(expense as unknown as { $locals?: Record<string, unknown> }, req);
+      try {
+        await expense.save();
+      } catch (error: unknown) {
+        if (!isDuplicateKeyError(error)) throw error;
+        const existing = await Expense.findOne({
+          organizationId,
+          sourceDocumentId: document._id,
+          isDeleted: false,
+        });
+        if (!existing) throw error;
+        expense = existing;
+      }
+    }
+
     created = { type: "expense", id: String(expense._id), number: expense.expenseNumber };
-    document.links.push({
-      entityType: "expense",
-      entityId: String(expense._id),
-      linkedAt: new Date(),
-      linkedBy: req.user?._id,
-      linkSource: "auto",
-    });
+    const alreadyLinked = document.links.some(
+      (link) => link.entityType === "expense" && link.entityId === String(expense._id),
+    );
+    if (!alreadyLinked) {
+      document.links.push({
+        entityType: "expense",
+        entityId: String(expense._id),
+        linkedAt: new Date(),
+        linkedBy: req.user?._id,
+        linkSource: "auto",
+      });
+    }
   }
 
   if (entityType === "vendor") {
