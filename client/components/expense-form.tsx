@@ -653,23 +653,39 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
 
   async function handleSaveExpense(andNew = false) {
     if (!expForm.date) { toast.error("Date is required"); return; }
+
     if (isItemized) {
-      if (!lineItems.filter((r) => r.amount && +r.amount > 0).length) {
+      const positiveLines = lineItems.filter((r) => r.amount && +r.amount > 0);
+      if (!positiveLines.length) {
         toast.error("Add at least one line item with an amount"); return;
       }
-    } else if (!expForm.amount || +expForm.amount <= 0) {
-      toast.error("Amount is required"); return;
+      const missingAccount = positiveLines.some((r) => !r.expenseAccountId);
+      if (missingAccount) {
+        toast.error("Each line item must have an expense account selected"); return;
+      }
+    } else {
+      if (!expForm.expenseAccountId) {
+        toast.error("Expense account is required"); return;
+      }
+      if (!expForm.amount || +expForm.amount <= 0) {
+        toast.error("Amount is required"); return;
+      }
     }
+
     setSaving(true);
     try {
+      const itemizedLines = lineItems
+        .filter((r) => r.amount && +r.amount > 0)
+        .map((r) => ({ expenseAccountId: r.expenseAccountId || null, notes: r.notes, amount: +r.amount }));
+
+      const lineTotal = itemizedLines.reduce((s, r) => s + r.amount, 0);
+
       const payload: CreateExpenseInput = isItemized
         ? {
             expenseType: "Regular", date: expForm.date,
-            amount: lineItems.reduce((s, r) => s + (+r.amount || 0), 0),
+            amount: lineTotal,
             currency: expForm.currency, isItemized: true,
-            lineItems: lineItems
-              .filter((r) => r.amount && +r.amount > 0)
-              .map((r) => ({ expenseAccountId: r.expenseAccountId || null, notes: r.notes, amount: +r.amount })),
+            lineItems: itemizedLines,
             paidThroughAccountId: expForm.paidThroughAccountId || null,
             vendorId: expForm.vendorId || null, invoiceNumber: expForm.invoiceNumber,
             notes: expForm.notes, customerId: expForm.customerId || null,
@@ -712,17 +728,20 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
   }
 
   async function handleSaveMileage(andNew = false) {
-    if (!isEdit && !milPrefsSet) { toast.error("Please set your mileage preferences first"); setMilPrefsOpen(true); return; }
+    if (!milPrefsSet) { toast.error("Please set your mileage preferences first"); setMilPrefsOpen(true); return; }
     if (!milForm.date) { toast.error("Date is required"); return; }
     if (!milForm.distance || +milForm.distance <= 0) { toast.error("Distance is required"); return; }
+    const rate = getActiveRate(milForm.date);
+    if (!rate || rate <= 0) { toast.error("No mileage rate set for this date"); return; }
+    if (!milPrefs.defaultCategoryId) { toast.error("Mileage category is required in preferences"); return; }
     setSaving(true);
     try {
       const payload: CreateExpenseInput = {
         expenseType: "Mileage", date: milForm.date,
-        amount: mileageAmount > 0 ? mileageAmount : +(+milForm.distance * getActiveRate(milForm.date)).toFixed(2),
+        amount: +(+milForm.distance * rate).toFixed(2),
         mileageCalcMethod: milForm.mileageCalcMethod,
         distance: +milForm.distance, mileageUnit: milForm.mileageUnit,
-        mileageRate: getActiveRate(milForm.date),
+        mileageRate: rate,
         expenseAccountId: milPrefs.defaultCategoryId || null,
         paidThroughAccountId: milForm.paidThroughAccountId || null,
         vendorId: milForm.vendorId || null, invoiceNumber: milForm.invoiceNumber,
