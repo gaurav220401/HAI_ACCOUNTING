@@ -25,9 +25,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import { expenseApi, type Expense } from "@/lib/api/expenses";
 import { invoiceApi } from "@/lib/api/invoices";
 import { recurringExpenseApi } from "@/lib/api/recurring-expenses";
@@ -1405,14 +1404,13 @@ export default function ExpensesPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Bulk update dialog */}
-        <Dialog open={bulkUpdateOpen} onOpenChange={setBulkUpdateOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Bulk Update Expenses</DialogTitle>
-              <DialogDescription>Select field and value to apply to selected expenses.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 mt-3">
+        {/* Bulk update sheet */}
+        <Sheet open={bulkUpdateOpen} onOpenChange={setBulkUpdateOpen}>
+          <SheetContent side="right" className="p-0 sm:max-w-[440px] flex flex-col gap-0 border-l shadow-xl">
+            <SheetHeader className="px-5 py-4 border-b">
+              <SheetTitle>Bulk Update Expenses</SheetTitle>
+            </SheetHeader>
+            <div className="p-5 space-y-4">
               <div>
                 <Label className="text-xs font-semibold">Field</Label>
                 <Select value={bulkField} onValueChange={(v) => setBulkField(v)}>
@@ -1462,37 +1460,64 @@ export default function ExpensesPage() {
                 </div>
               ) : null}
             </div>
-            <DialogFooter>
+            <div className="px-5 py-3 border-t flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setBulkUpdateOpen(false)}>
                 Cancel
               </Button>
               <Button size="sm" onClick={handleApplyBulkUpdate}>
                 Apply Update
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* History modal */}
-        <Dialog open={showHistoryPanel} onOpenChange={setShowHistoryPanel}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Expense History</DialogTitle>
-              <DialogDescription>Details about this expense activity and journal history.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 mt-2">
-              <p className="text-sm font-semibold">Expense: {selected?.expenseNumber || "-"}</p>
-              <p className="text-sm">Created At: {selected ? new Date(selected.createdAt).toLocaleString("en-IN") : "-"}</p>
-              <p className="text-sm">Updated At: {selected ? new Date(selected.updatedAt).toLocaleString("en-IN") : "-"}</p>
-              <p className="text-muted-foreground text-xs">(Activity log will be implemented from backend audit history soon.)</p>
             </div>
-            <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setShowHistoryPanel(false)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          </SheetContent>
+        </Sheet>
+
+        {/* History panel */}
+        <Sheet open={showHistoryPanel} onOpenChange={setShowHistoryPanel}>
+          <SheetContent side="right" className="p-0 sm:max-w-[400px] flex flex-col gap-0 border-l shadow-xl">
+            <SheetHeader className="px-5 py-4 border-b">
+              <SheetTitle>Expense History</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 flex flex-col overflow-hidden bg-white p-4">
+              <p className="text-sm font-semibold">Expense: {selected?.expenseNumber || "-"}</p>
+              <p className="text-xs text-muted-foreground">Created: {selected ? new Date(selected.createdAt).toLocaleString("en-IN") : "-"}</p>
+              <p className="text-xs text-muted-foreground mb-3">Updated: {selected ? new Date(selected.updatedAt).toLocaleString("en-IN") : "-"}</p>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">Audit History</p>
+                {selected?.activityLog && selected.activityLog.length > 0 ? (
+                  <ul className="space-y-2 max-h-[calc(100vh-240px)] overflow-y-auto">
+                    {selected.activityLog
+                      .slice()
+                      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                      .map((item, i) => (
+                        <li key={i} className="bg-white border rounded p-2 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-700">{item.action.toUpperCase()}</span>
+                            <span className="text-muted-foreground text-[10px]">{new Date(item.timestamp).toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="text-muted-foreground mt-1">
+                            {Object.keys(item.changes).map((field) => (
+                              <p key={field} className="leading-snug">
+                                <strong>{field}</strong>: {String(item.changes[field].before)} → {String(item.changes[field].after)}
+                              </p>
+                            ))}
+                          </div>
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No action history available yet.</p>
+                )}
+              </div>
+
+              <div className="mt-auto pt-3 border-t">
+                <Button variant="outline" size="sm" className="w-full" onClick={() => setShowHistoryPanel(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </SidebarInset>
     </SidebarProvider>
   );

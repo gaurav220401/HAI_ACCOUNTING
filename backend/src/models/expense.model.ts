@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from "mongoose";
-import { auditTrailPlugin, softDeletePlugin } from "../plugins";
+import { activityLogPlugin, auditTrailPlugin, softDeletePlugin } from "../plugins";
 import { Counter } from "./counter.model";
 
 export type ExpenseType = "Regular" | "Mileage";
@@ -47,6 +47,12 @@ export interface IExpense extends Document {
   recurringRunDate?: Date | null;
   sourceDocumentId?: Types.ObjectId | null;
   receiptUrls?: string[];
+  activityLog?: Array<{
+    timestamp: Date;
+    userId?: Types.ObjectId | null;
+    action: "created" | "updated" | "deleted" | "restored";
+    changes: Record<string, { before: unknown; after: unknown }>;
+  }>;
   status: "Draft" | "Submitted" | "Approved" | "Rejected" | "Reimbursed";
   isActive: boolean;
   isDeleted: boolean;
@@ -112,6 +118,8 @@ const expenseSchema = new Schema<IExpense>(
 );
 
 expenseSchema.plugin(auditTrailPlugin);
+expenseSchema.plugin(activityLogPlugin);
+expenseSchema.plugin(softDeletePlugin);
 expenseSchema.index({ organizationId: 1, date: -1 });
 expenseSchema.index(
   { organizationId: 1, recurringId: 1, recurringRunDate: 1, isDeleted: 1 },

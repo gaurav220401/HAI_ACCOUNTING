@@ -43,6 +43,7 @@ export interface Expense {
   employeeId?: string | null;
   projectId?: string | null;
   receiptUrls?: string[];
+  activityLog?: Array<{ timestamp: string; userId?: string | null; action: "created" | "updated" | "deleted" | "restored"; changes: Record<string, { before: unknown; after: unknown }>; }>;
   status: ExpenseStatus;
   isActive: boolean;
   createdAt: string;

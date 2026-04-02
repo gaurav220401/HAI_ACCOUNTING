@@ -51,6 +51,7 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     : { _id: param, organizationId: orgId(req) };
 
   const expense = await Expense.findOne(query)
+    .select("+activityLog")
     .populate("expenseAccountId paidThroughAccountId vendorId customerId taxId lineItems.expenseAccountId");
   if (!expense) throw new NotFoundError("Expense");
   res.json({ success: true, data: expense });
