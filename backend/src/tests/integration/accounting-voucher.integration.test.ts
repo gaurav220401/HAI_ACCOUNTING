@@ -458,3 +458,145 @@ test("payment made void creates reversing vouchers and restores bill balances", 
     assert.equal(round2(value), 0);
   }
 });
+
+test("payment received refund posts refund event without reversing original vouchers", async () => {
+  const fx = await seedCoreFixture();
+
+  const createRes = await invokeHandler(
+    paymentReceivedController.create,
+    makeReq({
+      organizationId: fx.org._id,
+      userId: fx.userId,
+      headers: { "Idempotency-Key": "pr-refund-create-001" },
+      body: {
+        customer_id: String(fx.customer._id),
+        payment_date: "2026-01-24",
+        payment_mode: "Cash",
+        status: "PAID",
+        total_amount_received: 500,
+        invoice_applications: [{ invoice_id: String(fx.invoice._id), applied_amount: 200 }],
+      },
+    }),
+  );
+
+  const paymentId = String(createRes.body.data._id);
+
+  const beforeOriginal = await GlEntry.countDocuments({
+    organizationId: fx.org._id,
+    voucherType: "PaymentReceived",
+    voucherId: { $regex: `^payment-received:${paymentId}:` },
+    isReversal: false,
+  });
+  const beforeReversal = await GlEntry.countDocuments({
+    organizationId: fx.org._id,
+    voucherType: "PaymentReceived",
+    voucherId: { $regex: `^payment-received:${paymentId}:` },
+    isReversal: true,
+  });
+
+  const refundRes = await invokeHandler(
+    paymentReceivedController.recordRefund,
+    makeReq({
+      organizationId: fx.org._id,
+      userId: fx.userId,
+      params: { id: paymentId },
+      headers: { "Idempotency-Key": "pr-refund-op-001" },
+      body: {
+        amount: 100,
+      },
+    }),
+  );
+
+  assert.equal(refundRes.statusCode, 200);
+
+  const afterOriginal = await GlEntry.countDocuments({
+    organizationId: fx.org._id,
+    voucherType: "PaymentReceived",
+    voucherId: { $regex: `^payment-received:${paymentId}:` },
+    isReversal: false,
+  });
+  const afterReversal = await GlEntry.countDocuments({
+    organizationId: fx.org._id,
+    voucherType: "PaymentReceived",
+    voucherId: { $regex: `^payment-received:${paymentId}:` },
+    isReversal: true,
+  });
+
+  assert.equal(beforeReversal, 0);
+  assert.equal(afterReversal, 0);
+  assert.equal(afterOriginal, beforeOriginal + 2);
+});
+
+test("payment received void creates reversing vouchers and restores invoice balances", async () => {
+  const fx = await seedCoreFixture();
+
+  const createRes = await invokeHandler(
+    paymentReceivedController.create,
+    makeReq({
+      organizationId: fx.org._id,
+      userId: fx.userId,
+      headers: { "Idempotency-Key": "pr-void-create-001" },
+      body: {
+        customer_id: String(fx.customer._id),
+        payment_date: "2026-01-25",
+        payment_mode: "Cash",
+        status: "PAID",
+        total_amount_received: 600,
+        invoice_applications: [{ invoice_id: String(fx.invoice._id), applied_amount: 600 }],
+      },
+    }),
+  );
+
+  const paymentId = String(createRes.body.data._id);
+
+  const invoiceAfterCreate = await Invoice.findById(fx.invoice._id).lean();
+  assert.equal(round2(Number(invoiceAfterCreate?.balanceDue || 0)), 400);
+
+  const voidRes = await invokeHandler(
+    paymentReceivedController.voidPayment,
+    makeReq({
+      organizationId: fx.org._id,
+      userId: fx.userId,
+      params: { id: paymentId },
+      headers: { "Idempotency-Key": "pr-void-op-001" },
+      body: {
+        reason: "integration test void",
+      },
+    }),
+  );
+
+  assert.equal(voidRes.statusCode, 200);
+
+  const invoiceAfterVoid = await Invoice.findById(fx.invoice._id).lean();
+  assert.equal(round2(Number(invoiceAfterVoid?.balanceDue || 0)), 1000);
+
+  const originals = await GlEntry.find({
+    organizationId: fx.org._id,
+    voucherType: "PaymentReceived",
+    voucherId: { $regex: `^payment-received:${paymentId}:` },
+    isReversal: false,
+  }).lean();
+  const reversals = await GlEntry.find({
+    organizationId: fx.org._id,
+    voucherType: "PaymentReceived",
+    voucherId: { $regex: `^payment-received:${paymentId}:` },
+    isReversal: true,
+  }).lean();
+
+  assert.equal(originals.length, reversals.length);
+  assert.ok(originals.length > 0);
+
+  const net = [...originals, ...reversals].reduce(
+    (acc, row: any) => {
+      const key = String(row.accountId);
+      const delta = Number(row.debit || 0) - Number(row.credit || 0);
+      acc.set(key, round2((acc.get(key) || 0) + delta));
+      return acc;
+    },
+    new Map<string, number>(),
+  );
+
+  for (const value of net.values()) {
+    assert.equal(round2(value), 0);
+  }
+});

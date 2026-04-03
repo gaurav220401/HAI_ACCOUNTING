@@ -813,8 +813,6 @@ export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: 
     return payment;
   });
 
-  await reverseAllPaymentReceivedVouchers(result as any, req);
-
   await recomputeContactOutstanding({
     organizationId: (result as any).organization_id,
     contactId: (result as any).customer_id,
@@ -908,6 +906,8 @@ export const voidPayment = asyncHandler(async (req: AuthenticatedRequest, res: R
 
     return payment;
   });
+
+  await reverseAllPaymentReceivedVouchers(result as any, req);
 
   await recomputeContactOutstanding({
     organizationId: (result as any).organization_id,
