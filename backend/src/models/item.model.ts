@@ -32,6 +32,8 @@ const itemSchema = new Schema<IItem>(
     purchaseAccountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
     inventoryTracked: { type: Boolean, default: false },
     stockOnHand: { type: Number, default: 0 },
+    inventoryValue: { type: Number, default: 0 },
+    averageCost: { type: Number, default: 0 },
     reorderPoint: { type: Number, default: 0 },
     preferredVendorId: { type: Schema.Types.ObjectId, ref: "Contact", default: null },
     warehouseId: { type: Schema.Types.ObjectId, ref: "Warehouse", default: null },

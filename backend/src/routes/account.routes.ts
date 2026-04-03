@@ -1,12 +1,23 @@
 import { Router } from "express";
 import { authenticate } from "../middlewares/auth";
-import { list, listForItem, create, update, remove, seedTemplate } from "../controllers/account.controller";
+import {
+	list,
+	listForItem,
+	getOpeningBalances,
+	saveOpeningBalances,
+	create,
+	update,
+	remove,
+	seedTemplate,
+} from "../controllers/account.controller";
 
 const router = Router();
 router.use(authenticate);
 
 router.get("/", list);
 router.get("/for-item", listForItem);   // must be before /:id
+router.get("/opening-balances", getOpeningBalances);
+router.put("/opening-balances", saveOpeningBalances);
 router.post("/", create);
 router.post("/seed-template", seedTemplate);
 router.patch("/:id", update);

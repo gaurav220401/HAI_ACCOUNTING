@@ -14,6 +14,10 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 // ─── Items ─────────────────────────────────────────────────────────────────
 
 /** GET /api/items?search=...&type=Goods|Service&page=1&limit=25 */
@@ -55,7 +59,22 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!req.body.name) throw new ValidationError("Item name is required");
   if (!req.body.itemType) throw new ValidationError("itemType is required (Goods or Service)");
 
-  const item = new Item({ organizationId: orgId(req), ...req.body });
+  const payload: any = { ...req.body };
+  if (payload.inventoryTracked) {
+    const stockOnHand = Number(payload.stockOnHand || 0);
+    const averageCost = Number(payload.averageCost ?? payload.costPrice ?? 0);
+    payload.stockOnHand = round2(stockOnHand);
+    payload.averageCost = round2(Math.max(0, averageCost));
+    payload.inventoryValue = round2(
+      Number(payload.inventoryValue ?? payload.stockOnHand * payload.averageCost) || 0,
+    );
+  } else {
+    payload.stockOnHand = 0;
+    payload.averageCost = 0;
+    payload.inventoryValue = 0;
+  }
+
+  const item = new Item({ organizationId: orgId(req), ...payload });
   attachUser(item, req);
   await item.save();
   res.status(201).json({ success: true, data: item });
@@ -70,10 +89,33 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     "name", "sku", "unit", "itemGroupId", "description",
     "sellingPrice", "sellingDescription", "costPrice", "purchaseDescription",
     "taxPreference", "taxId", "hsnSacCode", "salesAccountId", "purchaseAccountId",
-    "inventoryTracked", "stockOnHand", "reorderPoint", "preferredVendorId",
+    "inventoryTracked", "stockOnHand", "inventoryValue", "averageCost", "reorderPoint", "preferredVendorId",
     "warehouseId", "image", "isActive", "itemType",
   ];
   allowed.forEach((f) => { if (req.body[f] !== undefined) (item as any)[f] = req.body[f]; });
+
+  if (!(item as any).inventoryTracked) {
+    item.stockOnHand = 0;
+    (item as any).averageCost = 0;
+    (item as any).inventoryValue = 0;
+  } else {
+    item.stockOnHand = round2(Number(item.stockOnHand || 0));
+    (item as any).averageCost = round2(Number((item as any).averageCost || item.costPrice || 0));
+    (item as any).inventoryValue = round2(Number((item as any).inventoryValue || 0));
+
+    if (req.body.averageCost !== undefined && req.body.inventoryValue === undefined) {
+      (item as any).inventoryValue = round2(item.stockOnHand * (item as any).averageCost);
+    } else if (req.body.inventoryValue !== undefined && req.body.averageCost === undefined && item.stockOnHand > 0) {
+      (item as any).averageCost = round2((item as any).inventoryValue / item.stockOnHand);
+    } else if (
+      req.body.stockOnHand !== undefined &&
+      req.body.averageCost === undefined &&
+      req.body.inventoryValue === undefined
+    ) {
+      (item as any).inventoryValue = round2(item.stockOnHand * (item as any).averageCost);
+    }
+  }
+
   attachUser(item, req);
   await item.save();
   res.json({ success: true, data: item });

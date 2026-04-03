@@ -9,6 +9,8 @@ export type {
   Organization,
   CreateOrganizationInput,
   UpdateOrganizationInput,
+  ReminderSettings,
+  PortalSettings,
 } from "./organizations";
 
 export { accountApi } from "./accounts";
@@ -16,6 +18,11 @@ export type {
   Account,
   AccountRootType,
   AccountType,
+  OpeningBalanceAccountRow,
+  OpeningBalanceGroup,
+  OpeningBalanceSummary,
+  OpeningBalanceData,
+  SaveOpeningBalanceInput,
   CreateAccountInput,
   UpdateAccountInput,
 } from "./accounts";
@@ -92,6 +99,27 @@ export type {
   UpdatePaymentMadeInput,
   PaymentMadeListParams,
 } from "./payments-made";
+
+export { paymentReceivedApi } from "./payments-received";
+export type {
+  PaymentReceived,
+  PaymentReceivedStatus,
+  PaymentInvoiceMap,
+  CreatePaymentReceivedInput,
+  UpdatePaymentReceivedInput,
+  PaymentReceivedListParams,
+} from "./payments-received";
+
+export { reportApi } from "./reports";
+export type {
+  TrialBalanceRow,
+  TrialBalanceResponse,
+  ProfitLossLine,
+  ProfitLossResponse,
+  BalanceSheetLine,
+  BalanceSheetResponse,
+  ControlReconciliationResponse,
+} from "./reports";
 
 export { journalApi } from "./journals";
 export type {

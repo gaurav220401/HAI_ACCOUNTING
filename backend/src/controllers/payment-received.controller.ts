@@ -1,9 +1,9 @@
 import mongoose, { ClientSession, Types } from "mongoose";
 import { Response } from "express";
-import Bill from "../models/bill.model";
 import { Counter } from "../models/counter.model";
-import PaymentBillMap from "../models/payment-bill-map.model";
-import PaymentMade, { IPaymentMade } from "../models/payment-made.model";
+import Invoice from "../models/invoice.model";
+import PaymentInvoiceMap from "../models/payment-invoice-map.model";
+import PaymentReceived, { IPaymentReceived } from "../models/payment-received.model";
 import GlEntry from "../models/gl-entry.model";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
@@ -29,73 +29,67 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function deriveBillStatus(
-  total: number,
-  amountPaid: number,
-  dueDate?: Date | null,
-): "Open" | "Overdue" | "Partially Paid" | "Paid" {
+function deriveInvoiceStatus(total: number, amountPaid: number, dueDate?: Date | null): "Sent" | "Overdue" | "Partially Paid" | "Paid" {
   const paid = round2(Math.max(0, amountPaid));
   const due = round2(Math.max(0, total - paid));
-  if (paid <= 0) {
-    if (dueDate && new Date(dueDate).getTime() < Date.now()) return "Overdue";
-    return "Open";
-  }
   if (due <= 0) return "Paid";
-  return "Partially Paid";
+  if (paid > 0) return "Partially Paid";
+  if (dueDate && new Date(dueDate).getTime() < Date.now()) return "Overdue";
+  return "Sent";
 }
 
-function recomputeExcess(payment: IPaymentMade): void {
-  payment.total_amount_paid = round2(Math.max(0, toNum(payment.total_amount_paid)));
-  payment.amount_used_for_bills = round2(Math.max(0, toNum(payment.amount_used_for_bills)));
+function recomputeExcess(payment: IPaymentReceived): void {
+  payment.total_amount_received = round2(Math.max(0, toNum(payment.total_amount_received)));
+  payment.amount_used_for_invoices = round2(Math.max(0, toNum(payment.amount_used_for_invoices)));
   payment.amount_refunded = round2(Math.max(0, toNum(payment.amount_refunded)));
 
   const excess = round2(
-    payment.total_amount_paid - payment.amount_used_for_bills - payment.amount_refunded,
+    payment.total_amount_received - payment.amount_used_for_invoices - payment.amount_refunded,
   );
   if (excess < -0.009) {
-    throw new ValidationError("Invalid payment balance: used/refunded exceeds total amount paid");
+    throw new ValidationError("Invalid payment balance: used/refunded exceeds total amount received");
   }
   payment.amount_in_excess = round2(Math.max(0, excess));
 }
 
-function paymentMadeVoucherPrefix(payment: IPaymentMade): string {
-  return `payment-made:${String(payment._id)}`;
+function paymentReceivedVoucherPrefix(payment: IPaymentReceived): string {
+  return `payment-received:${String(payment._id)}`;
 }
 
-function paymentMadeVoucherId(payment: IPaymentMade, event: string, key?: string): string {
-  return `${paymentMadeVoucherPrefix(payment)}:${event}${key ? `:${key}` : ""}`;
+function paymentReceivedVoucherId(payment: IPaymentReceived, event: string, key?: string): string {
+  return `${paymentReceivedVoucherPrefix(payment)}:${event}${key ? `:${key}` : ""}`;
 }
 
-async function resolvePaymentMadeAccounts(payment: IPaymentMade) {
+async function resolvePaymentReceivedAccounts(payment: IPaymentReceived) {
   const organizationId = payment.organization_id;
 
   const bankAccountId =
-    payment.paid_through_account ||
+    payment.deposited_to_account ||
     (await findAccountIdByName({
       organizationId,
       names: ["Bank", "Cash", "Cash In Hand", "Undeposited Funds"],
       rootType: "Asset",
     }));
 
-  const accountsPayableId = await findAccountIdByName({
+  const accountsReceivableId = await findAccountIdByName({
     organizationId,
-    names: ["Accounts Payable", "Trade Payables", "Creditors"],
-    rootType: "Liability",
-    accountType: "Accounts Payable",
-  });
-
-  const vendorAdvanceId = await findAccountIdByName({
-    organizationId,
-    names: ["Advances to Suppliers", "Vendor Advances", "Advances to Vendors"],
+    names: ["Accounts Receivable", "Trade Receivables", "Debtors"],
     rootType: "Asset",
-    accountType: "Other Current Asset",
+    accountType: "Accounts Receivable",
   });
 
-  return { bankAccountId, accountsPayableId, vendorAdvanceId };
+  const customerAdvanceId = await findAccountIdByName({
+    organizationId,
+    names: ["Customer Advances", "Advances from Customers", "Unearned Revenue"],
+    rootType: "Liability",
+    accountType: "Other Current Liability",
+  });
+
+  return { bankAccountId, accountsReceivableId, customerAdvanceId };
 }
 
-async function postPaymentMadeEvent(params: {
-  payment: IPaymentMade;
+async function postPaymentReceivedEvent(params: {
+  payment: IPaymentReceived;
   req: AuthenticatedRequest;
   event: "create" | "apply" | "unapply" | "refund";
   amount?: number;
@@ -104,49 +98,49 @@ async function postPaymentMadeEvent(params: {
   const { payment, req, event, amount = 0, eventKey } = params;
   if (payment.status !== "PAID") return;
 
-  const total = round2(toNum(payment.total_amount_paid));
-  const used = round2(toNum(payment.amount_used_for_bills));
+  const total = round2(toNum(payment.total_amount_received));
+  const used = round2(toNum(payment.amount_used_for_invoices));
   const excess = round2(toNum(payment.amount_in_excess));
   const movement = round2(toNum(amount));
 
-  const { bankAccountId, accountsPayableId, vendorAdvanceId } =
-    await resolvePaymentMadeAccounts(payment);
+  const { bankAccountId, accountsReceivableId, customerAdvanceId } =
+    await resolvePaymentReceivedAccounts(payment);
 
   const lines: Array<{
     accountId: any;
     debit?: number;
     credit?: number;
     description?: string;
-    contactType?: "Vendor";
+    contactType?: "Customer";
     contactId?: any;
   }> = [];
 
   if (event === "create") {
+    if (total > 0) {
+      lines.push({
+        accountId: bankAccountId,
+        debit: total,
+        description: `Payment received ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
+      });
+    }
     if (used > 0) {
       lines.push({
-        accountId: accountsPayableId,
-        debit: used,
-        description: `Bill settlement ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        accountId: accountsReceivableId,
+        credit: used,
+        description: `Invoice settlement ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       });
     }
     if (excess > 0) {
       lines.push({
-        accountId: vendorAdvanceId,
-        debit: excess,
-        description: `Vendor advance ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
-      });
-    }
-    if (total > 0) {
-      lines.push({
-        accountId: bankAccountId,
-        credit: total,
-        description: `Payment made ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        accountId: customerAdvanceId,
+        credit: excess,
+        description: `Customer advance ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       });
     }
   }
@@ -154,18 +148,18 @@ async function postPaymentMadeEvent(params: {
   if (event === "apply" && movement > 0) {
     lines.push(
       {
-        accountId: accountsPayableId,
+        accountId: customerAdvanceId,
         debit: movement,
-        description: `Apply advance ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        description: `Apply customer advance ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       },
       {
-        accountId: vendorAdvanceId,
+        accountId: accountsReceivableId,
         credit: movement,
-        description: `Apply advance ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        description: `Apply customer advance ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       },
     );
   }
@@ -173,18 +167,18 @@ async function postPaymentMadeEvent(params: {
   if (event === "unapply" && movement > 0) {
     lines.push(
       {
-        accountId: vendorAdvanceId,
+        accountId: accountsReceivableId,
         debit: movement,
-        description: `Unapply advance ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        description: `Unapply customer advance ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       },
       {
-        accountId: accountsPayableId,
+        accountId: customerAdvanceId,
         credit: movement,
-        description: `Unapply advance ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        description: `Unapply customer advance ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       },
     );
   }
@@ -192,18 +186,18 @@ async function postPaymentMadeEvent(params: {
   if (event === "refund" && movement > 0) {
     lines.push(
       {
-        accountId: bankAccountId,
+        accountId: customerAdvanceId,
         debit: movement,
-        description: `Refund from vendor ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        description: `Refund to customer ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       },
       {
-        accountId: vendorAdvanceId,
+        accountId: bankAccountId,
         credit: movement,
-        description: `Refund from vendor ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
+        description: `Refund to customer ${payment.payment_number}`,
+        contactType: "Customer",
+        contactId: payment.customer_id,
       },
     );
   }
@@ -212,21 +206,21 @@ async function postPaymentMadeEvent(params: {
 
   await postVoucher({
     organizationId: payment.organization_id,
-    voucherType: "PaymentMade",
-    voucherId: paymentMadeVoucherId(payment, event, eventKey),
+    voucherType: "PaymentReceived",
+    voucherId: paymentReceivedVoucherId(payment, event, eventKey),
     voucherNo: payment.payment_number,
     postingDate: payment.payment_date ? new Date(payment.payment_date) : new Date(),
     lines,
-    description: `Payment made ${event} ${payment.payment_number}`,
+    description: `Payment received ${event} ${payment.payment_number}`,
     req,
   });
 }
 
-async function reverseAllPaymentMadeVouchers(payment: IPaymentMade, req: AuthenticatedRequest) {
-  const prefix = paymentMadeVoucherPrefix(payment);
+async function reverseAllPaymentReceivedVouchers(payment: IPaymentReceived, req: AuthenticatedRequest) {
+  const prefix = paymentReceivedVoucherPrefix(payment);
   const rows = await GlEntry.find({
     organizationId: payment.organization_id,
-    voucherType: "PaymentMade",
+    voucherType: "PaymentReceived",
     voucherId: { $regex: `^${prefix}:` },
     isReversal: false,
   })
@@ -237,11 +231,11 @@ async function reverseAllPaymentMadeVouchers(payment: IPaymentMade, req: Authent
   for (const voucherId of voucherIds) {
     await reverseVoucher({
       organizationId: payment.organization_id,
-      voucherType: "PaymentMade",
+      voucherType: "PaymentReceived",
       voucherId,
       reversalVoucherNo: `REV-${payment.payment_number}`,
       postingDate: new Date(),
-      description: `Payment made reversal ${payment.payment_number}`,
+      description: `Payment received reversal ${payment.payment_number}`,
       req,
     });
   }
@@ -273,11 +267,11 @@ async function runRequiredTransaction<T>(work: (session: ClientSession) => Promi
 }
 
 async function nextPaymentNumber(organization_id: Types.ObjectId): Promise<string> {
-  const counterKey = `payment_made:${String(organization_id)}`;
+  const counterKey = `payment_received:${String(organization_id)}`;
   const counter = await Counter.findOneAndUpdate(
     { _id: counterKey },
     { $inc: { seq: 1 } },
-    { upsert: true, returnDocument: 'after' },
+    { upsert: true, returnDocument: "after" },
   ).lean();
 
   const seq = Number(counter?.seq || 1);
@@ -285,78 +279,75 @@ async function nextPaymentNumber(organization_id: Types.ObjectId): Promise<strin
 }
 
 type ApplyItem = {
-  bill_id: string;
+  invoice_id: string;
   applied_amount: number;
 };
 
 function parseApplyItems(body: Record<string, unknown>): ApplyItem[] {
-  const itemsRaw = (body.bill_applications || body.applications || []) as Array<Record<string, unknown>>;
+  const itemsRaw = (body.invoice_applications || body.applications || []) as Array<Record<string, unknown>>;
   if (!Array.isArray(itemsRaw)) return [];
 
   const out: ApplyItem[] = itemsRaw.map((item) => ({
-    bill_id: String(item.bill_id || item.billId || ""),
+    invoice_id: String(item.invoice_id || item.invoiceId || ""),
     applied_amount: toNum(item.applied_amount ?? item.appliedAmount ?? item.amount, 0),
   }));
 
-  return out.filter((i) => i.bill_id && i.applied_amount > 0);
+  return out.filter((i) => i.invoice_id && i.applied_amount > 0);
 }
 
-async function applyAgainstBill(
-  payment: IPaymentMade,
-  bill_id: string,
+async function applyAgainstInvoice(
+  payment: IPaymentReceived,
+  invoice_id: string,
   requestedAmount: number,
   req: AuthenticatedRequest,
   session?: ClientSession,
 ): Promise<number> {
   if (payment.status !== "PAID") {
-    throw new ValidationError("Only PAID payments can be applied to bills");
+    throw new ValidationError("Only PAID payments can be applied to invoices");
   }
 
   const amount = round2(toNum(requestedAmount));
   if (amount <= 0) throw new ValidationError("applied_amount must be greater than zero");
 
-  const billQuery = Bill.findOne({
-    _id: bill_id,
+  const invoiceQuery = Invoice.findOne({
+    _id: invoice_id,
     organizationId: payment.organization_id,
-    vendorId: payment.vendor_id,
+    customerId: payment.customer_id,
     isDeleted: false,
   });
-  if (session) billQuery.session(session);
-  const bill = await billQuery;
-  if (!bill) throw new NotFoundError("Bill");
+  if (session) invoiceQuery.session(session);
+  const invoice = await invoiceQuery;
+  if (!invoice) throw new NotFoundError("Invoice");
 
-  if (["Paid", "Void"].includes(bill.status)) {
-    throw new ValidationError("Cannot apply payment to a paid or void bill");
+  if (["Paid", "Void"].includes(invoice.status)) {
+    throw new ValidationError("Cannot apply payment to a paid or void invoice");
   }
 
-  const billBalance = round2(toNum(bill.balanceDue));
-  if (billBalance <= 0) throw new ValidationError("Bill has no due amount");
-  if (amount > billBalance) throw new ValidationError("applied_amount exceeds bill balance_due");
+  const invoiceBalance = round2(toNum(invoice.balanceDue));
+  if (invoiceBalance <= 0) throw new ValidationError("Invoice has no due amount");
+  if (amount > invoiceBalance) throw new ValidationError("applied_amount exceeds invoice balance_due");
 
   recomputeExcess(payment);
   if (amount > payment.amount_in_excess) {
     throw new ValidationError("applied_amount exceeds payment amount_in_excess");
   }
 
-  bill.amountPaid = round2(toNum(bill.amountPaid) + amount);
-  bill.balanceDue = round2(Math.max(0, toNum(bill.total) - toNum(bill.amountPaid)));
-  bill.status = deriveBillStatus(toNum(bill.total), toNum(bill.amountPaid), bill.dueDate);
-  bill.comments.push({
-    author: req.user?.name || req.user?.email || "System",
-    text: `Payment ${payment.payment_number} applied for ${amount.toLocaleString("en-IN")}`,
-    time: new Date(),
-    isSystem: true,
-  });
-  if (session) {
-    await bill.save({ session });
-  } else {
-    await bill.save();
+  const nextPaid = round2(Math.max(0, toNum(invoice.total) - toNum(invoice.balanceDue)) + amount);
+  invoice.balanceDue = round2(Math.max(0, toNum(invoice.total) - nextPaid));
+  invoice.paymentReceived = invoice.balanceDue <= 0;
+  invoice.status = deriveInvoiceStatus(toNum(invoice.total), nextPaid, invoice.dueDate);
+  if (invoice.paymentReceived && !invoice.paidAt) {
+    invoice.paidAt = new Date();
   }
+  attachUser(invoice as any, req);
 
-  const mapQuery = PaymentBillMap.findOne({
+  if (session) await invoice.save({ session });
+  else await invoice.save();
+
+  const mapQuery = PaymentInvoiceMap.findOne({
     organization_id: payment.organization_id,
     payment_id: payment._id,
-    bill_id: bill._id,
+    invoice_id: invoice._id,
     is_deleted: false,
   });
   if (session) mapQuery.session(session);
@@ -369,10 +360,10 @@ async function applyAgainstBill(
     if (session) await currentMap.save({ session });
     else await currentMap.save();
   } else {
-    const newMap = new PaymentBillMap({
+    const newMap = new PaymentInvoiceMap({
       organization_id: payment.organization_id,
       payment_id: payment._id,
-      bill_id: bill._id,
+      invoice_id: invoice._id,
       applied_amount: amount,
       applied_date: new Date(),
       is_deleted: false,
@@ -383,13 +374,13 @@ async function applyAgainstBill(
     else await newMap.save();
   }
 
-  payment.amount_used_for_bills = round2(toNum(payment.amount_used_for_bills) + amount);
+  payment.amount_used_for_invoices = round2(toNum(payment.amount_used_for_invoices) + amount);
   recomputeExcess(payment);
   payment.audit_log.push({
-    action: "APPLY_TO_BILL",
-    details: `Applied ${amount.toLocaleString("en-IN")} to bill ${bill.billNumber}`,
+    action: "APPLY_TO_INVOICE",
+    details: `Applied ${amount.toLocaleString("en-IN")} to invoice ${invoice.invoiceNumber}`,
     amount,
-    bill_id: bill._id,
+    invoice_id: invoice._id,
     at: new Date(),
     by: req.user?.email || req.user?.name || "System",
   });
@@ -404,7 +395,7 @@ export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res:
 
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const {
-    vendor_id,
+    customer_id,
     status,
     search,
     page = 1,
@@ -417,7 +408,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
     organization_id: orgId(req),
     is_deleted: false,
   };
-  if (vendor_id) filter.vendor_id = vendor_id;
+  if (customer_id) filter.customer_id = customer_id;
   if (status && status !== "All") filter.status = status;
   if (search) {
     filter.$or = [
@@ -430,9 +421,9 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
   const pageNum = Math.max(1, Number(page || 1));
   const limitNum = Math.max(1, Math.min(200, Number(limit || 25)));
 
-  const total = await PaymentMade.countDocuments(filter);
-  const data = await PaymentMade.find(filter)
-    .populate("vendor_id", "displayName companyName")
+  const total = await PaymentReceived.countDocuments(filter);
+  const data = await PaymentReceived.find(filter)
+    .populate("customer_id", "displayName companyName")
     .sort({ [String(sortBy)]: sortOrder === "asc" ? 1 : -1 })
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
@@ -451,30 +442,30 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 });
 
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const payment = await PaymentMade.findOne({
+  const payment = await PaymentReceived.findOne({
     _id: req.params.id,
     organization_id: orgId(req),
     is_deleted: false,
-  }).populate("vendor_id", "displayName companyName email billingAddress");
+  }).populate("customer_id", "displayName companyName email billingAddress");
 
-  if (!payment) throw new NotFoundError("Payment made");
+  if (!payment) throw new NotFoundError("Payment received");
 
-  const maps = await PaymentBillMap.find({
+  const maps = await PaymentInvoiceMap.find({
     organization_id: orgId(req),
     payment_id: payment._id,
     is_deleted: false,
   })
-    .populate("bill_id", "billNumber billDate total amountPaid balanceDue status")
+    .populate("invoice_id", "invoiceNumber invoiceDate total balanceDue status")
     .sort({ createdAt: -1 })
     .lean();
 
-  res.json({ success: true, data: { payment, bill_applications: maps } });
+  res.json({ success: true, data: { payment, invoice_applications: maps } });
 });
 
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization_id = orgId(req);
-  const vendor_id = String(req.body.vendor_id || req.body.vendorId || "");
-  if (!vendor_id) throw new ValidationError("vendor_id is required");
+  const customer_id = String(req.body.customer_id || req.body.customerId || "");
+  if (!customer_id) throw new ValidationError("customer_id is required");
 
   const status = (String(req.body.status || "PAID").toUpperCase() as "DRAFT" | "PAID" | "VOID");
   if (!["DRAFT", "PAID", "VOID"].includes(status)) {
@@ -482,53 +473,52 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   }
   if (status === "VOID") throw new ValidationError("Cannot create a payment directly in VOID status");
 
-  const total_amount_paid = round2(toNum(req.body.total_amount_paid ?? req.body.totalAmountPaid));
-  if (total_amount_paid <= 0) throw new ValidationError("total_amount_paid must be greater than zero");
+  const total_amount_received = round2(toNum(req.body.total_amount_received ?? req.body.totalAmountReceived));
+  if (total_amount_received <= 0) throw new ValidationError("total_amount_received must be greater than zero");
 
   const requestedNumber = String(req.body.payment_number || req.body.paymentNumber || "").trim();
   const payment_number = requestedNumber || (await nextPaymentNumber(organization_id));
-  const payment_id = String(req.body.payment_id || req.body.paymentId || `PM-${payment_number.padStart(5, "0")}`);
+  const payment_id = String(req.body.payment_id || req.body.paymentId || `PR-${payment_number.padStart(5, "0")}`);
   const payment_date = new Date(req.body.payment_date || req.body.paymentDate || new Date());
   if (Number.isNaN(payment_date.getTime())) throw new ValidationError("Invalid payment_date");
 
-  const billItems = parseApplyItems(req.body as Record<string, unknown>);
-  if (status === "DRAFT" && billItems.length > 0) {
-    throw new ValidationError("Cannot apply bills while payment status is DRAFT");
+  const invoiceItems = parseApplyItems(req.body as Record<string, unknown>);
+  if (status === "DRAFT" && invoiceItems.length > 0) {
+    throw new ValidationError("Cannot apply invoices while payment status is DRAFT");
   }
-  const uniqueBillIds = new Set(billItems.map((i) => i.bill_id));
-  if (uniqueBillIds.size !== billItems.length) {
-    throw new ValidationError("Duplicate bill application in request");
+  const uniqueInvoiceIds = new Set(invoiceItems.map((i) => i.invoice_id));
+  if (uniqueInvoiceIds.size !== invoiceItems.length) {
+    throw new ValidationError("Duplicate invoice application in request");
   }
 
   const result = await runRequiredTransaction(async (session: ClientSession) => {
     await reserveIdempotencyKey({
       req,
       organization_id,
-      scope: "payments-made:create",
+      scope: "payments-received:create",
       session,
     });
 
-    const payment = new PaymentMade({
+    const payment = new PaymentReceived({
       organization_id,
       payment_id,
       payment_number,
-      vendor_id,
+      customer_id,
       payment_date,
       payment_mode: String(req.body.payment_mode || req.body.paymentMode || "Cash"),
-      paid_through_account: req.body.paid_through_account || req.body.paidThroughAccount || null,
-      deposit_to_account: req.body.deposit_to_account || req.body.depositToAccount || null,
+      deposited_to_account: req.body.deposited_to_account || req.body.depositedToAccount || null,
       reference_number: String(req.body.reference_number || req.body.referenceNumber || ""),
       notes: String(req.body.notes || ""),
       status,
-      total_amount_paid,
-      amount_used_for_bills: 0,
+      total_amount_received,
+      amount_used_for_invoices: 0,
       amount_refunded: 0,
-      amount_in_excess: total_amount_paid,
+      amount_in_excess: total_amount_received,
       audit_log: [
         {
           action: "CREATE",
-          details: `Payment created with amount ${total_amount_paid.toLocaleString("en-IN")}`,
-          amount: total_amount_paid,
+          details: `Payment received with amount ${total_amount_received.toLocaleString("en-IN")}`,
+          amount: total_amount_received,
           at: new Date(),
           by: req.user?.email || req.user?.name || "System",
         },
@@ -540,9 +530,9 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     attachUser(payment, req);
     await payment.save({ session });
 
-    if (status === "PAID" && billItems.length > 0) {
-      for (const item of billItems) {
-        await applyAgainstBill(payment, item.bill_id, item.applied_amount, req, session);
+    if (status === "PAID" && invoiceItems.length > 0) {
+      for (const item of invoiceItems) {
+        await applyAgainstInvoice(payment, item.invoice_id, item.applied_amount, req, session);
       }
     }
 
@@ -555,12 +545,12 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   await recomputeContactOutstanding({
     organizationId: (result as any).organization_id,
-    contactId: (result as any).vendor_id,
+    contactId: (result as any).customer_id,
     req,
   });
 
   if (String((result as any).status) === "PAID") {
-    await postPaymentMadeEvent({
+    await postPaymentReceivedEvent({
       payment: result as any,
       req,
       event: "create",
@@ -574,25 +564,25 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   await reserveIdempotencyKey({
     req,
     organization_id: orgId(req),
-    scope: `payments-made:update:${req.params.id}`,
+    scope: `payments-received:update:${req.params.id}`,
   });
 
-  const payment = await PaymentMade.findOne({
+  const payment = await PaymentReceived.findOne({
     _id: req.params.id,
     organization_id: orgId(req),
     is_deleted: false,
   });
-  if (!payment) throw new NotFoundError("Payment made");
+  if (!payment) throw new NotFoundError("Payment received");
   if (payment.status === "VOID") throw new ValidationError("Cannot edit a VOID payment");
 
-  const nextVendorId = String(req.body.vendor_id || req.body.vendorId || payment.vendor_id);
-  if (String(payment.vendor_id) !== nextVendorId) {
-    throw new ValidationError("Changing vendor is not allowed while editing payment");
+  const nextCustomerId = String(req.body.customer_id || req.body.customerId || payment.customer_id);
+  if (String(payment.customer_id) !== nextCustomerId) {
+    throw new ValidationError("Changing customer is not allowed while editing payment");
   }
 
-  if (req.body.total_amount_paid !== undefined || req.body.totalAmountPaid !== undefined) {
-    const nextTotal = round2(toNum(req.body.total_amount_paid ?? req.body.totalAmountPaid));
-    if (nextTotal !== round2(toNum(payment.total_amount_paid))) {
+  if (req.body.total_amount_received !== undefined || req.body.totalAmountReceived !== undefined) {
+    const nextTotal = round2(toNum(req.body.total_amount_received ?? req.body.totalAmountReceived));
+    if (nextTotal !== round2(toNum(payment.total_amount_received))) {
       throw new ValidationError("Changing total amount is not allowed in edit");
     }
   }
@@ -607,12 +597,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     payment.payment_mode = String(req.body.payment_mode || req.body.paymentMode || payment.payment_mode);
   }
 
-  if (req.body.paid_through_account !== undefined || req.body.paidThroughAccount !== undefined) {
-    payment.paid_through_account = req.body.paid_through_account || req.body.paidThroughAccount || null;
-  }
-
-  if (req.body.deposit_to_account !== undefined || req.body.depositToAccount !== undefined) {
-    payment.deposit_to_account = req.body.deposit_to_account || req.body.depositToAccount || null;
+  if (req.body.deposited_to_account !== undefined || req.body.depositedToAccount !== undefined) {
+    payment.deposited_to_account = req.body.deposited_to_account || req.body.depositedToAccount || null;
   }
 
   if (req.body.reference_number !== undefined || req.body.referenceNumber !== undefined) {
@@ -636,31 +622,31 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   res.json({ success: true, data: payment });
 });
 
-export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+export const applyToInvoice = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const result = await runRequiredTransaction(async (session: ClientSession) => {
     const organization_id = orgId(req);
     await reserveIdempotencyKey({
       req,
       organization_id,
-      scope: `payments-made:apply:${req.params.id}`,
+      scope: `payments-received:apply:${req.params.id}`,
       session,
     });
 
-    const paymentQuery = PaymentMade.findOne({
+    const paymentQuery = PaymentReceived.findOne({
       _id: req.params.id,
       organization_id,
       is_deleted: false,
     });
     paymentQuery.session(session);
     const payment = await paymentQuery;
-    if (!payment) throw new NotFoundError("Payment made");
+    if (!payment) throw new NotFoundError("Payment received");
     if (payment.status === "VOID") throw new ValidationError("Cannot apply a VOID payment");
 
-    const bill_id = String(req.body.bill_id || req.body.billId || "");
+    const invoice_id = String(req.body.invoice_id || req.body.invoiceId || "");
     const applied_amount = toNum(req.body.applied_amount ?? req.body.appliedAmount ?? req.body.amount, 0);
-    if (!bill_id) throw new ValidationError("bill_id is required");
+    if (!invoice_id) throw new ValidationError("invoice_id is required");
 
-    const applied = await applyAgainstBill(payment, bill_id, applied_amount, req, session);
+    const applied = await applyAgainstInvoice(payment, invoice_id, applied_amount, req, session);
     attachUser(payment, req);
     await payment.save({ session });
 
@@ -669,11 +655,11 @@ export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: R
 
   await recomputeContactOutstanding({
     organizationId: (result.payment as any).organization_id,
-    contactId: (result.payment as any).vendor_id,
+    contactId: (result.payment as any).customer_id,
     req,
   });
 
-  await postPaymentMadeEvent({
+  await postPaymentReceivedEvent({
     payment: result.payment as any,
     req,
     event: "apply",
@@ -684,65 +670,63 @@ export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: R
   res.json({ success: true, data: result });
 });
 
-export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+export const unapplyFromInvoice = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const result = await runRequiredTransaction(async (session: ClientSession) => {
     const organization_id = orgId(req);
     await reserveIdempotencyKey({
       req,
       organization_id,
-      scope: `payments-made:unapply:${req.params.id}`,
+      scope: `payments-received:unapply:${req.params.id}`,
       session,
     });
 
-    const paymentQuery = PaymentMade.findOne({
+    const paymentQuery = PaymentReceived.findOne({
       _id: req.params.id,
       organization_id,
       is_deleted: false,
     });
     paymentQuery.session(session);
     const payment = await paymentQuery;
-    if (!payment) throw new NotFoundError("Payment made");
+    if (!payment) throw new NotFoundError("Payment received");
     if (payment.status === "VOID") throw new ValidationError("Cannot unapply from a VOID payment");
 
-    const bill_id = String(req.body.bill_id || req.body.billId || "");
-    if (!bill_id) throw new ValidationError("bill_id is required");
+    const invoice_id = String(req.body.invoice_id || req.body.invoiceId || "");
+    if (!invoice_id) throw new ValidationError("invoice_id is required");
 
-    const mapQuery = PaymentBillMap.findOne({
+    const mapQuery = PaymentInvoiceMap.findOne({
       organization_id: payment.organization_id,
       payment_id: payment._id,
-      bill_id,
+      invoice_id,
       is_deleted: false,
     });
     mapQuery.session(session);
     const map = await mapQuery;
-    if (!map) throw new NotFoundError("Payment bill mapping");
+    if (!map) throw new NotFoundError("Payment invoice mapping");
 
     const maxApplied = round2(toNum(map.applied_amount));
     const amount = round2(toNum(req.body.applied_amount ?? req.body.appliedAmount ?? maxApplied));
     if (amount <= 0) throw new ValidationError("applied_amount must be greater than zero");
     if (amount > maxApplied) throw new ValidationError("applied_amount exceeds mapped amount");
 
-    const billQuery = Bill.findOne({
-      _id: bill_id,
+    const invoiceQuery = Invoice.findOne({
+      _id: invoice_id,
       organizationId: payment.organization_id,
       isDeleted: false,
     });
-    billQuery.session(session);
-    const bill = await billQuery;
-    if (!bill) throw new NotFoundError("Bill");
-    if (bill.status === "Void") throw new ValidationError("Cannot unapply from a void bill");
+    invoiceQuery.session(session);
+    const invoice = await invoiceQuery;
+    if (!invoice) throw new NotFoundError("Invoice");
+    if (invoice.status === "Void") throw new ValidationError("Cannot unapply from a void invoice");
 
-    bill.amountPaid = round2(Math.max(0, toNum(bill.amountPaid) - amount));
-    bill.balanceDue = round2(Math.max(0, toNum(bill.total) - toNum(bill.amountPaid)));
-    bill.status = deriveBillStatus(toNum(bill.total), toNum(bill.amountPaid), bill.dueDate);
-    bill.comments.push({
-      author: req.user?.name || req.user?.email || "System",
-      text: `Payment ${payment.payment_number} unapplied for ${amount.toLocaleString("en-IN")}`,
-      time: new Date(),
-      isSystem: true,
-    });
+    const currentPaid = round2(Math.max(0, toNum(invoice.total) - toNum(invoice.balanceDue)));
+    const nextPaid = round2(Math.max(0, currentPaid - amount));
+    invoice.balanceDue = round2(Math.max(0, toNum(invoice.total) - nextPaid));
+    invoice.paymentReceived = invoice.balanceDue <= 0;
+    invoice.status = deriveInvoiceStatus(toNum(invoice.total), nextPaid, invoice.dueDate);
+    if (!invoice.paymentReceived) invoice.paidAt = null;
 
-    await bill.save({ session });
+    attachUser(invoice as any, req);
+    await invoice.save({ session });
 
     map.applied_amount = round2(maxApplied - amount);
     if (map.applied_amount <= 0) {
@@ -753,13 +737,13 @@ export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, re
     attachUser(map, req);
     await map.save({ session });
 
-    payment.amount_used_for_bills = round2(Math.max(0, toNum(payment.amount_used_for_bills) - amount));
+    payment.amount_used_for_invoices = round2(Math.max(0, toNum(payment.amount_used_for_invoices) - amount));
     recomputeExcess(payment);
     payment.audit_log.push({
-      action: "UNAPPLY_FROM_BILL",
-      details: `Unapplied ${amount.toLocaleString("en-IN")} from bill ${bill.billNumber}`,
+      action: "UNAPPLY_FROM_INVOICE",
+      details: `Unapplied ${amount.toLocaleString("en-IN")} from invoice ${invoice.invoiceNumber}`,
       amount,
-      bill_id: bill._id,
+      invoice_id: invoice._id,
       at: new Date(),
       by: req.user?.email || req.user?.name || "System",
     });
@@ -771,11 +755,11 @@ export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, re
 
   await recomputeContactOutstanding({
     organizationId: (result.payment as any).organization_id,
-    contactId: (result.payment as any).vendor_id,
+    contactId: (result.payment as any).customer_id,
     req,
   });
 
-  await postPaymentMadeEvent({
+  await postPaymentReceivedEvent({
     payment: result.payment as any,
     req,
     event: "unapply",
@@ -792,18 +776,18 @@ export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: 
     await reserveIdempotencyKey({
       req,
       organization_id,
-      scope: `payments-made:refund:${req.params.id}`,
+      scope: `payments-received:refund:${req.params.id}`,
       session,
     });
 
-    const paymentQuery = PaymentMade.findOne({
+    const paymentQuery = PaymentReceived.findOne({
       _id: req.params.id,
       organization_id,
       is_deleted: false,
     });
     paymentQuery.session(session);
     const payment = await paymentQuery;
-    if (!payment) throw new NotFoundError("Payment made");
+    if (!payment) throw new NotFoundError("Payment received");
     if (payment.status !== "PAID") throw new ValidationError("Only PAID payments can be refunded");
 
     recomputeExcess(payment);
@@ -817,7 +801,7 @@ export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: 
     recomputeExcess(payment);
     payment.audit_log.push({
       action: "REFUND",
-      details: `Vendor refund recorded for ${amount.toLocaleString("en-IN")}`,
+      details: `Customer refund recorded for ${amount.toLocaleString("en-IN")}`,
       amount,
       at: new Date(),
       by: req.user?.email || req.user?.name || "System",
@@ -829,13 +813,15 @@ export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: 
     return payment;
   });
 
+  await reverseAllPaymentReceivedVouchers(result as any, req);
+
   await recomputeContactOutstanding({
     organizationId: (result as any).organization_id,
-    contactId: (result as any).vendor_id,
+    contactId: (result as any).customer_id,
     req,
   });
 
-  await postPaymentMadeEvent({
+  await postPaymentReceivedEvent({
     payment: result as any,
     req,
     event: "refund",
@@ -852,24 +838,24 @@ export const voidPayment = asyncHandler(async (req: AuthenticatedRequest, res: R
     await reserveIdempotencyKey({
       req,
       organization_id,
-      scope: `payments-made:void:${req.params.id}`,
+      scope: `payments-received:void:${req.params.id}`,
       session,
     });
 
-    const paymentQuery = PaymentMade.findOne({
+    const paymentQuery = PaymentReceived.findOne({
       _id: req.params.id,
       organization_id,
       is_deleted: false,
     });
     paymentQuery.session(session);
     const payment = await paymentQuery;
-    if (!payment) throw new NotFoundError("Payment made");
+    if (!payment) throw new NotFoundError("Payment received");
     if (payment.status === "VOID") throw new ValidationError("Payment is already VOID");
     if (round2(toNum(payment.amount_refunded)) > 0) {
       throw new ValidationError("Cannot void a payment after refund is recorded");
     }
 
-    const mapsQuery = PaymentBillMap.find({
+    const mapsQuery = PaymentInvoiceMap.find({
       organization_id: payment.organization_id,
       payment_id: payment._id,
       is_deleted: false,
@@ -879,27 +865,25 @@ export const voidPayment = asyncHandler(async (req: AuthenticatedRequest, res: R
     const maps = await mapsQuery;
 
     for (const map of maps) {
-      const billQuery = Bill.findOne({
-        _id: map.bill_id,
+      const invoiceQuery = Invoice.findOne({
+        _id: map.invoice_id,
         organizationId: payment.organization_id,
         isDeleted: false,
       });
-      billQuery.session(session);
-      const bill = await billQuery;
+      invoiceQuery.session(session);
+      const invoice = await invoiceQuery;
 
-      if (bill) {
+      if (invoice) {
         const amount = round2(toNum(map.applied_amount));
         if (amount > 0) {
-          bill.amountPaid = round2(Math.max(0, toNum(bill.amountPaid) - amount));
-          bill.balanceDue = round2(Math.max(0, toNum(bill.total) - toNum(bill.amountPaid)));
-          bill.status = deriveBillStatus(toNum(bill.total), toNum(bill.amountPaid), bill.dueDate);
-          bill.comments.push({
-            author: req.user?.name || req.user?.email || "System",
-            text: `Payment ${payment.payment_number} voided and reversed by ${amount.toLocaleString("en-IN")}`,
-            time: new Date(),
-            isSystem: true,
-          });
-          await bill.save({ session });
+          const currentPaid = round2(Math.max(0, toNum(invoice.total) - toNum(invoice.balanceDue)));
+          const nextPaid = round2(Math.max(0, currentPaid - amount));
+          invoice.balanceDue = round2(Math.max(0, toNum(invoice.total) - nextPaid));
+          invoice.paymentReceived = invoice.balanceDue <= 0;
+          invoice.status = deriveInvoiceStatus(toNum(invoice.total), nextPaid, invoice.dueDate);
+          if (!invoice.paymentReceived) invoice.paidAt = null;
+          attachUser(invoice as any, req);
+          await invoice.save({ session });
         }
       }
 
@@ -911,7 +895,7 @@ export const voidPayment = asyncHandler(async (req: AuthenticatedRequest, res: R
     }
 
     payment.status = "VOID";
-    payment.amount_used_for_bills = 0;
+    payment.amount_used_for_invoices = 0;
     payment.amount_in_excess = 0;
     payment.audit_log.push({
       action: "VOID",
@@ -925,11 +909,9 @@ export const voidPayment = asyncHandler(async (req: AuthenticatedRequest, res: R
     return payment;
   });
 
-  await reverseAllPaymentMadeVouchers(result as any, req);
-
   await recomputeContactOutstanding({
     organizationId: (result as any).organization_id,
-    contactId: (result as any).vendor_id,
+    contactId: (result as any).customer_id,
     req,
   });
 

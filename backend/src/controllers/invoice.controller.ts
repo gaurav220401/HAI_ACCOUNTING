@@ -11,6 +11,20 @@ import {
 import { sendInvoiceEmail as sendInvoiceEmailService } from "../services/email.service";
 import { generateInvoicePdf } from "../services/pdf.service";
 import Organization from "../models/organization.model";
+import {
+  applyInvoiceCostLines,
+  applyStockDeltas,
+  collectInvoiceStockDeltas,
+  computeInvoiceCostLines,
+  diffStockDeltas,
+  invertStockDeltas,
+  recomputeContactOutstanding,
+} from "../services/accounting-sync.service";
+import {
+  findAccountIdByName,
+  postVoucher,
+  reverseVoucher,
+} from "../services/gl-posting.service";
 
 /** Parse a field that may arrive as a JS array (JSON body) or a JSON string (FormData). */
 function parseStringArray(val: unknown): string[] {
@@ -80,6 +94,272 @@ function summarizeTotals(
     : discountValue;
   const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
   return { subTotal, discountAmount, total };
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function toNum(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function hasFinancialEdits(payload: Record<string, unknown>): boolean {
+  const keys = [
+    "items",
+    "discountType",
+    "discountValue",
+    "taxType",
+    "taxId",
+    "taxAmount",
+    "adjustmentAmount",
+    "adjustmentLabel",
+    "total",
+    "balanceDue",
+    "paymentReceived",
+  ];
+  return keys.some((key) => payload[key] !== undefined);
+}
+
+function invoiceVoucherId(invoice: any): string {
+  return `invoice:${String(invoice._id)}`;
+}
+
+function collectStoredInvoiceCostLines(items: any[] = []) {
+  return (items || [])
+    .map((line) => {
+      const itemId = String(line?.itemId || "");
+      const quantity = round2(toNum(line?.quantity));
+      const costRate = round2(toNum(line?.costRate));
+      const costAmount = round2(toNum(line?.costAmount));
+      return { itemId, quantity, costRate, costAmount };
+    })
+    .filter((line) => line.itemId && line.quantity > 0 && line.costAmount > 0);
+}
+
+function applyCostLinesToInvoiceItems(items: any[] = [], costLines: any[] = []): boolean {
+  const costRateMap = new Map<string, number>();
+  for (const line of costLines) {
+    if (!line?.itemId) continue;
+    costRateMap.set(String(line.itemId), round2(toNum(line.costRate)));
+  }
+
+  let changed = false;
+  for (const item of items || []) {
+    const itemId = String(item?.itemId || "");
+    const quantity = round2(toNum(item?.quantity));
+
+    if (itemId && quantity > 0 && costRateMap.has(itemId)) {
+      const rate = round2(toNum(costRateMap.get(itemId)));
+      const amount = round2(quantity * rate);
+      if (round2(toNum(item.costRate)) !== rate) {
+        item.costRate = rate;
+        changed = true;
+      }
+      if (round2(toNum(item.costAmount)) !== amount) {
+        item.costAmount = amount;
+        changed = true;
+      }
+      continue;
+    }
+
+    if (round2(toNum(item?.costRate)) !== 0) {
+      item.costRate = 0;
+      changed = true;
+    }
+    if (round2(toNum(item?.costAmount)) !== 0) {
+      item.costAmount = 0;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+async function postInvoiceLedger(invoice: any, req: AuthenticatedRequest) {
+  if (!isPostedInvoiceStatus(String(invoice.status || ""))) return;
+
+  const organizationId = invoice.organizationId;
+  const receivableAmount = round2(toNum(invoice.total));
+  if (receivableAmount <= 0) return;
+
+  const arAccountId = await findAccountIdByName({
+    organizationId,
+    names: ["Accounts Receivable", "Trade Receivables", "Debtors"],
+    rootType: "Asset",
+    accountType: "Accounts Receivable",
+  });
+
+  const defaultSalesAccountId = await findAccountIdByName({
+    organizationId,
+    names: ["Sales", "Sales Revenue", "Sales Account"],
+    rootType: "Income",
+    accountType: "Income",
+  });
+
+  const revenueMap = new Map<string, number>();
+  for (const line of invoice.items || []) {
+    const amount = round2(toNum(line?.amount));
+    if (amount <= 0) continue;
+    const accountId = String(line?.accountId || defaultSalesAccountId);
+    revenueMap.set(accountId, round2((revenueMap.get(accountId) || 0) + amount));
+  }
+
+  if (revenueMap.size === 0) {
+    revenueMap.set(String(defaultSalesAccountId), receivableAmount);
+  }
+
+  const costLines = await computeInvoiceCostLines({
+    organizationId,
+    items: invoice.items || [],
+  });
+  const cogsTotal = round2(costLines.reduce((sum, line) => sum + toNum(line.costAmount), 0));
+
+  const lines: Array<{
+    accountId: any;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    contactType?: "Customer";
+    contactId?: any;
+  }> = [
+    {
+      accountId: arAccountId,
+      debit: receivableAmount,
+      description: `Invoice ${invoice.invoiceNumber}`,
+      contactType: "Customer",
+      contactId: invoice.customerId,
+    },
+  ];
+
+  let recognizedRevenue = 0;
+  for (const [accountId, amount] of revenueMap.entries()) {
+    const rounded = round2(amount);
+    if (rounded <= 0) continue;
+    lines.push({
+      accountId,
+      credit: rounded,
+      description: `Revenue - ${invoice.invoiceNumber}`,
+      contactType: "Customer",
+      contactId: invoice.customerId,
+    });
+    recognizedRevenue = round2(recognizedRevenue + rounded);
+  }
+
+  const taxDelta = round2(receivableAmount - recognizedRevenue);
+  if (Math.abs(taxDelta) > 0.009) {
+    if (taxDelta > 0) {
+      const taxPayableAccountId = await findAccountIdByName({
+        organizationId,
+        names: ["Output Tax Payable", "GST Payable", "Tax Payable"],
+        rootType: "Liability",
+        accountType: "Other Current Liability",
+      });
+      lines.push({
+        accountId: taxPayableAccountId,
+        credit: taxDelta,
+        description: `Tax - ${invoice.invoiceNumber}`,
+        contactType: "Customer",
+        contactId: invoice.customerId,
+      });
+    } else {
+      const taxAssetAccountId = await findAccountIdByName({
+        organizationId,
+        names: ["Tax Receivable", "TDS Receivable", "Advance Tax"],
+        rootType: "Asset",
+        accountType: "Other Current Asset",
+      });
+      lines.push({
+        accountId: taxAssetAccountId,
+        debit: Math.abs(taxDelta),
+        description: `Tax receivable - ${invoice.invoiceNumber}`,
+        contactType: "Customer",
+        contactId: invoice.customerId,
+      });
+    }
+  }
+
+  if (cogsTotal > 0) {
+    const cogsAccountId = await findAccountIdByName({
+      organizationId,
+      names: ["Cost of Goods Sold", "COGS"],
+      rootType: "Expense",
+      accountType: "Cost Of Goods Sold",
+    });
+    const stockAccountId = await findAccountIdByName({
+      organizationId,
+      names: ["Inventory Asset", "Inventory", "Stock"],
+      rootType: "Asset",
+      accountType: "Stock",
+    });
+    lines.push({
+      accountId: cogsAccountId,
+      debit: cogsTotal,
+      description: `COGS - ${invoice.invoiceNumber}`,
+      contactType: "Customer",
+      contactId: invoice.customerId,
+    });
+    lines.push({
+      accountId: stockAccountId,
+      credit: cogsTotal,
+      description: `Inventory issue - ${invoice.invoiceNumber}`,
+      contactType: "Customer",
+      contactId: invoice.customerId,
+    });
+  }
+
+  const posting = await postVoucher({
+    organizationId,
+    voucherType: "Invoice",
+    voucherId: invoiceVoucherId(invoice),
+    voucherNo: String(invoice.invoiceNumber),
+    postingDate: invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date(),
+    lines,
+    description: `Invoice posting ${invoice.invoiceNumber}`,
+    req,
+  });
+
+  if (!posting.posted) return;
+
+  if (costLines.length > 0) {
+    await applyInvoiceCostLines({
+      organizationId,
+      costLines,
+      direction: "issue",
+      req,
+    });
+  }
+
+  if (applyCostLinesToInvoiceItems(invoice.items || [], costLines)) {
+    attachUser(invoice, req);
+    await invoice.save();
+  }
+}
+
+async function reverseInvoiceLedger(invoice: any, req: AuthenticatedRequest) {
+  const reversal = await reverseVoucher({
+    organizationId: invoice.organizationId,
+    voucherType: "Invoice",
+    voucherId: invoiceVoucherId(invoice),
+    reversalVoucherNo: `REV-${invoice.invoiceNumber}`,
+    postingDate: new Date(),
+    description: `Invoice reversal ${invoice.invoiceNumber}`,
+    req,
+  });
+
+  if (!reversal.reversed) return;
+
+  const storedCostLines = collectStoredInvoiceCostLines(invoice.items || []);
+  if (storedCostLines.length > 0) {
+    await applyInvoiceCostLines({
+      organizationId: invoice.organizationId,
+      costLines: storedCostLines,
+      direction: "reverse",
+      req,
+    });
+  }
 }
 
 async function nextInvoiceNumber(organizationId: any): Promise<string> {
@@ -233,6 +513,22 @@ export const create = asyncHandler(
     attachUser(invoice, req);
     await invoice.save();
 
+    if (isPostedInvoiceStatus(String(invoice.status || ""))) {
+      await applyStockDeltas({
+        organizationId: oid,
+        deltas: collectInvoiceStockDeltas(invoice.items as any[]),
+        req,
+      });
+
+      await postInvoiceLedger(invoice, req);
+    }
+
+    await recomputeContactOutstanding({
+      organizationId: oid,
+      contactId: invoice.customerId as any,
+      req,
+    });
+
     res.status(201).json({ success: true, data: invoice });
   },
 );
@@ -245,6 +541,18 @@ export const update = asyncHandler(
       organizationId: orgId(req),
     });
     if (!invoice) throw new NotFoundError("Invoice");
+
+    const previousCustomerId = String(invoice.customerId || "");
+    const previousPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    const previousStockDeltas = previousPosted
+      ? collectInvoiceStockDeltas(invoice.items as any[])
+      : {};
+
+    if (previousPosted && hasFinancialEdits(req.body || {})) {
+      throw new ValidationError(
+        "Cannot edit financial fields after invoice is posted. Void and recreate for accounting integrity.",
+      );
+    }
 
     const allowed = [
       "customerId",
@@ -321,6 +629,40 @@ export const update = asyncHandler(
     attachUser(invoice, req);
     await invoice.save();
 
+    const nextPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    const nextStockDeltas = nextPosted
+      ? collectInvoiceStockDeltas(invoice.items as any[])
+      : {};
+    const stockDeltaDiff = diffStockDeltas(previousStockDeltas, nextStockDeltas);
+
+    if (Object.keys(stockDeltaDiff).length > 0) {
+      await applyStockDeltas({
+        organizationId: invoice.organizationId as any,
+        deltas: stockDeltaDiff,
+        req,
+      });
+    }
+
+    if (!previousPosted && nextPosted) {
+      await postInvoiceLedger(invoice, req);
+    } else if (previousPosted && !nextPosted) {
+      await reverseInvoiceLedger(invoice, req);
+    }
+
+    await recomputeContactOutstanding({
+      organizationId: invoice.organizationId as any,
+      contactId: invoice.customerId as any,
+      req,
+    });
+
+    if (previousCustomerId && previousCustomerId !== String(invoice.customerId || "")) {
+      await recomputeContactOutstanding({
+        organizationId: invoice.organizationId as any,
+        contactId: previousCustomerId,
+        req,
+      });
+    }
+
     res.json({ success: true, data: invoice });
   },
 );
@@ -334,10 +676,33 @@ export const remove = asyncHandler(
     });
     if (!invoice) throw new NotFoundError("Invoice");
 
+    const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    const previousStockDeltas = wasPosted
+      ? collectInvoiceStockDeltas(invoice.items as any[])
+      : {};
+
     invoice.isDeleted = true;
     (invoice as any).deletedAt = new Date();
     attachUser(invoice, req);
     await invoice.save();
+
+    if (wasPosted) {
+      if (Object.keys(previousStockDeltas).length > 0) {
+        await applyStockDeltas({
+          organizationId: invoice.organizationId as any,
+          deltas: invertStockDeltas(previousStockDeltas),
+          req,
+        });
+      }
+
+      await reverseInvoiceLedger(invoice, req);
+    }
+
+    await recomputeContactOutstanding({
+      organizationId: invoice.organizationId as any,
+      contactId: invoice.customerId as any,
+      req,
+    });
 
     res.json({ success: true, message: "Invoice deleted" });
   },
@@ -366,15 +731,40 @@ function markSentState(invoice: any) {
   if (!invoice.sentAt) invoice.sentAt = new Date();
 }
 
+function isPostedInvoiceStatus(status: string): boolean {
+  return status !== "Draft" && status !== "Void";
+}
+
 export const sendInvoice = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const invoice = await requireInvoice(req);
     if (invoice.status === "Void") {
       throw new ValidationError("Cannot send a void invoice");
     }
+
+    const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+
     markSentState(invoice);
     attachUser(invoice, req);
     await invoice.save();
+
+    const nowPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    if (!wasPosted && nowPosted) {
+      await applyStockDeltas({
+        organizationId: invoice.organizationId as any,
+        deltas: collectInvoiceStockDeltas(invoice.items as any[]),
+        req,
+      });
+
+      await postInvoiceLedger(invoice, req);
+    }
+
+    await recomputeContactOutstanding({
+      organizationId: invoice.organizationId as any,
+      contactId: invoice.customerId as any,
+      req,
+    });
+
     res.json({
       success: true,
       data: invoice,
@@ -391,6 +781,8 @@ export const sendInvoiceEmail = asyncHandler(
     if (invoice.status === "Void") {
       throw new ValidationError("Cannot email a void invoice");
     }
+
+    const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
 
     // Support both JSON body and multipart/form-data (for file attachments)
     const to = parseStringArray(req.body.to);
@@ -528,6 +920,23 @@ export const sendInvoiceEmail = asyncHandler(
     attachUser(invoice, req);
     await invoice.save();
 
+    const nowPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    if (!wasPosted && nowPosted) {
+      await applyStockDeltas({
+        organizationId: invoice.organizationId as any,
+        deltas: collectInvoiceStockDeltas(invoice.items as any[]),
+        req,
+      });
+
+      await postInvoiceLedger(invoice, req);
+    }
+
+    await recomputeContactOutstanding({
+      organizationId: invoice.organizationId as any,
+      contactId: invoice.customerId as any,
+      req,
+    });
+
     res.json({
       success: true,
       data: invoice,
@@ -539,6 +948,8 @@ export const sendInvoiceEmail = asyncHandler(
 export const recordPayment = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const invoice = await requireInvoice(req);
+    const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+
     const amount = Number(req.body.amount);
     if (!amount || amount <= 0) {
       throw new ValidationError("Payment amount must be greater than zero");
@@ -558,6 +969,24 @@ export const recordPayment = asyncHandler(
 
     attachUser(invoice, req);
     await invoice.save();
+
+    const nowPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    if (!wasPosted && nowPosted) {
+      await applyStockDeltas({
+        organizationId: invoice.organizationId as any,
+        deltas: collectInvoiceStockDeltas(invoice.items as any[]),
+        req,
+      });
+
+      await postInvoiceLedger(invoice, req);
+    }
+
+    await recomputeContactOutstanding({
+      organizationId: invoice.organizationId as any,
+      contactId: invoice.customerId as any,
+      req,
+    });
+
     res.json({ success: true, data: invoice, message: "Payment recorded" });
   },
 );
@@ -565,11 +994,35 @@ export const recordPayment = asyncHandler(
 export const voidInvoice = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const invoice = await requireInvoice(req);
+    const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    const previousStockDeltas = wasPosted
+      ? collectInvoiceStockDeltas(invoice.items as any[])
+      : {};
+
     invoice.status = "Void";
     invoice.balanceDue = 0;
     invoice.paymentReceived = false;
     attachUser(invoice, req);
     await invoice.save();
+
+    if (wasPosted) {
+      if (Object.keys(previousStockDeltas).length > 0) {
+        await applyStockDeltas({
+          organizationId: invoice.organizationId as any,
+          deltas: invertStockDeltas(previousStockDeltas),
+          req,
+        });
+      }
+
+      await reverseInvoiceLedger(invoice, req);
+    }
+
+    await recomputeContactOutstanding({
+      organizationId: invoice.organizationId as any,
+      contactId: invoice.customerId as any,
+      req,
+    });
+
     res.json({ success: true, data: invoice, message: "Invoice voided" });
   },
 );

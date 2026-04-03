@@ -38,11 +38,51 @@ export interface Account {
   isGroup: boolean;
   isSystemAccount: boolean;
   isActive: boolean;
+  openingBalance: number;
   balance: number;
   currency?: string;
   createdAt: string;
   updatedAt: string;
   children?: Account[];
+}
+
+export interface OpeningBalanceAccountRow {
+  accountId: string;
+  name: string;
+  rootType: AccountRootType;
+  accountType: AccountType;
+  availableAmount: number;
+  availableSide: "Debit" | "Credit" | null;
+  debit: number;
+  credit: number;
+}
+
+export interface OpeningBalanceGroup {
+  rootType: AccountRootType;
+  accounts: OpeningBalanceAccountRow[];
+}
+
+export interface OpeningBalanceSummary {
+  totalDebit: number;
+  totalCredit: number;
+  difference: number;
+  differenceSide: "Debit" | "Credit" | null;
+}
+
+export interface OpeningBalanceData {
+  migrationDate: string | null;
+  isConfigured: boolean;
+  groups: OpeningBalanceGroup[];
+  totals: OpeningBalanceSummary;
+}
+
+export interface SaveOpeningBalanceInput {
+  migrationDate?: string;
+  entries: Array<{
+    accountId: string;
+    debit?: number;
+    credit?: number;
+  }>;
 }
 
 export interface CreateAccountInput {
@@ -78,6 +118,26 @@ export const accountApi = {
    */
   listForItem: (section: "sales" | "purchase") =>
     apiFetch<{ data: GroupedAccounts }>(`/accounts/for-item?section=${section}`),
+
+  getOpeningBalances: () =>
+    apiFetch<{ data: OpeningBalanceData }>("/accounts/opening-balances"),
+
+  saveOpeningBalances: (data: SaveOpeningBalanceInput) =>
+    apiFetch<{
+      data: {
+        totals: OpeningBalanceSummary;
+        adjustment: {
+          amount: number;
+          side: "Debit" | "Credit" | null;
+          accountId: string | null;
+        };
+        finalTotals: { totalDebit: number; totalCredit: number };
+        migrationDate: string | null;
+      };
+    }>("/accounts/opening-balances", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 
   create: (data: CreateAccountInput) =>
     apiFetch<{ data: Account }>("/accounts", {

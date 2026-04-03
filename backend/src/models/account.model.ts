@@ -44,6 +44,7 @@ const accountSchema = new Schema<IAccount>(
     currency: { type: String, default: "" },
     description: { type: String, default: "" },
     isSystemAccount: { type: Boolean, default: false },
+    openingBalance: { type: Number, default: 0 },
     balance: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },

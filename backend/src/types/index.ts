@@ -82,6 +82,18 @@ export interface IOrganization extends Document {
     enabled: boolean;
     subdomain?: string;
   };
+  reminderSettings?: {
+    enabled: boolean;
+    sendInvoiceDueReminder: boolean;
+    invoiceDueDaysBefore: number;
+    sendPaymentDueReminder: boolean;
+    paymentDueFrequencyDays: number;
+  };
+  openingBalanceSettings?: {
+    migrationDate?: Date | null;
+    isConfigured: boolean;
+    lastUpdatedAt?: Date | null;
+  };
   defaultAccounts?: {
     bankAccount?: Types.ObjectId;
     cashAccount?: Types.ObjectId;
@@ -277,6 +289,7 @@ export interface IAccount extends Document {
   currency?: string;
   description?: string;
   isSystemAccount: boolean; // system accounts cannot be deleted
+  openingBalance: number; // explicit imported opening balance
   balance: number; // denormalized, updated on GL posting
   isActive: boolean;
   isDeleted: boolean;
@@ -442,6 +455,8 @@ export interface IItem extends Document {
   purchaseAccountId?: Types.ObjectId | null;
   inventoryTracked: boolean;
   stockOnHand: number;
+  inventoryValue: number;
+  averageCost: number;
   reorderPoint?: number;
   preferredVendorId?: Types.ObjectId | null;
   warehouseId?: Types.ObjectId | null;
@@ -725,6 +740,8 @@ export interface IInvoiceItem {
   taxPercent: number;
   taxAmount: number;
   amount: number;
+  costRate?: number;
+  costAmount?: number;
   accountId?: Types.ObjectId | null;
   projectId?: Types.ObjectId | null;
 }

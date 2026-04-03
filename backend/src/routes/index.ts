@@ -24,11 +24,13 @@ import purchaseOrderRoutes from "./purchase-order.routes";
 import billRoutes from "./bill.routes";
 import vendorCreditRoutes from "./vendor-credit.routes";
 import paymentMadeRoutes from "./payment-made.routes";
+import paymentReceivedRoutes from "./payment-received.routes";
 import journalRoutes from "./journal.routes";
 import projectRoutes from "./projects";
 import currencyAdjustmentRoutes from "./currency-adjustment.routes";
 import bulkUpdateRoutes from "./bulk-update.routes";
 import documentRoutes from "./document.routes";
+import reportRoutes from "./report.routes";
 
 const router = Router();
 
@@ -57,10 +59,12 @@ router.use("/purchase-orders", purchaseOrderRoutes);
 router.use("/bills", billRoutes);
 router.use("/vendor-credits", vendorCreditRoutes);
 router.use("/payments-made", paymentMadeRoutes);
+router.use("/payments-received", paymentReceivedRoutes);
 router.use("/journals", journalRoutes);
 router.use("/projects", projectRoutes);
 router.use("/currency-adjustments", currencyAdjustmentRoutes);
 router.use("/bulk-update", bulkUpdateRoutes);
 router.use("/documents", documentRoutes);
+router.use("/reports", reportRoutes);
 
 export default router;

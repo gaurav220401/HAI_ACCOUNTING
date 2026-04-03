@@ -11,6 +11,7 @@ import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
+import { recomputeContactOutstanding } from "../services/accounting-sync.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -622,6 +623,12 @@ export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: R
     return { credit, bill, amount };
   });
 
+  await recomputeContactOutstanding({
+    organizationId: (result.bill as any).organizationId,
+    contactId: (result.bill as any).vendorId,
+    req,
+  });
+
   res.json({ success: true, data: result });
 });
 
@@ -720,6 +727,12 @@ export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, re
     }
 
     return { credit, bill, amount };
+  });
+
+  await recomputeContactOutstanding({
+    organizationId: (result.bill as any).organizationId,
+    contactId: (result.bill as any).vendorId,
+    req,
   });
 
   res.json({ success: true, data: result });
