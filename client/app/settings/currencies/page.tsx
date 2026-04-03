@@ -35,6 +35,7 @@ export default function CurrenciesSettingsPage() {
   const [fetching, setFetching] = useState(false);
   const [savingBase, setSavingBase] = useState(false);
   const [savingRate, setSavingRate] = useState(false);
+  const [seedingCurrencies, setSeedingCurrencies] = useState(false);
 
   const [newRate, setNewRate] = useState({
     from: "USD",
@@ -60,11 +61,18 @@ export default function CurrenciesSettingsPage() {
       if (!activeOrganization?._id) return;
       setFetching(true);
       try {
-        const [currencyRes, ratesRes] = await Promise.all([
-          currencyApi.list(),
-          currencyApi.listRates({ limit: 100 }),
-        ]);
-        setCurrencies(currencyRes.data || []);
+        const currencyRes = await currencyApi.list();
+        let nextCurrencies = currencyRes.data || [];
+
+        // Self-heal first-run environments where currencies were never seeded.
+        if (nextCurrencies.length === 0) {
+          await currencyApi.seedCurrencies();
+          const seededRes = await currencyApi.list();
+          nextCurrencies = seededRes.data || [];
+        }
+
+        const ratesRes = await currencyApi.listRates({ limit: 100 });
+        setCurrencies(nextCurrencies);
         setRates(ratesRes.data || []);
       } catch {
         toast.error("Failed to load currency settings");
@@ -76,7 +84,42 @@ export default function CurrenciesSettingsPage() {
     void load();
   }, [activeOrganization?._id]);
 
-  const canSaveBase = useMemo(() => Boolean(activeOrganization?._id && baseCurrency), [activeOrganization?._id, baseCurrency]);
+  useEffect(() => {
+    if (currencies.length === 0) return;
+
+    const available = new Set(currencies.map((c) => c.code));
+
+    if (!available.has(baseCurrency)) {
+      setBaseCurrency(currencies[0].code);
+    }
+
+    setNewRate((prev) => {
+      const from = available.has(prev.from) ? prev.from : currencies[0].code;
+      const to = available.has(prev.to)
+        ? prev.to
+        : currencies.find((c) => c.code !== from)?.code || from;
+      return { ...prev, from, to };
+    });
+  }, [currencies, baseCurrency]);
+
+  const canSaveBase = useMemo(
+    () => Boolean(activeOrganization?._id && baseCurrency && currencies.some((c) => c.code === baseCurrency)),
+    [activeOrganization?._id, baseCurrency, currencies],
+  );
+
+  async function handleInitializeCurrencies() {
+    setSeedingCurrencies(true);
+    try {
+      await currencyApi.seedCurrencies();
+      const currencyRes = await currencyApi.list();
+      setCurrencies(currencyRes.data || []);
+      toast.success("Currencies initialized");
+    } catch {
+      toast.error("Failed to initialize currencies");
+    } finally {
+      setSeedingCurrencies(false);
+    }
+  }
 
   async function handleSaveBaseCurrency() {
     if (!activeOrganization?._id) return;
@@ -151,7 +194,7 @@ export default function CurrenciesSettingsPage() {
             <div className="space-y-1.5">
               <Label>Organization Base Currency</Label>
               <Select value={baseCurrency} onValueChange={setBaseCurrency}>
-                <SelectTrigger>
+                <SelectTrigger disabled={fetching || currencies.length === 0}>
                   <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
                 <SelectContent>
@@ -167,6 +210,15 @@ export default function CurrenciesSettingsPage() {
               Base currency is used for financial reports and account balances. Transaction currencies can still vary.
             </div>
           </div>
+          {currencies.length === 0 && (
+            <div className="mt-3 rounded-md border border-dashed p-3 text-xs text-muted-foreground flex items-center justify-between gap-3">
+              <span>No currencies found yet. Initialize default world currencies to enable selection.</span>
+              <Button type="button" variant="outline" size="sm" onClick={handleInitializeCurrencies} disabled={seedingCurrencies}>
+                {seedingCurrencies ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                <span className="ml-2">Initialize</span>
+              </Button>
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border p-4 space-y-4">
@@ -176,7 +228,7 @@ export default function CurrenciesSettingsPage() {
             <div className="space-y-1.5">
               <Label>From</Label>
               <Select value={newRate.from} onValueChange={(v) => setNewRate((p) => ({ ...p, from: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger disabled={currencies.length === 0}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {currencies.map((c) => (
                     <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
@@ -188,7 +240,7 @@ export default function CurrenciesSettingsPage() {
             <div className="space-y-1.5">
               <Label>To</Label>
               <Select value={newRate.to} onValueChange={(v) => setNewRate((p) => ({ ...p, to: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger disabled={currencies.length === 0}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {currencies.map((c) => (
                     <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
@@ -218,7 +270,7 @@ export default function CurrenciesSettingsPage() {
               />
             </div>
 
-            <Button onClick={handleAddRate} disabled={savingRate}>
+            <Button onClick={handleAddRate} disabled={savingRate || currencies.length === 0}>
               {savingRate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               <span className="ml-2">Add Rate</span>
             </Button>

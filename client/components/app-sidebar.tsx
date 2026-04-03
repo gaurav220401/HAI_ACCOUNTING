@@ -130,6 +130,7 @@ const navItems: NavItem[] = [
     icon: Settings,
     items: [
       { title: "General", url: "/settings/general" },
+      { title: "Taxes", url: "/settings/taxes" },
       { title: "Currencies", url: "/settings/currencies" },
       { title: "Opening Balances", url: "/settings/opening-balances" },
       { title: "Reminders", url: "/settings/reminders" },

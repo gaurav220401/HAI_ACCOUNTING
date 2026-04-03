@@ -691,6 +691,7 @@ Common zero-value reasons:
 
 Settings pages in use:
 - General
+- Taxes
 - Currencies
 - Opening Balances
 - Reminders

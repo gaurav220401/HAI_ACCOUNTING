@@ -65,19 +65,11 @@ function makeCRUD<T extends any>(Model: any, label: string, allowedFields: strin
   };
 }
 
-// ─── Tax ──────────────────────────────────────────────────────────────────
-
-export const taxCRUD = makeCRUD(Tax, "Tax", [
-  "name", "taxType", "rate", "taxAuthority", "components", "isCompound", "description", "isActive",
-]);
-
-export const seedTaxes = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const organization = orgId(req);
+async function ensureDefaultTaxes(organization: any) {
   const existing = await Tax.countDocuments({ organizationId: organization });
-  if (existing > 0) return res.json({ success: true, message: "Taxes already exist" });
+  if (existing > 0) return false;
 
   const taxes = [
-    // Simple taxes
     { name: "CGST 2.5%", taxType: "Tax", rate: 2.5, description: "Central GST 2.5% (for 5% slab)" },
     { name: "SGST 2.5%", taxType: "Tax", rate: 2.5, description: "State GST 2.5% (for 5% slab)" },
     { name: "IGST 5%", taxType: "Tax", rate: 5, description: "Integrated GST 5%" },
@@ -94,8 +86,91 @@ export const seedTaxes = asyncHandler(async (req: AuthenticatedRequest, res: Res
   ];
 
   await Tax.insertMany(
-    taxes.map((t) => ({ organizationId: organization, ...t, isSystemTax: true, isActive: true }))
+    taxes.map((t) => ({ organizationId: organization, ...t, isSystemTax: true, isActive: true })),
   );
+  return true;
+}
+
+async function ensureDefaultPaymentTerms(organization: any) {
+  const permanentTerms = [
+    { name: "Due end of next month", termType: "end_of_next_month", netDays: 0, discountPercentage: 0, discountDays: 0, isSystemTerm: true, isPermanent: true },
+    { name: "Due end of the month", termType: "end_of_month", netDays: 0, discountPercentage: 0, discountDays: 0, isSystemTerm: true, isPermanent: true },
+  ];
+
+  for (const t of permanentTerms) {
+    await PaymentTerms.updateOne(
+      { organizationId: organization, name: t.name },
+      { $setOnInsert: { organizationId: organization, ...t } },
+      { upsert: true },
+    );
+  }
+
+  const nonPermanentCount = await PaymentTerms.countDocuments({ organizationId: organization, isPermanent: false });
+  if (nonPermanentCount > 0) return false;
+
+  const editableTerms = [
+    { name: "Due on Receipt", termType: "net_days", netDays: 0, isDefault: true, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+    { name: "Net 15", termType: "net_days", netDays: 15, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+    { name: "Net 30", termType: "net_days", netDays: 30, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+    { name: "Net 45", termType: "net_days", netDays: 45, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+    { name: "Net 60", termType: "net_days", netDays: 60, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
+  ];
+
+  await PaymentTerms.insertMany(editableTerms.map((t) => ({ organizationId: organization, ...t })));
+  return true;
+}
+
+async function ensureDefaultPaymentModes(organization: any) {
+  const existing = await PaymentMode.countDocuments({ organizationId: organization });
+  if (existing > 0) return false;
+
+  const modes = [
+    "Cash", "Bank Transfer", "Credit Card", "Debit Card",
+    "UPI", "NEFT", "RTGS", "IMPS", "Cheque", "Demand Draft",
+  ];
+
+  await PaymentMode.insertMany(
+    modes.map((name) => ({ organizationId: organization, name, isSystemMode: true })),
+  );
+  return true;
+}
+
+async function ensureDefaultExpenseCategories(organization: any) {
+  const existing = await ExpenseCategory.countDocuments({ organizationId: organization });
+  if (existing > 0) return false;
+
+  const categories = [
+    "Travel", "Meals & Entertainment", "Office Supplies", "Utilities",
+    "Communication", "Advertising & Marketing", "Professional Services",
+    "Rent", "Repairs & Maintenance", "Insurance", "Vehicle", "Technology",
+  ];
+
+  await ExpenseCategory.insertMany(
+    categories.map((name) => ({ organizationId: organization, name })),
+  );
+  return true;
+}
+
+// ─── Tax ──────────────────────────────────────────────────────────────────
+
+const baseTaxCRUD = makeCRUD(Tax, "Tax", [
+  "name", "taxType", "rate", "taxAuthority", "components", "isCompound", "description", "isActive",
+]);
+
+export const taxCRUD = {
+  ...baseTaxCRUD,
+  list: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const organization = orgId(req);
+    await ensureDefaultTaxes(organization);
+    const items = await Tax.find({ organizationId: organization }).sort({ name: 1 }).lean();
+    res.json({ success: true, data: items });
+  }),
+};
+
+export const seedTaxes = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organization = orgId(req);
+  const seeded = await ensureDefaultTaxes(organization);
+  if (!seeded) return res.json({ success: true, message: "Taxes already exist" });
   res.status(201).json({ success: true, message: "Default GST taxes created" });
 });
 
@@ -103,7 +178,9 @@ export const seedTaxes = asyncHandler(async (req: AuthenticatedRequest, res: Res
 
 export const paymentTermsCRUD = {
   list: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const terms = await PaymentTerms.find({ organizationId: orgId(req) }).sort({ createdAt: 1 }).lean();
+    const organization = orgId(req);
+    await ensureDefaultPaymentTerms(organization);
+    const terms = await PaymentTerms.find({ organizationId: organization }).sort({ createdAt: 1 }).lean();
     res.json({ success: true, data: terms });
   }),
   getOne: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -137,31 +214,8 @@ export const paymentTermsCRUD = {
 export const seedPaymentTerms = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization = orgId(req);
 
-  // Always upsert the two permanent (locked) terms — every org must have them
-  const permanentTerms = [
-    { name: "Due end of next month", termType: "end_of_next_month", netDays: 0, discountPercentage: 0, discountDays: 0, isSystemTerm: true, isPermanent: true },
-    { name: "Due end of the month",  termType: "end_of_month",      netDays: 0, discountPercentage: 0, discountDays: 0, isSystemTerm: true, isPermanent: true },
-  ];
-  for (const t of permanentTerms) {
-    await PaymentTerms.updateOne(
-      { organizationId: organization, name: t.name },
-      { $setOnInsert: { organizationId: organization, ...t } },
-      { upsert: true }
-    );
-  }
-
-  // Only add the editable defaults if the org has none yet
-  const nonPermanentCount = await PaymentTerms.countDocuments({ organizationId: organization, isPermanent: false });
-  if (nonPermanentCount === 0) {
-    const editableTerms = [
-      { name: "Due on Receipt", termType: "net_days", netDays: 0,  isDefault: true,  isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
-      { name: "Net 15",         termType: "net_days", netDays: 15, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
-      { name: "Net 30",         termType: "net_days", netDays: 30, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
-      { name: "Net 45",         termType: "net_days", netDays: 45, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
-      { name: "Net 60",         termType: "net_days", netDays: 60, isDefault: false, isSystemTerm: true, isPermanent: false, discountPercentage: 0, discountDays: 0 },
-    ];
-    await PaymentTerms.insertMany(editableTerms.map((t) => ({ organizationId: organization, ...t })));
-  }
+  const seeded = await ensureDefaultPaymentTerms(organization);
+  if (!seeded) return res.json({ success: true, message: "Payment terms already exist" });
   res.status(201).json({ success: true, message: "Payment terms seeded" });
 });
 
@@ -198,44 +252,47 @@ export const salesPersonCRUD = makeCRUD(SalesPerson, "Sales Person", [
 
 // ─── Payment Mode ──────────────────────────────────────────────────────────
 
-export const paymentModeCRUD = makeCRUD(PaymentMode, "Payment Mode", [
+const basePaymentModeCRUD = makeCRUD(PaymentMode, "Payment Mode", [
   "name", "accountId", "isActive",
 ]);
 
+export const paymentModeCRUD = {
+  ...basePaymentModeCRUD,
+  list: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const organization = orgId(req);
+    await ensureDefaultPaymentModes(organization);
+    const items = await PaymentMode.find({ organizationId: organization }).sort({ name: 1 }).lean();
+    res.json({ success: true, data: items });
+  }),
+};
+
 export const seedPaymentModes = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization = orgId(req);
-  const existing = await PaymentMode.countDocuments({ organizationId: organization });
-  if (existing > 0) return res.json({ success: true, message: "Payment modes already exist" });
-
-  const modes = [
-    "Cash", "Bank Transfer", "Credit Card", "Debit Card",
-    "UPI", "NEFT", "RTGS", "IMPS", "Cheque", "Demand Draft",
-  ];
-  await PaymentMode.insertMany(
-    modes.map((name) => ({ organizationId: organization, name, isSystemMode: true }))
-  );
+  const seeded = await ensureDefaultPaymentModes(organization);
+  if (!seeded) return res.json({ success: true, message: "Payment modes already exist" });
   res.status(201).json({ success: true, message: "Default payment modes created" });
 });
 
 // ─── Expense Category ──────────────────────────────────────────────────────
 
-export const expenseCategoryCRUD = makeCRUD(ExpenseCategory, "Expense Category", [
+const baseExpenseCategoryCRUD = makeCRUD(ExpenseCategory, "Expense Category", [
   "name", "accountId", "description", "isActive",
 ]);
 
+export const expenseCategoryCRUD = {
+  ...baseExpenseCategoryCRUD,
+  list: asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const organization = orgId(req);
+    await ensureDefaultExpenseCategories(organization);
+    const items = await ExpenseCategory.find({ organizationId: organization }).sort({ name: 1 }).lean();
+    res.json({ success: true, data: items });
+  }),
+};
+
 export const seedExpenseCategories = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization = orgId(req);
-  const existing = await ExpenseCategory.countDocuments({ organizationId: organization });
-  if (existing > 0) return res.json({ success: true, message: "Expense categories already exist" });
-
-  const cats = [
-    "Travel", "Meals & Entertainment", "Office Supplies", "Utilities",
-    "Communication", "Advertising & Marketing", "Professional Services",
-    "Rent", "Repairs & Maintenance", "Insurance", "Vehicle", "Technology",
-  ];
-  await ExpenseCategory.insertMany(
-    cats.map((name) => ({ organizationId: organization, name }))
-  );
+  const seeded = await ensureDefaultExpenseCategories(organization);
+  if (!seeded) return res.json({ success: true, message: "Expense categories already exist" });
   res.status(201).json({ success: true, message: "Default expense categories created" });
 });
 

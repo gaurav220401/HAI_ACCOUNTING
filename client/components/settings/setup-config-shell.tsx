@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 const setupItems = [
   { title: "General", href: "/settings/general" },
+  { title: "Taxes", href: "/settings/taxes" },
   { title: "Currencies", href: "/settings/currencies" },
   { title: "Opening Balances", href: "/settings/opening-balances" },
   { title: "Reminders", href: "/settings/reminders" },
