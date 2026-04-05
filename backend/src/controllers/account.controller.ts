@@ -1,5 +1,7 @@
 import { Response } from "express";
+import { Types } from "mongoose";
 import Account from "../models/account.model";
+import Organization from "../models/organization.model";
 import { AuthenticatedRequest, AccountType } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -11,6 +13,42 @@ function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
   return id;
+}
+
+type BalanceSide = "Debit" | "Credit";
+
+const ROOT_ORDER = ["Asset", "Liability", "Equity", "Income", "Expense"] as const;
+const OPENING_BALANCE_ADJUSTMENT_ACCOUNT = "Opening Balance Adjustments";
+const OPENING_BALANCE_OFFSET_ACCOUNT = "Opening Balance Offset";
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function toAmount(value: unknown): number {
+  if (value === undefined || value === null || value === "") return 0;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) throw new ValidationError("Debit/Credit values must be valid numbers");
+  if (n < 0) throw new ValidationError("Debit/Credit values cannot be negative");
+  return round2(n);
+}
+
+function calculateTotals(entries: Array<{ debit: number; credit: number }>) {
+  const totalDebit = round2(entries.reduce((sum, e) => sum + e.debit, 0));
+  const totalCredit = round2(entries.reduce((sum, e) => sum + e.credit, 0));
+  const difference = round2(Math.abs(totalDebit - totalCredit));
+
+  let differenceSide: BalanceSide | null = null;
+  if (difference > 0) {
+    differenceSide = totalDebit > totalCredit ? "Credit" : "Debit";
+  }
+
+  return {
+    totalDebit,
+    totalCredit,
+    difference,
+    differenceSide,
+  };
 }
 
 // ─── Controllers ───────────────────────────────────────────────────────────
@@ -58,6 +96,206 @@ export const listForItem = asyncHandler(async (req: AuthenticatedRequest, res: R
   }
 
   res.json({ success: true, data: grouped });
+});
+
+/** GET /api/accounts/opening-balances */
+export const getOpeningBalances = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+
+  const [accounts, organization] = await Promise.all([
+    Account.find({
+      organizationId,
+      isDeleted: false,
+      isGroup: false,
+    })
+      .sort({ rootType: 1, name: 1 })
+      .lean(),
+    Organization.findById(organizationId).select("openingBalanceSettings").lean(),
+  ]);
+
+  const grouped = new Map<string, Array<{
+    accountId: string;
+    name: string;
+    rootType: string;
+    accountType: string;
+    availableAmount: number;
+    availableSide: BalanceSide | null;
+    debit: number;
+    credit: number;
+  }>>();
+
+  const totalEntries: Array<{ debit: number; credit: number }> = [];
+
+  for (const account of accounts) {
+    if (
+      account.name === OPENING_BALANCE_ADJUSTMENT_ACCOUNT ||
+      account.name === OPENING_BALANCE_OFFSET_ACCOUNT
+    ) {
+      continue;
+    }
+
+    const signed = round2(Number(account.openingBalance ?? account.balance ?? 0));
+    const debit = signed > 0 ? signed : 0;
+    const credit = signed < 0 ? Math.abs(signed) : 0;
+    const availableSide: BalanceSide | null = signed === 0 ? null : (signed > 0 ? "Debit" : "Credit");
+
+    totalEntries.push({ debit, credit });
+
+    const row = {
+      accountId: String(account._id),
+      name: account.name,
+      rootType: account.rootType,
+      accountType: account.accountType,
+      availableAmount: Math.abs(signed),
+      availableSide,
+      debit,
+      credit,
+    };
+
+    const key = account.rootType;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(row);
+  }
+
+  const groups = ROOT_ORDER
+    .map((rootType) => ({ rootType, accounts: grouped.get(rootType) || [] }))
+    .filter((group) => group.accounts.length > 0);
+
+  const totals = calculateTotals(totalEntries);
+
+  res.json({
+    success: true,
+    data: {
+      migrationDate: organization?.openingBalanceSettings?.migrationDate || null,
+      isConfigured: Boolean(organization?.openingBalanceSettings?.isConfigured),
+      groups,
+      totals,
+    },
+  });
+});
+
+/** PUT /api/accounts/opening-balances */
+export const saveOpeningBalances = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const entriesInput = Array.isArray(req.body.entries) ? req.body.entries : [];
+
+  if (entriesInput.length === 0) {
+    throw new ValidationError("entries must be a non-empty array");
+  }
+
+  const sanitizedEntries: Array<{ accountId: string; debit: number; credit: number }> = entriesInput.map((entry: any) => {
+    const accountId = String(entry?.accountId || "").trim();
+    if (!accountId || !Types.ObjectId.isValid(accountId)) {
+      throw new ValidationError("Each entry must include a valid accountId");
+    }
+
+    const debit = toAmount(entry?.debit);
+    const credit = toAmount(entry?.credit);
+    if (debit > 0 && credit > 0) {
+      throw new ValidationError("An account cannot have both debit and credit opening balances");
+    }
+
+    return { accountId, debit, credit };
+  });
+
+  const seen = new Set<string>();
+  for (const entry of sanitizedEntries) {
+    if (seen.has(entry.accountId)) {
+      throw new ValidationError(`Duplicate account entry found for ${entry.accountId}`);
+    }
+    seen.add(entry.accountId);
+  }
+
+  const accounts = await Account.find({
+    _id: { $in: sanitizedEntries.map((e) => e.accountId) },
+    organizationId,
+    isDeleted: false,
+    isGroup: false,
+  });
+
+  if (accounts.length !== sanitizedEntries.length) {
+    throw new ValidationError("One or more accounts are invalid for this organization");
+  }
+
+  const accountMap = new Map(accounts.map((account) => [String(account._id), account]));
+  const appliedEntries: Array<{ debit: number; credit: number }> = [];
+
+  for (const entry of sanitizedEntries) {
+    const account = accountMap.get(entry.accountId);
+    if (!account) continue;
+
+    if (
+      account.name === OPENING_BALANCE_ADJUSTMENT_ACCOUNT ||
+      account.name === OPENING_BALANCE_OFFSET_ACCOUNT
+    ) {
+      continue;
+    }
+
+    const signed = round2(entry.debit - entry.credit);
+    account.openingBalance = signed;
+    account.balance = signed;
+    attachUser(account, req);
+    await account.save();
+
+    appliedEntries.push({ debit: entry.debit, credit: entry.credit });
+  }
+
+  const totals = calculateTotals(appliedEntries);
+  const adjustmentSigned = round2(totals.totalCredit - totals.totalDebit);
+  const adjustmentAmount = Math.abs(adjustmentSigned);
+
+  const adjustmentAccount = await Account.findOne({
+    organizationId,
+    name: OPENING_BALANCE_ADJUSTMENT_ACCOUNT,
+    isDeleted: false,
+    isGroup: false,
+  });
+
+  if (adjustmentAccount) {
+    adjustmentAccount.openingBalance = adjustmentSigned;
+    adjustmentAccount.balance = adjustmentSigned;
+    attachUser(adjustmentAccount, req);
+    await adjustmentAccount.save();
+  }
+
+  const organization = await Organization.findById(organizationId);
+  if (!organization) throw new NotFoundError("Organization");
+
+  let migrationDate = organization.openingBalanceSettings?.migrationDate || null;
+  if (req.body.migrationDate !== undefined && req.body.migrationDate !== null && req.body.migrationDate !== "") {
+    const parsed = new Date(String(req.body.migrationDate));
+    if (Number.isNaN(parsed.getTime())) throw new ValidationError("migrationDate must be a valid date");
+    migrationDate = parsed;
+  }
+
+  organization.openingBalanceSettings = {
+    ...(organization.openingBalanceSettings || {}),
+    migrationDate,
+    isConfigured: true,
+    lastUpdatedAt: new Date(),
+  } as any;
+  attachUser(organization, req);
+  await organization.save();
+
+  const finalTotals = {
+    totalDebit: round2(totals.totalDebit + (adjustmentSigned > 0 ? adjustmentSigned : 0)),
+    totalCredit: round2(totals.totalCredit + (adjustmentSigned < 0 ? Math.abs(adjustmentSigned) : 0)),
+  };
+
+  res.json({
+    success: true,
+    message: "Opening balances saved",
+    data: {
+      totals,
+      adjustment: {
+        amount: adjustmentAmount,
+        side: adjustmentAmount === 0 ? null : (adjustmentSigned > 0 ? "Debit" : "Credit"),
+        accountId: adjustmentAccount ? String(adjustmentAccount._id) : null,
+      },
+      finalTotals,
+      migrationDate,
+    },
+  });
 });
 
 /** POST /api/accounts */

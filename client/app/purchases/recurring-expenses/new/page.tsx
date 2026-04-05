@@ -46,15 +46,9 @@ function findFreqOption(freq: RecurringFrequency, repeatEvery: number) {
   return FREQ_OPTIONS.find((o) => o.frequency === freq && o.repeatEvery === repeatEvery) ?? FREQ_OPTIONS[1];
 }
 
-function computeFirstRunDate(startDate: string, freq: FreqOption): string {
+function computeFirstRunDate(startDate: string): string {
   if (!startDate) return "";
   const d = new Date(startDate);
-  switch (freq.frequency) {
-    case "Daily":   d.setDate(d.getDate() + freq.repeatEvery);   break;
-    case "Weekly":  d.setDate(d.getDate() + freq.repeatEvery * 7); break;
-    case "Monthly": d.setMonth(d.getMonth() + freq.repeatEvery); break;
-    case "Yearly":  d.setFullYear(d.getFullYear() + freq.repeatEvery); break;
-  }
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
@@ -232,7 +226,7 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
   const [customers, setCustomers] = useState<Contact[]>([]);
 
   const selectedFreq = FREQ_OPTIONS.find((o) => freqKey(o) === form.freqKey) ?? FREQ_OPTIONS[1];
-  const firstRunDate = computeFirstRunDate(form.startDate, selectedFreq);
+  const firstRunDate = computeFirstRunDate(form.startDate);
 
   const set = useCallback(<K extends keyof FormData>(key: K, value: FormData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));

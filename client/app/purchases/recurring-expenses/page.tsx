@@ -147,7 +147,8 @@ function RecurringDetailPanel({
     setCreatingExpense(true);
     try {
       const res = await recurringExpenseApi.createExpenseNow(rec._id);
-      toast.success("Expense created successfully");
+      if (res.recurringExpense) onStatusChange(res.recurringExpense);
+      toast.success(res.skipped ? "Expense for this scheduled date already exists" : "Expense created successfully");
       if (activeTab === "expenses") loadExpenses();
     } catch {
       toast.error("Failed to create expense");
@@ -174,7 +175,14 @@ function RecurringDetailPanel({
           <h2 className="text-sm font-semibold">{rec.profileName}</h2>
           <Badge
             variant={rec.status === "Active" ? "default" : "secondary"}
-            className={cn("text-xs px-1.5 py-0", rec.status === "Active" ? "bg-green-100 text-green-700 border-green-200" : "bg-gray-100 text-gray-600")}
+            className={cn(
+              "text-xs px-1.5 py-0",
+              rec.status === "Active"
+                ? "bg-green-100 text-green-700 border-green-200"
+                : rec.status === "Expired"
+                  ? "bg-amber-100 text-amber-700 border-amber-200"
+                  : "bg-gray-100 text-gray-600",
+            )}
           >
             {rec.status}
           </Badge>
@@ -949,7 +957,7 @@ export default function RecurringExpensesPage() {
   const [items, setItems] = useState<RecurringExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"" | "Active" | "Stopped">("");
+  const [filterStatus, setFilterStatus] = useState<"" | "Active" | "Stopped" | "Expired">("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RecurringExpense | null>(null);
 
@@ -1076,6 +1084,7 @@ export default function RecurringExpensesPage() {
                   <DropdownMenuItem onClick={() => setFilterStatus("")}>All Profiles</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setFilterStatus("Active")}>Active</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setFilterStatus("Stopped")}>Stopped</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setFilterStatus("Expired")}>Expired</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <Separator orientation="vertical" className="h-5" />
@@ -1251,7 +1260,11 @@ export default function RecurringExpensesPage() {
                         <div className="flex items-center justify-between mt-0.5">
                           <span className={cn(
                             "text-[10px] font-semibold uppercase",
-                            rec.status === "Active" ? "text-green-700" : "text-gray-500"
+                            rec.status === "Active"
+                              ? "text-green-700"
+                              : rec.status === "Expired"
+                                ? "text-amber-700"
+                                : "text-gray-500"
                           )}>
                             {rec.status}
                           </span>
@@ -1314,7 +1327,11 @@ export default function RecurringExpensesPage() {
                           <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>
                             <span className={cn(
                               "text-xs font-semibold uppercase tracking-wide",
-                              rec.status === "Active" ? "text-green-600" : "text-gray-500"
+                              rec.status === "Active"
+                                ? "text-green-600"
+                                : rec.status === "Expired"
+                                  ? "text-amber-600"
+                                  : "text-gray-500"
                             )}>
                               {rec.status}
                             </span>

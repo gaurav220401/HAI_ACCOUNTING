@@ -15,7 +15,18 @@ function orgId(req: AuthenticatedRequest) {
 
 /** GET /api/currencies — list all enabled world currencies */
 export const listCurrencies = asyncHandler(async (_req: AuthenticatedRequest, res: Response) => {
-  const currencies = await Currency.find({ isEnabled: true }).sort({ code: 1 }).lean();
+  let currencies = await Currency.find({ isEnabled: true }).sort({ code: 1 }).lean();
+
+  // Auto-heal fresh databases where currencies were never seeded.
+  if (currencies.length === 0) {
+    try {
+      await Currency.insertMany(WORLD_CURRENCIES, { ordered: false });
+    } catch {
+      // Ignore duplicate/key race errors from concurrent initial requests.
+    }
+    currencies = await Currency.find({ isEnabled: true }).sort({ code: 1 }).lean();
+  }
+
   res.json({ success: true, data: currencies });
 });
 

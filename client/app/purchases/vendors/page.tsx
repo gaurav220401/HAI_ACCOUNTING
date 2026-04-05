@@ -25,7 +25,9 @@ export default function VendorsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"Active" | "Inactive" | "All">("All");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Contact | null>(null);
   const [loadingVendor, setLoadingVendor] = useState(false);
 
@@ -42,12 +44,29 @@ export default function VendorsPage() {
   useEffect(() => {
     if (firebaseUser && !loading && activeOrganization?._id) fetchContacts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, loading, activeOrganization?._id]);
+  }, [firebaseUser, loading, activeOrganization?._id, statusFilter]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const query = new URLSearchParams(window.location.search);
+    const selected = query.get("selectedId");
+    const tab = query.get("tab");
+
+    setSelectedTab(tab);
+
+    if (selected) {
+      selectVendor(selected);
+    } else {
+      setSelectedId(null);
+      setSelectedVendor(null);
+    }
+  }, []);
 
   async function fetchContacts() {
     setFetching(true);
     try {
-      const res = await contactApi.list({ type: "Vendor", page: 1, limit: 100 });
+      const includeInactive = statusFilter !== "Active";
+      const res = await contactApi.list({ type: "Vendor", page: 1, limit: 200, includeInactive });
       setContacts(res.data ?? []);
     } catch {
       // noop
@@ -58,6 +77,9 @@ export default function VendorsPage() {
 
   async function selectVendor(id: string) {
     setSelectedId(id);
+    const tabQuery = selectedTab ? `&tab=${encodeURIComponent(selectedTab)}` : "";
+    router.replace(`/purchases/vendors?selectedId=${encodeURIComponent(id)}${tabQuery}`);
+
     const quick = contacts.find((c) => c._id === id);
     if (quick) setSelectedVendor(quick);
     setLoadingVendor(true);
@@ -75,6 +97,7 @@ export default function VendorsPage() {
   function handleClose() {
     setSelectedId(null);
     setSelectedVendor(null);
+    router.push("/purchases/vendors");
   }
 
   if (loading || orgLoading || !firebaseUser) {
@@ -85,13 +108,19 @@ export default function VendorsPage() {
     );
   }
 
-  const filtered = contacts.filter(
-    (c) =>
-      !search ||
-      c.displayName.toLowerCase().includes(search.toLowerCase()) ||
-      c.companyName?.toLowerCase().includes(search.toLowerCase()) ||
-      c.email?.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = contacts
+    .filter((c) => {
+      if (statusFilter === "Active") return c.isActive !== false;
+      if (statusFilter === "Inactive") return c.isActive === false;
+      return true;
+    })
+    .filter(
+      (c) =>
+        !search ||
+        c.displayName.toLowerCase().includes(search.toLowerCase()) ||
+        c.companyName?.toLowerCase().includes(search.toLowerCase()) ||
+        c.email?.toLowerCase().includes(search.toLowerCase()),
+    );
 
   return (
     <SidebarProvider>
@@ -107,14 +136,25 @@ export default function VendorsPage() {
           actions={
             !panelOpen ? (
               <>
-                <div className="relative w-52">
-                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-8 h-8 text-sm"
-                    placeholder="Search vendors…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative w-52">
+                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      className="pl-8 h-8 text-sm"
+                      placeholder="Search vendors…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as "Active" | "Inactive" | "All")}
+                    className="h-8 rounded border border-muted px-2 text-xs"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="All">All</option>
+                  </select>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching} className="px-2">
                   <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
@@ -141,7 +181,7 @@ export default function VendorsPage() {
               {panelOpen ? (
                 <>
                   <button className="flex items-center gap-1.5 text-sm font-semibold">
-                    Active Vendors
+                    All Vendors
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                   </button>
                   <div className="flex items-center gap-1">
@@ -156,7 +196,7 @@ export default function VendorsPage() {
               ) : (
                 <>
                   <button className="flex items-center gap-1.5 text-sm font-medium">
-                    Active Vendors
+                    All Vendors
                     <ChevronDown className="h-4 w-4 text-muted-foreground" />
                   </button>
                   <span className="text-xs text-muted-foreground">{filtered.length} vendor{filtered.length !== 1 ? "s" : ""}</span>
@@ -198,18 +238,20 @@ export default function VendorsPage() {
                     key={c._id}
                     className={cn(
                       "w-full text-left px-3 py-3 transition-colors hover:bg-muted/20 border-l-2",
+                      c.isActive === false && "bg-muted/60 text-muted-foreground",
                       selectedId === c._id ? "bg-blue-50 border-l-primary" : "border-l-transparent",
                     )}
                     onClick={() => selectVendor(c._id)}
                   >
                     <div className="flex items-center justify-between gap-2 min-w-0">
                       <div className="min-w-0 flex-1">
-                        <p className={cn("text-xs font-medium truncate", selectedId === c._id && "text-primary")}>
+                        <p className={cn("text-xs font-medium truncate", selectedId === c._id && c.isActive !== false && "text-primary")}>
                           {c.displayName}
                         </p>
                         {c.companyName && c.companyName !== c.displayName && (
                           <p className="text-[10px] text-muted-foreground truncate">{c.companyName}</p>
                         )}
+                        {c.isActive === false && <p className="text-[10px] text-muted-foreground">Inactive</p>}
                       </div>
                       <span className="text-[10px] tabular-nums text-muted-foreground shrink-0">
                         {fmt(c.openingBalance ?? 0, c.currency ?? "INR")}
@@ -241,6 +283,7 @@ export default function VendorsPage() {
                       <tr className="border-b bg-muted/30">
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Name</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Company Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Email</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Work Phone</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payables (BCY)</th>
@@ -255,13 +298,17 @@ export default function VendorsPage() {
                         return (
                           <tr
                             key={c._id}
-                            className="border-b last:border-0 hover:bg-muted/40 cursor-pointer transition-colors"
+                            className={cn(
+                              "border-b last:border-0 hover:bg-muted/40 cursor-pointer transition-colors",
+                              c.isActive === false && "bg-muted/60 text-muted-foreground",
+                            )}
                             onClick={() => selectVendor(c._id)}
                           >
                             <td className="px-4 py-3">
-                              <span className="text-primary font-medium hover:underline">{c.displayName}</span>
+                              <span className={cn("font-medium hover:underline", c.isActive === false ? "text-muted-foreground" : "text-primary")}>{c.displayName}</span>
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">{c.companyName ?? "—"}</td>
+                            <td className="px-4 py-3 text-muted-foreground">{c.isActive === false ? "Inactive" : "Active"}</td>
                             <td className="px-4 py-3 text-muted-foreground">
                               {email ? (
                                 <span className="flex items-center gap-1">
@@ -304,12 +351,13 @@ export default function VendorsPage() {
               ) : selectedVendor ? (
                 <VendorDetailView
                   vendor={selectedVendor}
+                  initialTab={selectedTab ?? undefined}
                   onVendorUpdate={(v) => {
                     setSelectedVendor(v);
                     setContacts((cs) =>
                       cs.map((c) =>
                         c._id === v._id
-                          ? { ...c, displayName: v.displayName, companyName: v.companyName }
+                          ? { ...c, displayName: v.displayName, companyName: v.companyName, isActive: v.isActive }
                           : c,
                       ),
                     );

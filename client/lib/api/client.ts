@@ -79,6 +79,7 @@ export class ApiError extends Error {
 export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {},
+  retryCount = 0,
 ): Promise<T> {
   const token = await getIdToken();
   const headers = buildAuthHeaders(token, options, true);
@@ -92,7 +93,7 @@ export async function apiFetch<T = unknown>(
 
   let data;
   const contentType = res.headers.get("content-type");
-  
+
   try {
     // Only parse as JSON if the content-type indicates JSON
     if (contentType && contentType.includes("application/json")) {
@@ -100,19 +101,27 @@ export async function apiFetch<T = unknown>(
     } else {
       // For non-JSON responses, create a generic error object
       const text = await res.text();
-      data = { 
-        message: text || "Request failed", 
+      data = {
+        message: text || "Request failed",
         code: "NON_JSON_RESPONSE",
-        status: res.status 
+        status: res.status
       };
     }
   } catch (error) {
     // If JSON parsing fails, create a generic error object
-    data = { 
-      message: "Failed to parse response", 
+    data = {
+      message: "Failed to parse response",
       code: "PARSE_ERROR",
-      status: res.status 
+      status: res.status
     };
+  }
+
+  // Handle rate limiting with exponential backoff
+  if (res.status === 429 && retryCount < 3) {
+    const retryAfter = res.headers.get("retry-after");
+    const delay = retryAfter ? parseInt(retryAfter) * 1000 : Math.pow(2, retryCount) * 1000;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return apiFetch<T>(path, options, retryCount + 1);
   }
 
   if (!res.ok) {

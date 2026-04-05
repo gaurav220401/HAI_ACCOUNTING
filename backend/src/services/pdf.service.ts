@@ -72,6 +72,7 @@ export interface PurchaseOrderItemRow {
 
 export interface PurchaseOrderPdfData {
   orgName: string;
+  orgLogoUrl?: string;
   orgAddress?: {
     street?: string;
     city?: string;
@@ -103,6 +104,24 @@ export interface PurchaseOrderPdfData {
   notes?: string;
   termsAndConditions?: string;
   currencySymbol?: string;
+  templateConfig?: {
+    paperSize?: "A4" | "A5" | "Letter";
+    margins?: { top?: number; bottom?: number; left?: number; right?: number };
+    backgroundColor?: string;
+    fontSize?: number;
+    showOrgLogo?: boolean;
+    orgLogoSize?: number;
+    showOrgName?: boolean;
+    showOrgAddress?: boolean;
+    showDocTitle?: boolean;
+    docTitle?: string;
+    docTitleFontSize?: number;
+    docTitleFontColor?: string;
+    tableHeaderBgColor?: string;
+    tableHeaderFontColor?: string;
+    oddRowColor?: string;
+    evenRowColor?: string;
+  };
 }
 
 export interface VendorCreditItemRow {
@@ -212,6 +231,18 @@ function fmtDate(d: string): string {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+async function fetchImageBuffer(url?: string): Promise<Buffer | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = await res.arrayBuffer();
+    return Buffer.from(bytes);
+  } catch {
+    return null;
+  }
 }
 
 /** Convert a number to Indian Rupee words (e.g. 23 → "Indian Rupee Twenty-Three Only") */
@@ -626,19 +657,48 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
 export function generatePurchaseOrderPdf(
   data: PurchaseOrderPdfData,
 ): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: "A4",
-      margins: { top: 60, bottom: 60, left: 60, right: 60 },
-    });
+  return new Promise(async (resolve, reject) => {
+    try {
+      const cfg = data.templateConfig || {};
+      const paperSize =
+        cfg.paperSize === "A5" ? "A5"
+        : cfg.paperSize === "Letter" ? "LETTER"
+        : "A4";
+      const pt = 72;
+      const marginTop = Math.max(28, Math.min(100, Math.round((cfg.margins?.top ?? 0.83) * pt)));
+      const marginBottom = Math.max(28, Math.min(100, Math.round((cfg.margins?.bottom ?? 0.83) * pt)));
+      const marginLeft = Math.max(28, Math.min(100, Math.round((cfg.margins?.left ?? 0.83) * pt)));
+      const marginRight = Math.max(28, Math.min(100, Math.round((cfg.margins?.right ?? 0.83) * pt)));
 
-    const chunks: Buffer[] = [];
-    doc.on("data", (chunk) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
+      const doc = new PDFDocument({
+        size: paperSize,
+        margins: { top: marginTop, bottom: marginBottom, left: marginLeft, right: marginRight },
+      });
 
-    const pageW = doc.page.width - 120;
-    const sym = data.currencySymbol ?? "₹";
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      const leftMargin = marginLeft;
+      const topMargin = marginTop;
+      const pageW = doc.page.width - marginLeft - marginRight;
+      const sym = data.currencySymbol ?? "₹";
+      const pickColor = (value: string | undefined, fallback: string) =>
+        typeof value === "string" && value.trim() ? value : fallback;
+      const titleColor = pickColor(cfg.docTitleFontColor, "#1e3a5f");
+      const tableHeaderBgColor = pickColor(cfg.tableHeaderBgColor, "#3a3a3a");
+      const tableHeaderFontColor = pickColor(cfg.tableHeaderFontColor, "#ffffff");
+      const oddRowColor = pickColor(cfg.oddRowColor, "#ffffff");
+      const evenRowColor = pickColor(cfg.evenRowColor, "#f6f5f5");
+
+      const bgColor = pickColor(cfg.backgroundColor, "#ffffff");
+      if (bgColor !== "#ffffff") {
+        doc.rect(0, 0, doc.page.width, doc.page.height).fill(bgColor);
+      }
+
+      const logoBuffer =
+        cfg.showOrgLogo === false ? null : await fetchImageBuffer(data.orgLogoUrl);
 
     let orgAddressCity = "";
     if (data.orgAddress) {
@@ -650,39 +710,63 @@ export function generatePurchaseOrderPdf(
     }
 
     // Top block
-    doc.font("Times-Bold").fontSize(13).fillColor("#000000").text(data.orgName, 60, 60);
+    let orgTextX = leftMargin;
+    if (logoBuffer) {
+      const logoH = Math.max(36, Math.min(92, Number(cfg.orgLogoSize ?? 60)));
+      const logoW = logoH * 1.9;
+      try {
+        doc.image(logoBuffer, leftMargin, topMargin - 2, { fit: [logoW, logoH] });
+        orgTextX = leftMargin + logoW + 12;
+      } catch {
+        orgTextX = leftMargin;
+      }
+    }
 
-    let yOrg = 78;
+    if (cfg.showOrgName !== false) {
+      doc.font("Times-Bold").fontSize(13).fillColor("#000000").text(data.orgName, orgTextX, topMargin);
+    }
+
+    let yOrg = topMargin + 18;
     doc.font("Times-Roman").fontSize(10).fillColor("#4b5563");
-    if (orgAddressCity) {
-      doc.text(orgAddressCity, 60, yOrg);
+    if (cfg.showOrgAddress !== false) {
+      if (orgAddressCity) {
+        doc.text(orgAddressCity, orgTextX, yOrg);
+        yOrg += 14;
+      }
+      doc.text("India", orgTextX, yOrg);
       yOrg += 14;
     }
-    doc.text("India", 60, yOrg);
-    yOrg += 14;
     // Add orgEmail / orgPhone if they exist but we only have standard data here
 
     // Title Block
+    const titleText =
+      cfg.showDocTitle === false
+        ? "PURCHASE ORDER"
+        : (cfg.docTitle && cfg.docTitle.trim() ? cfg.docTitle.toUpperCase() : "PURCHASE ORDER");
+    const titleFontSize =
+      typeof cfg.docTitleFontSize === "number"
+        ? Math.max(16, Math.min(30, cfg.docTitleFontSize + 6))
+        : 24;
     doc
       .font("Times-Bold")
-      .fontSize(24)
-      .fillColor("#1e3a5f")
-      .text("PURCHASE ORDER", 60, 60, { width: pageW, align: "right" });
+      .fontSize(titleFontSize)
+      .fillColor(titleColor)
+      .text(titleText, leftMargin, topMargin, { width: pageW, align: "right" });
     doc
       .font("Times-Roman")
       .fontSize(11)
       .fillColor("#4b5563")
-      .text(`# ${data.purchaseOrderNumber}`, 60, 85, {
+      .text(`# ${data.purchaseOrderNumber}`, leftMargin, topMargin + 25, {
         width: pageW,
         align: "right",
       });
 
     // Address Headings
-    let yAddresses = Math.max(yOrg, 110) + 30;
+    let yAddresses = Math.max(yOrg, topMargin + 50) + 30;
 
     doc.font("Times-Roman").fontSize(9).fillColor("#6b7280");
-    doc.text("Vendor Address", 60, yAddresses);
-    doc.text("Deliver To", 300, yAddresses);
+    doc.text("Vendor Address", leftMargin, yAddresses);
+    doc.text("Deliver To", leftMargin + 240, yAddresses);
     yAddresses += 14;
 
     // Vendor and Deliver To info
@@ -690,20 +774,20 @@ export function generatePurchaseOrderPdf(
       .font("Times-Bold")
       .fontSize(11)
       .fillColor("#2563eb")
-      .text(data.vendorName, 60, yAddresses, { width: 220 });
+      .text(data.vendorName, leftMargin, yAddresses, { width: 220 });
 
     let yVend =
       yAddresses + doc.heightOfString(data.vendorName, { width: 220 }) + 5;
 
     let yDeliv = yAddresses;
     doc.font("Times-Roman").fontSize(10).fillColor("#4b5563");
-    doc.text(data.orgName, 300, yDeliv);
+    doc.text(data.orgName, leftMargin + 240, yDeliv);
     yDeliv += 13;
     if (orgAddressCity) {
-      doc.text(orgAddressCity, 300, yDeliv);
+      doc.text(orgAddressCity, leftMargin + 240, yDeliv);
       yDeliv += 13;
     }
-    doc.text("India", 300, yDeliv);
+    doc.text("India", leftMargin + 240, yDeliv);
     yDeliv += 13;
 
     let yNext = Math.max(yVend, yDeliv) + 25;
@@ -713,13 +797,13 @@ export function generatePurchaseOrderPdf(
       .font("Times-Roman")
       .fontSize(10)
       .fillColor("#4b5563")
-      .text(`Date : ${fmtDate(data.purchaseOrderDate)}`, 60, yNext, {
+      .text(`Date : ${fmtDate(data.purchaseOrderDate)}`, leftMargin, yNext, {
         width: pageW,
         align: "right",
       });
     if (data.deliveryDate) {
       yNext += 13;
-      doc.text(`Expected Delivery : ${fmtDate(data.deliveryDate)}`, 60, yNext, {
+      doc.text(`Expected Delivery : ${fmtDate(data.deliveryDate)}`, leftMargin, yNext, {
         width: pageW,
         align: "right",
       });
@@ -727,14 +811,14 @@ export function generatePurchaseOrderPdf(
     yNext += 20;
 
     // Items table header
-    doc.rect(60, yNext, pageW, 25).fill("#3a3a3a");
-    const colHash = 60,
-      colItem = 100,
-      colQty = 340,
-      colRate = 390,
-      colAmt = 460;
+    doc.rect(leftMargin, yNext, pageW, 25).fill(tableHeaderBgColor);
+    const colHash = leftMargin;
+    const colItem = leftMargin + 40;
+    const colQty = leftMargin + 280;
+    const colRate = leftMargin + 330;
+    const colAmt = leftMargin + 400;
 
-    doc.fillColor("#ffffff").font("Times-Bold").fontSize(10);
+    doc.fillColor(tableHeaderFontColor).font("Times-Bold").fontSize(10);
     const thY = yNext + 7;
     doc.text("#", colHash + 10, thY);
     doc.text("Item & Description", colItem, thY);
@@ -751,6 +835,8 @@ export function generatePurchaseOrderPdf(
     data.items.forEach((item, idx) => {
       const lineH = item.description ? 35 : 22;
       const textY = yNext + 6;
+      const rowColor = idx % 2 === 0 ? evenRowColor : oddRowColor;
+      doc.rect(leftMargin, yNext, pageW, lineH).fill(rowColor);
       doc.fillColor("#111827");
       doc
         .font("Times-Roman")
@@ -780,8 +866,8 @@ export function generatePurchaseOrderPdf(
 
       yNext += lineH;
       doc
-        .moveTo(60, yNext)
-        .lineTo(60 + pageW, yNext)
+        .moveTo(leftMargin, yNext)
+        .lineTo(leftMargin + pageW, yNext)
         .lineWidth(0.5)
         .strokeColor("#e5e7eb")
         .stroke();
@@ -820,7 +906,7 @@ export function generatePurchaseOrderPdf(
 
     doc
       .moveTo(totLabelX, yNext - 4)
-      .lineTo(60 + pageW, yNext - 4)
+      .lineTo(leftMargin + pageW, yNext - 4)
       .lineWidth(0.5)
       .strokeColor("#e5e7eb")
       .stroke();
@@ -833,28 +919,31 @@ export function generatePurchaseOrderPdf(
         .font("Times-Bold")
         .fontSize(10)
         .fillColor("#111827")
-        .text("Notes", 60, yNext);
+        .text("Notes", leftMargin, yNext);
       yNext += 15;
       doc
         .font("Times-Roman")
         .fontSize(10)
         .fillColor("#4b5563")
-        .text(data.notes, 60, yNext, { width: pageW });
+        .text(data.notes, leftMargin, yNext, { width: pageW });
       yNext += doc.heightOfString(data.notes, { width: pageW }) + 10;
     }
 
     yNext += 40;
     if (yNext > doc.page.height - 100) {
       doc.addPage();
-      yNext = 60;
+      yNext = topMargin;
     }
     doc
       .font("Times-Roman")
       .fontSize(10)
       .fillColor("#4b5563")
-      .text("Authorized Signature ____________________________", 60, yNext);
+      .text("Authorized Signature ____________________________", leftMargin, yNext);
 
     doc.end();
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 

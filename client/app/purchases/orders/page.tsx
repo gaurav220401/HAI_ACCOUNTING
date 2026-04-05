@@ -813,6 +813,9 @@ function OrderDetailPanel({
   const [showPrintMenu, setShowPrintMenu] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [loadingPdfPreview, setLoadingPdfPreview] = useState(false);
+  const pdfBlobUrlRef = useRef<string | null>(null);
 
   // Comments & History
   const [showComments, setShowComments] = useState(false);
@@ -833,6 +836,63 @@ function OrderDetailPanel({
       })));
     }
   }, [order.comments]);
+
+  useEffect(() => {
+    if (!showPdf) {
+      if (pdfBlobUrlRef.current) {
+        window.URL.revokeObjectURL(pdfBlobUrlRef.current);
+        pdfBlobUrlRef.current = null;
+      }
+      setPdfPreviewUrl(null);
+      setLoadingPdfPreview(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchPdfPreview = async () => {
+      setLoadingPdfPreview(true);
+      try {
+        const blob = await apiFetchBlob(`/purchase-orders/${order._id}/pdf?preview=true`);
+        const objectUrl = window.URL.createObjectURL(blob);
+
+        if (cancelled) {
+          window.URL.revokeObjectURL(objectUrl);
+          return;
+        }
+
+        if (pdfBlobUrlRef.current) {
+          window.URL.revokeObjectURL(pdfBlobUrlRef.current);
+        }
+        pdfBlobUrlRef.current = objectUrl;
+        setPdfPreviewUrl(objectUrl);
+      } catch {
+        if (!cancelled) {
+          setPdfPreviewUrl(null);
+          toast.error("Failed to load PDF preview");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPdfPreview(false);
+        }
+      }
+    };
+
+    void fetchPdfPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [order._id, showPdf]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfBlobUrlRef.current) {
+        window.URL.revokeObjectURL(pdfBlobUrlRef.current);
+        pdfBlobUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Attachments
   const [showAttachments, setShowAttachments] = useState(false);
@@ -1310,8 +1370,25 @@ function OrderDetailPanel({
           </div>
 
           {showPdf ? (
-            <div className="px-4 pb-8 flex justify-center w-full" id="po-pdf-view">
-              <POPdfView order={order} orgName={orgName} orgAddress={orgAddress} orgPhone={orgPhone} orgEmail={orgEmail} />
+            <div className="px-4 pb-8 flex justify-center w-full">
+              <div className="w-full max-w-[900px] rounded-md border bg-white overflow-hidden shadow-sm">
+                {loadingPdfPreview ? (
+                  <div className="h-[1100px] flex items-center justify-center text-sm text-muted-foreground gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading PDF preview...
+                  </div>
+                ) : pdfPreviewUrl ? (
+                  <embed
+                    src={pdfPreviewUrl}
+                    type="application/pdf"
+                    className="w-full h-[1100px]"
+                  />
+                ) : (
+                  <div className="h-[420px] flex items-center justify-center text-sm text-muted-foreground">
+                    Unable to load PDF preview.
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="px-6 py-4 space-y-4">
@@ -1352,7 +1429,6 @@ export default function PurchaseOrdersPage() {
   const [toDelete, setToDelete] = useState<PurchaseOrder | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showFilterDD, setShowFilterDD] = useState(false);
-  const [showSendEmail, setShowSendEmail] = useState(false);
   const [showPOConfig, setShowPOConfig] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [items, setItems] = useState<any[]>([]);
@@ -1444,69 +1520,39 @@ export default function PurchaseOrdersPage() {
     setOrders((prev) => prev.map((o) => o._id === id ? { ...o, status } : o));
   }
 
-  function handleSendEmail(_id: string) {
-    setShowSendEmail(true);
+  function handleSendEmail(id: string) {
+    router.push(`/purchases/orders/${id}/send-email`);
   }
 
-  function handlePrint(id: string) {
-    const printContents = document.getElementById("po-pdf-view")?.innerHTML;
-    if (!printContents) {
-      toast.error("Please show the PDF View before printing.");
-      return;
-    }
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Purchase Order - ${selectedOrder?.purchaseOrderNumber || id}</title>
-            <link rel="preconnect" href="https://fonts.googleapis.com">
-            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-            <script src="https://cdn.tailwindcss.com"></script>
-            <style>
-              @page {
-                size: A4;
-                margin: 0;
-              }
-              body { 
-                margin: 0; 
-                padding: 40px; 
-                box-sizing: border-box; 
-                font-family: 'Inter', sans-serif;
-                background: white !important;
-                -webkit-font-smoothing: antialiased;
-              }
-              #print-root {
-                width: 100%;
-                max-width: 800px;
-                margin: 0 auto;
-              }
-              table { width: 100%; border-collapse: collapse; }
-              @media print {
-                body { padding: 40px; }
-                .no-print { display: none !important; }
-                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-              }
-            </style>
-          </head>
-          <body>
-            <div id="print-root">
-              ${printContents}
-            </div>
-            <script>
-              window.onload = () => {
-                setTimeout(() => {
-                  window.print();
-                  window.close();
-                }, 800);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
+  async function handlePrint(id: string) {
+    const toastId = toast.loading("Preparing print preview...");
+    try {
+      const blob = await apiFetchBlob(`/purchase-orders/${id}/pdf?preview=true`);
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url, "_blank");
+
+      if (!printWindow) {
+        window.URL.revokeObjectURL(url);
+        toast.error("Please allow pop-ups to print this purchase order.", { id: toastId });
+        return;
+      }
+
+      window.setTimeout(() => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch {
+          // no-op: browser PDF viewers may not allow auto-print.
+        }
+      }, 800);
+
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 60_000);
+
+      toast.success("Print preview opened.", { id: toastId });
+    } catch {
+      toast.error("Failed to open print preview", { id: toastId });
     }
   }
 
@@ -1827,14 +1873,6 @@ export default function PurchaseOrdersPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        <SendEmailView
-          show={showSendEmail}
-          onClose={() => setShowSendEmail(false)}
-          order={selectedOrder}
-          orgName={orgName}
-          orgEmail={orgEmail}
-        />
 
         <AdvancedSearchDialog
           open={showAdvancedSearch}

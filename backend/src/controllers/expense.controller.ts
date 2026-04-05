@@ -51,6 +51,7 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     : { _id: param, organizationId: orgId(req) };
 
   const expense = await Expense.findOne(query)
+    .select("+activityLog")
     .populate("expenseAccountId paidThroughAccountId vendorId customerId taxId lineItems.expenseAccountId");
   if (!expense) throw new NotFoundError("Expense");
   res.json({ success: true, data: expense });
@@ -58,14 +59,37 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** POST /api/expenses */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { date, amount, expenseType } = req.body;
+  const { date, amount, expenseType, isItemized, lineItems, expenseAccountId, mileageRate, mileageUnit, distance } = req.body;
   if (!date) throw new ValidationError("date is required");
   if (amount == null) throw new ValidationError("amount is required");
+
+  const type = expenseType ?? "Regular";
+
+  if (type === "Regular") {
+    if (isItemized) {
+      if (!Array.isArray(lineItems) || lineItems.length === 0) {
+        throw new ValidationError("lineItems are required for itemized expenses");
+      }
+      for (const li of lineItems) {
+        if (!li.expenseAccountId) throw new ValidationError("lineItems must have expenseAccountId");
+        if (li.amount == null || +li.amount <= 0) throw new ValidationError("lineItem amount must be greater than 0");
+      }
+    } else {
+      if (!expenseAccountId) throw new ValidationError("expenseAccountId is required for regular expenses");
+      if (+amount <= 0) throw new ValidationError("amount must be greater than 0");
+    }
+  }
+
+  if (type === "Mileage") {
+    if (!mileageRate || +mileageRate <= 0) throw new ValidationError("mileageRate is required for mileage expenses");
+    if (!distance || +distance <= 0) throw new ValidationError("distance is required for mileage expenses");
+    if (!expenseAccountId) throw new ValidationError("expenseAccountId is required for mileage expenses");
+  }
 
   const expense = new Expense({
     organizationId: orgId(req),
     ...req.body,
-    expenseType: expenseType ?? "Regular",
+    expenseType: type,
   });
   attachUser(expense as any, req);
   await expense.save();
@@ -109,6 +133,29 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     "expenseType", "mileageCalcMethod", "distance", "mileageUnit", "mileageRate",
     "employeeId", "projectId", "reportingTagIds",
   ];
+
+  const { expenseType, isItemized, lineItems, expenseAccountId, mileageRate, distance } = req.body;
+  const type = expenseType ?? expense.expenseType;
+
+  if (type === "Regular") {
+    if (isItemized) {
+      if (!Array.isArray(lineItems) || lineItems.length === 0) {
+        throw new ValidationError("lineItems are required for itemized expenses");
+      }
+      for (const li of lineItems) {
+        if (!li.expenseAccountId) throw new ValidationError("lineItems must have expenseAccountId");
+        if (li.amount == null || +li.amount <= 0) throw new ValidationError("lineItem amount must be greater than 0");
+      }
+    } else {
+      if (!expenseAccountId && !expense.expenseAccountId) throw new ValidationError("expenseAccountId is required for regular expenses");
+    }
+  }
+
+  if (type === "Mileage") {
+    if (!mileageRate && !expense.mileageRate) throw new ValidationError("mileageRate is required for mileage expenses");
+    if (!(distance || expense.distance)) throw new ValidationError("distance is required for mileage expenses");
+    if (!expenseAccountId && !expense.expenseAccountId) throw new ValidationError("expenseAccountId is required for mileage expenses");
+  }
 
   allowed.forEach((f) => {
     if (req.body[f] !== undefined) (expense as any)[f] = req.body[f];

@@ -4,11 +4,14 @@ import Bill from "../models/bill.model";
 import { Counter } from "../models/counter.model";
 import PaymentBillMap from "../models/payment-bill-map.model";
 import PaymentMade, { IPaymentMade } from "../models/payment-made.model";
+import GlEntry from "../models/gl-entry.model";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
+import { recomputeContactOutstanding } from "../services/accounting-sync.service";
+import { findAccountIdByName, postVoucher, reverseVoucher } from "../services/gl-posting.service";
 
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -53,6 +56,195 @@ function recomputeExcess(payment: IPaymentMade): void {
     throw new ValidationError("Invalid payment balance: used/refunded exceeds total amount paid");
   }
   payment.amount_in_excess = round2(Math.max(0, excess));
+}
+
+function paymentMadeVoucherPrefix(payment: IPaymentMade): string {
+  return `payment-made:${String(payment._id)}`;
+}
+
+function paymentMadeVoucherId(payment: IPaymentMade, event: string, key?: string): string {
+  return `${paymentMadeVoucherPrefix(payment)}:${event}${key ? `:${key}` : ""}`;
+}
+
+async function resolvePaymentMadeAccounts(payment: IPaymentMade) {
+  const organizationId = payment.organization_id;
+
+  const bankAccountId =
+    payment.paid_through_account ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Bank", "Cash", "Cash In Hand", "Undeposited Funds"],
+      rootType: "Asset",
+    }));
+
+  const accountsPayableId = await findAccountIdByName({
+    organizationId,
+    names: ["Accounts Payable", "Trade Payables", "Creditors"],
+    rootType: "Liability",
+    accountType: "Accounts Payable",
+  });
+
+  const vendorAdvanceId = await findAccountIdByName({
+    organizationId,
+    names: ["Advances to Suppliers", "Vendor Advances", "Advances to Vendors"],
+    rootType: "Asset",
+    accountType: "Other Current Asset",
+  });
+
+  return { bankAccountId, accountsPayableId, vendorAdvanceId };
+}
+
+async function postPaymentMadeEvent(params: {
+  payment: IPaymentMade;
+  req: AuthenticatedRequest;
+  event: "create" | "apply" | "unapply" | "refund";
+  amount?: number;
+  eventKey?: string;
+}): Promise<void> {
+  const { payment, req, event, amount = 0, eventKey } = params;
+  if (payment.status !== "PAID") return;
+
+  const total = round2(toNum(payment.total_amount_paid));
+  const used = round2(toNum(payment.amount_used_for_bills));
+  const excess = round2(toNum(payment.amount_in_excess));
+  const movement = round2(toNum(amount));
+
+  const { bankAccountId, accountsPayableId, vendorAdvanceId } =
+    await resolvePaymentMadeAccounts(payment);
+
+  const lines: Array<{
+    accountId: any;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    contactType?: "Vendor";
+    contactId?: any;
+  }> = [];
+
+  if (event === "create") {
+    if (used > 0) {
+      lines.push({
+        accountId: accountsPayableId,
+        debit: used,
+        description: `Bill settlement ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      });
+    }
+    if (excess > 0) {
+      lines.push({
+        accountId: vendorAdvanceId,
+        debit: excess,
+        description: `Vendor advance ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      });
+    }
+    if (total > 0) {
+      lines.push({
+        accountId: bankAccountId,
+        credit: total,
+        description: `Payment made ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      });
+    }
+  }
+
+  if (event === "apply" && movement > 0) {
+    lines.push(
+      {
+        accountId: accountsPayableId,
+        debit: movement,
+        description: `Apply advance ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+      {
+        accountId: vendorAdvanceId,
+        credit: movement,
+        description: `Apply advance ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+    );
+  }
+
+  if (event === "unapply" && movement > 0) {
+    lines.push(
+      {
+        accountId: vendorAdvanceId,
+        debit: movement,
+        description: `Unapply advance ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+      {
+        accountId: accountsPayableId,
+        credit: movement,
+        description: `Unapply advance ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+    );
+  }
+
+  if (event === "refund" && movement > 0) {
+    lines.push(
+      {
+        accountId: bankAccountId,
+        debit: movement,
+        description: `Refund from vendor ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+      {
+        accountId: vendorAdvanceId,
+        credit: movement,
+        description: `Refund from vendor ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+    );
+  }
+
+  if (lines.length === 0) return;
+
+  await postVoucher({
+    organizationId: payment.organization_id,
+    voucherType: "PaymentMade",
+    voucherId: paymentMadeVoucherId(payment, event, eventKey),
+    voucherNo: payment.payment_number,
+    postingDate: payment.payment_date ? new Date(payment.payment_date) : new Date(),
+    lines,
+    description: `Payment made ${event} ${payment.payment_number}`,
+    req,
+  });
+}
+
+async function reverseAllPaymentMadeVouchers(payment: IPaymentMade, req: AuthenticatedRequest) {
+  const prefix = paymentMadeVoucherPrefix(payment);
+  const rows = await GlEntry.find({
+    organizationId: payment.organization_id,
+    voucherType: "PaymentMade",
+    voucherId: { $regex: `^${prefix}:` },
+    isReversal: false,
+  })
+    .select("voucherId")
+    .lean();
+
+  const voucherIds = Array.from(new Set(rows.map((row: any) => String(row.voucherId || "")).filter(Boolean)));
+  for (const voucherId of voucherIds) {
+    await reverseVoucher({
+      organizationId: payment.organization_id,
+      voucherType: "PaymentMade",
+      voucherId,
+      reversalVoucherNo: `REV-${payment.payment_number}`,
+      postingDate: new Date(),
+      description: `Payment made reversal ${payment.payment_number}`,
+      req,
+    });
+  }
 }
 
 async function runRequiredTransaction<T>(work: (session: ClientSession) => Promise<T>): Promise<T> {
@@ -361,6 +553,20 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     return payment;
   });
 
+  await recomputeContactOutstanding({
+    organizationId: (result as any).organization_id,
+    contactId: (result as any).vendor_id,
+    req,
+  });
+
+  if (String((result as any).status) === "PAID") {
+    await postPaymentMadeEvent({
+      payment: result as any,
+      req,
+      event: "create",
+    });
+  }
+
   res.status(201).json({ success: true, data: result });
 });
 
@@ -461,6 +667,20 @@ export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: R
     return { payment, applied_amount: applied };
   });
 
+  await recomputeContactOutstanding({
+    organizationId: (result.payment as any).organization_id,
+    contactId: (result.payment as any).vendor_id,
+    req,
+  });
+
+  await postPaymentMadeEvent({
+    payment: result.payment as any,
+    req,
+    event: "apply",
+    amount: result.applied_amount,
+    eventKey: String((result.payment as any).audit_log?.length || Date.now()),
+  });
+
   res.json({ success: true, data: result });
 });
 
@@ -549,6 +769,20 @@ export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, re
     return { payment, unapplied_amount: amount };
   });
 
+  await recomputeContactOutstanding({
+    organizationId: (result.payment as any).organization_id,
+    contactId: (result.payment as any).vendor_id,
+    req,
+  });
+
+  await postPaymentMadeEvent({
+    payment: result.payment as any,
+    req,
+    event: "unapply",
+    amount: result.unapplied_amount,
+    eventKey: String((result.payment as any).audit_log?.length || Date.now()),
+  });
+
   res.json({ success: true, data: result });
 });
 
@@ -593,6 +827,20 @@ export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: 
     await payment.save({ session });
 
     return payment;
+  });
+
+  await recomputeContactOutstanding({
+    organizationId: (result as any).organization_id,
+    contactId: (result as any).vendor_id,
+    req,
+  });
+
+  await postPaymentMadeEvent({
+    payment: result as any,
+    req,
+    event: "refund",
+    amount: req.body.amount,
+    eventKey: String((result as any).audit_log?.length || Date.now()),
   });
 
   res.json({ success: true, data: result });
@@ -675,6 +923,14 @@ export const voidPayment = asyncHandler(async (req: AuthenticatedRequest, res: R
     await payment.save({ session });
 
     return payment;
+  });
+
+  await reverseAllPaymentMadeVouchers(result as any, req);
+
+  await recomputeContactOutstanding({
+    organizationId: (result as any).organization_id,
+    contactId: (result as any).vendor_id,
+    req,
   });
 
   res.json({ success: true, data: result });

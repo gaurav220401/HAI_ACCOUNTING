@@ -82,6 +82,18 @@ export interface IOrganization extends Document {
     enabled: boolean;
     subdomain?: string;
   };
+  reminderSettings?: {
+    enabled: boolean;
+    sendInvoiceDueReminder: boolean;
+    invoiceDueDaysBefore: number;
+    sendPaymentDueReminder: boolean;
+    paymentDueFrequencyDays: number;
+  };
+  openingBalanceSettings?: {
+    migrationDate?: Date | null;
+    isConfigured: boolean;
+    lastUpdatedAt?: Date | null;
+  };
   defaultAccounts?: {
     bankAccount?: Types.ObjectId;
     cashAccount?: Types.ObjectId;
@@ -277,6 +289,7 @@ export interface IAccount extends Document {
   currency?: string;
   description?: string;
   isSystemAccount: boolean; // system accounts cannot be deleted
+  openingBalance: number; // explicit imported opening balance
   balance: number; // denormalized, updated on GL posting
   isActive: boolean;
   isDeleted: boolean;
@@ -316,6 +329,9 @@ export interface IContactPerson {
   mobile?: string;
   phone?: string; // kept for backward compat
   designation?: string;
+  department?: string;
+  skypeName?: string;
+  photoUrl?: string;
   isPrimary: boolean;
 }
 
@@ -399,12 +415,16 @@ export interface IContact extends Document {
   // Customer-specific
   creditLimit?: number;
   salesPersonId?: Types.ObjectId | null;
+  linkedContactId?: Types.ObjectId | null;
+  // Legal/compliance lock status
+  legalComplianceLocked?: boolean;
   // Calculated
   outstandingPayable: number;
   outstandingReceivable: number;
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date;
+  statementTemplate?: Record<string, any>;
   createdBy: Types.ObjectId;
   updatedBy: Types.ObjectId;
   createdAt: Date;
@@ -435,6 +455,8 @@ export interface IItem extends Document {
   purchaseAccountId?: Types.ObjectId | null;
   inventoryTracked: boolean;
   stockOnHand: number;
+  inventoryValue: number;
+  averageCost: number;
   reorderPoint?: number;
   preferredVendorId?: Types.ObjectId | null;
   warehouseId?: Types.ObjectId | null;
@@ -718,6 +740,8 @@ export interface IInvoiceItem {
   taxPercent: number;
   taxAmount: number;
   amount: number;
+  costRate?: number;
+  costAmount?: number;
   accountId?: Types.ObjectId | null;
   projectId?: Types.ObjectId | null;
 }

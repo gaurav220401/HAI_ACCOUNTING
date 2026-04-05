@@ -1,5 +1,6 @@
 import { Response } from "express";
 import Bill from "../models/bill.model";
+import Contact from "../models/contact.model";
 import PurchaseOrder from "../models/purchase-order.model";
 import PaymentBillMap from "../models/payment-bill-map.model";
 import VendorCreditApplication from "../models/vendor-credit-application.model";
@@ -7,6 +8,21 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import {
+  applyInventoryValueDeltas,
+  applyStockDeltas,
+  collectBillStockDeltas,
+  collectBillValueDeltas,
+  diffStockDeltas,
+  invertValueDeltas,
+  invertStockDeltas,
+  recomputeContactOutstanding,
+} from "../services/accounting-sync.service";
+import {
+  findAccountIdByName,
+  postVoucher,
+  reverseVoucher,
+} from "../services/gl-posting.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -50,6 +66,147 @@ function toNum(val: unknown, fallback = 0): number {
   return isNaN(n) ? fallback : n;
 }
 
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function billVoucherId(bill: any): string {
+  return `bill:${String(bill._id)}`;
+}
+
+async function postBillLedger(bill: any, req: AuthenticatedRequest) {
+  if (!isPostedBillStatus(String(bill.status || ""))) return;
+
+  const organizationId = bill.organizationId;
+  const total = round2(toNum(bill.total));
+  if (total <= 0) return;
+
+  const accountsPayableId =
+    bill.accountsPayableId ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Accounts Payable", "Trade Payables", "Creditors"],
+      rootType: "Liability",
+      accountType: "Accounts Payable",
+    }));
+
+  const defaultExpenseId = await findAccountIdByName({
+    organizationId,
+    names: ["Purchases", "Purchase Account", "Expenses"],
+    rootType: "Expense",
+    accountType: "Expense",
+  });
+
+  const debitMap = new Map<string, number>();
+  for (const line of bill.lineItems || []) {
+    if (!line || line.isHeader) continue;
+    const amount = round2(toNum(line.amount));
+    if (amount <= 0) continue;
+    const accountId = String(line.accountId || defaultExpenseId);
+    debitMap.set(accountId, round2((debitMap.get(accountId) || 0) + amount));
+  }
+
+  if (debitMap.size === 0) {
+    debitMap.set(String(defaultExpenseId), total);
+  }
+
+  let totalDebits = round2(
+    Array.from(debitMap.values()).reduce((sum, amount) => sum + toNum(amount), 0),
+  );
+  const balancingDelta = round2(total - totalDebits);
+  if (Math.abs(balancingDelta) > 0.009) {
+    debitMap.set(
+      String(defaultExpenseId),
+      round2((debitMap.get(String(defaultExpenseId)) || 0) + balancingDelta),
+    );
+    totalDebits = round2(totalDebits + balancingDelta);
+  }
+
+  const lines: Array<{
+    accountId: any;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    contactType?: "Vendor";
+    contactId?: any;
+  }> = [];
+
+  for (const [accountId, amount] of debitMap.entries()) {
+    const rounded = round2(amount);
+    if (Math.abs(rounded) < 0.009) continue;
+    if (rounded > 0) {
+      lines.push({
+        accountId,
+        debit: rounded,
+        description: `Bill expense ${bill.billNumber}`,
+        contactType: "Vendor",
+        contactId: bill.vendorId,
+      });
+    } else {
+      lines.push({
+        accountId,
+        credit: Math.abs(rounded),
+        description: `Bill adjustment ${bill.billNumber}`,
+        contactType: "Vendor",
+        contactId: bill.vendorId,
+      });
+    }
+  }
+
+  lines.push({
+    accountId: accountsPayableId,
+    credit: total,
+    description: `Bill payable ${bill.billNumber}`,
+    contactType: "Vendor",
+    contactId: bill.vendorId,
+  });
+
+  const posting = await postVoucher({
+    organizationId,
+    voucherType: "Bill",
+    voucherId: billVoucherId(bill),
+    voucherNo: String(bill.billNumber),
+    postingDate: bill.billDate ? new Date(bill.billDate) : new Date(),
+    lines,
+    description: `Bill posting ${bill.billNumber}`,
+    req,
+  });
+
+  if (!posting.posted) return;
+
+  const valueDeltas = collectBillValueDeltas(bill.lineItems as any[]);
+  if (Object.keys(valueDeltas).length > 0) {
+    await applyInventoryValueDeltas({
+      organizationId,
+      deltas: valueDeltas,
+      req,
+    });
+  }
+}
+
+async function reverseBillLedger(bill: any, req: AuthenticatedRequest) {
+  const reversal = await reverseVoucher({
+    organizationId: bill.organizationId,
+    voucherType: "Bill",
+    voucherId: billVoucherId(bill),
+    reversalVoucherNo: `REV-${bill.billNumber}`,
+    postingDate: new Date(),
+    description: `Bill reversal ${bill.billNumber}`,
+    req,
+  });
+
+  if (!reversal.reversed) return;
+
+  const valueDeltas = collectBillValueDeltas(bill.lineItems as any[]);
+  if (Object.keys(valueDeltas).length > 0) {
+    await applyInventoryValueDeltas({
+      organizationId: bill.organizationId,
+      deltas: invertValueDeltas(valueDeltas),
+      req,
+    });
+  }
+}
+
 function computeBillTotals(input: {
   lineItems: any[];
   discountLevel: "transaction" | "line_item";
@@ -91,11 +248,34 @@ function hasFinancialEdits(payload: any): boolean {
   return keys.some((k) => payload[k] !== undefined);
 }
 
+function isPostedBillStatus(status: string): boolean {
+  return status !== "Draft" && status !== "Void";
+}
+
 function applyOverdueState(bill: any) {
   if (bill.status === "Open" && bill.dueDate && bill.balanceDue > 0) {
     const now = new Date();
     if (new Date(bill.dueDate) < now) bill.status = "Overdue";
   }
+}
+
+async function resolveVendorPayableAccount(
+  organizationId: any,
+  vendorId: any,
+  requestedAccountId: any,
+) {
+  if (requestedAccountId) return requestedAccountId;
+  if (!vendorId) return null;
+
+  const vendor = await Contact.findOne({
+    _id: vendorId,
+    organizationId,
+    isDeleted: false,
+  })
+    .select("accountsPayableId")
+    .lean();
+
+  return vendor?.accountsPayableId || null;
 }
 
 /** GET /api/bills/next-number */
@@ -269,6 +449,7 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 /** POST /api/bills */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const oid = orgId(req);
+  if (!req.body.vendorId) throw new ValidationError("Vendor is required");
   if (!req.body.billDate) throw new ValidationError("Bill date is required");
 
   const billNumber = req.body.billNumber || (await nextBillNumber(oid));
@@ -298,6 +479,12 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     throw new ValidationError("New bill status must be Draft or Open");
   }
 
+  const accountsPayableId = await resolveVendorPayableAccount(
+    oid,
+    req.body.vendorId,
+    req.body.accountsPayableId,
+  );
+
   const bill = new Bill({
     organizationId: oid,
     vendorId: req.body.vendorId,
@@ -309,7 +496,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     paymentTermsId: req.body.paymentTermsId || null,
     sourceOfSupply: req.body.sourceOfSupply || "",
     destinationOfSupply: req.body.destinationOfSupply || "",
-    accountsPayableId: req.body.accountsPayableId || null,
+    accountsPayableId,
     subject: req.body.subject || "",
     discountLevel,
     discountAccountId: req.body.discountAccountId || null,
@@ -341,6 +528,23 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   attachUser(bill, req);
   applyOverdueState(bill);
   await bill.save();
+
+  if (isPostedBillStatus(String(bill.status || ""))) {
+    await applyStockDeltas({
+      organizationId: bill.organizationId as any,
+      deltas: collectBillStockDeltas(bill.lineItems as any[]),
+      req,
+    });
+
+    await postBillLedger(bill, req);
+  }
+
+  await recomputeContactOutstanding({
+    organizationId: bill.organizationId as any,
+    contactId: bill.vendorId as any,
+    req,
+  });
+
   res.status(201).json({ success: true, data: bill });
 });
 
@@ -350,6 +554,11 @@ export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Resp
   if (!bill) throw new NotFoundError("Bill");
   if (bill.status === "Void") throw new ValidationError("Bill is already voided");
   if (bill.amountPaid > 0) throw new ValidationError("Cannot void a bill with recorded payments");
+
+  const wasPosted = isPostedBillStatus(String(bill.status || ""));
+  const previousStockDeltas = wasPosted
+    ? collectBillStockDeltas(bill.lineItems as any[])
+    : {};
 
   bill.status = "Void";
   const reason = req.body.reason || "No reason provided";
@@ -361,6 +570,25 @@ export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Resp
   });
 
   await bill.save();
+
+  if (wasPosted) {
+    if (Object.keys(previousStockDeltas).length > 0) {
+      await applyStockDeltas({
+        organizationId: bill.organizationId as any,
+        deltas: invertStockDeltas(previousStockDeltas),
+        req,
+      });
+    }
+
+    await reverseBillLedger(bill, req);
+  }
+
+  await recomputeContactOutstanding({
+    organizationId: bill.organizationId as any,
+    contactId: bill.vendorId as any,
+    req,
+  });
+
   res.json({ success: true, data: bill });
 });
 
@@ -397,6 +625,23 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   });
   attachUser(bill, req);
   await bill.save();
+
+  if (isPostedBillStatus(String(bill.status || ""))) {
+    await applyStockDeltas({
+      organizationId: bill.organizationId as any,
+      deltas: collectBillStockDeltas(bill.lineItems as any[]),
+      req,
+    });
+
+    await postBillLedger(bill, req);
+  }
+
+  await recomputeContactOutstanding({
+    organizationId: bill.organizationId as any,
+    contactId: bill.vendorId as any,
+    req,
+  });
+
   res.status(201).json({ success: true, data: bill });
 });
 
@@ -406,6 +651,18 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!bill) throw new NotFoundError("Bill");
   if (bill.status === "Void") throw new ValidationError("Cannot edit a void bill");
 
+  const previousVendorId = String(bill.vendorId || "");
+  const previousPosted = isPostedBillStatus(String(bill.status || ""));
+  const previousStockDeltas = previousPosted
+    ? collectBillStockDeltas(bill.lineItems as any[])
+    : {};
+
+  if (previousPosted && hasFinancialEdits(req.body || {})) {
+    throw new ValidationError(
+      "Cannot edit financial fields after bill is posted. Void and recreate for accounting integrity.",
+    );
+  }
+
   if (bill.amountPaid > 0 && hasFinancialEdits(req.body)) {
     throw new ValidationError("Cannot edit financial fields after payment is recorded");
   }
@@ -413,6 +670,20 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const prevStatus = bill.status;
 
   const discountLevel = req.body.discountLevel || bill.discountLevel;
+  const nextVendorId = req.body.vendorId !== undefined ? req.body.vendorId : bill.vendorId;
+  let nextAccountsPayableId =
+    req.body.accountsPayableId !== undefined
+      ? req.body.accountsPayableId
+      : bill.accountsPayableId;
+
+  if (req.body.accountsPayableId === undefined && (req.body.vendorId !== undefined || !nextAccountsPayableId)) {
+    nextAccountsPayableId = await resolveVendorPayableAccount(
+      bill.organizationId,
+      nextVendorId,
+      nextAccountsPayableId,
+    );
+  }
+
   const lineItems = req.body.lineItems ? calcLineItems(req.body.lineItems, discountLevel) : bill.lineItems;
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent ?? bill.discountPercent) : 0;
   if (discountPercent < 0) throw new ValidationError("Discount percent cannot be negative");
@@ -438,6 +709,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     : null;
 
   Object.assign(bill, req.body, { 
+    vendorId: nextVendorId,
+    accountsPayableId: nextAccountsPayableId,
     lineItems, 
     subTotal: totals.subTotal,
     discountPercent, 
@@ -480,6 +753,41 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   applyOverdueState(bill);
   attachUser(bill, req);
   await bill.save();
+
+  const nextPosted = isPostedBillStatus(String(bill.status || ""));
+  const nextStockDeltas = nextPosted
+    ? collectBillStockDeltas(bill.lineItems as any[])
+    : {};
+  const stockDeltaDiff = diffStockDeltas(previousStockDeltas, nextStockDeltas);
+
+  if (Object.keys(stockDeltaDiff).length > 0) {
+    await applyStockDeltas({
+      organizationId: bill.organizationId as any,
+      deltas: stockDeltaDiff,
+      req,
+    });
+  }
+
+  if (!previousPosted && nextPosted) {
+    await postBillLedger(bill, req);
+  } else if (previousPosted && !nextPosted) {
+    await reverseBillLedger(bill, req);
+  }
+
+  await recomputeContactOutstanding({
+    organizationId: bill.organizationId as any,
+    contactId: bill.vendorId as any,
+    req,
+  });
+
+  if (previousVendorId && previousVendorId !== String(bill.vendorId || "")) {
+    await recomputeContactOutstanding({
+      organizationId: bill.organizationId as any,
+      contactId: previousVendorId,
+      req,
+    });
+  }
+
   res.json({ success: true, data: bill });
 });
 
@@ -504,8 +812,18 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
   if (bill.status !== "Draft") throw new ValidationError("Only draft bills can be deleted. Void other bills.");
+
+  const vendorId = bill.vendorId;
+
   bill.isDeleted = true;
   bill.deletedAt = new Date();
   await bill.save();
+
+  await recomputeContactOutstanding({
+    organizationId: bill.organizationId as any,
+    contactId: vendorId as any,
+    req,
+  });
+
   res.json({ success: true, message: "Bill deleted successfully" });
 });

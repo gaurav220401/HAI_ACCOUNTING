@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -78,7 +78,17 @@ function makeRow(): JournalRow {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function NewJournalPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-svh items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}>
+      <NewJournalPageInner />
+    </Suspense>
+  );
+}
+
+function NewJournalPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialVendorId = searchParams.get("vendorId");
   const { firebaseUser, loading } = useAuth();
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
@@ -98,8 +108,23 @@ export default function NewJournalPage() {
   const [notes, setNotes] = useState("");
   const [isCashBased, setIsCashBased] = useState(false);
   const [currency, setCurrency] = useState("INR");
-  const [rows, setRows] = useState<JournalRow[]>([makeRow(), makeRow()]);
+  const [rows, setRows] = useState<JournalRow[]>(() => {
+    const r1 = makeRow();
+    if (initialVendorId) r1.contactId = initialVendorId;
+    return [r1, makeRow()];
+  });
   const [saving, setSaving] = useState(false);
+
+  // Sync vendorId if it changes after mount (though usually its just on load)
+  useEffect(() => {
+    if (initialVendorId) {
+      setRows((prev) => {
+        const newRows = [...prev];
+        if (newRows[0]) newRows[0] = { ...newRows[0], contactId: initialVendorId };
+        return newRows;
+      });
+    }
+  }, [initialVendorId]);
 
   // ── Row actions ─────────────────────────────────────────────────────────
   const addRow = () => setRows((prev) => [...prev, makeRow()]);

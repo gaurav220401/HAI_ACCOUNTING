@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from "mongoose";
-import { auditTrailPlugin, softDeletePlugin } from "../plugins";
+import { activityLogPlugin, auditTrailPlugin, softDeletePlugin } from "../plugins";
 import { Counter } from "./counter.model";
 
 export type ExpenseType = "Regular" | "Mileage";
@@ -43,7 +43,16 @@ export interface IExpense extends Document {
   projectId?: Types.ObjectId | null;
   reportingTagIds?: Types.ObjectId[];
   employeeId?: Types.ObjectId | null;
+  recurringId?: Types.ObjectId | null;
+  recurringRunDate?: Date | null;
+  sourceDocumentId?: Types.ObjectId | null;
   receiptUrls?: string[];
+  activityLog?: Array<{
+    timestamp: Date;
+    userId?: Types.ObjectId | null;
+    action: "created" | "updated" | "deleted" | "restored";
+    changes: Record<string, { before: unknown; after: unknown }>;
+  }>;
   status: "Draft" | "Submitted" | "Approved" | "Rejected" | "Reimbursed";
   isActive: boolean;
   isDeleted: boolean;
@@ -96,6 +105,9 @@ const expenseSchema = new Schema<IExpense>(
     projectId: { type: Schema.Types.ObjectId, ref: "Project", default: null },
     reportingTagIds: [{ type: Schema.Types.ObjectId, ref: "ReportingTag" }],
     employeeId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    recurringId: { type: Schema.Types.ObjectId, ref: "RecurringExpense", default: null },
+    recurringRunDate: { type: Date, default: null },
+    sourceDocumentId: { type: Schema.Types.ObjectId, ref: "DocumentInbox", default: null },
     receiptUrls: [{ type: String }],
     status: { type: String, enum: ["Draft", "Submitted", "Approved", "Rejected", "Reimbursed"], default: "Draft" },
     isActive: { type: Boolean, default: true },
@@ -106,9 +118,29 @@ const expenseSchema = new Schema<IExpense>(
 );
 
 expenseSchema.plugin(auditTrailPlugin);
+expenseSchema.plugin(activityLogPlugin);
+expenseSchema.plugin(softDeletePlugin);
 expenseSchema.index({ organizationId: 1, date: -1 });
+expenseSchema.index(
+  { organizationId: 1, recurringId: 1, recurringRunDate: 1, isDeleted: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      recurringId: { $type: "objectId" },
+      recurringRunDate: { $type: "date" },
+    },
+  },
+ );
+ expenseSchema.index(
+   { organizationId: 1, sourceDocumentId: 1, isDeleted: 1 },
+   {
+     unique: true,
+     partialFilterExpression: {
+       sourceDocumentId: { $type: "objectId" },
+     },
+   },
+ );
 
-// Auto-generate expenseNumber before first save
 expenseSchema.pre("save", async function () {
   if (this.isNew && !this.expenseNumber) {
     const counter = await Counter.findByIdAndUpdate(

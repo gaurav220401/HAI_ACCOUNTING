@@ -22,6 +22,26 @@ const portalSettingsSchema = new Schema(
   { _id: false },
 );
 
+const reminderSettingsSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    sendInvoiceDueReminder: { type: Boolean, default: true },
+    invoiceDueDaysBefore: { type: Number, default: 3, min: 0, max: 365 },
+    sendPaymentDueReminder: { type: Boolean, default: true },
+    paymentDueFrequencyDays: { type: Number, default: 7, min: 1, max: 365 },
+  },
+  { _id: false },
+);
+
+const openingBalanceSettingsSchema = new Schema(
+  {
+    migrationDate: { type: Date, default: null },
+    isConfigured: { type: Boolean, default: false },
+    lastUpdatedAt: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const defaultAccountsSchema = new Schema(
   {
     bankAccount: { type: Schema.Types.ObjectId, ref: "Account", default: null },
@@ -171,6 +191,26 @@ const organizationSchema = new Schema<IOrganization>(
     portalSettings: {
       type: portalSettingsSchema,
       default: () => ({ enabled: false }),
+    },
+
+    reminderSettings: {
+      type: reminderSettingsSchema,
+      default: () => ({
+        enabled: false,
+        sendInvoiceDueReminder: true,
+        invoiceDueDaysBefore: 3,
+        sendPaymentDueReminder: true,
+        paymentDueFrequencyDays: 7,
+      }),
+    },
+
+    openingBalanceSettings: {
+      type: openingBalanceSettingsSchema,
+      default: () => ({
+        migrationDate: null,
+        isConfigured: false,
+        lastUpdatedAt: null,
+      }),
     },
 
     // ── Chart of Accounts (populated by Phase 2) ───────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, Fragment, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef, Fragment, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { 
    Plus, Search, Loader2, X, ChevronDown, GripVertical, Settings2, Upload, 
@@ -614,14 +614,23 @@ interface BillFormProps {
   mode: "create" | "edit";
 }
 
-export function BillForm({ initialData, onSuccess, onCancel, mode }: BillFormProps) {
+export function BillForm(props: BillFormProps) {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground text-sm">Loading form...</div>}>
+      <BillFormInner {...props} />
+    </Suspense>
+  );
+}
+
+export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFormProps) {
   const searchParams = useSearchParams();
   const cloneId = searchParams.get("clone");
+  const defaultVendorId = searchParams.get("vendorId");
   const [saving, setSaving] = useState(false);
   const [loadingClone, setLoadingClone] = useState(!!cloneId);
   
   // Basic Fields
-  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || "");
+  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || defaultVendorId || "");
   const [billNumber, setBillNumber] = useState(initialData?.billNumber || "");
    const [referenceNumber, setReferenceNumber] = useState(initialData?.referenceNumber || "");
   const [orderNumber, setOrderNumber] = useState(initialData?.orderNumber || "");

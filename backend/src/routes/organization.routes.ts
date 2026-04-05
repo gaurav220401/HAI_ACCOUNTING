@@ -32,6 +32,12 @@ router.put("/:id/smtp-settings", organizationController.updateSmtpSettings);
 router.post("/:id/smtp-test", organizationController.testSmtpSettings);
 router.post("/:id/send-email", organizationController.sendEmail);
 
+// ── Setup & Configuration Settings ──
+router.get("/:id/reminder-settings", organizationController.getReminderSettings);
+router.put("/:id/reminder-settings", organizationController.updateReminderSettings);
+router.get("/:id/portal-settings", organizationController.getPortalSettings);
+router.put("/:id/portal-settings", organizationController.updatePortalSettings);
+
 // ── Member management ────────────────────────────────────────────────
 router.post("/:id/members", organizationController.addMember);
 router.delete("/:id/members/:userId", organizationController.removeMember);

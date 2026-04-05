@@ -132,6 +132,8 @@ export const update = asyncHandler(
       "logo",
       "address",
       "portalSettings",
+      "reminderSettings",
+      "openingBalanceSettings",
       "defaultAccounts",
     ];
 
@@ -148,6 +150,101 @@ export const update = asyncHandler(
       success: true,
       message: `Organization "${organization.name}" updated`,
       data: organization,
+    });
+  },
+);
+
+/**
+ * GET /api/organizations/:id/reminder-settings
+ */
+export const getReminderSettings = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organization = await requireMembership(String(req.params.id), req);
+    const settings = (organization as any).reminderSettings || {
+      enabled: false,
+      sendInvoiceDueReminder: true,
+      invoiceDueDaysBefore: 3,
+      sendPaymentDueReminder: true,
+      paymentDueFrequencyDays: 7,
+    };
+
+    res.json({ success: true, data: settings });
+  },
+);
+
+/**
+ * PUT /api/organizations/:id/reminder-settings
+ */
+export const updateReminderSettings = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organization = await requireMembership(String(req.params.id), req);
+
+    const incoming = req.body || {};
+    const invoiceDueDaysBefore = Number(incoming.invoiceDueDaysBefore ?? 3);
+    const paymentDueFrequencyDays = Number(incoming.paymentDueFrequencyDays ?? 7);
+
+    if (!Number.isFinite(invoiceDueDaysBefore) || invoiceDueDaysBefore < 0 || invoiceDueDaysBefore > 365) {
+      throw new ValidationError("invoiceDueDaysBefore must be between 0 and 365");
+    }
+    if (!Number.isFinite(paymentDueFrequencyDays) || paymentDueFrequencyDays < 1 || paymentDueFrequencyDays > 365) {
+      throw new ValidationError("paymentDueFrequencyDays must be between 1 and 365");
+    }
+
+    (organization as any).reminderSettings = {
+      enabled: Boolean(incoming.enabled),
+      sendInvoiceDueReminder: incoming.sendInvoiceDueReminder !== false,
+      invoiceDueDaysBefore: Math.round(invoiceDueDaysBefore),
+      sendPaymentDueReminder: incoming.sendPaymentDueReminder !== false,
+      paymentDueFrequencyDays: Math.round(paymentDueFrequencyDays),
+    };
+
+    attachUser(organization, req);
+    await organization.save();
+
+    res.json({
+      success: true,
+      message: "Reminder settings updated",
+      data: (organization as any).reminderSettings,
+    });
+  },
+);
+
+/**
+ * GET /api/organizations/:id/portal-settings
+ */
+export const getPortalSettings = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organization = await requireMembership(String(req.params.id), req);
+    res.json({
+      success: true,
+      data: (organization as any).portalSettings || { enabled: false, subdomain: "" },
+    });
+  },
+);
+
+/**
+ * PUT /api/organizations/:id/portal-settings
+ */
+export const updatePortalSettings = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organization = await requireMembership(String(req.params.id), req);
+
+    const enabled = Boolean(req.body?.enabled);
+    const subdomain = String(req.body?.subdomain || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "")
+      .slice(0, 40);
+
+    (organization as any).portalSettings = { enabled, subdomain };
+
+    attachUser(organization, req);
+    await organization.save();
+
+    res.json({
+      success: true,
+      message: "Customer portal settings updated",
+      data: (organization as any).portalSettings,
     });
   },
 );

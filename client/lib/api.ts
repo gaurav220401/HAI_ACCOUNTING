@@ -119,6 +119,8 @@ export type {
   Organization,
   CreateOrganizationInput,
   UpdateOrganizationInput,
+  ReminderSettings,
+  PortalSettings,
 } from "./api/organizations";
 
 export { accountApi } from "./api/accounts";
@@ -131,6 +133,11 @@ export type {
   IncomeAccountType,
   ExpenseAccountType,
   GroupedAccounts,
+  OpeningBalanceAccountRow,
+  OpeningBalanceGroup,
+  OpeningBalanceSummary,
+  OpeningBalanceData,
+  SaveOpeningBalanceInput,
   CreateAccountInput,
   UpdateAccountInput,
 } from "./api/accounts";
@@ -172,6 +179,27 @@ export type {
   ReportingTag,
   PriceList,
 } from "./api/settings";
+
+export { paymentReceivedApi } from "./api/payments-received";
+export type {
+  PaymentReceived,
+  PaymentReceivedStatus,
+  PaymentInvoiceMap,
+  CreatePaymentReceivedInput,
+  UpdatePaymentReceivedInput,
+  PaymentReceivedListParams,
+} from "./api/payments-received";
+
+export { reportApi } from "./api/reports";
+export type {
+  TrialBalanceRow,
+  TrialBalanceResponse,
+  ProfitLossLine,
+  ProfitLossResponse,
+  BalanceSheetLine,
+  BalanceSheetResponse,
+  ControlReconciliationResponse,
+} from "./api/reports";
 
 export { projectApi } from "./api/projects";
 export type {

@@ -5,7 +5,9 @@ import { useRouter, useParams } from "next/navigation";
 import {
   Settings2, Layout, FileText, Grid, AlignLeft,
   Upload, ImagePlus, ChevronDown, RefreshCw, X,
+  Cloud, CloudCheck, CloudOff, Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { Button } from "@/components/ui/button";
@@ -258,6 +260,10 @@ export default function EditTemplatePage() {
   const [config, setConfig] = useState<TemplateConfig>(DEFAULT_TEMPLATE_CONFIG);
   const [tableSubTab, setTableSubTab] = useState<"labels" | "layout">("labels");
   const [previewKey, setPreviewKey] = useState(0);
+  const [templateSyncStatus, setTemplateSyncStatus] = useState<"idle" | "saving" | "synced" | "error">("idle");
+  const [isDirty, setIsDirty] = useState(false);
+  const [initialConfig, setInitialConfig] = useState<TemplateConfig>(DEFAULT_TEMPLATE_CONFIG);
+  const statusResetTimeout = useRef<NodeJS.Timeout | null>(null);
   const fileInputRefHeader = useRef<HTMLInputElement>(null);
   const fileInputRefFooter = useRef<HTMLInputElement>(null);
 
@@ -282,29 +288,69 @@ export default function EditTemplatePage() {
       const stored = localStorage.getItem(TEMPLATE_STORAGE_KEY(id));
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<TemplateConfig>;
-        setConfig((prev) => ({ ...prev, ...parsed, margins: { ...prev.margins, ...(parsed.margins ?? {}) } }));
+        const next = { ...DEFAULT_TEMPLATE_CONFIG, ...parsed, margins: { ...DEFAULT_TEMPLATE_CONFIG.margins, ...(parsed.margins ?? {}) } };
+        setConfig(next);
+        setInitialConfig(next);
+        setIsDirty(false);
       }
     } catch { /* ignore */ }
 
     contactApi.getById(id)
-      .then((res) => setVendor((res as any).data ?? res))
+      .then((res) => {
+        const vendorData = (res as any).data ?? res;
+        setVendor(vendorData);
+        if (vendorData?.statementTemplate) {
+          const merged = { ...DEFAULT_TEMPLATE_CONFIG, ...vendorData.statementTemplate, margins: { ...DEFAULT_TEMPLATE_CONFIG.margins, ...(vendorData.statementTemplate?.margins ?? {}) } };
+          setConfig(merged);
+          setInitialConfig(merged);
+          setIsDirty(false);
+        }
+      })
       .catch(() => {})
       .finally(() => setFetching(false));
   }, [firebaseUser, loading, params]);
 
-  const update = (patch: Partial<TemplateConfig>) => setConfig((prev) => ({ ...prev, ...patch }));
-  const updateMargin = (k: keyof TemplateConfig["margins"], v: number) =>
-    setConfig((prev) => ({ ...prev, margins: { ...prev.margins, [k]: v } }));
+  useEffect(() => {
+    return () => {
+      if (statusResetTimeout.current) {
+        clearTimeout(statusResetTimeout.current);
+      }
+    };
+  }, []);
 
-  function handleSave() {
-    if (params?.id) {
+  const update = (patch: Partial<TemplateConfig>) => {
+    setConfig((prev) => ({ ...prev, ...patch }));
+    setIsDirty(true);
+    setTemplateSyncStatus("idle");
+  };
+
+  const updateMargin = (k: keyof TemplateConfig["margins"], v: number) => {
+    setConfig((prev) => ({ ...prev, margins: { ...prev.margins, [k]: v } }));
+    setIsDirty(true);
+    setTemplateSyncStatus("idle");
+  };
+
+  async function handleSave() {
+    if (!params?.id) return;
+
+    setTemplateSyncStatus("saving");
+    try {
+      await contactApi.update(params.id, { statementTemplate: config });
       localStorage.setItem(TEMPLATE_STORAGE_KEY(params.id), JSON.stringify(config));
+      setIsDirty(false);
+      setTemplateSyncStatus("synced");
+      if (statusResetTimeout.current) clearTimeout(statusResetTimeout.current);
+      statusResetTimeout.current = setTimeout(() => setTemplateSyncStatus("idle"), 2500);
+      toast.success("Template synced to cloud");
+      router.push(`/purchases/vendors?selectedId=${params?.id}&tab=statement`);
+    } catch (err) {
+      setTemplateSyncStatus("error");
+      toast.error("Failed to sync template. Please try again.");
     }
-    router.push(`/purchases/vendors/${params?.id}?tab=statement`);
   }
 
   function handleClose() {
-    router.push(`/purchases/vendors/${params?.id}?tab=statement`);
+    router.push(`/purchases/vendors?selectedId=${params?.id}&tab=statement`);
   }
 
   if (loading || orgLoading || !firebaseUser || fetching) {
@@ -347,6 +393,38 @@ export default function EditTemplatePage() {
       <div className="flex items-center justify-between h-12 px-5 border-b bg-background shrink-0">
         <h2 className="text-sm font-semibold">Edit Template</h2>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 text-xs">
+            {templateSyncStatus === "saving" && (
+              <span className="flex items-center gap-1 text-blue-600">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Saving
+              </span>
+            )}
+            {templateSyncStatus === "synced" && (
+              <span className="flex items-center gap-1 text-green-600">
+                <CloudCheck className="h-3.5 w-3.5" />
+                Synced
+              </span>
+            )}
+            {templateSyncStatus === "error" && (
+              <span className="flex items-center gap-1 text-rose-600">
+                <CloudOff className="h-3.5 w-3.5" />
+                Sync failed
+              </span>
+            )}
+            {templateSyncStatus === "idle" && !isDirty && (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Cloud className="h-3.5 w-3.5" />
+                Saved
+              </span>
+            )}
+            {templateSyncStatus === "idle" && isDirty && (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Cloud className="h-3.5 w-3.5" />
+                Unsaved changes
+              </span>
+            )}
+          </div>
           <Select
             value={config.colorTheme}
             onValueChange={(v) => {

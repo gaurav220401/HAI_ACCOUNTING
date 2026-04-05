@@ -16,6 +16,8 @@ const invoiceItemSchema = new Schema(
     taxPercent: { type: Number, default: 0 },
     taxAmount: { type: Number, default: 0 },
     amount: { type: Number, required: true, default: 0 },
+    costRate: { type: Number, default: 0 },
+    costAmount: { type: Number, default: 0 },
     accountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
     projectId: { type: Schema.Types.ObjectId, ref: "Project", default: null },
   },

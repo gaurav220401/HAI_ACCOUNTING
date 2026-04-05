@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Search, Receipt, Loader2, MoreHorizontal, Trash2, Edit, Copy,
-  X, Printer, BookOpen, Upload, RefreshCw, ChevronDown, FileText,
+  X, Printer, BookOpen, Upload, RefreshCw, ChevronDown, FileText, History, MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -24,9 +24,18 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import { expenseApi, type Expense } from "@/lib/api/expenses";
 import { invoiceApi } from "@/lib/api/invoices";
 import { recurringExpenseApi } from "@/lib/api/recurring-expenses";
+import { accountApi, type Account } from "@/lib/api/accounts";
+import {
+  documentsApi,
+  type DocumentItem,
+  type DocumentProcessingStatus,
+} from "@/lib/api/documents";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -149,6 +158,20 @@ function fmtCurrency(amount: number, currency = "INR") {
   }).format(amount);
 }
 
+const RECEIPT_STATUS_LABELS: Record<DocumentProcessingStatus, string> = {
+  PROCESSING: "Processing",
+  SCAN_IN_PROGRESS: "Scanning",
+  PROCESSED: "Processed",
+  UNREADABLE: "Unreadable",
+};
+
+const RECEIPT_STATUS_COLORS: Record<DocumentProcessingStatus, string> = {
+  PROCESSING: "text-amber-700 bg-amber-50 border-amber-200",
+  SCAN_IN_PROGRESS: "text-blue-700 bg-blue-50 border-blue-200",
+  PROCESSED: "text-emerald-700 bg-emerald-50 border-emerald-200",
+  UNREADABLE: "text-red-700 bg-red-50 border-red-200",
+};
+
 // ─── Journal builder ─────────────────────────────────────────────────────────
 
 interface JournalLine { account: string; debit: number; credit: number }
@@ -179,6 +202,7 @@ function ExpenseDetailPanel({
   onClone,
   onEdit,
   onConvertToInvoice,
+  onShowHistory,
 }: {
   expense: Expense;
   onClose: () => void;
@@ -186,6 +210,7 @@ function ExpenseDetailPanel({
   onClone: (e: Expense) => void;
   onEdit: (e: Expense) => void;
   onConvertToInvoice: (e: Expense) => void;
+  onShowHistory: () => void;
 }) {
   const router = useRouter();
   const [showRecurring, setShowRecurring] = useState(false);
@@ -245,11 +270,20 @@ function ExpenseDetailPanel({
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b shrink-0">
         <h2 className="text-sm font-semibold">Expense Details</h2>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground rounded p-0.5">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                title="View history"
+                className="p-1 rounded hover:bg-muted/30"
+                onClick={onShowHistory}
+              >
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button onClick={onClose} className="text-muted-foreground hover:text-foreground rounded p-0.5">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
       {/* Action bar */}
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b shrink-0">
         <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7" onClick={() => onEdit(expense)}>
@@ -287,7 +321,12 @@ function ExpenseDetailPanel({
               <Trash2 className="h-3.5 w-3.5" /> Delete
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2 text-sm" disabled>
+            <DropdownMenuItem
+              className="gap-2 text-sm cursor-pointer"
+              onClick={() => {
+                onShowHistory();
+              }}
+            >
               <BookOpen className="h-3.5 w-3.5" /> View Journal
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -377,6 +416,21 @@ function ExpenseDetailPanel({
                 <p className="text-muted-foreground text-xs mt-0.5">{expense.notes}</p>
               </div>
             )}
+          </div>
+
+          <div className="space-y-2 text-sm mb-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">History</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="text-muted-foreground">Created At</p>
+                <p className="text-sm text-foreground">{new Date(expense.createdAt).toLocaleString("en-IN")}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Last Updated</p>
+                <p className="text-sm text-foreground">{new Date(expense.updatedAt).toLocaleString("en-IN")}</p>
+              </div>
+            </div>
+            <p className="text-[12px] text-muted-foreground">History list is coming soon (Activity Log integration).</p>
           </div>
 
           <Separator className="mb-5" />
@@ -542,11 +596,24 @@ export default function ExpensesPage() {
 
   const [expenses, setExpenses]   = useState<Expense[]>([]);
   const [fetching, setFetching]   = useState(false);
+  const [receipts, setReceipts]   = useState<DocumentItem[]>([]);
+  const [fetchingReceipts, setFetchingReceipts] = useState(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [creatingFromDocumentId, setCreatingFromDocumentId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+  const [bulkField, setBulkField] = useState<string>("");
+  const [bulkValue, setBulkValue] = useState<string>("");
+  const [bulkAccountId, setBulkAccountId] = useState<string>("");
+  const [bulkBillable, setBulkBillable] = useState<boolean>(false);
   const [search, setSearch]       = useState("");
   const [selected, setSelected]   = useState<Expense | null>(null);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [toDelete, setToDelete]   = useState<Expense | null>(null);
   const [deleting, setDeleting]   = useState(false);
   const [activeListTab, setActiveListTab] = useState<"expenses" | "receipts">("expenses");
+  const receiptInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -556,6 +623,18 @@ export default function ExpensesPage() {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
+  useEffect(() => {
+    async function loadAccounts() {
+      try {
+        const res = await accountApi.list({ excludeGroups: true });
+        setAccounts(res.data || []);
+      } catch {
+        // silently ignore; bulk target options are optional
+      }
+    }
+    loadAccounts();
+  }, []);
+
   const fetchExpenses = useCallback(async () => {
     setFetching(true);
     try {
@@ -564,9 +643,91 @@ export default function ExpensesPage() {
     } catch { /* noop */ } finally { setFetching(false); }
   }, []);
 
+  const fetchReceipts = useCallback(async () => {
+    setFetchingReceipts(true);
+    try {
+      const res = await documentsApi.list({ inbox: "files", limit: 100 });
+      setReceipts(res.data ?? []);
+    } catch {
+      toast.error("Failed to load receipts inbox");
+    } finally {
+      setFetchingReceipts(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (firebaseUser && !loading && activeOrganization?._id) fetchExpenses();
   }, [firebaseUser, loading, activeOrganization?._id, fetchExpenses]);
+
+  useEffect(() => {
+    if (activeListTab !== "receipts") return;
+    if (!firebaseUser || loading || !activeOrganization?._id) return;
+    fetchReceipts();
+  }, [activeListTab, firebaseUser, loading, activeOrganization?._id, fetchReceipts]);
+
+  useEffect(() => {
+    if (activeListTab !== "receipts") return;
+    const hasPending = receipts.some(
+      (doc) => doc.processingStatus === "PROCESSING" || doc.processingStatus === "SCAN_IN_PROGRESS",
+    );
+    if (!hasPending) return;
+
+    const timer = window.setInterval(() => {
+      fetchReceipts();
+      fetchExpenses();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeListTab, receipts, fetchReceipts, fetchExpenses]);
+
+  async function handleReceiptUpload(file: File) {
+    setUploadingReceipt(true);
+    try {
+      await documentsApi.upload(file, {
+        source: "manual",
+        inboxType: "files",
+        processingMode: "standard",
+      });
+      toast.success("Receipt uploaded and queued for extraction");
+      await Promise.all([fetchReceipts(), fetchExpenses()]);
+    } catch {
+      toast.error("Failed to upload receipt");
+    } finally {
+      setUploadingReceipt(false);
+      if (receiptInputRef.current) {
+        receiptInputRef.current.value = "";
+      }
+    }
+  }
+
+  async function handleCreateFromReceipt(document: DocumentItem) {
+    setCreatingFromDocumentId(document._id);
+    try {
+      const response = await documentsApi.addTo(document._id, { entityType: "expense", create: true });
+      if (response.data.created) {
+        toast.success("Expense created from receipt");
+      } else {
+        toast.message("Receipt prefill generated");
+      }
+      await Promise.all([fetchReceipts(), fetchExpenses()]);
+    } catch {
+      toast.error("Failed to create expense from receipt");
+    } finally {
+      setCreatingFromDocumentId(null);
+    }
+  }
+
+  function openLinkedExpense(document: DocumentItem) {
+    const linkedExpenseId = document.links.find((link) => link.entityType === "expense")?.entityId;
+    if (!linkedExpenseId) return;
+    const linkedExpense = expenses.find((expense) => expense._id === linkedExpenseId);
+    if (linkedExpense) {
+      setActiveListTab("expenses");
+      setSelected(linkedExpense);
+      return;
+    }
+    toast.message("Linked expense exists. Refreshing expenses list...");
+    fetchExpenses();
+  }
 
   const filtered = expenses.filter((e) => {
     if (!search) return true;
@@ -576,6 +737,112 @@ export default function ExpensesPage() {
       getName(e.paidThroughAccountId), e.invoiceNumber || "", e.notes || "", e.expenseNumber || "",
     ].some((v) => v.toLowerCase().includes(s));
   });
+
+  const filteredReceipts = receipts.filter((doc) => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return [
+      doc.fileName,
+      doc.extraction?.vendorName || "",
+      doc.extraction?.invoiceNumber || "",
+      RECEIPT_STATUS_LABELS[doc.processingStatus],
+    ].some((v) => v.toLowerCase().includes(s));
+  });
+
+  const selectedExpenses = expenses.filter((e) => selectedIds.includes(e._id));
+  const isAllSelected = selectedExpenses.length > 0 && selectedExpenses.length === filtered.length;
+
+  function toggleSelectExpense(expenseId: string) {
+    setSelectedIds((prev) =>
+      prev.includes(expenseId)
+        ? prev.filter((id) => id !== expenseId)
+        : [...prev, expenseId],
+    );
+  }
+
+  async function handleSelectAll() {
+    if (isAllSelected) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds(filtered.map((exp) => exp._id));
+  }
+
+  async function handleDownloadReceipts() {
+    if (selectedExpenses.length === 0) {
+      toast.error("Select at least one expense to download receipts");
+      return;
+    }
+    const urls = selectedExpenses.flatMap((e) => e.receiptUrls || []);
+    if (urls.length === 0) {
+      toast.error("Selected expenses have no receipt files");
+      return;
+    }
+    urls.forEach((url) => window.open(url, "_blank"));
+    toast.success("Opened receipts in new tabs");
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedExpenses.length === 0) {
+      toast.error("Select at least one expense to delete");
+      return;
+    }
+    for (const exp of selectedExpenses) {
+      await expenseApi.remove(exp.expenseNumber || exp._id);
+    }
+    toast.success(`${selectedExpenses.length} expense(s) deleted`);
+    setSelectedIds([]);
+    fetchExpenses();
+  }
+
+  async function handleApplyBulkUpdate() {
+    if (!bulkField) {
+      toast.error("Select field to update");
+      return;
+    }
+    if (selectedIds.length === 0) {
+      toast.error("Select at least one expense before bulk update");
+      return;
+    }
+
+    const payload: Record<string, unknown> = {};
+    if (bulkField === "expenseAccountId" || bulkField === "paidThroughAccountId") {
+      if (!bulkAccountId) {
+        toast.error("Select an account");
+        return;
+      }
+      payload[bulkField] = bulkAccountId;
+    } else if (bulkField === "date") {
+      if (!bulkValue) {
+        toast.error("Select date");
+        return;
+      }
+      payload.date = bulkValue;
+    } else if (bulkField === "isBillable") {
+      payload.isBillable = bulkBillable;
+    } else if (bulkField === "invoiceNumber") {
+      payload.invoiceNumber = bulkValue;
+    } else if (bulkField === "notes") {
+      payload.notes = bulkValue;
+    } else if (bulkField === "vendorId") {
+      payload.vendorId = bulkValue;
+    } else if (bulkField === "customerId") {
+      payload.customerId = bulkValue;
+    } else {
+      toast.error("Unsupported field");
+      return;
+    }
+
+    try {
+      await Promise.all(selectedIds.map((id) => expenseApi.update(id, payload)));
+      toast.success("Bulk update applied");
+      setBulkUpdateOpen(false);
+      setSelectedIds([]);
+      fetchExpenses();
+    } catch {
+      toast.error("Bulk update failed");
+    }
+  }
 
   async function handleDelete() {
     if (!toDelete) return;
@@ -664,19 +931,66 @@ export default function ExpensesPage() {
           }
           actions={
             !panelOpen ? (
-              <>
-                <div className="relative w-52">
-                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-                  <Input className="pl-8 h-8 text-sm" placeholder="Search expenses…"
-                    value={search} onChange={(e) => setSearch(e.target.value)} />
-                </div>
-                <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={fetching} className="px-2">
-                  <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin")} />
-                </Button>
-                <Button size="sm" className="gap-1.5" onClick={() => router.push("/purchases/expenses/new")}>
-                  <Plus className="h-4 w-4" /> New Expense
-                </Button>
-              </>
+              activeListTab === "receipts" ? (
+                <>
+                  <div className="relative w-52">
+                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      className="pl-8 h-8 text-sm"
+                      placeholder="Search receipts..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchReceipts}
+                    disabled={fetchingReceipts}
+                    className="px-2"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", fetchingReceipts && "animate-spin")} />
+                  </Button>
+                  <input
+                    ref={receiptInputRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      handleReceiptUpload(file);
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => receiptInputRef.current?.click()}
+                    disabled={uploadingReceipt}
+                  >
+                    {uploadingReceipt ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Upload Receipt
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="relative w-52">
+                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                    <Input className="pl-8 h-8 text-sm" placeholder="Search expenses…"
+                      value={search} onChange={(e) => setSearch(e.target.value)} />
+                  </div>
+                  <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={fetching} className="px-2">
+                    <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin")} />
+                  </Button>
+                  <Button size="sm" className="gap-1.5" onClick={() => router.push("/purchases/expenses/new")}>
+                    <Plus className="h-4 w-4" /> New Expense
+                  </Button>
+                </>
+              )
             ) : null
           }
         />
@@ -714,7 +1028,12 @@ export default function ExpensesPage() {
                   {(["receipts", "expenses"] as const).map((tab) => (
                     <button
                       key={tab}
-                      onClick={() => setActiveListTab(tab)}
+                      onClick={() => {
+                        setActiveListTab(tab);
+                        if (tab === "receipts") {
+                          setSelected(null);
+                        }
+                      }}
                       className={cn(
                         "text-sm pb-2 mr-5 flex items-center gap-1 border-b-2 -mb-px transition-colors",
                         activeListTab === tab
@@ -729,6 +1048,21 @@ export default function ExpensesPage() {
               )}
             </div>
 
+            {selectedIds.length > 0 && (
+              <div className="px-3 py-2 border-b bg-slate-50 flex items-center gap-2">
+                <span className="text-sm font-semibold">{selectedIds.length} selected</span>
+                <Button size="sm" variant="outline" onClick={handleDownloadReceipts}>
+                  Download Receipts
+                </Button>
+                <Button size="sm" onClick={() => setBulkUpdateOpen(true)}>
+                  Bulk Update
+                </Button>
+                <Button size="sm" variant="destructive" onClick={handleDeleteSelected}>
+                  Delete
+                </Button>
+              </div>
+            )}
+
             {/* Search when narrow */}
             {panelOpen && (
               <div className="px-2 py-1.5 border-b shrink-0">
@@ -741,7 +1075,121 @@ export default function ExpensesPage() {
             )}
 
             {/* Content */}
-            {fetching ? (
+            {activeListTab === "receipts" ? (
+              fetchingReceipts ? (
+                <div className="flex items-center justify-center flex-1">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredReceipts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center px-6 py-16 gap-3 flex-1">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Upload className="h-5 w-5 text-primary/60" />
+                  </div>
+                  <h3 className="text-base font-semibold">Receipts Inbox Is Empty</h3>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    Upload a receipt and we will scan it, extract data, and auto-create a draft expense when amount extraction is successful.
+                  </p>
+                  <Button onClick={() => receiptInputRef.current?.click()} disabled={uploadingReceipt}>
+                    {uploadingReceipt ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Upload Receipt
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-auto">
+                  <table className="w-full text-sm min-w-[860px]">
+                    <thead className="sticky top-0 bg-background z-10">
+                      <tr className="border-b">
+                        <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Uploaded</th>
+                        <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">File</th>
+                        <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Vendor</th>
+                        <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reference #</th>
+                        <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                        <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Amount</th>
+                        <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Linked Expense</th>
+                        <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredReceipts.map((document) => {
+                        const linkedExpenseId = document.links.find((link) => link.entityType === "expense")?.entityId;
+                        const linkedExpense = linkedExpenseId
+                          ? expenses.find((expense) => expense._id === linkedExpenseId)
+                          : null;
+                        const statusLabel = RECEIPT_STATUS_LABELS[document.processingStatus] || document.processingStatus;
+                        const statusColor = RECEIPT_STATUS_COLORS[document.processingStatus] || "text-muted-foreground bg-muted/40 border-border";
+                        const amount = Number(document.extraction?.amount || 0);
+
+                        return (
+                          <tr key={document._id} className="hover:bg-muted/20">
+                            <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">{fmtDate(document.uploadedAt)}</td>
+                            <td className="px-3 py-2.5">
+                              <a href={document.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                                {document.fileName}
+                              </a>
+                            </td>
+                            <td className="px-3 py-2.5">{document.extraction?.vendorName || "-"}</td>
+                            <td className="px-3 py-2.5 text-muted-foreground">{document.extraction?.invoiceNumber || "-"}</td>
+                            <td className="px-3 py-2.5">
+                              <span className={cn("inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-semibold", statusColor)}>
+                                {statusLabel}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
+                              {amount > 0 ? fmtCurrency(amount, document.extraction?.currency || "INR") : "-"}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {linkedExpense ? (
+                                <button
+                                  type="button"
+                                  className="text-primary hover:underline"
+                                  onClick={() => openLinkedExpense(document)}
+                                >
+                                  {linkedExpense.expenseNumber}
+                                </button>
+                              ) : linkedExpenseId ? (
+                                <span className="text-muted-foreground text-xs">Linked</span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">Not linked</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              {linkedExpenseId ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openLinkedExpense(document)}
+                                >
+                                  Open Expense
+                                </Button>
+                              ) : document.processingStatus === "PROCESSED" ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleCreateFromReceipt(document)}
+                                  disabled={creatingFromDocumentId === document._id}
+                                >
+                                  {creatingFromDocumentId === document._id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    "Create Expense"
+                                  )}
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Waiting for extraction</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : fetching ? (
               <div className="flex items-center justify-center flex-1">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
@@ -828,7 +1276,12 @@ export default function ExpensesPage() {
                   <thead className="sticky top-0 bg-background z-10">
                     <tr className="border-b">
                       <th className="w-10 px-3 py-3">
-                        <input type="checkbox" className="accent-primary" />
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          checked={isAllSelected}
+                          onChange={handleSelectAll}
+                        />
                       </th>
                       {[
                         "Date", "Expense Account", "Reference #",
@@ -855,7 +1308,12 @@ export default function ExpensesPage() {
                           onClick={() => setSelected(expense)}
                         >
                           <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                            <input type="checkbox" className="accent-primary" />
+                            <input
+                              type="checkbox"
+                              className="accent-primary"
+                              checked={selectedIds.includes(expense._id)}
+                              onChange={() => toggleSelectExpense(expense._id)}
+                            />
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">{fmtDate(expense.date)}</td>
                           <td className="px-3 py-2.5 text-primary font-medium">{acct}</td>
@@ -883,6 +1341,10 @@ export default function ExpensesPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem className="gap-2 text-sm"
+                                  onClick={() => { setSelected(expense); setShowHistoryPanel(true); }}>
+                                  <History className="h-3.5 w-3.5" /> View Journal
+                                </DropdownMenuItem>
                                 <DropdownMenuItem className="gap-2 text-sm"
                                   onClick={() => router.push(`/purchases/expenses/${expense.expenseNumber || expense._id}/edit`)}>
                                   <Edit className="h-3.5 w-3.5" /> Edit
@@ -918,6 +1380,7 @@ export default function ExpensesPage() {
                 onClone={handleClone}
                 onEdit={(e) => router.push(`/purchases/expenses/${e.expenseNumber || e._id}/edit`)}
                 onConvertToInvoice={handleConvertToInvoice}
+                onShowHistory={() => setShowHistoryPanel(true)}
               />
             </div>
           )}
@@ -940,6 +1403,121 @@ export default function ExpensesPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Bulk update sheet */}
+        <Sheet open={bulkUpdateOpen} onOpenChange={setBulkUpdateOpen}>
+          <SheetContent side="right" className="p-0 sm:max-w-[440px] flex flex-col gap-0 border-l shadow-xl">
+            <SheetHeader className="px-5 py-4 border-b">
+              <SheetTitle>Bulk Update Expenses</SheetTitle>
+            </SheetHeader>
+            <div className="p-5 space-y-4">
+              <div>
+                <Label className="text-xs font-semibold">Field</Label>
+                <Select value={bulkField} onValueChange={(v) => setBulkField(v)}>
+                  <SelectTrigger className="mt-1 h-9 text-sm">
+                    <SelectValue placeholder="Choose field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="expenseAccountId">Expense Account</SelectItem>
+                    <SelectItem value="paidThroughAccountId">Paid Through</SelectItem>
+                    <SelectItem value="date">Date</SelectItem>
+                    <SelectItem value="isBillable">Billable</SelectItem>
+                    <SelectItem value="invoiceNumber">Reference #</SelectItem>
+                    <SelectItem value="notes">Notes</SelectItem>
+                    <SelectItem value="vendorId">Vendor</SelectItem>
+                    <SelectItem value="customerId">Customer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {bulkField === "expenseAccountId" || bulkField === "paidThroughAccountId" ? (
+                <div>
+                  <Label className="text-xs font-semibold">Account</Label>
+                  <Select value={bulkAccountId} onValueChange={(v) => setBulkAccountId(v)}>
+                    <SelectTrigger className="mt-1 h-9 text-sm">
+                      <SelectValue placeholder="Choose account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a._id} value={a._id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : bulkField === "date" ? (
+                <div>
+                  <Label className="text-xs font-semibold">Date</Label>
+                  <Input type="date" value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
+              ) : bulkField === "isBillable" ? (
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs font-semibold">Billable?</Label>
+                  <input type="checkbox" checked={bulkBillable} onChange={(e) => setBulkBillable(e.target.checked)} />
+                </div>
+              ) : bulkField ? (
+                <div>
+                  <Label className="text-xs font-semibold">New value</Label>
+                  <Input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
+              ) : null}
+            </div>
+            <div className="px-5 py-3 border-t flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setBulkUpdateOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleApplyBulkUpdate}>
+                Apply Update
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* History panel */}
+        <Sheet open={showHistoryPanel} onOpenChange={setShowHistoryPanel}>
+          <SheetContent side="right" className="p-0 sm:max-w-[400px] flex flex-col gap-0 border-l shadow-xl">
+            <SheetHeader className="px-5 py-4 border-b">
+              <SheetTitle>Expense History</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 flex flex-col overflow-hidden bg-white p-4">
+              <p className="text-sm font-semibold">Expense: {selected?.expenseNumber || "-"}</p>
+              <p className="text-xs text-muted-foreground">Created: {selected ? new Date(selected.createdAt).toLocaleString("en-IN") : "-"}</p>
+              <p className="text-xs text-muted-foreground mb-3">Updated: {selected ? new Date(selected.updatedAt).toLocaleString("en-IN") : "-"}</p>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">Audit History</p>
+                {selected?.activityLog && selected.activityLog.length > 0 ? (
+                  <ul className="space-y-2 max-h-[calc(100vh-240px)] overflow-y-auto">
+                    {selected.activityLog
+                      .slice()
+                      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                      .map((item, i) => (
+                        <li key={i} className="bg-white border rounded p-2 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-700">{item.action.toUpperCase()}</span>
+                            <span className="text-muted-foreground text-[10px]">{new Date(item.timestamp).toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="text-muted-foreground mt-1">
+                            {Object.keys(item.changes).map((field) => (
+                              <p key={field} className="leading-snug">
+                                <strong>{field}</strong>: {String(item.changes[field].before)} → {String(item.changes[field].after)}
+                              </p>
+                            ))}
+                          </div>
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No action history available yet.</p>
+                )}
+              </div>
+
+              <div className="mt-auto pt-3 border-t">
+                <Button variant="outline" size="sm" className="w-full" onClick={() => setShowHistoryPanel(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </SidebarInset>
     </SidebarProvider>
   );

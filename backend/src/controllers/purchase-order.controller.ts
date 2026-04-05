@@ -314,7 +314,7 @@ export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: R
     organizationId: orgId(req),
     isDeleted: false,
   })
-    .populate("vendorId", "displayName companyName email billingAddress")
+    .populate("vendorId", "displayName companyName email billingAddress statementTemplate")
     .populate("lineItems.itemId", "name")
     .lean();
 
@@ -340,11 +340,13 @@ export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: R
 
   const pdfBuffer = await generatePurchaseOrderPdf({
     orgName: org.name,
+    orgLogoUrl: (org as any).logo,
     orgAddress: org.address as any,
     orgTaxId: (org as any).taxId,
     vendorName,
     vendorAddress,
     vendorEmail: vendor?.email,
+    templateConfig: vendor?.statementTemplate,
     purchaseOrderNumber: po.purchaseOrderNumber,
     purchaseOrderDate: po.purchaseOrderDate.toISOString(),
     deliveryDate: po.deliveryDate ? po.deliveryDate.toISOString() : undefined,
@@ -389,7 +391,7 @@ export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequ
     organizationId: orgId(req),
     isDeleted: false,
   })
-    .populate("vendorId", "displayName companyName email billingAddress")
+    .populate("vendorId", "displayName companyName email billingAddress statementTemplate")
     .populate("lineItems.itemId", "name")
     .lean();
 
@@ -437,11 +439,13 @@ export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequ
 
     const pdfBuffer = await generatePurchaseOrderPdf({
       orgName: org.name,
+      orgLogoUrl: (org as any).logo,
       orgAddress: org.address as any,
       orgTaxId: (org as any).taxId,
       vendorName,
       vendorAddress,
       vendorEmail: vendor?.email,
+      templateConfig: vendor?.statementTemplate,
       purchaseOrderNumber: po.purchaseOrderNumber,
       purchaseOrderDate: po.purchaseOrderDate.toISOString(),
       deliveryDate: po.deliveryDate ? po.deliveryDate.toISOString() : undefined,

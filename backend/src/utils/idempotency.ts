@@ -26,14 +26,29 @@ export async function reserveIdempotencyKey(params: {
   if (!key) return;
 
   try {
-    const record = new IdempotencyKey({
-      organization_id: params.organization_id,
-      scope: params.scope,
-      key,
-    });
+    const result = await IdempotencyKey.updateOne(
+      {
+        organization_id: params.organization_id,
+        scope: params.scope,
+        key,
+      },
+      {
+        $setOnInsert: {
+          organization_id: params.organization_id,
+          scope: params.scope,
+          key,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      },
+      {
+        upsert: true,
+        session: params.session,
+      },
+    );
 
-    if (params.session) await record.save({ session: params.session });
-    else await record.save();
+    if (result.matchedCount > 0 && result.upsertedCount === 0) {
+      throw new ConflictError("Duplicate request detected. This operation was already processed.");
+    }
   } catch (error: any) {
     if (error?.code === 11000) {
       throw new ConflictError("Duplicate request detected. This operation was already processed.");

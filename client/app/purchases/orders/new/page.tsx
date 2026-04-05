@@ -863,6 +863,13 @@ export default function NewPurchaseOrderPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const vId = new URLSearchParams(window.location.search).get("vendorId");
+      if (vId) setVendorId(vId);
+    }
+  }, []);
+
   // Initialize saved addresses from org billing address
   useEffect(() => {
     if (!activeOrganization) return;

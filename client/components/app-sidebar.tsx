@@ -126,9 +126,18 @@ const navItems: NavItem[] = [
   },
   {
     title: "Settings",
-    url: "/settings/email",
+    url: "/settings/general",
     icon: Settings,
-    items: [{ title: "Email / SMTP", url: "/settings/email" }],
+    items: [
+      { title: "General", url: "/settings/general" },
+      { title: "Taxes", url: "/settings/taxes" },
+      { title: "Currencies", url: "/settings/currencies" },
+      { title: "Opening Balances", url: "/settings/opening-balances" },
+      { title: "Reminders", url: "/settings/reminders" },
+      { title: "Customer Portal", url: "/settings/customer-portal" },
+      { title: "Email / SMTP", url: "/settings/email" },
+      { title: "Payments (PayU)", url: "/settings/payu" },
+    ],
   },
 ];
 

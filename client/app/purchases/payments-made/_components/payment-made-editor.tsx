@@ -107,6 +107,9 @@ export function PaymentMadeEditor({
 
   useEffect(() => {
     let cancelled = false;
+    const search = new URLSearchParams(window.location.search);
+    const initialVendorId = search.get("vendorId");
+
     (async () => {
       setLoading(true);
       try {
@@ -121,7 +124,11 @@ export function PaymentMadeEditor({
         if (mode === "create") {
           const nextNum = await paymentMadeApi.getNextNumber();
           if (cancelled) return;
-          setForm((prev) => ({ ...prev, payment_number: nextNum.data.payment_number }));
+          setForm((prev) => ({ 
+            ...prev, 
+            payment_number: nextNum.data.payment_number,
+            vendor_id: initialVendorId || prev.vendor_id
+          }));
 
           if (initialBillId) {
             const billRes = await billApi.getOne(initialBillId);

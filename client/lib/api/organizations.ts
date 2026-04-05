@@ -33,10 +33,35 @@ export interface Organization {
     enabled: boolean;
     subdomain?: string;
   };
+  reminderSettings?: {
+    enabled: boolean;
+    sendInvoiceDueReminder: boolean;
+    invoiceDueDaysBefore: number;
+    sendPaymentDueReminder: boolean;
+    paymentDueFrequencyDays: number;
+  };
+  openingBalanceSettings?: {
+    migrationDate?: string | null;
+    isConfigured: boolean;
+    lastUpdatedAt?: string | null;
+  };
   defaultAccounts?: Record<string, string | null>;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReminderSettings {
+  enabled: boolean;
+  sendInvoiceDueReminder: boolean;
+  invoiceDueDaysBefore: number;
+  sendPaymentDueReminder: boolean;
+  paymentDueFrequencyDays: number;
+}
+
+export interface PortalSettings {
+  enabled: boolean;
+  subdomain?: string;
 }
 
 export interface CreateOrganizationInput {
@@ -108,4 +133,22 @@ export const organizationApi = {
       `/organizations/${id}/members/${userId}`,
       { method: "DELETE" },
     ),
+
+  getReminderSettings: (id: string) =>
+    apiFetch<{ data: ReminderSettings }>(`/organizations/${id}/reminder-settings`),
+
+  updateReminderSettings: (id: string, data: ReminderSettings) =>
+    apiFetch<{ data: ReminderSettings }>(`/organizations/${id}/reminder-settings`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  getPortalSettings: (id: string) =>
+    apiFetch<{ data: PortalSettings }>(`/organizations/${id}/portal-settings`),
+
+  updatePortalSettings: (id: string, data: PortalSettings) =>
+    apiFetch<{ data: PortalSettings }>(`/organizations/${id}/portal-settings`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 };

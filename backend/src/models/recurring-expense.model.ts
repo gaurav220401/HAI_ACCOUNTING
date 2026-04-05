@@ -2,7 +2,7 @@ import { Schema, model, Document, Types } from "mongoose";
 import { auditTrailPlugin, softDeletePlugin } from "../plugins";
 
 export type RecurringFrequency = "Daily" | "Weekly" | "Monthly" | "Yearly";
-export type RecurringStatus = "Active" | "Stopped";
+export type RecurringStatus = "Active" | "Stopped" | "Expired";
 
 export interface IRecurringExpense extends Document {
   organizationId: Types.ObjectId;
@@ -51,7 +51,7 @@ const recurringExpenseSchema = new Schema<IRecurringExpense>(
     isBillable: { type: Boolean, default: false },
     projectId: { type: Schema.Types.ObjectId, ref: "Project", default: null },
     notes: { type: String, default: "" },
-    status: { type: String, enum: ["Active", "Stopped"], default: "Active" },
+    status: { type: String, enum: ["Active", "Stopped", "Expired"], default: "Active" },
     lastExpenseDate: { type: Date, default: null },
     nextExpenseDate: { type: Date, default: null },
     generatedExpenseIds: [{ type: Schema.Types.ObjectId, ref: "Expense" }],

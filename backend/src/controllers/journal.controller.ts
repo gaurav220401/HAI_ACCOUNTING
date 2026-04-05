@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 import { attachUser } from "../plugins";
+import { postVoucher, reverseVoucher } from "../services/gl-posting.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -38,6 +39,49 @@ function normalizeLineItems(lineItems: any[]) {
   }
 
   return { normalized, totalDebit, totalCredit };
+}
+
+function journalVoucherId(journal: any): string {
+  return `journal:${String(journal._id)}`;
+}
+
+function hasJournalFinancialEdits(payload: Record<string, unknown>): boolean {
+  const keys = ["lineItems", "date", "vendorId", "referenceNumber", "description"];
+  return keys.some((key) => payload[key] !== undefined);
+}
+
+async function postJournalLedger(journal: any, req: AuthenticatedRequest) {
+  if (journal.status !== "Posted") return;
+
+  const lines = (journal.lineItems || []).map((line: any) => ({
+    accountId: line.accountId,
+    debit: Number(line.debit || 0),
+    credit: Number(line.credit || 0),
+    description: line.narration || journal.description || `Journal ${journal.journalNumber}`,
+  }));
+
+  await postVoucher({
+    organizationId: journal.organizationId,
+    voucherType: "Journal",
+    voucherId: journalVoucherId(journal),
+    voucherNo: String(journal.journalNumber || journal._id),
+    postingDate: journal.date ? new Date(journal.date) : new Date(),
+    lines,
+    description: journal.description || `Journal posting ${journal.journalNumber}`,
+    req,
+  });
+}
+
+async function reverseJournalLedger(journal: any, req: AuthenticatedRequest) {
+  await reverseVoucher({
+    organizationId: journal.organizationId,
+    voucherType: "Journal",
+    voucherId: journalVoucherId(journal),
+    reversalVoucherNo: `REV-${String(journal.journalNumber || journal._id)}`,
+    postingDate: new Date(),
+    description: `Journal reversal ${journal.journalNumber || journal._id}`,
+    req,
+  });
 }
 
 /** GET /api/journals */
@@ -117,6 +161,11 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   attachUser(journal as any, req);
   await journal.save();
+
+  if (journal.status === "Posted") {
+    await postJournalLedger(journal, req);
+  }
+
   await journal.populate("vendorId", "displayName companyName");
   await journal.populate("lineItems.accountId", "name accountType");
 
@@ -136,6 +185,13 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     throw new ValidationError("Cannot update a voided journal");
   }
 
+  const previousStatus = journal.status;
+  if (previousStatus === "Posted" && hasJournalFinancialEdits(req.body || {})) {
+    throw new ValidationError(
+      "Cannot edit financial fields after journal is posted. Void and recreate for accounting integrity.",
+    );
+  }
+
   if (req.body.lineItems !== undefined) {
     const { normalized, totalDebit, totalCredit } = normalizeLineItems(req.body.lineItems);
     journal.lineItems = normalized as any;
@@ -152,6 +208,13 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   attachUser(journal as any, req);
   await journal.save();
+
+  if (previousStatus !== "Posted" && journal.status === "Posted") {
+    await postJournalLedger(journal, req);
+  } else if (previousStatus === "Posted" && journal.status !== "Posted") {
+    await reverseJournalLedger(journal, req);
+  }
+
   await journal.populate("vendorId", "displayName companyName");
   await journal.populate("lineItems.accountId", "name accountType");
 
@@ -163,9 +226,16 @@ export const postJournal = asyncHandler(async (req: AuthenticatedRequest, res: R
   const journal = await Journal.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!journal) throw new NotFoundError("Journal");
   if (journal.status === "Voided") throw new ValidationError("Voided journal cannot be posted");
+
+  if (journal.status === "Posted") {
+    res.json({ success: true, data: journal });
+    return;
+  }
+
   journal.status = "Posted";
   attachUser(journal as any, req);
   await journal.save();
+  await postJournalLedger(journal, req);
   res.json({ success: true, data: journal });
 });
 
@@ -173,9 +243,16 @@ export const postJournal = asyncHandler(async (req: AuthenticatedRequest, res: R
 export const voidJournal = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const journal = await Journal.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!journal) throw new NotFoundError("Journal");
+
+  const wasPosted = journal.status === "Posted";
   journal.status = "Voided";
   attachUser(journal as any, req);
   await journal.save();
+
+  if (wasPosted) {
+    await reverseJournalLedger(journal, req);
+  }
+
   res.json({ success: true, data: journal });
 });
 
@@ -188,10 +265,16 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   });
   if (!journal) throw new NotFoundError("Journal");
 
+  const wasPosted = journal.status === "Posted";
+
   journal.isDeleted = true;
   journal.deletedAt = new Date();
   attachUser(journal as any, req);
   await journal.save();
+
+  if (wasPosted) {
+    await reverseJournalLedger(journal, req);
+  }
 
   res.json({ success: true, message: "Journal deleted" });
 });
