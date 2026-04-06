@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
 import { OrganizationProvider } from "@/contexts/organization-context";
+import { OrganizationChangeBoundary } from "@/components/organization-change-boundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -95,10 +96,10 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             <OrganizationProvider>
-              <TimeTrackingProvider>
-                {children}
-                <Toaster/>
-              </TimeTrackingProvider>
+              <OrganizationChangeBoundary>
+                <TimeTrackingProvider>{children}</TimeTrackingProvider>
+              </OrganizationChangeBoundary>
+              <Toaster />
             </OrganizationProvider>
           </AuthProvider>
         </QueryProvider>

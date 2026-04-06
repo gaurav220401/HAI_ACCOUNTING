@@ -7,6 +7,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./auth-context";
 import { organizationApi, type Organization } from "@/lib/api";
 import { useAppStore } from "@/stores/app-store";
@@ -35,7 +36,8 @@ export function OrganizationProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { dbUser, firebaseUser } = useAuth();
+  const { dbUser, firebaseUser, refreshProfile } = useAuth();
+  const queryClient = useQueryClient();
   const { activeOrganization: storedOrg, setActiveOrganization } =
     useAppStore();
 
@@ -118,11 +120,10 @@ export function OrganizationProvider({
 
   const switchOrganization = useCallback(
     async (org: Organization) => {
-      try {
-        await organizationApi.setActive(org._id);
-      } catch {
-        // best-effort — still switch locally
-      }
+      if (activeOrganization?._id === org._id) return;
+
+      await organizationApi.setActive(org._id);
+
       setActiveOrg(org);
       setActiveOrganization({
         id: org._id,
@@ -132,8 +133,12 @@ export function OrganizationProvider({
         timezone: org.timezone,
         fiscalYearStart: org.fiscalYearStart,
       });
+
+      // Keep auth user metadata and all org-scoped React Query caches in sync.
+      await refreshProfile().catch(() => null);
+      await queryClient.invalidateQueries();
     },
-    [setActiveOrganization],
+    [activeOrganization?._id, queryClient, refreshProfile, setActiveOrganization],
   );
 
   const needsOrgSetup =
