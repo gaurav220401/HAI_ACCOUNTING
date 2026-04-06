@@ -5,12 +5,31 @@ import type { PaginatedResponse, ListParams } from "./client";
 
 export type ItemType = "Goods" | "Service";
 export type TaxPreference = "Taxable" | "NonTaxable" | "Exempt";
+export type ItemMode = "SingleItem" | "Variants";
+export type DimensionUnit = "cm" | "m" | "in" | "ft";
+export type WeightUnit = "kg" | "g" | "lb" | "oz";
+
+export interface ItemDimensions {
+  length?: number;
+  width?: number;
+  height?: number;
+  unit?: DimensionUnit;
+}
+
+export interface ItemWeight {
+  value?: number;
+  unit?: WeightUnit;
+}
 
 export interface Item {
   _id: string;
   organizationId: string;
   name: string;
   sku?: string;
+  identifiers?: string[];
+  itemMode?: ItemMode;
+  brand?: string;
+  manufacturer?: string;
   itemType: ItemType;
   unit?: UnitOfMeasurement | string | null;
   itemGroupId?: ItemGroup | string | null;
@@ -21,15 +40,24 @@ export interface Item {
   purchaseDescription?: string;
   salesAccountId?: string | null;
   purchaseAccountId?: string | null;
+  inventoryAccountId?: string | null;
+  valuationMethod?: "MovingAverage" | "FIFO";
   taxPreference: TaxPreference;
   taxId?: string | null;
   hsnSacCode?: string;
   inventoryTracked: boolean;
   stockOnHand: number;
+  inventoryValue: number;
+  averageCost: number;
   reorderPoint?: number;
+  returnableItem?: boolean;
+  dimensions?: ItemDimensions;
+  weight?: ItemWeight;
   preferredVendorId?: string | null;
   warehouseId?: string | null;
   image?: string;
+  rearImage?: string;
+  otherImages?: string[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +66,10 @@ export interface Item {
 export interface CreateItemInput {
   name: string;
   sku?: string;
+  identifiers?: string[];
+  itemMode?: ItemMode;
+  brand?: string;
+  manufacturer?: string;
   itemType?: ItemType;
   unit?: string;
   itemGroupId?: string;
@@ -48,15 +80,24 @@ export interface CreateItemInput {
   purchaseDescription?: string;
   salesAccountId?: string;
   purchaseAccountId?: string;
+  inventoryAccountId?: string;
   taxPreference?: TaxPreference;
   taxId?: string;
   hsnSacCode?: string;
+  valuationMethod?: "MovingAverage" | "FIFO";
   inventoryTracked?: boolean;
   stockOnHand?: number;
+  averageCost?: number;
+  inventoryValue?: number;
   reorderPoint?: number;
+  returnableItem?: boolean;
+  dimensions?: ItemDimensions;
+  weight?: ItemWeight;
   preferredVendorId?: string;
   warehouseId?: string;
   image?: string;
+  rearImage?: string;
+  otherImages?: string[];
 }
 
 export type UpdateItemInput = Partial<CreateItemInput>;

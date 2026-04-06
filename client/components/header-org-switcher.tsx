@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronsUpDown, Plus, Building2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -57,9 +58,14 @@ export function HeaderOrgSwitcher() {
 
   async function handleSwitch(org: Organization) {
     setOpen(false);
-    await switchOrganization(org);
-    // Force the current page to re-render with the new org's data
-    router.refresh();
+    try {
+      await switchOrganization(org);
+      // Force the current page to re-render with the new org's data.
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to switch organization";
+      toast.error(message);
+    }
   }
 
   return (
