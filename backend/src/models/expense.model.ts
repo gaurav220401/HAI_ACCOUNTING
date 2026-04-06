@@ -80,7 +80,7 @@ const lineItemSchema = new Schema<IExpenseLineItem>(
 const expenseSchema = new Schema<IExpense>(
   {
     organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
-    expenseNumber: { type: String, unique: true, sparse: true },
+    expenseNumber: { type: String, sparse: true },
     expenseType: { type: String, enum: ["Regular", "Mileage"], default: "Regular" },
     // Regular
     expenseAccountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
@@ -121,6 +121,15 @@ expenseSchema.plugin(auditTrailPlugin);
 expenseSchema.plugin(activityLogPlugin);
 expenseSchema.plugin(softDeletePlugin);
 expenseSchema.index({ organizationId: 1, date: -1 });
+expenseSchema.index(
+  { organizationId: 1, expenseNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      expenseNumber: { $type: "string" },
+    },
+  },
+);
 expenseSchema.index(
   { organizationId: 1, recurringId: 1, recurringRunDate: 1, isDeleted: 1 },
   {

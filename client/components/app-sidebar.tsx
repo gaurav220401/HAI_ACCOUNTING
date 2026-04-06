@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Boxes,
   BookOpen,
   ChevronRight,
   Clock,
@@ -57,6 +58,19 @@ const navItems: NavItem[] = [
     url: "/items",
     icon: Package,
     items: [],
+  },
+  {
+    title: "Inventory",
+    url: "/inventory",
+    icon: Boxes,
+    items: [
+      { title: "Overview", url: "/inventory" },
+      { title: "Inventory Adjustments", url: "/inventory/adjustments" },
+      { title: "Packages", url: "/inventory/packages" },
+      { title: "Shipments", url: "/inventory/shipments" },
+      { title: "Move Orders", url: "/inventory/move-orders" },
+      { title: "Putaways", url: "/inventory/putaways" },
+    ],
   },
   {
     title: "Sales",

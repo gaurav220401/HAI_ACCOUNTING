@@ -32,9 +32,10 @@ import { itemApi, type Item } from "@/lib/api/items";
 // ─── Item detail type with populated fields ────────────────────────────────
 interface PopulatedAccount { _id: string; name: string; }
 interface PopulatedUnit    { _id: string; name: string; abbreviation: string; }
-interface ItemDetail extends Omit<Item, "salesAccountId" | "purchaseAccountId" | "unit"> {
+interface ItemDetail extends Omit<Item, "salesAccountId" | "purchaseAccountId" | "inventoryAccountId" | "unit"> {
   salesAccountId?: PopulatedAccount | string | null;
   purchaseAccountId?: PopulatedAccount | string | null;
+  inventoryAccountId?: PopulatedAccount | string | null;
   unit?: PopulatedUnit | string | null;
 }
 
@@ -65,7 +66,6 @@ export default function ItemsPage() {
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
   useEffect(() => {
     if (firebaseUser && !loading && activeOrganization?._id) fetchItems();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, activeOrganization?._id]);
 
   // ─── Data fetching ───────────────────────────────────────────────────────
@@ -101,7 +101,12 @@ export default function ItemsPage() {
     try {
       await itemApi.create({
         name: `Copy of ${item.name}`,
+        description: item.description,
+        identifiers: item.identifiers,
+        itemMode: item.itemMode,
         itemType: item.itemType,
+        brand: item.brand,
+        manufacturer: item.manufacturer,
         unit: typeof item.unit === "object" && item.unit ? (item.unit as { _id: string })._id : (item.unit as string) ?? undefined,
         sku: item.sku ? `${item.sku}-copy` : undefined,
         sellingPrice: item.sellingPrice,
@@ -112,8 +117,21 @@ export default function ItemsPage() {
         hsnSacCode: item.hsnSacCode,
         sellingDescription: item.sellingDescription,
         purchaseDescription: item.purchaseDescription,
+        inventoryTracked: item.inventoryTracked,
+        stockOnHand: item.stockOnHand,
+        averageCost: item.averageCost,
+        inventoryValue: item.inventoryValue,
+        reorderPoint: item.reorderPoint,
+        inventoryAccountId: item.inventoryAccountId as string | undefined,
+        valuationMethod: item.valuationMethod,
+        returnableItem: item.returnableItem,
+        dimensions: item.dimensions,
+        weight: item.weight,
         preferredVendorId: item.preferredVendorId as string | undefined,
+        warehouseId: item.warehouseId as string | undefined,
         image: item.image,
+        rearImage: item.rearImage,
+        otherImages: item.otherImages,
       });
       toast.success(`"${item.name}" cloned successfully`);
       fetchItems();
@@ -172,6 +190,24 @@ export default function ItemsPage() {
     if (!field) return "—";
     if (typeof field === "object") return field.abbreviation;
     return field;
+  }
+
+  function dimensionsDisplay(item: ItemDetail | null) {
+    if (!item?.dimensions) return "—";
+    const length = Number(item.dimensions.length || 0);
+    const width = Number(item.dimensions.width || 0);
+    const height = Number(item.dimensions.height || 0);
+    const unit = item.dimensions.unit || "cm";
+    if (!length && !width && !height) return "—";
+    return `${length} x ${width} x ${height} ${unit}`;
+  }
+
+  function weightDisplay(item: ItemDetail | null) {
+    if (!item?.weight) return "—";
+    const value = Number(item.weight.value || 0);
+    const unit = item.weight.unit || "kg";
+    if (!value) return "—";
+    return `${value} ${unit}`;
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -394,10 +430,20 @@ export default function ItemsPage() {
                       <div className="max-w-lg space-y-5">
                         <div className="space-y-3">
                           <DetailRow label="Item Type" value={detail.itemType} />
+                          <DetailRow label="Item Mode" value={detail.itemMode === "Variants" ? "Contains Variants" : "Single Item"} />
                           <DetailRow label="Unit" value={unitDisplay(detail.unit as PopulatedUnit | string | null)} />
                           <DetailRow label="SKU" value={detail.sku || "—"} />
+                          <DetailRow
+                            label="Identifiers"
+                            value={detail.identifiers?.length ? detail.identifiers.join(", ") : "—"}
+                          />
+                          <DetailRow label="Brand" value={detail.brand || "—"} />
+                          <DetailRow label="Manufacturer" value={detail.manufacturer || "—"} />
+                          <DetailRow label="Description" value={detail.description || "—"} />
                           <DetailRow label="HSN/SAC" value={detail.hsnSacCode || "—"} />
                           <DetailRow label="Tax Preference" value={detail.taxPreference ?? "—"} />
+                          <DetailRow label="Inventory Tracked" value={detail.inventoryTracked ? "Yes" : "No"} />
+                          <DetailRow label="Returnable Item" value={detail.returnableItem === false ? "No" : "Yes"} />
                           <DetailRow
                             label="Status"
                             value={
@@ -407,6 +453,22 @@ export default function ItemsPage() {
                             }
                           />
                         </div>
+                        {detail.inventoryTracked && (
+                          <>
+                            <Separator />
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold mb-3">Inventory Information</p>
+                              <DetailRow label="Stock On Hand" value={Number(detail.stockOnHand || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })} />
+                              <DetailRow label="Average Cost" value={`₹${Number(detail.averageCost || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`} />
+                              <DetailRow label="Inventory Value" value={`₹${Number(detail.inventoryValue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`} />
+                              <DetailRow label="Reorder Point" value={detail.reorderPoint != null ? Number(detail.reorderPoint).toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"} />
+                              <DetailRow label="Valuation" value={detail.valuationMethod || "MovingAverage"} />
+                              <DetailRow label="Inventory Account" value={accountName(detail.inventoryAccountId as PopulatedAccount | string | null)} />
+                              <DetailRow label="Dimensions" value={dimensionsDisplay(detail)} />
+                              <DetailRow label="Weight" value={weightDisplay(detail)} />
+                            </div>
+                          </>
+                        )}
                         {(detail.costPrice != null || detail.purchaseAccountId) && (
                           <>
                             <Separator />

@@ -29,6 +29,8 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
     { name: { $regex: search, $options: "i" } },
     { sku: { $regex: search, $options: "i" } },
     { description: { $regex: search, $options: "i" } },
+    { brand: { $regex: search, $options: "i" } },
+    { manufacturer: { $regex: search, $options: "i" } },
   ];
 
   const total = await Item.countDocuments(filter);
@@ -49,7 +51,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 /** GET /api/items/:id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const item = await Item.findOne({ _id: req.params.id, organizationId: orgId(req) })
-    .populate("unit itemGroupId taxId salesAccountId purchaseAccountId preferredVendorId warehouseId");
+    .populate("unit itemGroupId taxId salesAccountId purchaseAccountId inventoryAccountId preferredVendorId warehouseId");
   if (!item) throw new NotFoundError("Item");
   res.json({ success: true, data: item });
 });
@@ -60,15 +62,23 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!req.body.itemType) throw new ValidationError("itemType is required (Goods or Service)");
 
   const payload: any = { ...req.body };
+  payload.itemMode = payload.itemMode || "SingleItem";
+  payload.identifiers = Array.isArray(payload.identifiers)
+    ? payload.identifiers.map((value: unknown) => String(value).trim()).filter(Boolean)
+    : [];
+  if (payload.returnableItem === undefined) payload.returnableItem = true;
   if (payload.inventoryTracked) {
     const stockOnHand = Number(payload.stockOnHand || 0);
     const averageCost = Number(payload.averageCost ?? payload.costPrice ?? 0);
+    payload.valuationMethod = payload.valuationMethod || "MovingAverage";
     payload.stockOnHand = round2(stockOnHand);
     payload.averageCost = round2(Math.max(0, averageCost));
     payload.inventoryValue = round2(
       Number(payload.inventoryValue ?? payload.stockOnHand * payload.averageCost) || 0,
     );
   } else {
+    payload.inventoryAccountId = null;
+    payload.valuationMethod = "MovingAverage";
     payload.stockOnHand = 0;
     payload.averageCost = 0;
     payload.inventoryValue = 0;
@@ -86,20 +96,29 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!item) throw new NotFoundError("Item");
 
   const allowed = [
-    "name", "sku", "unit", "itemGroupId", "description",
+    "name", "sku", "identifiers", "unit", "itemGroupId", "description", "itemMode", "brand", "manufacturer",
     "sellingPrice", "sellingDescription", "costPrice", "purchaseDescription",
-    "taxPreference", "taxId", "hsnSacCode", "salesAccountId", "purchaseAccountId",
-    "inventoryTracked", "stockOnHand", "inventoryValue", "averageCost", "reorderPoint", "preferredVendorId",
-    "warehouseId", "image", "isActive", "itemType",
+    "taxPreference", "taxId", "hsnSacCode", "salesAccountId", "purchaseAccountId", "inventoryAccountId",
+    "inventoryTracked", "stockOnHand", "inventoryValue", "averageCost", "reorderPoint", "returnableItem",
+    "dimensions", "weight", "preferredVendorId", "warehouseId", "valuationMethod", "image", "rearImage",
+    "otherImages", "isActive", "itemType",
   ];
   allowed.forEach((f) => { if (req.body[f] !== undefined) (item as any)[f] = req.body[f]; });
+  if (req.body.identifiers !== undefined) {
+    (item as any).identifiers = Array.isArray(req.body.identifiers)
+      ? req.body.identifiers.map((value: unknown) => String(value).trim()).filter(Boolean)
+      : [];
+  }
 
   if (!(item as any).inventoryTracked) {
+    (item as any).inventoryAccountId = null;
+    (item as any).valuationMethod = "MovingAverage";
     item.stockOnHand = 0;
     (item as any).averageCost = 0;
     (item as any).inventoryValue = 0;
   } else {
     item.stockOnHand = round2(Number(item.stockOnHand || 0));
+    (item as any).valuationMethod = (item as any).valuationMethod || "MovingAverage";
     (item as any).averageCost = round2(Number((item as any).averageCost || item.costPrice || 0));
     (item as any).inventoryValue = round2(Number((item as any).inventoryValue || 0));
 

@@ -41,6 +41,7 @@ import {
 } from "@/lib/api/accounts";
 import { itemApi, type CreateItemInput, type UnitOfMeasurement, type Item } from "@/lib/api/items";
 import { contactApi, type Contact } from "@/lib/api/contacts";
+import { settingsApi, type Warehouse } from "@/lib/api/settings";
 import { uploadApi } from "@/lib/api/upload";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -48,9 +49,29 @@ import { uploadApi } from "@/lib/api/upload";
 interface FormState {
   name: string;
   sku: string;
+  description: string;
+  identifiers: string[];
+  itemMode: "SingleItem" | "Variants";
   itemType: "Goods" | "Service";
+  brand: string;
+  manufacturer: string;
   unit: string;
   hsnSacCode: string;
+  // Inventory
+  hasInventoryInfo: boolean;
+  inventoryAccountId: string;
+  warehouseId: string;
+  valuationMethod: "MovingAverage" | "FIFO";
+  stockOnHand: string;
+  averageCost: string;
+  reorderPoint: string;
+  returnableItem: boolean;
+  dimensionLength: string;
+  dimensionWidth: string;
+  dimensionHeight: string;
+  dimensionUnit: "cm" | "m" | "in" | "ft";
+  weightValue: string;
+  weightUnit: "kg" | "g" | "lb" | "oz";
   // Sales
   hasSalesInfo: boolean;
   sellingPrice: string;
@@ -67,14 +88,37 @@ interface FormState {
   // Image
   image: string;
   imagePublicId: string;
+  rearImage: string;
+  rearImagePublicId: string;
+  otherImages: string[];
+  otherImagePublicIds: string[];
 }
 
 const DEFAULT_FORM: FormState = {
   name: "",
   sku: "",
+  description: "",
+  identifiers: [],
+  itemMode: "SingleItem",
   itemType: "Goods",
+  brand: "",
+  manufacturer: "",
   unit: "",
   hsnSacCode: "",
+  hasInventoryInfo: false,
+  inventoryAccountId: "",
+  warehouseId: "",
+  valuationMethod: "MovingAverage",
+  stockOnHand: "",
+  averageCost: "",
+  reorderPoint: "",
+  returnableItem: true,
+  dimensionLength: "",
+  dimensionWidth: "",
+  dimensionHeight: "",
+  dimensionUnit: "cm",
+  weightValue: "",
+  weightUnit: "kg",
   hasSalesInfo: true,
   sellingPrice: "",
   salesAccountId: "",
@@ -87,7 +131,20 @@ const DEFAULT_FORM: FormState = {
   taxPreference: "Taxable",
   image: "",
   imagePublicId: "",
+  rearImage: "",
+  rearImagePublicId: "",
+  otherImages: [],
+  otherImagePublicIds: [],
 };
+
+function extractId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && "_id" in (value as Record<string, unknown>)) {
+    return String((value as { _id?: string })._id || "");
+  }
+  return "";
+}
 
 // ─── Create Unit Dialog ───────────────────────────────────────────────────────
 
@@ -469,6 +526,7 @@ function ImageUploader({
         </div>
       ) : imageUrl ? (
         <div className="relative w-full h-full p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imageUrl} alt="Item" className="w-full h-full object-contain rounded" />
           <div className="absolute top-1.5 right-1.5 flex gap-1">
             <button
@@ -494,6 +552,92 @@ function ImageUploader({
           <ImageIcon className="h-8 w-8 opacity-30" />
           <p className="text-xs">Drag image(s) here or</p>
           <p className="text-xs text-primary font-medium">Browse images</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OtherImagesUploader({
+  images,
+  uploading,
+  onUpload,
+  onRemove,
+  maxImages = 15,
+}: {
+  images: string[];
+  uploading: boolean;
+  onUpload: (files: FileList | File[]) => void;
+  onRemove: (index: number) => void;
+  maxImages?: number;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const canUpload = !uploading && images.length < maxImages;
+
+  return (
+    <div className="space-y-2">
+      <div
+        className={`rounded-lg border-2 border-dashed p-3 transition-colors ${
+          dragOver && canUpload
+            ? "border-primary bg-primary/5"
+            : "border-muted-foreground/25"
+        } ${canUpload ? "cursor-pointer hover:bg-muted/20" : "opacity-80"}`}
+        onClick={() => canUpload && inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (canUpload) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (!canUpload) return;
+          const files = e.dataTransfer.files;
+          if (files?.length) onUpload(files);
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.length) onUpload(e.target.files);
+            e.target.value = "";
+          }}
+        />
+
+        {uploading ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-3">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Uploading images...
+          </div>
+        ) : (
+          <div className="text-center text-xs text-muted-foreground py-1">
+            <p className="font-medium text-foreground">Drag & drop images or click to browse</p>
+            <p>Up to {maxImages} images, each under 5 MB.</p>
+          </div>
+        )}
+      </div>
+
+      {images.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {images.map((url, index) => (
+            <div key={`${url}-${index}`} className="relative rounded-md border bg-muted/20 aspect-square overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Item image ${index + 1}`} className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => onRemove(index)}
+                className="absolute top-1 right-1 rounded bg-background/85 p-1 text-destructive hover:bg-background"
+                title="Remove image"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -546,53 +690,113 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
     return {
       name: initialData.name ?? "",
       sku: initialData.sku ?? "",
+      description: initialData.description ?? "",
+      identifiers: initialData.identifiers ?? [],
+      itemMode: initialData.itemMode ?? "SingleItem",
       itemType: initialData.itemType ?? "Goods",
-      unit: typeof initialData.unit === "object" && initialData.unit ? (initialData.unit as UnitOfMeasurement)._id : (initialData.unit as string) ?? "",
+      brand: initialData.brand ?? "",
+      manufacturer: initialData.manufacturer ?? "",
+      unit: extractId(initialData.unit),
       hsnSacCode: initialData.hsnSacCode ?? "",
+      hasInventoryInfo: !!initialData.inventoryTracked,
+      inventoryAccountId: extractId(initialData.inventoryAccountId),
+      warehouseId: extractId(initialData.warehouseId),
+      valuationMethod: initialData.valuationMethod ?? "MovingAverage",
+      stockOnHand: initialData.inventoryTracked ? String(initialData.stockOnHand ?? "") : "",
+      averageCost: initialData.inventoryTracked ? String(initialData.averageCost ?? "") : "",
+      reorderPoint: initialData.inventoryTracked ? String(initialData.reorderPoint ?? "") : "",
+      returnableItem: initialData.returnableItem ?? true,
+      dimensionLength: initialData.dimensions?.length != null ? String(initialData.dimensions.length) : "",
+      dimensionWidth: initialData.dimensions?.width != null ? String(initialData.dimensions.width) : "",
+      dimensionHeight: initialData.dimensions?.height != null ? String(initialData.dimensions.height) : "",
+      dimensionUnit: initialData.dimensions?.unit ?? "cm",
+      weightValue: initialData.weight?.value != null ? String(initialData.weight.value) : "",
+      weightUnit: initialData.weight?.unit ?? "kg",
       hasSalesInfo: initialData.sellingPrice != null,
       sellingPrice: initialData.sellingPrice?.toString() ?? "",
-      salesAccountId: (initialData.salesAccountId as string) ?? "",
+      salesAccountId: extractId(initialData.salesAccountId),
       salesDescription: initialData.sellingDescription ?? "",
       hasPurchaseInfo: initialData.costPrice != null,
       costPrice: initialData.costPrice?.toString() ?? "",
-      purchaseAccountId: (initialData.purchaseAccountId as string) ?? "",
+      purchaseAccountId: extractId(initialData.purchaseAccountId),
       purchaseDescription: initialData.purchaseDescription ?? "",
-      preferredVendorId: (initialData.preferredVendorId as string) ?? "",
+      preferredVendorId: extractId(initialData.preferredVendorId),
       taxPreference: initialData.taxPreference ?? "Taxable",
       image: initialData.image ?? "",
       imagePublicId: "",
+      rearImage: initialData.rearImage ?? "",
+      rearImagePublicId: "",
+      otherImages: initialData.otherImages ?? [],
+      otherImagePublicIds: (initialData.otherImages ?? []).map(() => ""),
     };
   });
 
   const [salesAccounts, setSalesAccounts] = useState<GroupedAccounts>({});
   const [purchaseAccounts, setPurchaseAccounts] = useState<GroupedAccounts>({});
+  const [inventoryAccounts, setInventoryAccounts] = useState<Account[]>([]);
   const [allSalesAccounts, setAllSalesAccounts] = useState<Account[]>([]);
   const [allPurchaseAccounts, setAllPurchaseAccounts] = useState<Account[]>([]);
   const [units, setUnits] = useState<UnitOfMeasurement[]>([]);
   const [vendors, setVendors] = useState<Contact[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [frontUploading, setFrontUploading] = useState(false);
+  const [rearUploading, setRearUploading] = useState(false);
+  const [otherUploading, setOtherUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
+
+  const uploading = frontUploading || rearUploading || otherUploading;
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  function addIdentifier() {
+    setForm((f) => ({ ...f, identifiers: [...f.identifiers, ""] }));
+  }
+
+  function updateIdentifier(index: number, value: string) {
+    setForm((f) => ({
+      ...f,
+      identifiers: f.identifiers.map((entry, i) => (i === index ? value : entry)),
+    }));
+  }
+
+  function removeIdentifier(index: number) {
+    setForm((f) => ({
+      ...f,
+      identifiers: f.identifiers.filter((_, i) => i !== index),
+    }));
+  }
+
   const loadDropdowns = useCallback(async () => {
     try {
-      const [salesRes, purchaseRes, unitsRes, vendorsRes, flatSalesRes, flatPurchaseRes] = await Promise.all([
+      const [
+        salesRes,
+        purchaseRes,
+        unitsRes,
+        vendorsRes,
+        flatSalesRes,
+        flatPurchaseRes,
+        assetRes,
+        warehouseRes,
+      ] = await Promise.all([
         accountApi.listForItem("sales"),
         accountApi.listForItem("purchase"),
         itemApi.listUnits(),
         contactApi.list({ type: "Vendor", limit: 200 }),
         accountApi.list({ rootType: "Income" }),
         accountApi.list({ rootType: "Expense" }),
+        accountApi.list({ rootType: "Asset", excludeGroups: true }),
+        settingsApi.warehouses.list(),
       ]);
       setSalesAccounts(salesRes.data ?? {});
       setPurchaseAccounts(purchaseRes.data ?? {});
       setAllSalesAccounts(flatSalesRes.data ?? []);
       setAllPurchaseAccounts(flatPurchaseRes.data ?? []);
       setVendors(vendorsRes.data ?? []);
+      setInventoryAccounts((assetRes.data ?? []).filter((acc) => acc.rootType === "Asset"));
+      setWarehouses(warehouseRes.data ?? []);
 
       // Auto-seed the 13 GST default units for existing orgs that have none yet
       let unitList = unitsRes.data ?? [];
@@ -613,8 +817,24 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
 
   // ─── Image ─────────────────────────────────────────────────────────────────
 
-  async function handleImageUpload(file: File) {
-    setUploading(true);
+  const MAX_OTHER_IMAGES = 15;
+  const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+  function isValidImage(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast.error(`"${file.name}" is not an image`);
+      return false;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      toast.error(`"${file.name}" exceeds 5 MB limit`);
+      return false;
+    }
+    return true;
+  }
+
+  async function handleFrontImageUpload(file: File) {
+    if (!isValidImage(file)) return;
+    setFrontUploading(true);
     try {
       if (form.imagePublicId) await uploadApi.remove(form.imagePublicId).catch(() => {});
       const result = await uploadApi.upload(file, "items");
@@ -622,13 +842,74 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
     } catch (e) {
       toast.error((e as Error).message ?? "Image upload failed");
     } finally {
-      setUploading(false);
+      setFrontUploading(false);
     }
   }
 
-  async function handleImageRemove() {
+  async function handleFrontImageRemove() {
     if (form.imagePublicId) await uploadApi.remove(form.imagePublicId).catch(() => {});
     setForm((f) => ({ ...f, image: "", imagePublicId: "" }));
+  }
+
+  async function handleRearImageUpload(file: File) {
+    if (!isValidImage(file)) return;
+    setRearUploading(true);
+    try {
+      if (form.rearImagePublicId) await uploadApi.remove(form.rearImagePublicId).catch(() => {});
+      const result = await uploadApi.upload(file, "items");
+      setForm((f) => ({ ...f, rearImage: result.url, rearImagePublicId: result.publicId }));
+    } catch (e) {
+      toast.error((e as Error).message ?? "Image upload failed");
+    } finally {
+      setRearUploading(false);
+    }
+  }
+
+  async function handleRearImageRemove() {
+    if (form.rearImagePublicId) await uploadApi.remove(form.rearImagePublicId).catch(() => {});
+    setForm((f) => ({ ...f, rearImage: "", rearImagePublicId: "" }));
+  }
+
+  async function handleOtherImagesUpload(files: FileList | File[]) {
+    const selected = Array.from(files);
+    if (selected.length === 0) return;
+
+    const remaining = MAX_OTHER_IMAGES - form.otherImages.length;
+    if (remaining <= 0) {
+      toast.error(`You can upload up to ${MAX_OTHER_IMAGES} images`);
+      return;
+    }
+
+    const validFiles = selected.filter(isValidImage).slice(0, remaining);
+    if (validFiles.length === 0) return;
+
+    setOtherUploading(true);
+    try {
+      const uploaded: Array<{ url: string; publicId: string }> = [];
+      for (const file of validFiles) {
+        const result = await uploadApi.upload(file, "items");
+        uploaded.push({ url: result.url, publicId: result.publicId });
+      }
+      setForm((f) => ({
+        ...f,
+        otherImages: [...f.otherImages, ...uploaded.map((u) => u.url)].slice(0, MAX_OTHER_IMAGES),
+        otherImagePublicIds: [...f.otherImagePublicIds, ...uploaded.map((u) => u.publicId)].slice(0, MAX_OTHER_IMAGES),
+      }));
+    } catch (e) {
+      toast.error((e as Error).message ?? "Image upload failed");
+    } finally {
+      setOtherUploading(false);
+    }
+  }
+
+  async function handleOtherImageRemove(index: number) {
+    const publicId = form.otherImagePublicIds[index];
+    if (publicId) await uploadApi.remove(publicId).catch(() => {});
+    setForm((f) => ({
+      ...f,
+      otherImages: f.otherImages.filter((_, i) => i !== index),
+      otherImagePublicIds: f.otherImagePublicIds.filter((_, i) => i !== index),
+    }));
   }
 
   // ─── Validation ────────────────────────────────────────────────────────────
@@ -636,6 +917,9 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   function validate() {
     const errs: Record<string, string> = {};
     if (!form.name.trim()) errs.name = "Name is required";
+    if (form.hasInventoryInfo && !form.inventoryAccountId) errs.inventoryAccountId = "Inventory account is required";
+    if (form.hasInventoryInfo && (Number(form.stockOnHand || 0) < 0)) errs.stockOnHand = "Stock cannot be negative";
+    if (form.hasInventoryInfo && (Number(form.averageCost || 0) < 0)) errs.averageCost = "Cost cannot be negative";
     if (form.hasSalesInfo && !form.salesAccountId) errs.salesAccountId = "Sales account is required";
     if (form.hasPurchaseInfo && !form.purchaseAccountId) errs.purchaseAccountId = "Purchase account is required";
     setErrors(errs);
@@ -648,15 +932,52 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
     if (!validate()) return;
     setSaving(true);
     try {
+      const dimensionLength = Math.max(0, parseFloat(form.dimensionLength) || 0);
+      const dimensionWidth = Math.max(0, parseFloat(form.dimensionWidth) || 0);
+      const dimensionHeight = Math.max(0, parseFloat(form.dimensionHeight) || 0);
+      const weightValue = Math.max(0, parseFloat(form.weightValue) || 0);
+
       const payload: CreateItemInput = {
         name: form.name.trim(),
-        itemType: form.itemType,
+        description: form.description.trim(),
+        identifiers: form.identifiers.filter((value) => value.trim().length > 0),
+        itemMode: form.itemMode,
+        itemType: form.hasInventoryInfo ? "Goods" : form.itemType,
+        brand: form.brand.trim(),
+        manufacturer: form.manufacturer.trim(),
         unit: form.unit || undefined,
         sku: form.sku || undefined,
         hsnSacCode: form.hsnSacCode || undefined,
         taxPreference: form.taxPreference,
-        image: form.image || undefined,
+        image: form.image || "",
+        rearImage: form.rearImage || "",
+        otherImages: form.otherImages,
+        returnableItem: form.returnableItem,
+        dimensions: {
+          length: dimensionLength,
+          width: dimensionWidth,
+          height: dimensionHeight,
+          unit: form.dimensionUnit,
+        },
+        weight: {
+          value: weightValue,
+          unit: form.weightUnit,
+        },
       };
+      if (form.hasInventoryInfo) {
+        const stockOnHand = Math.max(0, parseFloat(form.stockOnHand) || 0);
+        const averageCost = Math.max(0, parseFloat(form.averageCost) || 0);
+        payload.inventoryTracked = true;
+        payload.inventoryAccountId = form.inventoryAccountId || undefined;
+        payload.warehouseId = form.warehouseId || undefined;
+        payload.valuationMethod = form.valuationMethod;
+        payload.stockOnHand = stockOnHand;
+        payload.averageCost = averageCost;
+        payload.inventoryValue = stockOnHand * averageCost;
+        payload.reorderPoint = Math.max(0, parseFloat(form.reorderPoint) || 0);
+      } else {
+        payload.inventoryTracked = false;
+      }
       if (form.hasSalesInfo) {
         payload.sellingPrice = parseFloat(form.sellingPrice) || 0;
         payload.salesAccountId = form.salesAccountId || undefined;
@@ -739,21 +1060,13 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
 
       {/* ── Body ── */}
       <div className="px-6 py-4 max-w-4xl space-y-0">
-
-        {/* ── Inventory banner ── */}
-        <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-800 mb-4">
-          <span className="mt-0.5 text-blue-500 text-base leading-none">ℹ</span>
-          <div>
-            <span className="font-medium">Do you want to keep track of this item?</span>{" "}
-            Enable Inventory to view its stock based on transactions. Go to{" "}
-            <span className="font-semibold">Settings &gt; Preferences &gt; Items</span> and enable inventory.
-          </div>
+        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          Turn on inventory tracking below to manage stock, valuation, replenishment, and fulfillment details.
         </div>
 
-        {/* ── Basic Info: fields left, image right ── */}
-        <div className="grid grid-cols-[1fr_200px] gap-6 pb-1">
+        {/* ── Basic Info: fields left, image controls right ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_430px] gap-6 pb-1">
           <div className="space-y-3">
-            {/* Name */}
             <Row label="Name" required>
               <Input
                 className={`h-9 text-sm${errors.name ? " border-destructive" : ""}`}
@@ -765,7 +1078,6 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
               {errors.name && <p className="text-xs text-destructive mt-0.5">{errors.name}</p>}
             </Row>
 
-            {/* Type */}
             <Row label="Type">
               <RadioGroup
                 value={form.itemType}
@@ -777,14 +1089,94 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   <Label htmlFor="type-goods" className="font-normal cursor-pointer text-sm">Goods</Label>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <RadioGroupItem value="Service" id="type-service" />
-                  <Label htmlFor="type-service" className="font-normal cursor-pointer text-sm">Service</Label>
+                  <RadioGroupItem value="Service" id="type-service" disabled={form.hasInventoryInfo} />
+                  <Label
+                    htmlFor="type-service"
+                    className={`font-normal cursor-pointer text-sm ${form.hasInventoryInfo ? "opacity-50" : ""}`}
+                  >
+                    Service
+                  </Label>
                 </div>
               </RadioGroup>
             </Row>
 
-            {/* Unit */}
-            <Row label="Unit">
+            <Row label="Brand">
+              <Input
+                className="h-9 text-sm"
+                value={form.brand}
+                onChange={(e) => set("brand", e.target.value)}
+                placeholder="Select or add brand"
+              />
+            </Row>
+
+            <Row label="Manufacturer">
+              <Input
+                className="h-9 text-sm"
+                value={form.manufacturer}
+                onChange={(e) => set("manufacturer", e.target.value)}
+                placeholder="Select or add manufacturer"
+              />
+            </Row>
+          </div>
+
+          <div className="rounded-lg border p-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Front View</Label>
+                <ImageUploader
+                  imageUrl={form.image}
+                  uploading={frontUploading}
+                  onUpload={handleFrontImageUpload}
+                  onRemove={handleFrontImageRemove}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Rear View</Label>
+                <ImageUploader
+                  imageUrl={form.rearImage}
+                  uploading={rearUploading}
+                  onUpload={handleRearImageUpload}
+                  onRemove={handleRearImageRemove}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Other Images</Label>
+              <OtherImagesUploader
+                images={form.otherImages}
+                uploading={otherUploading}
+                onUpload={handleOtherImagesUpload}
+                onRemove={handleOtherImageRemove}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t mt-6 pt-5 space-y-4">
+          <h2 className="text-2xl font-semibold tracking-tight">Item Details</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-muted-foreground">Item Type</label>
+              <RadioGroup
+                value={form.itemMode}
+                onValueChange={(v) => set("itemMode", v as FormState["itemMode"])}
+                className="flex gap-3"
+              >
+                <div className="flex items-center gap-1.5 rounded-md border px-3 py-2">
+                  <RadioGroupItem value="SingleItem" id="mode-single" />
+                  <Label htmlFor="mode-single" className="font-medium cursor-pointer text-sm">Single Item</Label>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-md border px-3 py-2">
+                  <RadioGroupItem value="Variants" id="mode-variants" />
+                  <Label htmlFor="mode-variants" className="font-medium cursor-pointer text-sm">Contains Variants</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-destructive font-medium">Unit<span className="text-destructive">*</span></label>
               <Select
                 value={form.unit}
                 onValueChange={(v) => {
@@ -793,7 +1185,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 }}
               >
                 <SelectTrigger className="h-9 text-sm w-full">
-                  <SelectValue placeholder="Select unit" />
+                  <SelectValue placeholder="Select or type to add" />
                 </SelectTrigger>
                 <SelectContent className="max-h-72">
                   {units.map((u) => (
@@ -813,30 +1205,76 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 onOpenChange={setCreateUnitOpen}
                 onCreated={handleUnitCreated}
               />
-            </Row>
+            </div>
 
-            {/* HSN/SAC Code */}
-            <Row label="HSN/SAC Code">
+            <div className="flex flex-col gap-1 md:col-span-1">
+              <label className="text-sm text-muted-foreground">SKU</label>
+              <Input
+                className="h-9 text-sm"
+                value={form.sku}
+                onChange={(e) => set("sku", e.target.value)}
+                placeholder="SKU"
+              />
+            </div>
+
+            <div className="md:col-span-2 space-y-2">
+              <button
+                type="button"
+                className="text-sm text-primary hover:underline"
+                onClick={addIdentifier}
+              >
+                + Add Identifier
+              </button>
+
+              {form.identifiers.map((identifier, index) => (
+                <div key={`identifier-${index}`} className="flex gap-2">
+                  <Input
+                    className="h-9 text-sm"
+                    value={identifier}
+                    onChange={(e) => updateIdentifier(index, e.target.value)}
+                    placeholder="Identifier"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => removeIdentifier(index)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t mt-6 pt-5 space-y-4">
+          <h2 className="text-2xl font-semibold tracking-tight">Item Description</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+            <div className="flex flex-col gap-1 md:col-span-2">
+              <label className="text-sm text-muted-foreground">Description</label>
+              <Textarea
+                rows={3}
+                className="text-sm resize-none"
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+                placeholder="Item description"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-muted-foreground">HSN/SAC Code</label>
               <Input
                 className="h-9 text-sm"
                 value={form.hsnSacCode}
                 onChange={(e) => set("hsnSacCode", e.target.value)}
                 placeholder="e.g. 8471"
               />
-            </Row>
+            </div>
 
-            {/* SKU */}
-            <Row label="SKU">
-              <Input
-                className="h-9 text-sm"
-                value={form.sku}
-                onChange={(e) => set("sku", e.target.value)}
-                placeholder="e.g. PROD-001"
-              />
-            </Row>
-
-            {/* Tax Preference */}
-            <Row label="Tax Preference">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-muted-foreground">Tax Preference</label>
               <RadioGroup
                 value={form.taxPreference}
                 onValueChange={(v) => set("taxPreference", v as FormState["taxPreference"])}
@@ -851,18 +1289,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   </div>
                 ))}
               </RadioGroup>
-            </Row>
-          </div>
-
-          {/* Image uploader — right column */}
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs text-muted-foreground">Image</Label>
-            <ImageUploader
-              imageUrl={form.image}
-              uploading={uploading}
-              onUpload={handleImageUpload}
-              onRemove={handleImageRemove}
-            />
+            </div>
           </div>
         </div>
 
@@ -1003,6 +1430,232 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   )}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+        )}
+
+        {/* ── Inventory Information ──────────────────────────────────────── */}
+        <SectionHeader
+          id="inventory-info"
+          label="Track Inventory for this item"
+          checked={form.hasInventoryInfo}
+          onToggle={(v) => {
+            set("hasInventoryInfo", v);
+            if (v) set("itemType", "Goods");
+          }}
+        />
+        {form.hasInventoryInfo && (
+          <div className="space-y-5 pl-6 pb-2">
+            <p className="text-sm text-muted-foreground">
+              You cannot enable/disable inventory tracking once you&apos;ve created transactions for this item.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-destructive font-medium">
+                  Inventory Account<span className="text-destructive">*</span>
+                </label>
+                <Select
+                  value={form.inventoryAccountId || "__none"}
+                  onValueChange={(v) => set("inventoryAccountId", v === "__none" ? "" : v)}
+                >
+                  <SelectTrigger className={`h-9 text-sm ${errors.inventoryAccountId ? "border-destructive" : ""}`}>
+                    <SelectValue placeholder="Select an account" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="__none">— Select —</SelectItem>
+                    {inventoryAccounts.length === 0 ? (
+                      <SelectItem value="__empty" disabled>No asset accounts found</SelectItem>
+                    ) : (
+                      inventoryAccounts.map((acc) => (
+                        <SelectItem key={acc._id} value={acc._id}>
+                          {acc.name} ({acc.accountType})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {errors.inventoryAccountId && <p className="text-xs text-destructive">{errors.inventoryAccountId}</p>}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-destructive font-medium">
+                  Inventory Valuation Method<span className="text-destructive">*</span>
+                </label>
+                <Select
+                  value={form.valuationMethod}
+                  onValueChange={(v) => set("valuationMethod", v as FormState["valuationMethod"])}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Select the valuation method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FIFO">FIFO (First In, First Out)</SelectItem>
+                    <SelectItem value="MovingAverage">WAC (Weighted Average Costing)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-muted-foreground">Reorder Point</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="h-9 text-sm"
+                  value={form.reorderPoint}
+                  onChange={(e) => set("reorderPoint", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-muted-foreground">Opening Stock</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className={`h-9 text-sm ${errors.stockOnHand ? "border-destructive" : ""}`}
+                  value={form.stockOnHand}
+                  onChange={(e) => set("stockOnHand", e.target.value)}
+                  placeholder="0"
+                />
+                {errors.stockOnHand && <p className="text-xs text-destructive">{errors.stockOnHand}</p>}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-muted-foreground">Opening Cost / Unit</label>
+                <div className="flex h-9">
+                  <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-muted text-muted-foreground">INR</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`rounded-l-none h-9 text-sm ${errors.averageCost ? "border-destructive" : ""}`}
+                    value={form.averageCost}
+                    onChange={(e) => set("averageCost", e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                {errors.averageCost && <p className="text-xs text-destructive">{errors.averageCost}</p>}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-muted-foreground">Warehouse</label>
+                <Select
+                  value={form.warehouseId || "__none"}
+                  onValueChange={(v) => set("warehouseId", v === "__none" ? "" : v)}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Select warehouse" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="__none">— None —</SelectItem>
+                    {warehouses.length === 0 ? (
+                      <SelectItem value="__empty" disabled>No warehouses configured</SelectItem>
+                    ) : (
+                      warehouses.map((warehouse) => (
+                        <SelectItem key={warehouse._id} value={warehouse._id}>
+                          {warehouse.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="border-t pt-5 space-y-4">
+              <h3 className="text-2xl font-semibold tracking-tight">Cancellation and Returns</h3>
+              <div className="grid grid-cols-[160px_1fr] gap-4 items-start">
+                <label className="text-sm text-muted-foreground pt-1">Returnable Item</label>
+                <RadioGroup
+                  value={form.returnableItem ? "yes" : "no"}
+                  onValueChange={(v) => set("returnableItem", v === "yes")}
+                  className="flex gap-6"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="yes" id="returnable-yes" />
+                    <Label htmlFor="returnable-yes" className="font-normal cursor-pointer text-sm">Yes</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="no" id="returnable-no" />
+                    <Label htmlFor="returnable-no" className="font-normal cursor-pointer text-sm">No</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            </div>
+
+            <div className="border-t pt-5 space-y-4">
+              <h3 className="text-2xl font-semibold tracking-tight">Fulfillment Details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-muted-foreground">Dimensions</label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="h-9 text-sm"
+                      value={form.dimensionLength}
+                      onChange={(e) => set("dimensionLength", e.target.value)}
+                      placeholder="L"
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="h-9 text-sm"
+                      value={form.dimensionWidth}
+                      onChange={(e) => set("dimensionWidth", e.target.value)}
+                      placeholder="W"
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="h-9 text-sm"
+                      value={form.dimensionHeight}
+                      onChange={(e) => set("dimensionHeight", e.target.value)}
+                      placeholder="H"
+                    />
+                    <Select value={form.dimensionUnit} onValueChange={(v) => set("dimensionUnit", v as FormState["dimensionUnit"])}>
+                      <SelectTrigger className="h-9 text-sm w-[90px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cm">cm</SelectItem>
+                        <SelectItem value="m">m</SelectItem>
+                        <SelectItem value="in">in</SelectItem>
+                        <SelectItem value="ft">ft</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">(Length x Width x Height)</p>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-muted-foreground">Weight</label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="h-9 text-sm"
+                      value={form.weightValue}
+                      onChange={(e) => set("weightValue", e.target.value)}
+                      placeholder="Weight"
+                    />
+                    <Select value={form.weightUnit} onValueChange={(v) => set("weightUnit", v as FormState["weightUnit"])}>
+                      <SelectTrigger className="h-9 text-sm w-[90px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kg">kg</SelectItem>
+                        <SelectItem value="g">g</SelectItem>
+                        <SelectItem value="lb">lb</SelectItem>
+                        <SelectItem value="oz">oz</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

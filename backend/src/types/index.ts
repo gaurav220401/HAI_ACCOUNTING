@@ -439,8 +439,12 @@ export interface IItem extends Document {
   _id: Types.ObjectId;
   organizationId: Types.ObjectId;
   itemType: ItemType;
+  itemMode: "SingleItem" | "Variants";
   name: string;
   sku?: string;
+  identifiers: string[];
+  brand?: string;
+  manufacturer?: string;
   unit?: Types.ObjectId | null; // ref: UOM
   itemGroupId?: Types.ObjectId | null; // ref: ItemGroup
   description?: string;
@@ -453,14 +457,29 @@ export interface IItem extends Document {
   hsnSacCode?: string;
   salesAccountId?: Types.ObjectId | null;
   purchaseAccountId?: Types.ObjectId | null;
+  inventoryAccountId?: Types.ObjectId | null;
+  valuationMethod: "MovingAverage" | "FIFO";
   inventoryTracked: boolean;
   stockOnHand: number;
   inventoryValue: number;
   averageCost: number;
   reorderPoint?: number;
+  returnableItem: boolean;
+  dimensions?: {
+    length?: number;
+    width?: number;
+    height?: number;
+    unit?: "cm" | "m" | "in" | "ft";
+  };
+  weight?: {
+    value?: number;
+    unit?: "kg" | "g" | "lb" | "oz";
+  };
   preferredVendorId?: Types.ObjectId | null;
   warehouseId?: Types.ObjectId | null;
   image?: string;
+  rearImage?: string;
+  otherImages: string[];
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date;

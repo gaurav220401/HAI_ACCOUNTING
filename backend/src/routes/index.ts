@@ -31,6 +31,7 @@ import currencyAdjustmentRoutes from "./currency-adjustment.routes";
 import bulkUpdateRoutes from "./bulk-update.routes";
 import documentRoutes from "./document.routes";
 import reportRoutes from "./report.routes";
+import inventoryRoutes from "./inventory.routes";
 
 const router = Router();
 
@@ -66,5 +67,6 @@ router.use("/currency-adjustments", currencyAdjustmentRoutes);
 router.use("/bulk-update", bulkUpdateRoutes);
 router.use("/documents", documentRoutes);
 router.use("/reports", reportRoutes);
+router.use("/inventory", inventoryRoutes);
 
 export default router;
