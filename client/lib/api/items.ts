@@ -9,6 +9,17 @@ export type ItemMode = "SingleItem" | "Variants";
 export type DimensionUnit = "cm" | "m" | "in" | "ft";
 export type WeightUnit = "kg" | "g" | "lb" | "oz";
 
+export interface Tax {
+  _id: string;
+  name: string;
+  taxType: "Tax" | "TaxGroup" | "CompoundTax";
+  rate: number;
+  taxAuthority?: string;
+  description?: string;
+  isSystemTax?: boolean;
+  isActive?: boolean;
+}
+
 export interface ItemDimensions {
   length?: number;
   width?: number;
@@ -43,7 +54,9 @@ export interface Item {
   inventoryAccountId?: string | null;
   valuationMethod?: "MovingAverage" | "FIFO";
   taxPreference: TaxPreference;
-  taxId?: string | null;
+  taxId?: Tax | string | null;
+  intraStateTaxId?: Tax | string | null;
+  interStateTaxId?: Tax | string | null;
   hsnSacCode?: string;
   inventoryTracked: boolean;
   stockOnHand: number;
@@ -82,7 +95,9 @@ export interface CreateItemInput {
   purchaseAccountId?: string;
   inventoryAccountId?: string;
   taxPreference?: TaxPreference;
-  taxId?: string;
+  taxId?: string | null;
+  intraStateTaxId?: string | null;
+  interStateTaxId?: string | null;
   hsnSacCode?: string;
   valuationMethod?: "MovingAverage" | "FIFO";
   inventoryTracked?: boolean;

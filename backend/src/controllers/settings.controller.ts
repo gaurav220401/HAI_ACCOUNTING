@@ -69,25 +69,68 @@ async function ensureDefaultTaxes(organization: any) {
   const existing = await Tax.countDocuments({ organizationId: organization });
   if (existing > 0) return false;
 
-  const taxes = [
-    { name: "CGST 2.5%", taxType: "Tax", rate: 2.5, description: "Central GST 2.5% (for 5% slab)" },
-    { name: "SGST 2.5%", taxType: "Tax", rate: 2.5, description: "State GST 2.5% (for 5% slab)" },
-    { name: "IGST 5%", taxType: "Tax", rate: 5, description: "Integrated GST 5%" },
-    { name: "CGST 6%", taxType: "Tax", rate: 6, description: "Central GST 6% (for 12% slab)" },
-    { name: "SGST 6%", taxType: "Tax", rate: 6, description: "State GST 6% (for 12% slab)" },
-    { name: "IGST 12%", taxType: "Tax", rate: 12, description: "Integrated GST 12%" },
-    { name: "CGST 9%", taxType: "Tax", rate: 9, description: "Central GST 9% (for 18% slab)" },
-    { name: "SGST 9%", taxType: "Tax", rate: 9, description: "State GST 9% (for 18% slab)" },
-    { name: "IGST 18%", taxType: "Tax", rate: 18, description: "Integrated GST 18%" },
-    { name: "CGST 14%", taxType: "Tax", rate: 14, description: "Central GST 14% (for 28% slab)" },
-    { name: "SGST 14%", taxType: "Tax", rate: 14, description: "State GST 14% (for 28% slab)" },
-    { name: "IGST 28%", taxType: "Tax", rate: 28, description: "Integrated GST 28%" },
-    { name: "Exempt (0%)", taxType: "Tax", rate: 0, description: "Tax exempt" },
+  // ── Step 1: Create individual base taxes ────────────────────────────────
+  const baseTaxes = [
+    // Zero-rated
+    { name: "CGST 0%", taxType: "Tax", rate: 0, description: "Central GST 0%", taxAuthority: "CGST" },
+    { name: "SGST 0%", taxType: "Tax", rate: 0, description: "State GST 0%", taxAuthority: "SGST" },
+    { name: "IGST0", taxType: "Tax", rate: 0, description: "Integrated GST 0%", taxAuthority: "IGST" },
+    // 5% slab
+    { name: "CGST 2.5%", taxType: "Tax", rate: 2.5, description: "Central GST 2.5% (for 5% slab)", taxAuthority: "CGST" },
+    { name: "SGST 2.5%", taxType: "Tax", rate: 2.5, description: "State GST 2.5% (for 5% slab)", taxAuthority: "SGST" },
+    { name: "IGST5", taxType: "Tax", rate: 5, description: "Integrated GST 5%", taxAuthority: "IGST" },
+    // 12% slab
+    { name: "CGST 6%", taxType: "Tax", rate: 6, description: "Central GST 6% (for 12% slab)", taxAuthority: "CGST" },
+    { name: "SGST 6%", taxType: "Tax", rate: 6, description: "State GST 6% (for 12% slab)", taxAuthority: "SGST" },
+    { name: "IGST12", taxType: "Tax", rate: 12, description: "Integrated GST 12%", taxAuthority: "IGST" },
+    // 18% slab
+    { name: "CGST 9%", taxType: "Tax", rate: 9, description: "Central GST 9% (for 18% slab)", taxAuthority: "CGST" },
+    { name: "SGST 9%", taxType: "Tax", rate: 9, description: "State GST 9% (for 18% slab)", taxAuthority: "SGST" },
+    { name: "IGST18", taxType: "Tax", rate: 18, description: "Integrated GST 18%", taxAuthority: "IGST" },
+    // 28% slab
+    { name: "CGST 14%", taxType: "Tax", rate: 14, description: "Central GST 14% (for 28% slab)", taxAuthority: "CGST" },
+    { name: "SGST 14%", taxType: "Tax", rate: 14, description: "State GST 14% (for 28% slab)", taxAuthority: "SGST" },
+    { name: "IGST28", taxType: "Tax", rate: 28, description: "Integrated GST 28%", taxAuthority: "IGST" },
+    // 40% slab (Luxury/Demerit)
+    { name: "CGST 20%", taxType: "Tax", rate: 20, description: "Central GST 20% (for 40% slab)", taxAuthority: "CGST" },
+    { name: "SGST 20%", taxType: "Tax", rate: 20, description: "State GST 20% (for 40% slab)", taxAuthority: "SGST" },
+    { name: "IGST40", taxType: "Tax", rate: 40, description: "Integrated GST 40%", taxAuthority: "IGST" },
+  ];
+
+  const inserted = await Tax.insertMany(
+    baseTaxes.map((t) => ({ organizationId: organization, ...t, isSystemTax: true, isActive: true })),
+  );
+
+  // ── Step 2: Build lookup map for tax group components ──────────────────
+  const nameToId: Record<string, any> = {};
+  for (const doc of inserted) {
+    nameToId[(doc as any).name] = (doc as any)._id;
+  }
+
+  // ── Step 3: Create GST Tax Groups (Intra State: CGST + SGST combined) ─
+  const taxGroups = [
+    { name: "GST0", rate: 0, components: [{ taxId: nameToId["CGST 0%"], rate: 0 }, { taxId: nameToId["SGST 0%"], rate: 0 }] },
+    { name: "GST5", rate: 5, components: [{ taxId: nameToId["CGST 2.5%"], rate: 2.5 }, { taxId: nameToId["SGST 2.5%"], rate: 2.5 }] },
+    { name: "GST12", rate: 12, components: [{ taxId: nameToId["CGST 6%"], rate: 6 }, { taxId: nameToId["SGST 6%"], rate: 6 }] },
+    { name: "GST18", rate: 18, components: [{ taxId: nameToId["CGST 9%"], rate: 9 }, { taxId: nameToId["SGST 9%"], rate: 9 }] },
+    { name: "GST28", rate: 28, components: [{ taxId: nameToId["CGST 14%"], rate: 14 }, { taxId: nameToId["SGST 14%"], rate: 14 }] },
+    { name: "GST40", rate: 40, components: [{ taxId: nameToId["CGST 20%"], rate: 20 }, { taxId: nameToId["SGST 20%"], rate: 20 }] },
   ];
 
   await Tax.insertMany(
-    taxes.map((t) => ({ organizationId: organization, ...t, isSystemTax: true, isActive: true })),
+    taxGroups.map((g) => ({
+      organizationId: organization,
+      name: g.name,
+      taxType: "TaxGroup",
+      rate: g.rate,
+      components: g.components,
+      description: `${g.name} [${g.rate}%] — Intra-state supply`,
+      taxAuthority: "GST",
+      isSystemTax: true,
+      isActive: true,
+    })),
   );
+
   return true;
 }
 

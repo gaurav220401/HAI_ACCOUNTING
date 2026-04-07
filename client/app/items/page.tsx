@@ -32,11 +32,14 @@ import { itemApi, type Item } from "@/lib/api/items";
 // ─── Item detail type with populated fields ────────────────────────────────
 interface PopulatedAccount { _id: string; name: string; }
 interface PopulatedUnit    { _id: string; name: string; abbreviation: string; }
-interface ItemDetail extends Omit<Item, "salesAccountId" | "purchaseAccountId" | "inventoryAccountId" | "unit"> {
+interface PopulatedTax     { _id: string; name: string; rate: number; taxType: string; }
+interface ItemDetail extends Omit<Item, "salesAccountId" | "purchaseAccountId" | "inventoryAccountId" | "unit" | "intraStateTaxId" | "interStateTaxId"> {
   salesAccountId?: PopulatedAccount | string | null;
   purchaseAccountId?: PopulatedAccount | string | null;
   inventoryAccountId?: PopulatedAccount | string | null;
   unit?: PopulatedUnit | string | null;
+  intraStateTaxId?: PopulatedTax | string | null;
+  interStateTaxId?: PopulatedTax | string | null;
 }
 
 export default function ItemsPage() {
@@ -99,6 +102,16 @@ export default function ItemsPage() {
   async function handleClone(item: Item) {
     setActioning(true);
     try {
+      const taxId = typeof item.taxId === "object" && item.taxId ? (item.taxId as { _id: string })._id : (item.taxId as string) ?? undefined;
+      const intraStateTaxId =
+        typeof item.intraStateTaxId === "object" && item.intraStateTaxId
+          ? (item.intraStateTaxId as { _id: string })._id
+          : (item.intraStateTaxId as string) ?? undefined;
+      const interStateTaxId =
+        typeof item.interStateTaxId === "object" && item.interStateTaxId
+          ? (item.interStateTaxId as { _id: string })._id
+          : (item.interStateTaxId as string) ?? undefined;
+
       await itemApi.create({
         name: `Copy of ${item.name}`,
         description: item.description,
@@ -114,6 +127,9 @@ export default function ItemsPage() {
         salesAccountId: item.salesAccountId as string | undefined,
         purchaseAccountId: item.purchaseAccountId as string | undefined,
         taxPreference: item.taxPreference,
+        taxId,
+        intraStateTaxId,
+        interStateTaxId,
         hsnSacCode: item.hsnSacCode,
         sellingDescription: item.sellingDescription,
         purchaseDescription: item.purchaseDescription,
@@ -442,6 +458,26 @@ export default function ItemsPage() {
                           <DetailRow label="Description" value={detail.description || "—"} />
                           <DetailRow label="HSN/SAC" value={detail.hsnSacCode || "—"} />
                           <DetailRow label="Tax Preference" value={detail.taxPreference ?? "—"} />
+                          {detail.taxPreference === "Taxable" && (
+                            <>
+                              <DetailRow
+                                label="Intra State Tax Rate"
+                                value={
+                                  detail.intraStateTaxId && typeof detail.intraStateTaxId === "object"
+                                    ? `${(detail.intraStateTaxId as PopulatedTax).name} (${(detail.intraStateTaxId as PopulatedTax).rate}%)`
+                                    : "—"
+                                }
+                              />
+                              <DetailRow
+                                label="Inter State Tax Rate"
+                                value={
+                                  detail.interStateTaxId && typeof detail.interStateTaxId === "object"
+                                    ? `${(detail.interStateTaxId as PopulatedTax).name} (${(detail.interStateTaxId as PopulatedTax).rate}%)`
+                                    : "—"
+                                }
+                              />
+                            </>
+                          )}
                           <DetailRow label="Inventory Tracked" value={detail.inventoryTracked ? "Yes" : "No"} />
                           <DetailRow label="Returnable Item" value={detail.returnableItem === false ? "No" : "Yes"} />
                           <DetailRow

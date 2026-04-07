@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   ImageIcon, Upload, Trash2, Loader2, Plus,
@@ -39,9 +39,9 @@ import {
   type AccountRootType,
   type CreateAccountInput,
 } from "@/lib/api/accounts";
-import { itemApi, type CreateItemInput, type UnitOfMeasurement, type Item } from "@/lib/api/items";
+import { itemApi, type CreateItemInput, type UnitOfMeasurement, type Item, type Tax as ItemTax } from "@/lib/api/items";
 import { contactApi, type Contact } from "@/lib/api/contacts";
-import { settingsApi, type Warehouse } from "@/lib/api/settings";
+import { settingsApi, type Tax as SettingsTax } from "@/lib/api/settings";
 import { uploadApi } from "@/lib/api/upload";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -85,6 +85,8 @@ interface FormState {
   preferredVendorId: string;
   // Tax
   taxPreference: "Taxable" | "NonTaxable" | "Exempt";
+  intraStateTaxId: string;
+  interStateTaxId: string;
   // Image
   image: string;
   imagePublicId: string;
@@ -129,6 +131,8 @@ const DEFAULT_FORM: FormState = {
   purchaseDescription: "",
   preferredVendorId: "",
   taxPreference: "Taxable",
+  intraStateTaxId: "",
+  interStateTaxId: "",
   image: "",
   imagePublicId: "",
   rearImage: "",
@@ -144,6 +148,42 @@ function extractId(value: unknown): string {
     return String((value as { _id?: string })._id || "");
   }
   return "";
+}
+
+function isTaxActive(tax: SettingsTax): boolean {
+  return tax.isActive !== false;
+}
+
+function isGstTaxGroup(tax: SettingsTax): boolean {
+  if (tax.taxType !== "TaxGroup" || !isTaxActive(tax)) return false;
+  const authority = (tax.taxAuthority || "").toUpperCase();
+  const name = (tax.name || "").toUpperCase();
+  return authority === "GST" || name.startsWith("GST");
+}
+
+function isIgstTax(tax: SettingsTax): boolean {
+  if (tax.taxType !== "Tax" || !isTaxActive(tax)) return false;
+  const authority = (tax.taxAuthority || "").toUpperCase();
+  const name = (tax.name || "").toUpperCase();
+  return authority === "IGST" || name.startsWith("IGST");
+}
+
+function compareTaxByRateThenName(a: SettingsTax, b: SettingsTax): number {
+  const rateDelta = Number(a.rate || 0) - Number(b.rate || 0);
+  if (rateDelta !== 0) return rateDelta;
+  return a.name.localeCompare(b.name);
+}
+
+function formatTaxOptionLabel(tax: SettingsTax): string {
+  return `${tax.name} (${tax.rate}%)`;
+}
+
+function pickDefaultTaxOption(options: SettingsTax[], preferredName: string): SettingsTax | undefined {
+  if (options.length === 0) return undefined;
+  const preferred = options.find((tax) => tax.name.trim().toUpperCase() === preferredName.toUpperCase());
+  if (preferred) return preferred;
+  const by18Percent = options.find((tax) => Number(tax.rate || 0) === 18);
+  return by18Percent || options[0];
 }
 
 // ─── Create Unit Dialog ───────────────────────────────────────────────────────
@@ -722,6 +762,29 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       purchaseDescription: initialData.purchaseDescription ?? "",
       preferredVendorId: extractId(initialData.preferredVendorId),
       taxPreference: initialData.taxPreference ?? "Taxable",
+      intraStateTaxId: (() => {
+        const direct = extractId(initialData.intraStateTaxId);
+        if (direct) return direct;
+        const legacy = initialData.taxId;
+        if (legacy && typeof legacy === "object" && (legacy as ItemTax).taxType === "TaxGroup") {
+          return extractId(legacy);
+        }
+        return "";
+      })(),
+      interStateTaxId: (() => {
+        const direct = extractId(initialData.interStateTaxId);
+        if (direct) return direct;
+        const legacy = initialData.taxId;
+        if (
+          legacy &&
+          typeof legacy === "object" &&
+          (legacy as ItemTax).taxType === "Tax" &&
+          ((legacy as ItemTax).taxAuthority || "").toUpperCase() === "IGST"
+        ) {
+          return extractId(legacy);
+        }
+        return "";
+      })(),
       image: initialData.image ?? "",
       imagePublicId: "",
       rearImage: initialData.rearImage ?? "",
@@ -738,15 +801,27 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   const [allPurchaseAccounts, setAllPurchaseAccounts] = useState<Account[]>([]);
   const [units, setUnits] = useState<UnitOfMeasurement[]>([]);
   const [vendors, setVendors] = useState<Contact[]>([]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [warehouses, setWarehouses] = useState<{_id: string; name: string; isPrimary?: boolean; isActive: boolean}[]>([]);
+  const [taxes, setTaxes] = useState<SettingsTax[]>([]);
   const [saving, setSaving] = useState(false);
   const [frontUploading, setFrontUploading] = useState(false);
   const [rearUploading, setRearUploading] = useState(false);
   const [otherUploading, setOtherUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
+  const autoTaxDefaultsAppliedRef = useRef(false);
 
   const uploading = frontUploading || rearUploading || otherUploading;
+
+  const intraTaxOptions = useMemo(
+    () => taxes.filter(isGstTaxGroup).sort(compareTaxByRateThenName),
+    [taxes],
+  );
+
+  const interTaxOptions = useMemo(
+    () => taxes.filter(isIgstTax).sort(compareTaxByRateThenName),
+    [taxes],
+  );
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -780,6 +855,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         flatPurchaseRes,
         assetRes,
         warehouseRes,
+        taxesRes,
       ] = await Promise.all([
         accountApi.listForItem("sales"),
         accountApi.listForItem("purchase"),
@@ -789,6 +865,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         accountApi.list({ rootType: "Expense" }),
         accountApi.list({ rootType: "Asset", excludeGroups: true }),
         settingsApi.warehouses.list(),
+        settingsApi.taxes.list(),
       ]);
       setSalesAccounts(salesRes.data ?? {});
       setPurchaseAccounts(purchaseRes.data ?? {});
@@ -797,6 +874,14 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       setVendors(vendorsRes.data ?? []);
       setInventoryAccounts((assetRes.data ?? []).filter((acc) => acc.rootType === "Asset"));
       setWarehouses(warehouseRes.data ?? []);
+
+      let taxList = taxesRes.data ?? [];
+      if (taxList.length === 0) {
+        await settingsApi.taxes.seed().catch(() => {});
+        const seededTaxes = await settingsApi.taxes.list().catch(() => ({ data: [] as SettingsTax[] }));
+        taxList = seededTaxes.data ?? [];
+      }
+      setTaxes(taxList);
 
       // Auto-seed the 13 GST default units for existing orgs that have none yet
       let unitList = unitsRes.data ?? [];
@@ -814,6 +899,25 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   useEffect(() => {
     loadDropdowns();
   }, [loadDropdowns]);
+
+  useEffect(() => {
+    if (form.taxPreference !== "Taxable") return;
+    if (autoTaxDefaultsAppliedRef.current) return;
+
+    const defaultIntra = pickDefaultTaxOption(intraTaxOptions, "GST18")?._id || "";
+    const defaultInter = pickDefaultTaxOption(interTaxOptions, "IGST18")?._id || "";
+
+    if (!form.intraStateTaxId && defaultIntra) {
+      set("intraStateTaxId", defaultIntra);
+    }
+    if (!form.interStateTaxId && defaultInter) {
+      set("interStateTaxId", defaultInter);
+    }
+
+    if ((form.intraStateTaxId || defaultIntra) || (form.interStateTaxId || defaultInter)) {
+      autoTaxDefaultsAppliedRef.current = true;
+    }
+  }, [form.taxPreference, form.intraStateTaxId, form.interStateTaxId, intraTaxOptions, interTaxOptions]);
 
   // ─── Image ─────────────────────────────────────────────────────────────────
 
@@ -917,6 +1021,10 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   function validate() {
     const errs: Record<string, string> = {};
     if (!form.name.trim()) errs.name = "Name is required";
+    if (form.taxPreference === "Taxable") {
+      if (!form.intraStateTaxId) errs.intraStateTaxId = "Select intra-state tax rate";
+      if (!form.interStateTaxId) errs.interStateTaxId = "Select inter-state tax rate";
+    }
     if (form.hasInventoryInfo && !form.inventoryAccountId) errs.inventoryAccountId = "Inventory account is required";
     if (form.hasInventoryInfo && (Number(form.stockOnHand || 0) < 0)) errs.stockOnHand = "Stock cannot be negative";
     if (form.hasInventoryInfo && (Number(form.averageCost || 0) < 0)) errs.averageCost = "Cost cannot be negative";
@@ -936,6 +1044,10 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       const dimensionWidth = Math.max(0, parseFloat(form.dimensionWidth) || 0);
       const dimensionHeight = Math.max(0, parseFloat(form.dimensionHeight) || 0);
       const weightValue = Math.max(0, parseFloat(form.weightValue) || 0);
+      const isTaxable = form.taxPreference === "Taxable";
+      const intraTaxId = isTaxable ? (form.intraStateTaxId || null) : null;
+      const interTaxId = isTaxable ? (form.interStateTaxId || null) : null;
+      const legacyTaxId = isTaxable ? (form.intraStateTaxId || form.interStateTaxId || null) : null;
 
       const payload: CreateItemInput = {
         name: form.name.trim(),
@@ -949,6 +1061,9 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         sku: form.sku || undefined,
         hsnSacCode: form.hsnSacCode || undefined,
         taxPreference: form.taxPreference,
+        taxId: legacyTaxId,
+        intraStateTaxId: intraTaxId,
+        interStateTaxId: interTaxId,
         image: form.image || "",
         rearImage: form.rearImage || "",
         otherImages: form.otherImages,
@@ -1277,7 +1392,14 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
               <label className="text-sm text-muted-foreground">Tax Preference</label>
               <RadioGroup
                 value={form.taxPreference}
-                onValueChange={(v) => set("taxPreference", v as FormState["taxPreference"])}
+                onValueChange={(v) => {
+                  autoTaxDefaultsAppliedRef.current = false;
+                  set("taxPreference", v as FormState["taxPreference"]);
+                  if (v !== "Taxable") {
+                    set("intraStateTaxId", "");
+                    set("interStateTaxId", "");
+                  }
+                }}
                 className="flex gap-5 pt-1.5"
               >
                 {(["Taxable", "NonTaxable", "Exempt"] as const).map((val) => (
@@ -1290,6 +1412,88 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 ))}
               </RadioGroup>
             </div>
+
+            {/* ── Default Tax Rates (only when Taxable) ─────────── */}
+            {form.taxPreference === "Taxable" && (
+              <>
+                <div className="md:col-span-2 rounded-md border bg-muted/20 px-3 py-2">
+                  <p className="text-sm font-medium text-foreground">Default Tax Rates</p>
+                  <p className="text-xs text-muted-foreground">
+                    Synced from Settings &gt; Taxes for the active organization.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-foreground">
+                    Intra State Tax Rate
+                    <span className="text-xs text-muted-foreground ml-1 font-normal">(GST — CGST + SGST)</span>
+                  </label>
+                  <Select
+                    value={form.intraStateTaxId || "__none"}
+                    onValueChange={(v) => set("intraStateTaxId", v === "__none" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-9 text-sm w-full">
+                      <SelectValue placeholder="Select Intra State Tax Rate" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value="__none">— None —</SelectItem>
+                      <SelectGroup>
+                        <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
+                          Tax Group
+                        </SelectLabel>
+                        {intraTaxOptions.length === 0 ? (
+                          <SelectItem value="__empty_intra" disabled>
+                            No active GST tax groups in settings
+                          </SelectItem>
+                        ) : (
+                          intraTaxOptions.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {formatTaxOptionLabel(t)}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {errors.intraStateTaxId && <p className="text-xs text-destructive">{errors.intraStateTaxId}</p>}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-foreground">
+                    Inter State Tax Rate
+                    <span className="text-xs text-muted-foreground ml-1 font-normal">(IGST)</span>
+                  </label>
+                  <Select
+                    value={form.interStateTaxId || "__none"}
+                    onValueChange={(v) => set("interStateTaxId", v === "__none" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-9 text-sm w-full">
+                      <SelectValue placeholder="Select Inter State Tax Rate" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value="__none">— None —</SelectItem>
+                      <SelectGroup>
+                        <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
+                          Tax
+                        </SelectLabel>
+                        {interTaxOptions.length === 0 ? (
+                          <SelectItem value="__empty_inter" disabled>
+                            No active IGST taxes in settings
+                          </SelectItem>
+                        ) : (
+                          interTaxOptions.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {formatTaxOptionLabel(t)}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {errors.interStateTaxId && <p className="text-xs text-destructive">{errors.interStateTaxId}</p>}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
