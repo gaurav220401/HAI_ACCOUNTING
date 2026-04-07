@@ -4,6 +4,8 @@ import { auditTrailPlugin } from "../plugins";
 export type GlVoucherType =
   | "Invoice"
   | "Bill"
+  | "Expense"
+  | "VendorCredit"
   | "PaymentMade"
   | "PaymentReceived"
   | "Journal"
@@ -36,7 +38,7 @@ const glEntrySchema = new Schema<IGlEntry>(
     organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
     voucherType: {
       type: String,
-      enum: ["Invoice", "Bill", "PaymentMade", "PaymentReceived", "Journal", "System"],
+      enum: ["Invoice", "Bill", "Expense", "VendorCredit", "PaymentMade", "PaymentReceived", "Journal", "System"],
       required: true,
       index: true,
     },
