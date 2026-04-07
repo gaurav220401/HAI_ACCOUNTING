@@ -1,5 +1,7 @@
 import { apiFetch, buildQuery } from "./client";
 
+// ─── Types ──────────────────────────────────────────────────────────────
+
 export interface TrialBalanceRow {
   accountId: string;
   code: string;
@@ -15,11 +17,7 @@ export interface TrialBalanceRow {
 export interface TrialBalanceResponse {
   asOf: string;
   rows: TrialBalanceRow[];
-  totals: {
-    totalDebit: number;
-    totalCredit: number;
-    difference: number;
-  };
+  totals: { totalDebit: number; totalCredit: number; difference: number };
 }
 
 export interface ProfitLossLine {
@@ -34,11 +32,7 @@ export interface ProfitLossResponse {
   to: string;
   income: ProfitLossLine[];
   expenses: ProfitLossLine[];
-  totals: {
-    totalIncome: number;
-    totalExpense: number;
-    netProfit: number;
-  };
+  totals: { totalIncome: number; totalExpense: number; netProfit: number };
 }
 
 export interface BalanceSheetLine {
@@ -53,12 +47,7 @@ export interface BalanceSheetResponse {
   assets: BalanceSheetLine[];
   liabilities: BalanceSheetLine[];
   equity: BalanceSheetLine[];
-  totals: {
-    totalAssets: number;
-    totalLiabilities: number;
-    totalEquity: number;
-    equationDifference: number;
-  };
+  totals: { totalAssets: number; totalLiabilities: number; totalEquity: number; equationDifference: number };
 }
 
 export interface ControlReconciliationResponse {
@@ -77,24 +66,128 @@ export interface ControlReconciliationResponse {
   };
 }
 
+export interface GenericReportRow {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+export interface GenericReportResponse {
+  from?: string;
+  to?: string;
+  asOf?: string;
+  rows?: GenericReportRow[];
+  buckets?: Record<string, { rows: GenericReportRow[]; total: number }>;
+  totals?: Record<string, number>;
+  grandTotal?: number;
+  count?: number;
+}
+
+// ─── Date helpers ───────────────────────────────────────────────────────
+
+export function dateRangeFromPreset(preset: string): { from: string; to: string } {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+
+  switch (preset) {
+    case "today":
+      return { from: fmt(now), to: fmt(now) };
+    case "this-week": {
+      const start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      return { from: fmt(start), to: fmt(now) };
+    }
+    case "this-month":
+      return { from: fmt(new Date(y, m, 1)), to: fmt(now) };
+    case "this-quarter": {
+      const qm = Math.floor(m / 3) * 3;
+      return { from: fmt(new Date(y, qm, 1)), to: fmt(now) };
+    }
+    case "this-year":
+      return { from: fmt(new Date(y, 0, 1)), to: fmt(now) };
+    case "this-financial-year": {
+      const fy = m >= 3 ? y : y - 1;
+      return { from: fmt(new Date(fy, 3, 1)), to: fmt(new Date(fy + 1, 2, 31)) };
+    }
+    case "last-month":
+      return { from: fmt(new Date(y, m - 1, 1)), to: fmt(new Date(y, m, 0)) };
+    case "last-quarter": {
+      const lqm = Math.floor(m / 3) * 3 - 3;
+      return { from: fmt(new Date(y, lqm, 1)), to: fmt(new Date(y, lqm + 3, 0)) };
+    }
+    case "last-year":
+      return { from: fmt(new Date(y - 1, 0, 1)), to: fmt(new Date(y - 1, 11, 31)) };
+    default:
+      return { from: fmt(new Date(y, m, 1)), to: fmt(now) };
+  }
+}
+
+function fmt(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+// ─── API ────────────────────────────────────────────────────────────────
+
 export const reportApi = {
+  // Financial Statements
   trialBalance: (params?: { asOf?: string }) =>
-    apiFetch<{ success: boolean; data: TrialBalanceResponse }>(
-      `/reports/trial-balance${buildQuery(params || {})}`,
-    ),
+    apiFetch<{ success: boolean; data: TrialBalanceResponse }>(`/reports/trial-balance${buildQuery(params || {})}`),
 
   profitLoss: (params: { from: string; to: string }) =>
-    apiFetch<{ success: boolean; data: ProfitLossResponse }>(
-      `/reports/profit-loss${buildQuery(params)}`,
-    ),
+    apiFetch<{ success: boolean; data: ProfitLossResponse }>(`/reports/profit-loss${buildQuery(params)}`),
 
   balanceSheet: (params?: { asOf?: string }) =>
-    apiFetch<{ success: boolean; data: BalanceSheetResponse }>(
-      `/reports/balance-sheet${buildQuery(params || {})}`,
-    ),
+    apiFetch<{ success: boolean; data: BalanceSheetResponse }>(`/reports/balance-sheet${buildQuery(params || {})}`),
 
   controlReconciliation: (params?: { asOf?: string }) =>
-    apiFetch<{ success: boolean; data: ControlReconciliationResponse }>(
-      `/reports/control-reconciliation${buildQuery(params || {})}`,
-    ),
+    apiFetch<{ success: boolean; data: ControlReconciliationResponse }>(`/reports/control-reconciliation${buildQuery(params || {})}`),
+
+  // Payables
+  vendorBalanceSummary: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/vendor-balance-summary${buildQuery(params || {})}`),
+
+  billDetails: (params?: { from?: string; to?: string; status?: string; vendorId?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/bill-details${buildQuery(params || {})}`),
+
+  paymentsMade: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payments-made${buildQuery(params || {})}`),
+
+  vendorCreditDetails: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/vendor-credit-details${buildQuery(params || {})}`),
+
+  purchaseOrderDetails: (params?: { from?: string; to?: string; status?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/purchase-order-details${buildQuery(params || {})}`),
+
+  payableSummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payable-summary${buildQuery(params || {})}`),
+
+  // Receivables
+  customerBalanceSummary: () =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>("/reports/customer-balance-summary"),
+
+  invoiceDetails: (params?: { from?: string; to?: string; status?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/invoice-details${buildQuery(params || {})}`),
+
+  receivableSummary: () =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>("/reports/receivable-summary"),
+
+  // Purchases & Expenses
+  expenseDetails: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/expense-details${buildQuery(params || {})}`),
+
+  expensesByCategory: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/expenses-by-category${buildQuery(params || {})}`),
+
+  purchasesByItem: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/purchases-by-item${buildQuery(params || {})}`),
+
+  // Sales
+  salesByCustomer: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/sales-by-customer${buildQuery(params || {})}`),
+
+  salesByItem: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/sales-by-item${buildQuery(params || {})}`),
+
+  // Payments Received
+  paymentsReceived: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payments-received${buildQuery(params || {})}`),
 };
