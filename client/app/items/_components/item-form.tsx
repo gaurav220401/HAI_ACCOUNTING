@@ -169,14 +169,28 @@ function isIgstTax(tax: SettingsTax): boolean {
 }
 
 function compareTaxByRateThenName(a: SettingsTax, b: SettingsTax): number {
-  const nameDelta = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  const nameDelta = formatTaxOptionLabel(a).localeCompare(formatTaxOptionLabel(b), undefined, { sensitivity: "base" });
   if (nameDelta !== 0) return nameDelta;
   return Number(a.rate || 0) - Number(b.rate || 0);
 }
 
 function formatTaxOptionLabel(tax: SettingsTax): string {
-  return `${tax.name} (${tax.rate}%)`;
+  const rateValue = Number(tax.rate || 0);
+  const rate = Number.isInteger(rateValue) ? String(rateValue) : String(rateValue);
+  const authority = (tax.taxAuthority || "").toUpperCase();
+  const name = (tax.name || "").toUpperCase();
+
+  if (tax.taxType === "TaxGroup" && (authority === "GST" || name.startsWith("GST"))) {
+    return `GST${rate} [${rate}%]`;
+  }
+  if (tax.taxType === "Tax" && (authority === "IGST" || name.startsWith("IGST"))) {
+    return `IGST${rate} [${rate}%]`;
+  }
+  return `${tax.name} [${rate}%]`;
 }
+
+const INTRA_TAX_PLACEHOLDER = "__select_intra_tax__";
+const INTER_TAX_PLACEHOLDER = "__select_inter_tax__";
 
 function pickDefaultTaxOption(options: SettingsTax[], preferredName: string): SettingsTax | undefined {
   if (options.length === 0) return undefined;
@@ -968,6 +982,20 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
     }
   }, [form.taxPreference, form.intraStateTaxId, form.interStateTaxId, intraTaxOptions, interTaxOptions]);
 
+  useEffect(() => {
+    if (form.taxPreference !== "Taxable") return;
+
+    if (form.intraStateTaxId && !intraTaxOptions.some((tax) => tax._id === form.intraStateTaxId)) {
+      const fallbackIntra = pickDefaultTaxOption(intraTaxOptions, "GST18")?._id || "";
+      set("intraStateTaxId", fallbackIntra);
+    }
+
+    if (form.interStateTaxId && !interTaxOptions.some((tax) => tax._id === form.interStateTaxId)) {
+      const fallbackInter = pickDefaultTaxOption(interTaxOptions, "IGST18")?._id || "";
+      set("interStateTaxId", fallbackInter);
+    }
+  }, [form.taxPreference, form.intraStateTaxId, form.interStateTaxId, intraTaxOptions, interTaxOptions]);
+
   // ─── Image ─────────────────────────────────────────────────────────────────
 
   const MAX_OTHER_IMAGES = 15;
@@ -1481,14 +1509,19 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     Intra state tax rate can be used when transactions are raised for contacts within your home state.
                   </p>
                   <Select
-                    value={form.intraStateTaxId || "__none"}
-                    onValueChange={(v) => set("intraStateTaxId", v === "__none" ? "" : v)}
+                    value={form.intraStateTaxId || INTRA_TAX_PLACEHOLDER}
+                    onValueChange={(v) => {
+                      if (v === INTRA_TAX_PLACEHOLDER) return;
+                      set("intraStateTaxId", v);
+                    }}
                   >
                     <SelectTrigger className="h-9 text-sm w-full">
                       <SelectValue placeholder="Select Intra State Tax Rate" />
                     </SelectTrigger>
                     <SelectContent className="max-h-72">
-                      <SelectItem value="__none">— None —</SelectItem>
+                      <SelectItem value={INTRA_TAX_PLACEHOLDER} disabled>
+                        Select Intra State Tax Rate
+                      </SelectItem>
                       <SelectGroup>
                         <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
                           Tax Group
@@ -1519,14 +1552,19 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     Inter state tax rate can be used when transactions are raised for contacts outside your home state.
                   </p>
                   <Select
-                    value={form.interStateTaxId || "__none"}
-                    onValueChange={(v) => set("interStateTaxId", v === "__none" ? "" : v)}
+                    value={form.interStateTaxId || INTER_TAX_PLACEHOLDER}
+                    onValueChange={(v) => {
+                      if (v === INTER_TAX_PLACEHOLDER) return;
+                      set("interStateTaxId", v);
+                    }}
                   >
                     <SelectTrigger className="h-9 text-sm w-full">
                       <SelectValue placeholder="Select Inter State Tax Rate" />
                     </SelectTrigger>
                     <SelectContent className="max-h-72">
-                      <SelectItem value="__none">— None —</SelectItem>
+                      <SelectItem value={INTER_TAX_PLACEHOLDER} disabled>
+                        Select Inter State Tax Rate
+                      </SelectItem>
                       <SelectGroup>
                         <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
                           Tax
