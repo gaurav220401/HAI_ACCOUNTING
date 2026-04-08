@@ -1,0 +1,164 @@
+import { Types } from "mongoose";
+import Contact from "../models/contact.model";
+import Item from "../models/item.model";
+import Organization from "../models/organization.model";
+import Tax from "../models/tax.model";
+
+interface ApplyItemTaxLinkageArgs {
+  organizationId: any;
+  contactId?: any;
+  items: any[];
+}
+
+function refId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (value instanceof Types.ObjectId) return value.toString();
+  if (typeof value === "object") {
+    const maybe = value as { _id?: unknown; toString?: () => string };
+    if (maybe._id) return refId(maybe._id);
+    if (typeof maybe.toString === "function") {
+      const text = maybe.toString();
+      if (text && text !== "[object Object]") return text;
+    }
+  }
+  return "";
+}
+
+function normalizeState(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function contactState(contact: any): string {
+  return (
+    contact?.shippingAddress?.state || contact?.billingAddress?.state || ""
+  );
+}
+
+function resolveItemDefaultTaxId(item: any, interState: boolean): string {
+  const legacyTaxId = refId(item?.taxId);
+  const intraTaxId = refId(item?.intraStateTaxId);
+  const interTaxId = refId(item?.interStateTaxId);
+  return interState ? interTaxId || legacyTaxId : intraTaxId || legacyTaxId;
+}
+
+export async function applyItemTaxLinkageToItems(
+  args: ApplyItemTaxLinkageArgs,
+): Promise<any[]> {
+  const { organizationId, contactId, items } = args;
+  const oid: any = organizationId;
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const linkedItems = items.map((line) => ({ ...line }));
+  const validItemIds = Array.from(
+    new Set(
+      linkedItems
+        .map((line) => refId((line as any)?.itemId))
+        .filter((id) => id && Types.ObjectId.isValid(id)),
+    ),
+  );
+
+  const contactRefId = refId(contactId);
+
+  const [organization, contact, itemDocs] = await Promise.all([
+    Organization.findById(oid).select("address.state").lean(),
+    contactRefId && Types.ObjectId.isValid(contactRefId)
+      ? Contact.findOne({
+          _id: contactRefId as any,
+          organizationId: oid,
+          isDeleted: { $ne: true },
+        })
+          .select("billingAddress.state shippingAddress.state")
+          .lean()
+      : Promise.resolve(null),
+    validItemIds.length > 0
+      ? Item.find({
+          organizationId: oid,
+          _id: { $in: validItemIds },
+          isDeleted: { $ne: true },
+        })
+          .select("taxPreference taxId intraStateTaxId interStateTaxId")
+          .lean()
+      : Promise.resolve([]),
+  ]);
+
+  const orgState = normalizeState((organization as any)?.address?.state);
+  const customerState = normalizeState(contactState(contact));
+  const interState = Boolean(orgState && customerState && orgState !== customerState);
+
+  const itemById = new Map<string, any>();
+  for (const item of itemDocs) {
+    itemById.set(refId((item as any)?._id), item);
+  }
+
+  const allTaxIds = new Set<string>();
+  for (const line of linkedItems) {
+    const lineTaxId = refId((line as any)?.taxId);
+    if (lineTaxId) allTaxIds.add(lineTaxId);
+
+    const item = itemById.get(refId((line as any)?.itemId));
+    if (!item) continue;
+
+    const defaultTaxId = resolveItemDefaultTaxId(item, interState);
+    if (defaultTaxId) allTaxIds.add(defaultTaxId);
+  }
+
+  const taxDocs =
+    allTaxIds.size > 0
+      ? await Tax.find({
+          organizationId: oid,
+          _id: { $in: Array.from(allTaxIds) },
+          isDeleted: { $ne: true },
+        })
+          .select("rate")
+          .lean()
+      : [];
+
+  const taxRateById = new Map<string, number>();
+  for (const tax of taxDocs) {
+    taxRateById.set(refId((tax as any)?._id), Number((tax as any)?.rate || 0));
+  }
+
+  return linkedItems.map((line) => {
+    const item = itemById.get(refId((line as any)?.itemId));
+    const lineTaxId = refId((line as any)?.taxId);
+    const lineTaxPercent = Number((line as any)?.taxPercent || 0);
+
+    if (!item) {
+      if (lineTaxId) {
+        (line as any).taxId = lineTaxId;
+        if (!lineTaxPercent) {
+          (line as any).taxPercent = Number(taxRateById.get(lineTaxId) || 0);
+        }
+      }
+      return line;
+    }
+
+    if ((item as any).taxPreference && (item as any).taxPreference !== "Taxable") {
+      (line as any).taxId = null;
+      if ((line as any).taxPercent !== undefined) {
+        (line as any).taxPercent = 0;
+      }
+      return line;
+    }
+
+    const defaultTaxId = resolveItemDefaultTaxId(item, interState);
+    const selectedTaxId = lineTaxId || defaultTaxId;
+    (line as any).taxId = selectedTaxId || null;
+
+    if ((line as any).taxPercent !== undefined) {
+      if (lineTaxId && lineTaxPercent > 0) {
+        (line as any).taxPercent = lineTaxPercent;
+      } else if (selectedTaxId) {
+        (line as any).taxPercent = Number(taxRateById.get(selectedTaxId) || 0);
+      } else {
+        (line as any).taxPercent = 0;
+      }
+    }
+
+    return line;
+  });
+}

@@ -12,6 +12,7 @@ import {
 } from "../types";
 import { sendInvoiceEmail } from "./email.service";
 import { generateInvoicePdf } from "./pdf.service";
+import { applyItemTaxLinkageToItems } from "./item-tax-linkage.service";
 
 const SCHEDULER_INTERVAL_MS = 60_000;
 
@@ -373,7 +374,12 @@ export async function generateInvoiceFromRecurringProfile(
     options?.runDate || profile.nextRunDate || new Date(),
   );
   const invoiceNumber = await nextInvoiceNumber(profile.organizationId);
-  const items = normalizeInvoiceItems(profile.items as Partial<IInvoiceItem>[]);
+  const linkedItems = await applyItemTaxLinkageToItems({
+    organizationId: profile.organizationId,
+    contactId: profile.customerId,
+    items: profile.items as any[],
+  });
+  const items = normalizeInvoiceItems(linkedItems as Partial<IInvoiceItem>[]);
   const taxAmount = Number(profile.taxAmount) || 0;
   const adjustmentAmount = Number(profile.adjustmentAmount) || 0;
   const discountValue = Number(profile.discountValue) || 0;

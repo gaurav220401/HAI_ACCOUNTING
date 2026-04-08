@@ -29,6 +29,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import {
   deliveryChallanApi,
   type DeliveryChallan,
@@ -213,6 +214,8 @@ export default function EditDeliveryChallanPage() {
     [],
   );
 
+  const selectedCustomer = customers.find((entry) => entry._id === customerId);
+
   const removeLine = useCallback((key: number) => {
     setLines((prev) => {
       const next = prev.filter((l) => l.key !== key);
@@ -224,6 +227,12 @@ export default function EditDeliveryChallanPage() {
     (key: number, itemId: string) => {
       const item = items.find((i) => i._id === itemId);
       if (!item) return;
+      const linkedTax = getItemTaxForTransaction({
+        item,
+        contact: selectedCustomer,
+        organizationState: activeOrganization?.address?.state,
+        taxes,
+      });
       setLines((prev) =>
         prev.map((l) =>
           l.key === key ?
@@ -233,13 +242,43 @@ export default function EditDeliveryChallanPage() {
               name: item.name,
               description: item.description || "",
               rate: item.sellingPrice || 0,
+              taxId: linkedTax.taxId,
+              taxPercent: linkedTax.taxPercent,
             }
           : l,
         ),
       );
     },
-    [items],
+    [items, selectedCustomer, activeOrganization?.address?.state, taxes],
   );
+
+  useEffect(() => {
+    if (!lines.some((line) => line.itemId)) return;
+    setLines((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        if (!line.itemId) return line;
+        const item = items.find((entry) => entry._id === line.itemId);
+        if (!item) return line;
+        const linkedTax = getItemTaxForTransaction({
+          item,
+          contact: selectedCustomer,
+          organizationState: activeOrganization?.address?.state,
+          taxes,
+        });
+        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+          return line;
+        }
+        changed = true;
+        return {
+          ...line,
+          taxId: linkedTax.taxId,
+          taxPercent: linkedTax.taxPercent,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
   // Computed totals
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);

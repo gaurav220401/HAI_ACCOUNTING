@@ -58,6 +58,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item, type CreateItemInput } from "@/lib/api/items";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import { invoiceApi, type CreateInvoiceInput } from "@/lib/api/invoices";
 import {
   settingsApi,
@@ -938,6 +939,8 @@ export default function NewInvoicePage() {
 
   // ─── Line item helpers ────────────────────────────────────────────
 
+  const selectedCustomer = customers.find((entry) => entry._id === customerId);
+
   const updateLine = useCallback(
     (key: number, field: keyof LineItem, value: any) => {
       setLines((prev) =>
@@ -958,6 +961,12 @@ export default function NewInvoicePage() {
     (key: number, itemId: string) => {
       const item = items.find((i) => i._id === itemId);
       if (!item) return;
+      const linkedTax = getItemTaxForTransaction({
+        item,
+        contact: selectedCustomer,
+        organizationState: activeOrganization?.address?.state,
+        taxes,
+      });
       setLines((prev) =>
         prev.map((l) =>
           l.key === key ?
@@ -967,37 +976,53 @@ export default function NewInvoicePage() {
               name: item.name,
               description: item.description || "",
               rate: item.sellingPrice || 0,
+              taxId: linkedTax.taxId,
+              taxPercent: linkedTax.taxPercent,
             }
           : l,
         ),
       );
     },
-    [items],
+    [items, selectedCustomer, activeOrganization?.address?.state, taxes],
   );
 
   const handleBulkAdd = useCallback((selectedItems: Item[]) => {
-    const newLines: LineItem[] = selectedItems.map((item) => ({
-      key: lineKeyCounter++,
-      itemId: item._id,
-      name: item.name,
-      description: item.description || "",
-      hsnSacCode: "",
-      quantity: 1,
-      rate: item.sellingPrice || 0,
-      discountPercent: 0,
-      taxId: "",
-      taxPercent: 0,
-      accountId: "",
-    }));
+    const newLines: LineItem[] = selectedItems.map((item) => {
+      const linkedTax = getItemTaxForTransaction({
+        item,
+        contact: selectedCustomer,
+        organizationState: activeOrganization?.address?.state,
+        taxes,
+      });
+      return {
+        key: lineKeyCounter++,
+        itemId: item._id,
+        name: item.name,
+        description: item.description || "",
+        hsnSacCode: "",
+        quantity: 1,
+        rate: item.sellingPrice || 0,
+        discountPercent: 0,
+        taxId: linkedTax.taxId,
+        taxPercent: linkedTax.taxPercent,
+        accountId: "",
+      };
+    });
     setLines((prev) => {
       // Remove empty lines
       const existing = prev.filter((l) => l.name.trim());
       return [...existing, ...newLines];
     });
-  }, []);
+  }, [selectedCustomer, activeOrganization?.address?.state, taxes]);
 
   const handleNewItemCreated = useCallback((item: Item) => {
     setItems((prev) => [...prev, item]);
+    const linkedTax = getItemTaxForTransaction({
+      item,
+      contact: selectedCustomer,
+      organizationState: activeOrganization?.address?.state,
+      taxes,
+    });
     // Add to current lines
     setLines((prev) => {
       const emptyIdx = prev.findIndex((l) => !l.name.trim());
@@ -1010,6 +1035,8 @@ export default function NewInvoicePage() {
               name: item.name,
               description: item.description || "",
               rate: item.sellingPrice || 0,
+              taxId: linkedTax.taxId,
+              taxPercent: linkedTax.taxPercent,
             }
           : l,
         );
@@ -1025,13 +1052,41 @@ export default function NewInvoicePage() {
           quantity: 1,
           rate: item.sellingPrice || 0,
           discountPercent: 0,
-          taxId: "",
-          taxPercent: 0,
+          taxId: linkedTax.taxId,
+          taxPercent: linkedTax.taxPercent,
           accountId: "",
         },
       ];
     });
-  }, []);
+  }, [selectedCustomer, activeOrganization?.address?.state, taxes]);
+
+  useEffect(() => {
+    if (!lines.some((line) => line.itemId)) return;
+    setLines((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        if (!line.itemId) return line;
+        const item = items.find((entry) => entry._id === line.itemId);
+        if (!item) return line;
+        const linkedTax = getItemTaxForTransaction({
+          item,
+          contact: selectedCustomer,
+          organizationState: activeOrganization?.address?.state,
+          taxes,
+        });
+        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+          return line;
+        }
+        changed = true;
+        return {
+          ...line,
+          taxId: linkedTax.taxId,
+          taxPercent: linkedTax.taxPercent,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
   // ─── Calculations ────────────────────────────────────────────────
 
@@ -1178,8 +1233,6 @@ export default function NewInvoicePage() {
       </div>
     );
   }
-
-  const selectedCustomer = customers.find((c) => c._id === customerId);
 
   return (
     <SidebarProvider>
