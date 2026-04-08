@@ -169,9 +169,9 @@ function isIgstTax(tax: SettingsTax): boolean {
 }
 
 function compareTaxByRateThenName(a: SettingsTax, b: SettingsTax): number {
-  const rateDelta = Number(a.rate || 0) - Number(b.rate || 0);
-  if (rateDelta !== 0) return rateDelta;
-  return a.name.localeCompare(b.name);
+  const nameDelta = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  if (nameDelta !== 0) return nameDelta;
+  return Number(a.rate || 0) - Number(b.rate || 0);
 }
 
 function formatTaxOptionLabel(tax: SettingsTax): string {
@@ -184,6 +184,24 @@ function pickDefaultTaxOption(options: SettingsTax[], preferredName: string): Se
   if (preferred) return preferred;
   const by18Percent = options.find((tax) => Number(tax.rate || 0) === 18);
   return by18Percent || options[0];
+}
+
+function normalizeAccountName(name: string): string {
+  return name.trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+function pickDefaultAccountId(accounts: Account[], preferredNames: string[]): string {
+  if (accounts.length === 0) return "";
+  const preferred = preferredNames
+    .map((name) => normalizeAccountName(name))
+    .find((normalizedName) =>
+      accounts.some((account) => normalizeAccountName(account.name) === normalizedName),
+    );
+  if (preferred) {
+    const matched = accounts.find((account) => normalizeAccountName(account.name) === preferred);
+    if (matched?._id) return matched._id;
+  }
+  return accounts[0]._id;
 }
 
 // ─── Create Unit Dialog ───────────────────────────────────────────────────────
@@ -875,6 +893,37 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       setInventoryAccounts((assetRes.data ?? []).filter((acc) => acc.rootType === "Asset"));
       setWarehouses(warehouseRes.data ?? []);
 
+      if (!initialData) {
+        const salesList = flatSalesRes.data ?? [];
+        const purchaseList = flatPurchaseRes.data ?? [];
+        const inventoryList = (assetRes.data ?? []).filter((acc) => acc.rootType === "Asset");
+
+        const defaultSalesAccountId = pickDefaultAccountId(salesList, [
+          "Sales",
+          "Sales Revenue",
+          "Sales Income",
+        ]);
+        const defaultPurchaseAccountId = pickDefaultAccountId(purchaseList, [
+          "Cost Of Goods Sold",
+          "Cost of Goods Sold",
+          "Purchases",
+          "Purchase",
+        ]);
+        const defaultInventoryAccountId = pickDefaultAccountId(inventoryList, [
+          "Inventory Asset",
+          "Inventory",
+          "Stock",
+          "Closing Stock",
+        ]);
+
+        setForm((prev) => ({
+          ...prev,
+          salesAccountId: prev.salesAccountId || defaultSalesAccountId,
+          purchaseAccountId: prev.purchaseAccountId || defaultPurchaseAccountId,
+          inventoryAccountId: prev.inventoryAccountId || defaultInventoryAccountId,
+        }));
+      }
+
       let taxList = taxesRes.data ?? [];
       if (taxList.length === 0) {
         await settingsApi.taxes.seed().catch(() => {});
@@ -894,7 +943,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
     } catch {
       // non-fatal
     }
-  }, []);
+  }, [initialData]);
 
   useEffect(() => {
     loadDropdowns();
@@ -1428,6 +1477,9 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     Intra State Tax Rate
                     <span className="text-xs text-muted-foreground ml-1 font-normal">(GST — CGST + SGST)</span>
                   </label>
+                  <p className="text-xs text-muted-foreground">
+                    Intra state tax rate can be used when transactions are raised for contacts within your home state.
+                  </p>
                   <Select
                     value={form.intraStateTaxId || "__none"}
                     onValueChange={(v) => set("intraStateTaxId", v === "__none" ? "" : v)}
@@ -1463,6 +1515,9 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     Inter State Tax Rate
                     <span className="text-xs text-muted-foreground ml-1 font-normal">(IGST)</span>
                   </label>
+                  <p className="text-xs text-muted-foreground">
+                    Inter state tax rate can be used when transactions are raised for contacts outside your home state.
+                  </p>
                   <Select
                     value={form.interStateTaxId || "__none"}
                     onValueChange={(v) => set("interStateTaxId", v === "__none" ? "" : v)}
