@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Settings2, ChevronDown, TreePine, RefreshCw, MoreHorizontal,
@@ -66,18 +66,18 @@ function CustomizeColumnsDialog({
   columns: ColumnConfig[];
   onSave: (cols: ColumnConfig[]) => void;
 }) {
-  const [draft, setDraft] = useState<ColumnConfig[]>(columns);
+  const [draft, setDraft] = useState<ColumnConfig[]>(() => columns.map((c) => ({ ...c })));
   const [search, setSearch] = useState("");
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
-  // Reset draft when opening
-  useEffect(() => {
-    if (open) {
+  function handleDialogOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
       setDraft(columns.map((c) => ({ ...c })));
       setSearch("");
     }
-  }, [open, columns]);
+    onOpenChange(nextOpen);
+  }
 
   const filtered = draft.filter((c) =>
     c.label.toLowerCase().includes(search.toLowerCase()),
@@ -110,7 +110,7 @@ function CustomizeColumnsDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <div className="flex items-center justify-between w-full">
@@ -267,6 +267,7 @@ function AccountRow({
   onToggleActive: (a: Account) => void;
 }) {
   const visibleCols = columns.filter((c) => c.visible);
+  const canDelete = !account.isSystemAccount;
   const cellClass = wrapText
     ? "px-3 py-2.5 text-sm"
     : "px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[250px]";
@@ -275,14 +276,10 @@ function AccountRow({
     <tr className={`group border-b last:border-0 hover:bg-muted/40 transition-colors ${selected ? "bg-primary/5" : ""}`}>
       {/* Lock or Checkbox */}
       <td className="w-9 px-3 py-2.5 text-center">
-        {account.isSystemAccount ? (
-          <Lock className="h-3.5 w-3.5 text-muted-foreground/50 mx-auto" />
-        ) : (
-          <Checkbox
-            checked={selected}
-            onCheckedChange={() => onSelect(account._id)}
-          />
-        )}
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onSelect(account._id)}
+        />
       </td>
 
       {/* Dynamic visible columns */}
@@ -297,6 +294,12 @@ function AccountRow({
                 >
                   {account.name}
                 </span>
+                {account.isSystemAccount && (
+                  <span className="ml-2 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 align-middle">
+                    <Lock className="h-3 w-3" />
+                    Predefined
+                  </span>
+                )}
                 {!account.isActive && (
                   <span className="ml-2 text-xs text-muted-foreground">(Inactive)</span>
                 )}
@@ -344,10 +347,11 @@ function AccountRow({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => onDelete(account)}
+              disabled={!canDelete}
+              className="text-destructive focus:text-destructive disabled:text-muted-foreground disabled:opacity-70"
+              onClick={() => canDelete && onDelete(account)}
             >
-              Delete
+              {canDelete ? "Delete" : "Delete (Locked)"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -365,14 +369,13 @@ export default function ChartOfAccountsPage() {
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [fetching, setFetching] = useState(false);
-  const [seeding, setSeeding] = useState(false);
   const [viewFilter, setViewFilter] = useState<ViewFilter>("Active");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Account | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
 
-  // Bulk selection — only non-system accounts can be selected via checkbox
+  // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Column customization
@@ -395,14 +398,9 @@ export default function ChartOfAccountsPage() {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
-  useEffect(() => {
-    if (activeOrganization?._id) fetchAccounts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrganization?._id]);
-
   // ─── Data fetching ───────────────────────────────────────────────────
 
-  async function fetchAccounts() {
+  const fetchAccounts = useCallback(async () => {
     setFetching(true);
     try {
       const res = await accountApi.list();
@@ -412,17 +410,13 @@ export default function ChartOfAccountsPage() {
     } finally {
       setFetching(false);
     }
-  }
+  }, []);
 
-  async function handleSeedTemplate() {
-    setSeeding(true);
-    try {
-      await accountApi.seedTemplate();
-      await fetchAccounts();
-    } finally {
-      setSeeding(false);
+  useEffect(() => {
+    if (activeOrganization?._id) {
+      void fetchAccounts();
     }
-  }
+  }, [activeOrganization?._id, fetchAccounts]);
 
   // ─── Single actions ──────────────────────────────────────────────────
 
@@ -481,8 +475,15 @@ export default function ChartOfAccountsPage() {
   }
 
   async function bulkDelete() {
+    const deletableIds = Array.from(selectedIds).filter((id) => !accountMap.get(id)?.isSystemAccount);
+    if (deletableIds.length === 0) {
+      clearSelection();
+      setBulkDeleteOpen(false);
+      return;
+    }
+
     try {
-      await Promise.all(Array.from(selectedIds).map((id) => accountApi.remove(id)));
+      await Promise.all(deletableIds.map((id) => accountApi.remove(id)));
     } catch { /* noop */ } finally {
       clearSelection();
       setBulkDeleteOpen(false);
@@ -553,12 +554,6 @@ export default function ChartOfAccountsPage() {
                 <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
-              {accounts.length === 0 && (
-                <Button variant="outline" size="sm" onClick={handleSeedTemplate} disabled={seeding} className="gap-1.5">
-                  <TreePine className="h-3.5 w-3.5" />
-                  {seeding ? "Loading..." : "Load Template"}
-                </Button>
-              )}
             </>
           }
         />
@@ -570,12 +565,9 @@ export default function ChartOfAccountsPage() {
               <TreePine className="h-12 w-12 opacity-30" />
               <div className="text-center">
                 <p className="font-medium text-foreground">No accounts yet</p>
-                <p className="text-sm">Load the standard template or create accounts manually.</p>
+                <p className="text-sm">Create your first account to get started.</p>
               </div>
               <div className="flex gap-3">
-                <Button onClick={handleSeedTemplate} disabled={seeding} variant="outline">
-                  {seeding ? "Loading..." : "Load Standard Template"}
-                </Button>
                 <Button onClick={openCreate}>
                   <Plus className="h-4 w-4 mr-1" />
                   New Account
@@ -752,7 +744,7 @@ export default function ChartOfAccountsPage() {
       {/* Bulk delete confirmation */}
       {bulkDeleteOpen && (
         <ConfirmDelete
-          message={`Are you sure you want to delete ${selectedIds.size} selected accounts? This action cannot be undone.`}
+          message={`Are you sure you want to delete ${Array.from(selectedIds).filter((id) => !accountMap.get(id)?.isSystemAccount).length} selected accounts? Predefined locked accounts will be skipped.`}
           onConfirm={bulkDelete}
           onCancel={() => setBulkDeleteOpen(false)}
         />

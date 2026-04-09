@@ -11,6 +11,7 @@ import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors"
 import { sendPurchaseOrderEmail as sendPurchaseOrderEmailService } from "../services/email.service";
 import { generatePurchaseOrderPdf } from "../services/pdf.service";
 import { findAccountIdByName } from "../services/gl-posting.service";
+import { syncBillCreationAccounting } from "../services/bill-accounting.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -579,6 +580,7 @@ export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res:
     organizationId: oid,
     vendorId: po.vendorId,
     billNumber,
+    referenceNumber: po.referenceNumber || "",
     orderNumber: po.purchaseOrderNumber,
     billDate: new Date(),
     dueDate: po.deliveryDate || null,
@@ -599,11 +601,14 @@ export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res:
     })),
     subTotal: po.subTotal,
     discountLevel: po.discountLevel,
+    discountAccountId: po.discountAccountId,
     discountPercent: po.discountPercent,
     discountAmount: po.discountAmount,
     taxType: po.taxType,
     tdsId: po.tdsId,
+    tcsId: po.tcsId,
     taxAmount: po.taxAmount,
+    tcsAmount: po.tcsAmount,
     adjustmentLabel: po.adjustmentLabel,
     adjustmentAmount: po.adjustmentAmount,
     total: po.total,
@@ -632,6 +637,8 @@ export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res:
     isSystem: true,
   });
   await po.save();
+
+  await syncBillCreationAccounting({ bill, req });
   
   res.json({ 
     success: true, 

@@ -1,9 +1,33 @@
 import Bill from "../models/bill.model";
+import Contact from "../models/contact.model";
 import PaymentTerms from "../models/payment-terms.model";
+import { syncBillCreationAccounting } from "./bill-accounting.service";
+import { findAccountIdByName } from "./gl-posting.service";
 import { computeDueDate, computeNextDate, calcLineItems, computeRecurringTotals, nextBillNumber, toNum } from "../utils/recurring-bills";
+
+async function advanceRecurringStateAfterRun(rec: any, runDate: Date, billId: any, actorId?: any) {
+  rec.lastBillDate = runDate;
+  const nextDate = computeNextDate(runDate, rec.frequency, rec.repeatEvery);
+
+  if (rec.neverExpires || !rec.endsOn || nextDate <= rec.endsOn) {
+    rec.nextBillDate = nextDate;
+  } else {
+    rec.nextBillDate = null;
+    rec.status = "Expired";
+  }
+
+  const alreadyLinked = (rec.generatedBillIds || []).some((id: any) => String(id) === String(billId));
+  if (!alreadyLinked) rec.generatedBillIds.push(billId);
+
+  if (actorId) rec.updatedBy = actorId;
+  await rec.save();
+}
 
 export async function executeRecurringRun(rec: any, scheduledRunDate: Date, actorId?: any) {
   const normalizedRunDate = new Date(scheduledRunDate);
+
+  const effectiveActorId = actorId || rec.updatedBy || rec.createdBy;
+  if (!effectiveActorId) throw new Error("Recurring profile missing creator");
 
   const existing = await Bill.findOne({
     organizationId: rec.organizationId,
@@ -11,10 +35,10 @@ export async function executeRecurringRun(rec: any, scheduledRunDate: Date, acto
     recurringRunDate: normalizedRunDate,
     isDeleted: false,
   });
-  if (existing) return { bill: existing, skipped: true };
-
-  const creatorId = actorId || rec.updatedBy || rec.createdBy;
-  if (!creatorId) throw new Error("Recurring profile missing creator");
+  if (existing) {
+    await advanceRecurringStateAfterRun(rec, normalizedRunDate, existing._id, effectiveActorId);
+    return { bill: existing, skipped: true };
+  }
 
   const paymentTerms = rec.paymentTermsId
     ? await PaymentTerms.findById(rec.paymentTermsId).lean()
@@ -46,6 +70,31 @@ export async function executeRecurringRun(rec: any, scheduledRunDate: Date, acto
     paymentTerms ? { termType: paymentTerms.termType, netDays: paymentTerms.netDays } : null,
   );
 
+  let accountsPayableId = null;
+  if (rec.vendorId) {
+    const vendor = await Contact.findOne({
+      _id: rec.vendorId,
+      organizationId: rec.organizationId,
+      isDeleted: false,
+    })
+      .select("accountsPayableId")
+      .lean();
+    accountsPayableId = vendor?.accountsPayableId || null;
+  }
+
+  if (!accountsPayableId) {
+    try {
+      accountsPayableId = await findAccountIdByName({
+        organizationId: rec.organizationId,
+        names: ["Accounts Payable", "Trade Payables", "Creditors"],
+        rootType: "Liability",
+        accountType: "Accounts Payable",
+      });
+    } catch {
+      accountsPayableId = null;
+    }
+  }
+
   const bill = new Bill({
     organizationId: rec.organizationId,
     vendorId: rec.vendorId,
@@ -55,6 +104,7 @@ export async function executeRecurringRun(rec: any, scheduledRunDate: Date, acto
     paymentTermsId: rec.paymentTermsId || null,
     sourceOfSupply: rec.sourceOfSupply || "",
     destinationOfSupply: rec.destinationOfSupply || "",
+    accountsPayableId,
     subject: rec.subject || "",
     orderNumber: rec.orderNumber || "",
     discountLevel: rec.discountLevel,
@@ -86,8 +136,8 @@ export async function executeRecurringRun(rec: any, scheduledRunDate: Date, acto
       time: new Date(),
       isSystem: true,
     }],
-    createdBy: creatorId,
-    updatedBy: creatorId,
+    createdBy: effectiveActorId,
+    updatedBy: effectiveActorId,
   });
   try {
     await bill.save();
@@ -99,22 +149,17 @@ export async function executeRecurringRun(rec: any, scheduledRunDate: Date, acto
         recurringRunDate: normalizedRunDate,
         isDeleted: false,
       });
-      if (duplicate) return { bill: duplicate, skipped: true };
+      if (duplicate) {
+        await advanceRecurringStateAfterRun(rec, normalizedRunDate, duplicate._id, effectiveActorId);
+        return { bill: duplicate, skipped: true };
+      }
     }
     throw err;
   }
 
-  rec.lastBillDate = normalizedRunDate;
-  const nextDate = computeNextDate(normalizedRunDate, rec.frequency, rec.repeatEvery);
-  if (rec.neverExpires || !rec.endsOn || nextDate <= rec.endsOn) {
-    rec.nextBillDate = nextDate;
-  } else {
-    rec.nextBillDate = null;
-    rec.status = "Expired";
-  }
-  rec.generatedBillIds.push(bill._id);
-  rec.updatedBy = creatorId;
-  await rec.save();
+  await syncBillCreationAccounting({ bill });
+
+  await advanceRecurringStateAfterRun(rec, normalizedRunDate, bill._id, effectiveActorId);
 
   return { bill, skipped: false };
 }

@@ -21,6 +21,7 @@ type AccountRow = {
   code?: string;
   rootType: "Asset" | "Liability" | "Equity" | "Income" | "Expense";
   accountType: string;
+  openingBalance?: number;
 };
 
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
@@ -77,7 +78,7 @@ async function loadAccounts(organizationId: Types.ObjectId): Promise<Map<string,
     isDeleted: false,
     isGroup: false,
   })
-    .select("name code rootType accountType")
+    .select("name code rootType accountType openingBalance")
     .lean()) as AccountRow[];
 
   return new Map(rows.map((row) => [String(row._id), row]));
@@ -137,22 +138,30 @@ export const trialBalance = asyncHandler(async (req: AuthenticatedRequest, res: 
     loadMovementMap({ organizationId, asOf }),
   ]);
 
-  const rows = Array.from(movementMap.entries())
-    .map(([accountId, movement]) => {
-      const account = accountMap.get(accountId);
-      if (!account) return null;
-      const balance = round2(movement.debit - movement.credit);
-      if (Math.abs(balance) < 0.009) return null;
+  const rows = Array.from(accountMap.entries())
+    .map(([accountId, account]) => {
+      const movement = movementMap.get(accountId) || { debit: 0, credit: 0 };
+      const openingSigned = round2(Number(account.openingBalance || 0));
+      const openingDebit = openingSigned > 0 ? openingSigned : 0;
+      const openingCredit = openingSigned < 0 ? Math.abs(openingSigned) : 0;
+
+      const totalDebit = round2(openingDebit + movement.debit);
+      const totalCredit = round2(openingCredit + movement.credit);
+      const closingSigned = round2(totalDebit - totalCredit);
+      if (Math.abs(closingSigned) < 0.009) return null;
+
       return {
         accountId,
         code: account.code || "",
         name: account.name,
         rootType: account.rootType,
         accountType: account.accountType,
-        totalDebit: movement.debit,
-        totalCredit: movement.credit,
-        closingDebit: balance > 0 ? balance : 0,
-        closingCredit: balance < 0 ? Math.abs(balance) : 0,
+        openingDebit,
+        openingCredit,
+        totalDebit,
+        totalCredit,
+        closingDebit: closingSigned > 0 ? closingSigned : 0,
+        closingCredit: closingSigned < 0 ? Math.abs(closingSigned) : 0,
       };
     })
     .filter(Boolean) as any[];
@@ -243,28 +252,26 @@ export const balanceSheet = asyncHandler(async (req: AuthenticatedRequest, res: 
   let incomeTotal = 0;
   let expenseTotal = 0;
 
-  for (const [accountId, movement] of movementMap.entries()) {
-    const account = accountMap.get(accountId);
-    if (!account) continue;
-    const debit = round2(movement.debit);
-    const credit = round2(movement.credit);
+  for (const [accountId, account] of accountMap.entries()) {
+    const movement = movementMap.get(accountId) || { debit: 0, credit: 0 };
+    const signed = round2(Number(account.openingBalance || 0) + movement.debit - movement.credit);
 
     if (account.rootType === "Asset") {
-      const amount = round2(debit - credit);
+      const amount = signed;
       if (Math.abs(amount) < 0.009) continue;
       assets.push({ accountId, code: account.code || "", name: account.name, amount });
     } else if (account.rootType === "Liability") {
-      const amount = round2(credit - debit);
+      const amount = round2(-signed);
       if (Math.abs(amount) < 0.009) continue;
       liabilities.push({ accountId, code: account.code || "", name: account.name, amount });
     } else if (account.rootType === "Equity") {
-      const amount = round2(credit - debit);
+      const amount = round2(-signed);
       if (Math.abs(amount) < 0.009) continue;
       equity.push({ accountId, code: account.code || "", name: account.name, amount });
     } else if (account.rootType === "Income") {
-      incomeTotal = round2(incomeTotal + (credit - debit));
+      incomeTotal = round2(incomeTotal + (-signed));
     } else if (account.rootType === "Expense") {
-      expenseTotal = round2(expenseTotal + (debit - credit));
+      expenseTotal = round2(expenseTotal + signed);
     }
   }
 
@@ -293,8 +300,8 @@ export const controlReconciliation = asyncHandler(async (req: AuthenticatedReque
   const asOf = parseDate(req.query.asOf, "asOf");
 
   const [arAccounts, apAccounts] = await Promise.all([
-    Account.find({ organizationId, isDeleted: false, isGroup: false, accountType: "Accounts Receivable" }).select("name code").lean(),
-    Account.find({ organizationId, isDeleted: false, isGroup: false, accountType: "Accounts Payable" }).select("name code").lean(),
+    Account.find({ organizationId, isDeleted: false, isGroup: false, accountType: "Accounts Receivable" }).select("name code openingBalance").lean(),
+    Account.find({ organizationId, isDeleted: false, isGroup: false, accountType: "Accounts Payable" }).select("name code openingBalance").lean(),
   ]);
 
   const [arMovement, apMovement, receivableRows, payableRows] = await Promise.all([
@@ -310,8 +317,20 @@ export const controlReconciliation = asyncHandler(async (req: AuthenticatedReque
     ]),
   ]);
 
-  const glReceivable = round2(Array.from(arMovement.values()).reduce((sum, m) => sum + m.debit - m.credit, 0));
-  const glPayable = round2(Array.from(apMovement.values()).reduce((sum, m) => sum + m.credit - m.debit, 0));
+  const glReceivable = round2(
+    arAccounts.reduce((sum, account: any) => {
+      const movement = arMovement.get(String(account._id)) || { debit: 0, credit: 0 };
+      const signed = round2(Number(account.openingBalance || 0) + movement.debit - movement.credit);
+      return sum + signed;
+    }, 0),
+  );
+  const glPayable = round2(
+    apAccounts.reduce((sum, account: any) => {
+      const movement = apMovement.get(String(account._id)) || { debit: 0, credit: 0 };
+      const signed = round2(Number(account.openingBalance || 0) + movement.debit - movement.credit);
+      return sum + (-signed);
+    }, 0),
+  );
   const subledgerReceivable = round2(Number(receivableRows[0]?.total || 0));
   const subledgerPayable = round2(Number(payableRows[0]?.total || 0));
 

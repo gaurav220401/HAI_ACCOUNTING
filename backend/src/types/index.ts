@@ -282,6 +282,8 @@ export interface IAccount extends Document {
   organizationId: Types.ObjectId;
   name: string;
   code?: string;
+  accountNumber?: string;
+  ifsc?: string;
   parentId?: Types.ObjectId | null;
   rootType: AccountRootType;
   accountType: AccountType;

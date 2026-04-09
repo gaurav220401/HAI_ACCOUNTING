@@ -13,6 +13,8 @@ const accountSchema = new Schema<IAccount>(
     },
     name: { type: String, required: true, trim: true },
     code: { type: String, trim: true, default: "" },
+    accountNumber: { type: String, trim: true, default: "" },
+    ifsc: { type: String, trim: true, default: "" },
     parentId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
     rootType: {
       type: String,

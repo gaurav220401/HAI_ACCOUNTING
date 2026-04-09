@@ -31,6 +31,8 @@ export interface Account {
   organizationId: string;
   name: string;
   code?: string;
+  accountNumber?: string;
+  ifsc?: string;
   rootType: AccountRootType;
   accountType: AccountType;
   parentId?: string | null;
@@ -88,6 +90,8 @@ export interface SaveOpeningBalanceInput {
 export interface CreateAccountInput {
   name: string;
   code?: string;
+  accountNumber?: string;
+  ifsc?: string;
   rootType: AccountRootType;
   accountType: AccountType;
   parentId?: string;

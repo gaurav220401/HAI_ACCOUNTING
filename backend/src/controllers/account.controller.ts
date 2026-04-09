@@ -1,9 +1,34 @@
 import { Response } from "express";
 import { Types } from "mongoose";
 import Account from "../models/account.model";
+import Bill from "../models/bill.model";
+import Contact from "../models/contact.model";
+import CurrencyAdjustment from "../models/currency-adjustment.model";
+import Expense from "../models/expense.model";
+import ExpenseCategory from "../models/expense-category.model";
+import GlEntry from "../models/gl-entry.model";
+import Invoice from "../models/invoice.model";
+import Item from "../models/item.model";
+import Journal from "../models/journal.model";
 import Organization from "../models/organization.model";
-import { AuthenticatedRequest, AccountType } from "../types";
+import PaymentMade from "../models/payment-made.model";
+import PaymentMode from "../models/payment-mode.model";
+import PaymentReceived from "../models/payment-received.model";
+import PurchaseOrder from "../models/purchase-order.model";
+import RecurringBill from "../models/recurring-bill.model";
+import RecurringExpense from "../models/recurring-expense.model";
+import RecurringInvoice from "../models/recurring-invoice.model";
+import TcsTax from "../models/tcs-tax.model";
+import TdsTax from "../models/tds-tax.model";
+import VendorCredit from "../models/vendor-credit.model";
+import { AuthenticatedRequest, AccountRootType, AccountType } from "../types";
 import { attachUser } from "../plugins";
+import {
+  ensureDefaultChartOfAccounts,
+  ensureTemplateSystemAccounts,
+  resolveAccountCodeForAccount,
+  validateAccountTypeForRootType,
+} from "../services/chart-of-accounts.service";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 
@@ -33,6 +58,10 @@ function toAmount(value: unknown): number {
   return round2(n);
 }
 
+function toTrimmedString(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 function calculateTotals(entries: Array<{ debit: number; credit: number }>) {
   const totalDebit = round2(entries.reduce((sum, e) => sum + e.debit, 0));
   const totalCredit = round2(entries.reduce((sum, e) => sum + e.credit, 0));
@@ -51,11 +80,165 @@ function calculateTotals(entries: Array<{ debit: number; credit: number }>) {
   };
 }
 
+async function ensureOrgChartInitialized(req: AuthenticatedRequest, organizationId: Types.ObjectId) {
+  const hasAccounts = await Account.exists({ organizationId });
+  if (!hasAccounts) {
+    await ensureDefaultChartOfAccounts({ organizationId, actor: req });
+  }
+  await ensureTemplateSystemAccounts({ organizationId });
+}
+
+async function findAccountUsageArea(accountId: Types.ObjectId, organizationId: Types.ObjectId): Promise<string | null> {
+  const checks: Array<{ area: string; exists: () => Promise<unknown> }> = [
+    {
+      area: "General Ledger entries",
+      exists: () => GlEntry.exists({ organizationId, accountId }),
+    },
+    {
+      area: "Bills",
+      exists: () => Bill.exists({
+        organizationId,
+        $or: [
+          { "lineItems.accountId": accountId },
+          { accountsPayableId: accountId },
+          { discountAccountId: accountId },
+        ],
+      }),
+    },
+    {
+      area: "Invoices",
+      exists: () => Invoice.exists({ organizationId, "items.accountId": accountId }),
+    },
+    {
+      area: "Expenses",
+      exists: () => Expense.exists({
+        organizationId,
+        $or: [
+          { expenseAccountId: accountId },
+          { "lineItems.expenseAccountId": accountId },
+          { paidThroughAccountId: accountId },
+        ],
+      }),
+    },
+    {
+      area: "Purchase Orders",
+      exists: () => PurchaseOrder.exists({
+        organizationId,
+        $or: [{ "lineItems.accountId": accountId }, { discountAccountId: accountId }],
+      }),
+    },
+    {
+      area: "Recurring Bills",
+      exists: () => RecurringBill.exists({
+        organizationId,
+        $or: [{ "lineItems.accountId": accountId }, { discountAccountId: accountId }],
+      }),
+    },
+    {
+      area: "Recurring Invoices",
+      exists: () => RecurringInvoice.exists({ organizationId, "items.accountId": accountId }),
+    },
+    {
+      area: "Recurring Expenses",
+      exists: () => RecurringExpense.exists({
+        organizationId,
+        $or: [{ expenseAccountId: accountId }, { paidThroughAccountId: accountId }],
+      }),
+    },
+    {
+      area: "Vendor Credits",
+      exists: () => VendorCredit.exists({ organizationId, "lineItems.accountId": accountId }),
+    },
+    {
+      area: "Contacts",
+      exists: () => Contact.exists({ organizationId, accountsPayableId: accountId }),
+    },
+    {
+      area: "Items",
+      exists: () => Item.exists({
+        organizationId,
+        $or: [
+          { salesAccountId: accountId },
+          { purchaseAccountId: accountId },
+          { inventoryAccountId: accountId },
+        ],
+      }),
+    },
+    {
+      area: "Organization default accounts",
+      exists: () => Organization.exists({
+        _id: organizationId,
+        $or: [
+          { "defaultAccounts.bankAccount": accountId },
+          { "defaultAccounts.cashAccount": accountId },
+          { "defaultAccounts.receivableAccount": accountId },
+          { "defaultAccounts.payableAccount": accountId },
+          { "defaultAccounts.incomeAccount": accountId },
+          { "defaultAccounts.expenseAccount": accountId },
+          { "defaultAccounts.roundOffAccount": accountId },
+          { "defaultAccounts.exchangeGainLossAccount": accountId },
+          { "defaultAccounts.retainedEarningsAccount": accountId },
+        ],
+      }),
+    },
+    {
+      area: "Payment Made records",
+      exists: () => PaymentMade.exists({
+        organization_id: organizationId,
+        $or: [{ paid_through_account: accountId }, { deposit_to_account: accountId }],
+      }),
+    },
+    {
+      area: "Payment Received records",
+      exists: () => PaymentReceived.exists({ organization_id: organizationId, deposited_to_account: accountId }),
+    },
+    {
+      area: "Payment Modes",
+      exists: () => PaymentMode.exists({ organizationId, accountId }),
+    },
+    {
+      area: "Expense Categories",
+      exists: () => ExpenseCategory.exists({ organizationId, accountId }),
+    },
+    {
+      area: "Currency Adjustments",
+      exists: () => CurrencyAdjustment.exists({ organizationId, "lines.accountId": accountId }),
+    },
+    {
+      area: "Journals",
+      exists: () => Journal.exists({ organizationId, "lineItems.accountId": accountId }),
+    },
+    {
+      area: "TDS Taxes",
+      exists: () => TdsTax.exists({
+        organizationId,
+        $or: [{ tdsPayableAccountId: accountId }, { tdsReceivableAccountId: accountId }],
+      }),
+    },
+    {
+      area: "TCS Taxes",
+      exists: () => TcsTax.exists({
+        organizationId,
+        $or: [{ tcsPayableAccountId: accountId }, { tcsReceivableAccountId: accountId }],
+      }),
+    },
+  ];
+
+  for (const check of checks) {
+    if (await check.exists()) return check.area;
+  }
+
+  return null;
+}
+
 // ─── Controllers ───────────────────────────────────────────────────────────
 
 /** GET /api/accounts  — return flat list for the active org (supports ?rootType=Income,Expense) */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const filter: Record<string, unknown> = { organizationId: orgId(req), isDeleted: false };
+  const organizationId = orgId(req) as Types.ObjectId;
+  await ensureOrgChartInitialized(req, organizationId);
+
+  const filter: Record<string, unknown> = { organizationId, isDeleted: false };
   if (req.query.rootType) {
     const types = (req.query.rootType as string).split(",").map((t) => t.trim());
     filter.rootType = { $in: types };
@@ -76,10 +259,13 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
  * purchase → rootType Expense (Cost Of Goods Sold + Expense)
  */
 export const listForItem = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req) as Types.ObjectId;
+  await ensureOrgChartInitialized(req, organizationId);
+
   const section = (req.query.section as string) ?? "sales";
   const rootTypes = section === "purchase" ? ["Expense"] : ["Income"];
   const accounts = await Account.find({
-    organizationId: orgId(req),
+    organizationId,
     isDeleted: false,
     isGroup: false,
     rootType: { $in: rootTypes },
@@ -100,7 +286,8 @@ export const listForItem = asyncHandler(async (req: AuthenticatedRequest, res: R
 
 /** GET /api/accounts/opening-balances */
 export const getOpeningBalances = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const organizationId = orgId(req);
+  const organizationId = orgId(req) as Types.ObjectId;
+  await ensureOrgChartInitialized(req, organizationId);
 
   const [accounts, organization] = await Promise.all([
     Account.find({
@@ -300,18 +487,48 @@ export const saveOpeningBalances = asyncHandler(async (req: AuthenticatedRequest
 
 /** POST /api/accounts */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { name, code, parentId, rootType, accountType, isGroup, currency, description } = req.body;
+  const organizationId = orgId(req) as Types.ObjectId;
+
+  const name = String(req.body.name || "").trim();
+  if (!name) throw new ValidationError("Account name is required");
+
+  const rootType = req.body.rootType as AccountRootType;
+  const accountType = req.body.accountType as AccountType;
+  if (!rootType) throw new ValidationError("rootType is required");
+  if (!accountType) throw new ValidationError("accountType is required");
+  validateAccountTypeForRootType(rootType, accountType);
+
+  const parentIdInput = req.body.parentId;
+  let parentId: Types.ObjectId | null = null;
+  if (parentIdInput !== undefined && parentIdInput !== null && parentIdInput !== "") {
+    if (!Types.ObjectId.isValid(String(parentIdInput))) {
+      throw new ValidationError("parentId must be a valid account id");
+    }
+    parentId = new Types.ObjectId(String(parentIdInput));
+  }
+
+  const code = await resolveAccountCodeForAccount({
+    organizationId,
+    rootType,
+    accountType,
+    requestedCode: req.body.code,
+  });
 
   // Duplicate check within same org + parent
-  const dup = await Account.findOne({ organizationId: orgId(req), name, parentId: parentId ?? null });
+  const dup = await Account.findOne({ organizationId, name, parentId: parentId ?? null });
   if (dup) throw new ValidationError(`Account "${name}" already exists here`);
 
   const account = new Account({
-    organizationId: orgId(req),
-    name, code, parentId: parentId ?? null,
+    organizationId,
+    name,
+    code,
+    accountNumber: accountType === "Bank" ? toTrimmedString(req.body.accountNumber) : "",
+    ifsc: accountType === "Bank" ? toTrimmedString(req.body.ifsc) : "",
+    parentId,
     rootType, accountType,
-    isGroup: isGroup ?? false,
-    currency, description,
+    isGroup: Boolean(req.body.isGroup),
+    currency: toTrimmedString(req.body.currency),
+    description: toTrimmedString(req.body.description),
   });
   attachUser(account, req);
   await account.save();
@@ -320,11 +537,90 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** PATCH /api/accounts/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const account = await Account.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const organizationId = orgId(req) as Types.ObjectId;
+  await ensureTemplateSystemAccounts({ organizationId });
+
+  const account = await Account.findOne({ _id: req.params.id, organizationId });
   if (!account) throw new NotFoundError("Account");
 
-  const fields = ["name", "code", "description", "currency", "isActive", "isGroup", "parentId", "accountType", "rootType"];
-  fields.forEach((f) => { if (req.body[f] !== undefined) (account as any)[f] = req.body[f]; });
+  if (account.isSystemAccount) {
+    if (req.body.rootType !== undefined && req.body.rootType !== account.rootType) {
+      throw new ValidationError("Predefined accounts cannot change root type");
+    }
+    if (req.body.accountType !== undefined && req.body.accountType !== account.accountType) {
+      throw new ValidationError("Predefined accounts cannot change account type");
+    }
+  }
+
+  const nextRootType = (req.body.rootType ?? account.rootType) as AccountRootType;
+  const nextAccountType = (req.body.accountType ?? account.accountType) as AccountType;
+  validateAccountTypeForRootType(nextRootType, nextAccountType);
+
+  if (req.body.name !== undefined) {
+    const nextName = String(req.body.name).trim();
+    if (!nextName) throw new ValidationError("Account name cannot be empty");
+    account.name = nextName;
+  }
+
+  if (req.body.description !== undefined) account.description = toTrimmedString(req.body.description);
+  if (req.body.currency !== undefined) account.currency = toTrimmedString(req.body.currency);
+  if (req.body.accountNumber !== undefined) account.accountNumber = toTrimmedString(req.body.accountNumber);
+  if (req.body.ifsc !== undefined) account.ifsc = toTrimmedString(req.body.ifsc);
+  if (req.body.isActive !== undefined) account.isActive = Boolean(req.body.isActive);
+  if (req.body.isGroup !== undefined) account.isGroup = Boolean(req.body.isGroup);
+
+  if (req.body.parentId !== undefined) {
+    const parentIdInput = req.body.parentId;
+    if (parentIdInput === null || parentIdInput === "") {
+      account.parentId = null;
+    } else {
+      if (!Types.ObjectId.isValid(String(parentIdInput))) {
+        throw new ValidationError("parentId must be a valid account id");
+      }
+      account.parentId = new Types.ObjectId(String(parentIdInput));
+    }
+  }
+
+  if (account.parentId && String(account.parentId) === String(account._id)) {
+    throw new ValidationError("An account cannot be a parent of itself");
+  }
+
+  account.rootType = nextRootType;
+  account.accountType = nextAccountType;
+
+  if (account.accountType !== "Bank") {
+    account.accountNumber = "";
+    account.ifsc = "";
+  }
+
+  const shouldResolveCode =
+    req.body.code !== undefined ||
+    req.body.rootType !== undefined ||
+    req.body.accountType !== undefined ||
+    !String(account.code || "").trim();
+
+  if (shouldResolveCode) {
+    account.code = await resolveAccountCodeForAccount({
+      organizationId,
+      rootType: nextRootType,
+      accountType: nextAccountType,
+      requestedCode: req.body.code !== undefined ? req.body.code : account.code,
+      excludeAccountId: account._id,
+    });
+  }
+
+  if (req.body.name !== undefined || req.body.parentId !== undefined) {
+    const duplicate = await Account.findOne({
+      organizationId,
+      name: account.name,
+      parentId: account.parentId ?? null,
+      _id: { $ne: account._id },
+    });
+
+    if (duplicate) {
+      throw new ValidationError(`Account "${account.name}" already exists here`);
+    }
+  }
 
   attachUser(account, req);
   await account.save();
@@ -333,12 +629,30 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** DELETE /api/accounts/:id */
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const account = await Account.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const organizationId = orgId(req) as Types.ObjectId;
+  await ensureTemplateSystemAccounts({ organizationId });
+
+  const account = await Account.findOne({ _id: req.params.id, organizationId });
   if (!account) throw new NotFoundError("Account");
+
+  if (account.isSystemAccount) {
+    throw new ValidationError("Predefined accounts cannot be deleted");
+  }
+
+  const opening = Number(account.openingBalance || 0);
+  const running = Number(account.balance || 0);
+  if (Math.abs(opening) > 0.009 || Math.abs(running) > 0.009) {
+    throw new ValidationError("Cannot delete account with non-zero balance. Mark it inactive instead.");
+  }
 
   // Check for child accounts
   const hasChildren = await Account.exists({ parentId: account._id, isDeleted: false });
   if (hasChildren) throw new ValidationError("Cannot delete an account that has sub-accounts");
+
+  const usageArea = await findAccountUsageArea(account._id as Types.ObjectId, organizationId);
+  if (usageArea) {
+    throw new ValidationError(`Cannot delete account because it is used in ${usageArea}. Mark it inactive instead.`);
+  }
 
   account.isDeleted = true;
   account.deletedAt = new Date();
@@ -349,120 +663,15 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** POST /api/accounts/seed-template — seed standard Indian CoA (Zoho Books style) */
 export const seedTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const organization = orgId(req);
+  const organization = orgId(req) as Types.ObjectId;
   const existing = await Account.countDocuments({ organizationId: organization });
   if (existing > 0) throw new ValidationError("Chart of Accounts already exists for this organization");
 
-  const template = getIndianCoATemplate();
+  const seeded = await ensureDefaultChartOfAccounts({ organizationId: organization, actor: req });
 
-  for (const node of template) {
-    const account = new Account({
-      organizationId: organization,
-      name: node.name,
-      rootType: node.rootType,
-      accountType: node.accountType,
-      isGroup: false,
-      isSystemAccount: true,
-      parentId: null,
-      description: node.description ?? "",
-    });
-    attachUser(account, req);
-    await account.save();
-  }
-
-  res.status(201).json({ success: true, message: "Chart of Accounts seeded with Indian Standard template" });
+  res.status(201).json({
+    success: true,
+    message: "Chart of Accounts seeded with Indian Standard template",
+    data: seeded,
+  });
 });
-
-// ─── Indian Standard CoA Template (Zoho Books style — flat, no parent groups) ──
-
-function getIndianCoATemplate() {
-  type TemplateNode = {
-    name: string;
-    rootType: "Asset" | "Liability" | "Equity" | "Income" | "Expense";
-    accountType: AccountType;
-    description?: string;
-  };
-
-  const t: TemplateNode[] = [
-    // ── ASSETS ────────────────────────────────────────────────────────
-    { name: "Employee Advance",         rootType: "Asset", accountType: "Other Current Asset",      description: "Advances paid to employees for business purposes." },
-    { name: "Prepaid Expenses",         rootType: "Asset", accountType: "Other Current Asset",      description: "Expenses paid in advance for future periods." },
-    { name: "TDS Receivable",           rootType: "Asset", accountType: "Other Current Asset",      description: "Tax deducted at source receivable from the government." },
-    { name: "Advance Tax",              rootType: "Asset", accountType: "Other Current Asset",      description: "Any tax which is paid in advance is recorded into the advance tax account. This advance tax payment could be a quarterly, half yearly or yearly payment." },
-    { name: "Petty Cash",               rootType: "Asset", accountType: "Cash",                     description: "Small amount of cash kept for minor expenses." },
-    { name: "Undeposited Funds",        rootType: "Asset", accountType: "Cash",                     description: "Payments received but not yet deposited to the bank." },
-    { name: "Accounts Receivable",      rootType: "Asset", accountType: "Accounts Receivable",      description: "The amount of money your customers owe you for goods or services rendered." },
-    { name: "Furniture and Equipment",  rootType: "Asset", accountType: "Fixed Asset",              description: "Furniture, fixtures, and equipment owned by the business." },
-    { name: "Inventory Asset",          rootType: "Asset", accountType: "Stock",                    description: "Value of goods held in inventory/stock." },
-
-    // ── LIABILITIES ────────────────────────────────────────────────────
-    { name: "Tax Payable",                  rootType: "Liability", accountType: "Other Current Liability", description: "Taxes owed to the government that are due within a year." },
-    { name: "Employee Reimbursements",      rootType: "Liability", accountType: "Other Current Liability", description: "Amounts owed to employees for expenses they incurred on behalf of the business." },
-    { name: "Opening Balance Adjustments",  rootType: "Liability", accountType: "Other Current Liability", description: "Adjustments made to opening balances during migration." },
-    { name: "Unearned Revenue",             rootType: "Liability", accountType: "Other Current Liability", description: "Revenue received in advance for goods or services not yet delivered." },
-    { name: "TDS Payable",                  rootType: "Liability", accountType: "Other Current Liability", description: "Tax deducted at source payable to the government." },
-    { name: "Accounts Payable",             rootType: "Liability", accountType: "Accounts Payable",       description: "The amount of money you owe to your vendors for goods or services received." },
-    { name: "Mortgages",                    rootType: "Liability", accountType: "Non Current Liability",  description: "Long-term loans secured by property or real estate." },
-    { name: "Construction Loans",           rootType: "Liability", accountType: "Non Current Liability",  description: "Short-term or interim loans to finance construction projects." },
-    { name: "Dimension Adjustments",        rootType: "Liability", accountType: "Other Liability",        description: "Adjustments related to reporting dimensions." },
-
-    // ── EQUITY ─────────────────────────────────────────────────────────
-    { name: "Retained Earnings",        rootType: "Equity", accountType: "Equity", description: "Accumulated net income retained in the business after dividends." },
-    { name: "Drawings",                 rootType: "Equity", accountType: "Equity", description: "Amounts withdrawn by the owner for personal use." },
-    { name: "Investments",              rootType: "Equity", accountType: "Equity", description: "Capital invested into the business by owners or partners." },
-    { name: "Distributions",            rootType: "Equity", accountType: "Equity", description: "Payments or distributions made to shareholders or partners." },
-    { name: "Dividends Paid",           rootType: "Equity", accountType: "Equity", description: "Dividends distributed to shareholders." },
-    { name: "Owner's Equity",           rootType: "Equity", accountType: "Equity", description: "The owner's total investment and earnings in the business." },
-    { name: "Opening Balance Offset",   rootType: "Equity", accountType: "Equity", description: "Used to offset opening balance differences during setup." },
-    { name: "Capital Stock",            rootType: "Equity", accountType: "Equity", description: "Shares of stock issued to shareholders representing ownership." },
-
-    // ── INCOME ─────────────────────────────────────────────────────────
-    { name: "Shipping Charge",          rootType: "Income", accountType: "Income", description: "Revenue from shipping and delivery charges." },
-    { name: "Sales",                    rootType: "Income", accountType: "Income", description: "Revenue from sale of goods or services." },
-    { name: "General Income",           rootType: "Income", accountType: "Income", description: "General income from primary business activities." },
-    { name: "Interest Income",          rootType: "Income", accountType: "Income", description: "Income earned from interest on deposits or investments." },
-    { name: "Other Charges",            rootType: "Income", accountType: "Income", description: "Miscellaneous charges and fees collected." },
-    { name: "Late Fee Income",          rootType: "Income", accountType: "Income", description: "Income from late payment fees charged to customers." },
-    { name: "Discount",                 rootType: "Income", accountType: "Income", description: "Discounts given on sales." },
-
-    // ── EXPENSE ────────────────────────────────────────────────────────
-    { name: "Purchase Discounts",              rootType: "Expense", accountType: "Expense", description: "Discounts received on purchases from vendors." },
-    { name: "Depreciation And Amortisation",   rootType: "Expense", accountType: "Expense", description: "Reduction in value of tangible and intangible assets over time." },
-    { name: "Transportation Expense",          rootType: "Expense", accountType: "Expense", description: "Costs of transporting goods or employees." },
-    { name: "Merchandise",                     rootType: "Expense", accountType: "Expense", description: "Cost of goods purchased for resale." },
-    { name: "Uncategorized",                   rootType: "Expense", accountType: "Expense", description: "Expenses that have not been classified yet." },
-    { name: "Raw Materials And Consumables",   rootType: "Expense", accountType: "Expense", description: "Cost of raw materials and consumable supplies." },
-    { name: "Contract Assets",                 rootType: "Expense", accountType: "Expense", description: "Expenses incurred on contract-based assets." },
-    { name: "Rent Expense",                    rootType: "Expense", accountType: "Expense", description: "Rent paid for office, warehouse, or other business premises." },
-    { name: "Office Supplies",                 rootType: "Expense", accountType: "Expense", description: "Cost of stationery, office supplies, and consumables." },
-    { name: "Advertising And Marketing",       rootType: "Expense", accountType: "Expense", description: "Costs related to advertising, promotions, and marketing campaigns." },
-    { name: "Bank Fees and Charges",           rootType: "Expense", accountType: "Expense", description: "Fees charged by banks for account maintenance and transactions." },
-    { name: "Credit Card Charges",             rootType: "Expense", accountType: "Expense", description: "Fees charged for credit card processing and transactions." },
-    { name: "Travel Expense",                  rootType: "Expense", accountType: "Expense", description: "Costs for business travel including airfare, lodging, and transport." },
-    { name: "Telephone Expense",               rootType: "Expense", accountType: "Expense", description: "Costs for telephone and mobile communication." },
-    { name: "Automobile Expense",              rootType: "Expense", accountType: "Expense", description: "Costs related to company vehicles including fuel, insurance, and maintenance." },
-    { name: "IT and Internet Expenses",        rootType: "Expense", accountType: "Expense", description: "Costs for internet services, software subscriptions, and IT support." },
-    { name: "Janitorial Expense",              rootType: "Expense", accountType: "Expense", description: "Costs for cleaning and janitorial services." },
-    { name: "Postage",                         rootType: "Expense", accountType: "Expense", description: "Costs of mailing and courier services." },
-    { name: "Bad Debt",                        rootType: "Expense", accountType: "Expense", description: "Amounts owed by customers that are unlikely to be collected." },
-    { name: "Printing and Stationery",         rootType: "Expense", accountType: "Expense", description: "Costs of printing, stationery, and office supplies." },
-    { name: "Salaries and Employee Wages",     rootType: "Expense", accountType: "Expense", description: "Wages and salaries paid to employees." },
-    { name: "Meals and Entertainment",         rootType: "Expense", accountType: "Expense", description: "Costs for business meals and entertainment." },
-    { name: "Depreciation Expense",            rootType: "Expense", accountType: "Expense", description: "Periodic reduction in value of fixed assets." },
-    { name: "Consultant Expense",              rootType: "Expense", accountType: "Expense", description: "Fees paid to external consultants and advisors." },
-    { name: "Repairs and Maintenance",         rootType: "Expense", accountType: "Expense", description: "Costs of repairing and maintaining business assets." },
-    { name: "Other Expenses",                  rootType: "Expense", accountType: "Expense", description: "Miscellaneous business expenses." },
-    { name: "Lodging",                         rootType: "Expense", accountType: "Expense", description: "Costs for hotel and accommodation during business trips." },
-    { name: "Fuel/Mileage Expenses",           rootType: "Expense", accountType: "Expense", description: "Fuel costs and mileage-based expenses for business travel." },
-    // Cost Of Goods Sold
-    { name: "Cost of Goods Sold",              rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Direct costs attributable to the production of goods sold." },
-    { name: "Labor",                           rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Labor costs directly related to production." },
-    { name: "Materials",                       rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Cost of raw materials used in production." },
-    { name: "Subcontractor",                   rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Payments to subcontractors for production work." },
-    { name: "Job Costing",                     rootType: "Expense", accountType: "Cost Of Goods Sold", description: "Costs allocated to specific jobs or projects." },
-    // Other Expense
-    { name: "Exchange Gain or Loss",           rootType: "Expense", accountType: "Other Expense",      description: "Gains or losses due to foreign currency exchange rate fluctuations." },
-  ];
-
-  return t;
-}
