@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   PlusCircle,
@@ -759,6 +759,14 @@ const MAX_REPORT_HISTORY = 120;
 /* ─── Main Component ───────────────────────────────────────────────── */
 
 export default function ReportsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}>
+      <ReportsPageContent />
+    </Suspense>
+  );
+}
+
+function ReportsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();
