@@ -445,6 +445,7 @@ function Row({
 export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerFormProps) {
   const isEdit = mode === "edit";
   const docInputRef = useRef<HTMLInputElement | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   const [tab, setTab] = useState<FormTab>("other-details");
 
@@ -487,6 +488,8 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
 
   const [documents, setDocuments] = useState<ContactDocument[]>([]);
   const [documentUploading, setDocumentUploading] = useState(false);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
 
   const [receivableAccounts, setReceivableAccounts] = useState<Account[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
@@ -577,7 +580,16 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
     setBillingAddress({ ...emptyAddress(), ...(initialData.billingAddress || {}) });
     setShippingAddress({ ...emptyAddress(), ...(initialData.shippingAddress || {}) });
 
-    setContactPersons(initialData.contactPersons?.length ? initialData.contactPersons : [emptyContactPerson()]);
+    const initialContactPersons = initialData.contactPersons?.length
+      ? initialData.contactPersons
+      : [emptyContactPerson()];
+    setContactPersons(initialContactPersons);
+
+    const initialPrimaryPhoto =
+      initialContactPersons.find((row) => row.isPrimary)?.photoUrl ||
+      initialContactPersons.find((row) => row.photoUrl)?.photoUrl ||
+      "";
+    setProfilePhotoUrl(String(initialPrimaryPhoto || ""));
     setReportingTags(
       Array.isArray(initialData.reportingTags)
         ? initialData.reportingTags
@@ -699,6 +711,35 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
     setDocuments((prev) => prev.filter((_, i) => i !== index));
   }
 
+  async function handleUploadProfilePhoto(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Profile image must be 5MB or less");
+      return;
+    }
+
+    setProfilePhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await apiFetch<{ data: { url: string; publicId: string } }>(
+        "/upload?folder=contacts/contact-persons&resourceType=image",
+        { method: "POST", body: formData },
+      );
+
+      setProfilePhotoUrl(res.data.url);
+      toast.success("Customer logo uploaded");
+    } catch {
+      toast.error("Failed to upload customer logo");
+    } finally {
+      setProfilePhotoUploading(false);
+      if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = "";
+    }
+  }
+
   async function handleSave() {
     setError("");
 
@@ -739,11 +780,14 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
       return;
     }
 
-    const contactRows = contactPersons
+    const normalizedProfilePhoto = profilePhotoUrl.trim();
+
+    let contactRows = contactPersons
       .map((row) => {
         const first = String(row.firstName || "").trim();
         const last = String(row.lastName || "").trim();
         const name = [first, last].filter(Boolean).join(" ") || String(row.name || "").trim();
+        const photoUrl = String(row.photoUrl || "").trim();
 
         return {
           salutation: String(row.salutation || "").trim() || undefined,
@@ -753,10 +797,41 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
           email: String(row.email || "").trim() || undefined,
           workPhone: String(row.workPhone || "").trim() || undefined,
           mobile: String(row.mobile || "").trim() || undefined,
+          photoUrl: photoUrl || undefined,
           isPrimary: Boolean(row.isPrimary),
         } satisfies ContactPerson;
       })
-      .filter((row) => row.firstName || row.lastName || row.email || row.workPhone || row.mobile);
+      .filter((row) => row.firstName || row.lastName || row.email || row.workPhone || row.mobile || row.photoUrl);
+
+    if (contactRows.length > 0 && !contactRows.some((row) => row.isPrimary)) {
+      contactRows = contactRows.map((row, index) => ({ ...row, isPrimary: index === 0 }));
+    }
+
+    if (normalizedProfilePhoto) {
+      if (contactRows.length === 0) {
+        contactRows = [
+          {
+            salutation: undefined,
+            firstName: undefined,
+            lastName: undefined,
+            name: finalDisplayName,
+            email: email.trim() || undefined,
+            workPhone: phone.trim() || undefined,
+            mobile: mobile.trim() || undefined,
+            photoUrl: normalizedProfilePhoto,
+            isPrimary: true,
+          },
+        ];
+      } else {
+        const primaryIndex = contactRows.findIndex((row) => row.isPrimary);
+        const targetIndex = primaryIndex >= 0 ? primaryIndex : 0;
+        contactRows = contactRows.map((row, index) =>
+          index === targetIndex
+            ? { ...row, photoUrl: normalizedProfilePhoto, isPrimary: true }
+            : row,
+        );
+      }
+    }
 
     const payload: CreateContactInput = {
       contactType: "Customer",
@@ -882,6 +957,54 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
               setDisplayNameManual(true);
             }}
           />
+        </Row>
+
+        <Row label="Customer Logo">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border bg-muted">
+              {profilePhotoUrl ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={profilePhotoUrl}
+                    alt={displayName || "Customer"}
+                    className="h-full w-full object-cover"
+                  />
+                </>
+              ) : (
+                <span className="text-lg font-semibold text-muted-foreground">
+                  {(displayName.trim() || firstName.trim() || companyName.trim() || "C").charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9"
+                disabled={profilePhotoUploading}
+                onClick={() => profilePhotoInputRef.current?.click()}
+              >
+                {profilePhotoUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                Upload Photo
+              </Button>
+              {profilePhotoUrl ? (
+                <Button type="button" variant="ghost" size="sm" className="h-9" onClick={() => setProfilePhotoUrl("")}>Remove</Button>
+              ) : null}
+            </div>
+
+            <input
+              ref={profilePhotoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                void handleUploadProfilePhoto(e.target.files);
+              }}
+            />
+          </div>
         </Row>
 
         <Row label="Email Address">
@@ -1370,7 +1493,7 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
       ) : null}
 
       <div className="sticky bottom-0 z-10 flex items-center gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur">
-        <Button onClick={() => void handleSave()} disabled={saving || documentUploading}>
+        <Button onClick={() => void handleSave()} disabled={saving || documentUploading || profilePhotoUploading}>
           {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {isEdit ? "Save Changes" : "Save"}
         </Button>

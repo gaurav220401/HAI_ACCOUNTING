@@ -292,6 +292,17 @@ function fmtDateTime(value?: string): string {
   }).format(date);
 }
 
+function fmtTime(value?: string): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 function addressLines(address?: Contact["billingAddress"]): string {
   if (!address) return "";
   return [
@@ -710,6 +721,7 @@ export function CustomerDetailView({
       email: fromPersons?.email || customer.email || "",
       workPhone: fromPersons?.workPhone || customer.phone || "",
       mobile: fromPersons?.mobile || customer.mobile || "",
+      photoUrl: fromPersons?.photoUrl || customer.contactPersons?.find((row) => row.photoUrl)?.photoUrl || "",
     };
   }, [customer]);
 
@@ -805,10 +817,42 @@ export function CustomerDetailView({
       ? visibleStatementRows[visibleStatementRows.length - 1].balance
       : Number(customer.openingBalance || 0);
 
-  const activitySorted = useMemo(
-    () => [...activity].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
-    [activity],
-  );
+  const activityTimeline = useMemo(() => {
+    const normalized = activity.map((event) => {
+      if (event.type === "contact_created") {
+        return {
+          ...event,
+          description: "Contact added",
+        };
+      }
+
+      if (String(event.description || "").toLowerCase().startsWith("vendor ")) {
+        return {
+          ...event,
+          description: String(event.description || "").replace(/^vendor\s+/i, "Contact "),
+        };
+      }
+
+      return event;
+    });
+
+    const hasOpeningBalanceEvent = normalized.some((event) =>
+      /opening\s+balance/i.test(String(event.description || "")),
+    );
+
+    const openingBalance = Number(customer.openingBalance || 0);
+    if (!hasOpeningBalanceEvent && Math.abs(openingBalance) >= 0.01) {
+      const actorName = normalized.find((event) => event.type === "contact_created")?.userName || "System";
+      normalized.push({
+        type: "opening_balance_created",
+        timestamp: customer.createdAt || customer.updatedAt || new Date().toISOString(),
+        description: `Opening Balance of amount ${fmtCurrency(openingBalance, customer.currency || "INR")} created.`,
+        userName: actorName,
+      });
+    }
+
+    return [...normalized].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [activity, customer.createdAt, customer.currency, customer.openingBalance, customer.updatedAt]);
 
   async function addComment() {
     const text = commentText.trim();
@@ -1186,8 +1230,19 @@ export function CustomerDetailView({
             <div className="min-h-0 overflow-y-auto border-r px-4 py-3">
               <div className="rounded-md border bg-muted/20 px-3 py-3">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-14 w-14 items-center justify-center rounded bg-muted">
-                    <UserRound className="h-8 w-8 text-muted-foreground" />
+                  <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded bg-muted">
+                    {primaryContact.photoUrl ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={primaryContact.photoUrl}
+                          alt={primaryContact.name || customer.displayName}
+                          className="h-full w-full object-cover"
+                        />
+                      </>
+                    ) : (
+                      <UserRound className="h-8 w-8 text-muted-foreground" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">{primaryContact.name || customer.displayName}</p>
@@ -1347,6 +1402,7 @@ export function CustomerDetailView({
                   <div>
                     <p className="text-[24px] font-normal">Income</p>
                     <p className="text-sm text-muted-foreground">This chart is displayed in the organization base currency.</p>
+                    <p className="text-xs text-muted-foreground">Opening Balance: {fmtCurrency(Number(customer.openingBalance || 0), customer.currency || "INR")}</p>
                     <p className="mt-1 text-xl font-semibold tabular-nums">{fmtCurrency(chartTotal, customer.currency || "INR")}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1422,17 +1478,23 @@ export function CustomerDetailView({
                   <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Loading activity...
                   </div>
-                ) : activitySorted.length === 0 ? (
+                ) : activityTimeline.length === 0 ? (
                   <p className="py-4 text-sm text-muted-foreground">No activity found.</p>
                 ) : (
                   <div className="space-y-3 py-2">
-                    {activitySorted.map((event, index) => (
+                    {activityTimeline.map((event, index) => (
                       <div key={`${event.timestamp}-${index}`} className="flex gap-3">
                         <div className="w-[92px] shrink-0 text-xs text-muted-foreground">
                           <div>{fmtDate(event.timestamp)}</div>
+                          <div className="mt-1">{fmtTime(event.timestamp)}</div>
                         </div>
                         <div className="flex-1 rounded-md border px-3 py-2">
-                          <p className="text-sm font-medium">{event.description}</p>
+                          <p className="text-sm font-medium">
+                            {event.type === "opening_balance_created" ? "added" : event.description}
+                          </p>
+                          {event.type === "opening_balance_created" ? (
+                            <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>
+                          ) : null}
                           <p className="mt-1 text-xs text-muted-foreground">{event.userName || "System"}</p>
                         </div>
                       </div>
@@ -1829,6 +1891,7 @@ export function CustomerDetailView({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
                   <div style={{ maxWidth: "45%" }}>
                     {templateConfig.showOrgLogo && orgLogo ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={orgLogo}
                         alt={orgName}
