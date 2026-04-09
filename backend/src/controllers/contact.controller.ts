@@ -24,6 +24,84 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+const GST_TREATMENT_CANONICAL = {
+  regular: "Registered Business - Regular",
+  composition: "Registered Business - Composition",
+  unregistered: "Unregistered Business",
+  consumer: "Consumer",
+  overseas: "Overseas",
+  sezUnit: "Special Economic Zone",
+  deemedExport: "Deemed Export",
+  taxDeductor: "Tax Deductor",
+  sezDeveloper: "SEZ Developer",
+  isd: "Input Service Distributor",
+} as const;
+
+const GST_TREATMENT_ALIASES: Record<string, string> = {
+  Taxable: GST_TREATMENT_CANONICAL.regular,
+  TaxExempt: GST_TREATMENT_CANONICAL.consumer,
+  ReverseCharge: GST_TREATMENT_CANONICAL.taxDeductor,
+  SEZ: GST_TREATMENT_CANONICAL.sezUnit,
+  Composition: GST_TREATMENT_CANONICAL.composition,
+  UIN: GST_TREATMENT_CANONICAL.isd,
+};
+
+const GST_TREATMENTS_REQUIRING_GSTIN = new Set<string>([
+  GST_TREATMENT_CANONICAL.regular,
+  GST_TREATMENT_CANONICAL.composition,
+  GST_TREATMENT_CANONICAL.sezUnit,
+  GST_TREATMENT_CANONICAL.deemedExport,
+  GST_TREATMENT_CANONICAL.taxDeductor,
+  GST_TREATMENT_CANONICAL.sezDeveloper,
+  GST_TREATMENT_CANONICAL.isd,
+]);
+
+function normalizeTaxTreatment(value: unknown, fallback = GST_TREATMENT_CANONICAL.regular): string {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  return GST_TREATMENT_ALIASES[raw] || raw;
+}
+
+function normalizeTaxPreference(value: unknown, taxTreatment: string): "Taxable" | "Tax Exempt" {
+  if (taxTreatment === GST_TREATMENT_CANONICAL.overseas) return "Taxable";
+  return String(value || "").trim() === "Tax Exempt" ? "Tax Exempt" : "Taxable";
+}
+
+function sanitizeContactPayload(body: Record<string, any>, currentTaxTreatment?: unknown) {
+  const effectiveTreatment =
+    body.taxTreatment !== undefined
+      ? normalizeTaxTreatment(body.taxTreatment)
+      : normalizeTaxTreatment(currentTaxTreatment);
+
+  if (body.taxTreatment !== undefined) {
+    body.taxTreatment = effectiveTreatment;
+  }
+
+  if (body.taxPreference !== undefined || body.taxTreatment !== undefined) {
+    body.taxPreference = normalizeTaxPreference(body.taxPreference, effectiveTreatment);
+  }
+
+  if (body.taxPreference === "Taxable") {
+    body.exemptionReason = "";
+  }
+
+  if (body.gstin !== undefined) body.gstin = String(body.gstin || "").trim().toUpperCase();
+  if (body.pan !== undefined) body.pan = String(body.pan || "").trim().toUpperCase();
+  if (body.placeOfSupply !== undefined) body.placeOfSupply = String(body.placeOfSupply || "").trim();
+
+  if (!GST_TREATMENTS_REQUIRING_GSTIN.has(effectiveTreatment)) {
+    if (body.gstin !== undefined) body.gstin = "";
+    if (body.businessLegalName !== undefined) body.businessLegalName = "";
+    if (body.businessTradeName !== undefined) body.businessTradeName = "";
+  }
+
+  if (effectiveTreatment === GST_TREATMENT_CANONICAL.overseas) {
+    if (body.placeOfSupply !== undefined) body.placeOfSupply = "FC";
+    if (body.taxPreference !== undefined) body.taxPreference = "Taxable";
+    if (body.exemptionReason !== undefined) body.exemptionReason = "";
+  }
+}
+
 /**
  * Sync a vendor's opening balance to the Accounts Payable account.
  * Opening balance for a vendor means the business owes the vendor that amount.
@@ -36,10 +114,11 @@ async function syncVendorOpeningBalance(
   openingBalance: number,
   previousOpeningBalance: number,
   req: AuthenticatedRequest,
+  force = false,
 ) {
   const organizationId = contact.organizationId;
   const delta = round2(openingBalance - previousOpeningBalance);
-  if (Math.abs(delta) < 0.01) return;
+  if (!force && Math.abs(delta) < 0.01) return;
 
   // Reverse any previous opening balance GL entries for this contact
   const voucherId = `contact-opening:${String(contact._id)}`;
@@ -118,6 +197,101 @@ async function syncVendorOpeningBalance(
     postingDate: new Date(),
     lines,
     description: `Opening balance for vendor ${contact.displayName}`,
+    req,
+  });
+}
+
+/**
+ * Sync a customer's opening balance to the Accounts Receivable account.
+ * Positive opening balance means customer owes the business.
+ *  DEBIT  Accounts Receivable                              → amount
+ *  CREDIT Opening Balance Adjustments (Equity/Liability)  → amount
+ * (opposite if opening balance is negative)
+ */
+async function syncCustomerOpeningBalance(
+  contact: any,
+  openingBalance: number,
+  previousOpeningBalance: number,
+  req: AuthenticatedRequest,
+  force = false,
+) {
+  const organizationId = contact.organizationId;
+  const delta = round2(openingBalance - previousOpeningBalance);
+  if (!force && Math.abs(delta) < 0.01) return;
+
+  const voucherId = `contact-opening-customer:${String(contact._id)}`;
+  await reverseVoucher({
+    organizationId,
+    voucherType: "System",
+    voucherId,
+    reversalVoucherNo: `REV-OB-CUST-${contact.displayName}`,
+    postingDate: new Date(),
+    description: `Reverse customer opening balance for ${contact.displayName}`,
+    req,
+  });
+
+  if (Math.abs(openingBalance) < 0.01) return;
+
+  const accountsReceivableId = contact.accountsReceivableId ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Accounts Receivable", "Trade Receivables", "Debtors"],
+      rootType: "Asset",
+      accountType: "Accounts Receivable",
+    }));
+
+  const adjustmentId = await findAccountIdByName({
+    organizationId,
+    names: ["Opening Balance Adjustments", "Opening Balance Offset"],
+    rootType: "Liability",
+  });
+
+  const absAmount = round2(Math.abs(openingBalance));
+  const lines: Array<{
+    accountId: any;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    contactType?: "Customer";
+    contactId?: any;
+  }> = [];
+
+  if (openingBalance > 0) {
+    lines.push({
+      accountId: accountsReceivableId,
+      debit: absAmount,
+      description: `Opening receivable from ${contact.displayName}`,
+      contactType: "Customer",
+      contactId: contact._id,
+    });
+    lines.push({
+      accountId: adjustmentId,
+      credit: absAmount,
+      description: `Opening balance adjustment for customer ${contact.displayName}`,
+    });
+  } else {
+    lines.push({
+      accountId: adjustmentId,
+      debit: absAmount,
+      description: `Opening balance adjustment for customer ${contact.displayName}`,
+    });
+    lines.push({
+      accountId: accountsReceivableId,
+      credit: absAmount,
+      description: `Opening customer advance from ${contact.displayName}`,
+      contactType: "Customer",
+      contactId: contact._id,
+    });
+  }
+
+  await postVoucher({
+    organizationId,
+    voucherType: "System",
+    voucherId,
+    voucherNo: `OB-CUST-${contact.displayName}`,
+    postingDate: new Date(),
+    lines,
+    description: `Opening balance for customer ${contact.displayName}`,
     req,
   });
 }
@@ -318,17 +492,21 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** POST /api/contacts */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { displayName, contactType } = req.body;
+  const body = { ...(req.body || {}) };
+  sanitizeContactPayload(body);
+
+  const { displayName, contactType } = body;
   if (!displayName) throw new ValidationError("displayName is required");
   if (!contactType) throw new ValidationError("contactType is required");
 
-  const contact = new Contact({ organizationId: await orgId(req), ...req.body });
+  const contact = new Contact({ organizationId: await orgId(req), ...body });
   attachUser(contact, req);
   await contact.save();
 
-  // Sync opening balance to Accounts Payable for vendors
-  const ob = Number(req.body.openingBalance || 0);
-  if (Math.abs(ob) >= 0.01 && (contactType === "Vendor" || contactType === "Both")) {
+  const ob = Number(body.openingBalance || 0);
+  if (Math.abs(ob) >= 0.01 && contactType === "Customer") {
+    await syncCustomerOpeningBalance(contact, ob, 0, req);
+  } else if (Math.abs(ob) >= 0.01 && (contactType === "Vendor" || contactType === "Both")) {
     await syncVendorOpeningBalance(contact, ob, 0, req);
   }
 
@@ -340,33 +518,55 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
   if (!contact) throw new NotFoundError("Contact");
 
+  const body = { ...(req.body || {}) };
+  sanitizeContactPayload(body, contact.taxTreatment);
+
   const previousOpeningBalance = Number(contact.openingBalance || 0);
+  const previousContactType = String(contact.contactType || "");
 
   const allowed = [
     "displayName", "companyName", "email", "phone", "mobile", "currency",
     "salutation", "firstName", "lastName", "language",
-    "paymentTermsId", "accountsPayableId", "openingBalance",
-    "taxTreatment", "taxId", "gstin", "pan", "tdsCategory", "msmeRegistered",
+    "paymentTermsId", "accountsPayableId", "accountsReceivableId", "openingBalance",
+    "taxTreatment", "taxPreference", "exemptionReason", "placeOfSupply",
+    "businessLegalName", "businessTradeName",
+    "taxId", "gstin", "pan", "tdsCategory", "msmeRegistered",
     "billingAddress", "shippingAddress",
     "contactPersons", "bankDetails",
     "notes", "portalEnabled",
     "reportingTags", "creditLimit", "salesPersonId",
     "isActive", "contactType",
     "websiteUrl", "department", "designation", "twitterHandle", "skypeName", "facebookUrl",
-    "statementTemplate", "documents",
+    "linkedContactId", "statementTemplate", "documents",
   ];
-  allowed.forEach((f) => { if (req.body[f] !== undefined) (contact as any)[f] = req.body[f]; });
+  allowed.forEach((f) => { if (body[f] !== undefined) (contact as any)[f] = body[f]; });
   attachUser(contact, req);
   await contact.save();
 
-  // Sync opening balance to Accounts Payable for vendors if changed
-  const ct = contact.contactType;
-  if (
-    req.body.openingBalance !== undefined &&
-    (ct === "Vendor" || ct === "Both")
-  ) {
-    const newOB = Number(req.body.openingBalance || 0);
-    await syncVendorOpeningBalance(contact, newOB, previousOpeningBalance, req);
+  const shouldResyncOpening =
+    body.openingBalance !== undefined ||
+    body.contactType !== undefined ||
+    body.accountsPayableId !== undefined ||
+    body.accountsReceivableId !== undefined;
+
+  if (shouldResyncOpening) {
+    const nextOpeningBalance = Number(contact.openingBalance || 0);
+    const nextContactType = String(contact.contactType || "");
+    const force =
+      body.contactType !== undefined ||
+      body.accountsPayableId !== undefined ||
+      body.accountsReceivableId !== undefined;
+
+    if (nextContactType === "Customer") {
+      await syncVendorOpeningBalance(contact, 0, previousOpeningBalance, req, force || previousContactType !== "Customer");
+      await syncCustomerOpeningBalance(contact, nextOpeningBalance, previousOpeningBalance, req, force);
+    } else if (nextContactType === "Vendor" || nextContactType === "Both") {
+      await syncCustomerOpeningBalance(contact, 0, previousOpeningBalance, req, force || previousContactType === "Customer");
+      await syncVendorOpeningBalance(contact, nextOpeningBalance, previousOpeningBalance, req, force);
+    } else {
+      await syncVendorOpeningBalance(contact, 0, previousOpeningBalance, req, true);
+      await syncCustomerOpeningBalance(contact, 0, previousOpeningBalance, req, true);
+    }
   }
 
   res.json({ success: true, data: contact });

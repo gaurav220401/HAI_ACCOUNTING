@@ -118,6 +118,7 @@ export type UpdateInvoiceInput = Partial<CreateInvoiceInput>;
 
 export interface InvoiceListParams extends ListParams {
   status?: InvoiceStatus | "All";
+  customerId?: string;
 }
 
 export interface SendInvoiceEmailInput {

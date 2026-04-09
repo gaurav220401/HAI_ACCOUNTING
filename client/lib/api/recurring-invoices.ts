@@ -135,6 +135,7 @@ export type UpdateRecurringInvoiceInput = Partial<CreateRecurringInvoiceInput>;
 
 export interface RecurringInvoiceListParams extends ListParams {
   status?: RecurringInvoiceStatus | "All";
+  customerId?: string;
 }
 
 export const recurringInvoiceApi = {

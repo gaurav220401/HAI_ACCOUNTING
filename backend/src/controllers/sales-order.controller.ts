@@ -30,10 +30,19 @@ function normalizeLineItems(items: any[] = []) {
 
 /** GET /api/sales-orders?search=...&status=...&page=1&limit=25 */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { search, status, page = 1, limit = 25 } = req.query;
+  const {
+    search,
+    status,
+    customerId,
+    customer_id,
+    page = 1,
+    limit = 25,
+  } = req.query as Record<string, string>;
 
   const filter: any = { organizationId: orgId(req), isDeleted: false };
   if (status) filter.status = status;
+  const customerFilterId = customerId || customer_id;
+  if (customerFilterId) filter.customerId = customerFilterId;
   if (search) {
     filter.$or = [
       { salesOrderNumber: { $regex: search, $options: "i" } },

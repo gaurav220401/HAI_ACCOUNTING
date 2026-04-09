@@ -161,14 +161,18 @@ export const list = asyncHandler(
     const {
       status,
       search,
+      customerId,
+      customer_id,
       page = 1,
       limit = 25,
       sortBy = "createdAt",
       sortOrder = "desc",
-    } = req.query;
+    } = req.query as Record<string, string>;
 
     const filter: any = { organizationId: orgId(req), isDeleted: false };
     if (status && status !== "All") filter.status = status;
+    const customerFilterId = customerId || customer_id;
+    if (customerFilterId) filter.customerId = customerFilterId;
     if (search) {
       filter.$or = [
         { profileName: { $regex: search, $options: "i" } },

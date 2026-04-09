@@ -1,6 +1,7 @@
 import mongoose, { ClientSession, Types } from "mongoose";
 import { Response } from "express";
 import Bill from "../models/bill.model";
+import Contact from "../models/contact.model";
 import { Counter } from "../models/counter.model";
 import PaymentBillMap from "../models/payment-bill-map.model";
 import PaymentMade, { IPaymentMade } from "../models/payment-made.model";
@@ -66,6 +67,15 @@ function paymentMadeVoucherId(payment: IPaymentMade, event: string, key?: string
   return `${paymentMadeVoucherPrefix(payment)}:${event}${key ? `:${key}` : ""}`;
 }
 
+function scalarId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    return String((value as { _id?: unknown })._id || "");
+  }
+  return String(value);
+}
+
 async function resolvePaymentMadeAccounts(payment: IPaymentMade) {
   const organizationId = payment.organization_id;
 
@@ -77,12 +87,21 @@ async function resolvePaymentMadeAccounts(payment: IPaymentMade) {
       rootType: "Asset",
     }));
 
-  const accountsPayableId = await findAccountIdByName({
-    organizationId,
-    names: ["Accounts Payable", "Trade Payables", "Creditors"],
-    rootType: "Liability",
-    accountType: "Accounts Payable",
-  });
+  const vendorId = scalarId(payment.vendor_id);
+  const vendor = vendorId
+    ? await Contact.findOne({ _id: vendorId, organizationId })
+        .select("accountsPayableId")
+        .lean()
+    : null;
+
+  const accountsPayableId =
+    vendor?.accountsPayableId ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Accounts Payable", "Trade Payables", "Creditors"],
+      rootType: "Liability",
+      accountType: "Accounts Payable",
+    }));
 
   const vendorAdvanceId = await findAccountIdByName({
     organizationId,

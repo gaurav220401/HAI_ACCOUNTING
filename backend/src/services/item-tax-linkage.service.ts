@@ -32,9 +32,69 @@ function normalizeState(value: unknown): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
+const PLACE_OF_SUPPLY_STATE_BY_CODE: Record<string, string> = {
+  AN: "Andaman and Nicobar Islands",
+  AD: "Andhra Pradesh",
+  AR: "Arunachal Pradesh",
+  AS: "Assam",
+  BR: "Bihar",
+  CH: "Chandigarh",
+  CG: "Chhattisgarh",
+  DN: "Dadra and Nagar Haveli and Daman and Diu",
+  DD: "Daman and Diu",
+  DL: "Delhi",
+  FC: "Foreign Country",
+  GA: "Goa",
+  GJ: "Gujarat",
+  HR: "Haryana",
+  HP: "Himachal Pradesh",
+  JK: "Jammu and Kashmir",
+  JH: "Jharkhand",
+  KA: "Karnataka",
+  KL: "Kerala",
+  LA: "Ladakh",
+  LD: "Lakshadweep",
+  MP: "Madhya Pradesh",
+  MH: "Maharashtra",
+  MN: "Manipur",
+  ML: "Meghalaya",
+  MZ: "Mizoram",
+  NL: "Nagaland",
+  OD: "Odisha",
+  OT: "Other Territory",
+  PY: "Puducherry",
+  PB: "Punjab",
+  RJ: "Rajasthan",
+  SK: "Sikkim",
+  TN: "Tamil Nadu",
+  TS: "Telangana",
+  TR: "Tripura",
+  UP: "Uttar Pradesh",
+  UK: "Uttarakhand",
+  WB: "West Bengal",
+};
+
+function placeOfSupplyState(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const bracketCode = raw.match(/^\[([A-Za-z]{2})\]/)?.[1];
+  const directCode = /^[A-Za-z]{2}$/.test(raw) ? raw : "";
+  const code = (bracketCode || directCode || "").toUpperCase();
+  if (code && PLACE_OF_SUPPLY_STATE_BY_CODE[code]) {
+    return PLACE_OF_SUPPLY_STATE_BY_CODE[code];
+  }
+
+  const cleaned = raw.replace(/^\[[A-Za-z]{2}\]\s*-\s*/, "").trim();
+  return cleaned;
+}
+
 function contactState(contact: any): string {
   return (
-    contact?.shippingAddress?.state || contact?.billingAddress?.state || ""
+    contact?.shippingAddress?.state ||
+    contact?.billingAddress?.state ||
+    placeOfSupplyState(contact?.placeOfSupply) ||
+    ""
   );
 }
 
@@ -71,7 +131,7 @@ export async function applyItemTaxLinkageToItems(
           organizationId: oid,
           isDeleted: { $ne: true },
         })
-          .select("billingAddress.state shippingAddress.state")
+          .select("billingAddress.state shippingAddress.state placeOfSupply")
           .lean()
       : Promise.resolve(null),
     validItemIds.length > 0

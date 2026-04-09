@@ -94,6 +94,7 @@ export type UpdateQuoteInput = Partial<CreateQuoteInput>;
 
 export interface QuoteListParams extends ListParams {
   status?: QuoteStatus | "All";
+  customerId?: string;
 }
 
 // ─── API ────────────────────────────────────────────────────────────────
