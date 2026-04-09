@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useOrganization } from "@/contexts/organization-context";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import {
   recurringInvoiceApi,
   type CreateRecurringInvoiceInput,
@@ -176,6 +178,7 @@ export function RecurringInvoiceForm({
   recurringId,
 }: RecurringInvoiceFormProps) {
   const router = useRouter();
+  const { activeOrganization } = useOrganization();
   const isEdit = mode === "edit";
 
   const [masterLoading, setMasterLoading] = useState(true);
@@ -354,9 +357,18 @@ export function RecurringInvoiceForm({
     setLines((current) => [...current, newLine()]);
   }
 
+  const selectedCustomer = customers.find((entry) => entry._id === customerId);
+
   function handleItemSelect(key: number, itemId: string) {
     const selectedItem = items.find((item) => item._id === itemId);
     if (!selectedItem) return;
+
+    const linkedTax = getItemTaxForTransaction({
+      item: selectedItem,
+      contact: selectedCustomer,
+      organizationState: activeOrganization?.address?.state,
+      taxes,
+    });
 
     setLines((current) =>
       current.map((line) =>
@@ -368,11 +380,41 @@ export function RecurringInvoiceForm({
             description: selectedItem.description || "",
             hsnSacCode: selectedItem.hsnSacCode || "",
             rate: selectedItem.sellingPrice || 0,
+            taxId: linkedTax.taxId,
+            taxPercent: linkedTax.taxPercent,
           }
         : line,
       ),
     );
   }
+
+  useEffect(() => {
+    if (!lines.some((line) => line.itemId)) return;
+    setLines((current) => {
+      let changed = false;
+      const next = current.map((line) => {
+        if (!line.itemId) return line;
+        const item = items.find((entry) => entry._id === line.itemId);
+        if (!item) return line;
+        const linkedTax = getItemTaxForTransaction({
+          item,
+          contact: selectedCustomer,
+          organizationState: activeOrganization?.address?.state,
+          taxes,
+        });
+        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+          return line;
+        }
+        changed = true;
+        return {
+          ...line,
+          taxId: linkedTax.taxId,
+          taxPercent: linkedTax.taxPercent,
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
   const subTotal = lines.reduce(
     (sum, line) => sum + line.quantity * line.rate,

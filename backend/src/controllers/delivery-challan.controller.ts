@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "../utils/errors";
+import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -15,8 +16,18 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
-function normalizeItems(items: any[] = []) {
-  return items.map((item) => {
+async function normalizeItems(
+  organizationId: any,
+  customerId: any,
+  items: any[] = [],
+) {
+  const linkedItems = await applyItemTaxLinkageToItems({
+    organizationId,
+    contactId: customerId,
+    items,
+  });
+
+  return linkedItems.map((item) => {
     const quantity = Number(item.quantity) || 1;
     const rate = Number(item.rate) || 0;
     const lineTotal = quantity * rate;
@@ -153,7 +164,7 @@ export const create = asyncHandler(
 
     const challanNumber =
       req.body.challanNumber || (await nextChallanNumber(oid));
-    const items = normalizeItems(req.body.items || []);
+    const items = await normalizeItems(oid, req.body.customerId, req.body.items || []);
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
     const taxAmount = Number(req.body.taxAmount) || 0;
@@ -228,7 +239,18 @@ export const update = asyncHandler(
     });
 
     if (req.body.items) {
-      challan.items = normalizeItems(req.body.items);
+      const customerId = req.body.customerId ?? challan.customerId;
+      challan.items = await normalizeItems(
+        challan.organizationId,
+        customerId,
+        req.body.items,
+      );
+    } else if (req.body.customerId !== undefined) {
+      challan.items = await normalizeItems(
+        challan.organizationId,
+        req.body.customerId,
+        challan.items as any[],
+      );
     }
 
     challan.subTotal = challan.items.reduce(

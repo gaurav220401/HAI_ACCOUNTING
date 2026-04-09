@@ -3,6 +3,7 @@ import { authenticate } from "../middlewares/auth";
 import {
 	list,
 	listForItem,
+	details,
 	getOpeningBalances,
 	saveOpeningBalances,
 	create,
@@ -16,6 +17,7 @@ router.use(authenticate);
 
 router.get("/", list);
 router.get("/for-item", listForItem);   // must be before /:id
+router.get("/:id/details", details);
 router.get("/opening-balances", getOpeningBalances);
 router.put("/opening-balances", saveOpeningBalances);
 router.post("/", create);

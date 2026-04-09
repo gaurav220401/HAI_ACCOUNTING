@@ -35,7 +35,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 
   const total = await Item.countDocuments(filter);
   const items = await Item.find(filter)
-    .populate("unit itemGroupId taxId")
+    .populate("unit itemGroupId taxId intraStateTaxId interStateTaxId")
     .sort({ name: 1 })
     .skip((+page - 1) * +limit)
     .limit(+limit)
@@ -51,7 +51,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 /** GET /api/items/:id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const item = await Item.findOne({ _id: req.params.id, organizationId: orgId(req) })
-    .populate("unit itemGroupId taxId salesAccountId purchaseAccountId inventoryAccountId preferredVendorId warehouseId");
+    .populate("unit itemGroupId taxId intraStateTaxId interStateTaxId salesAccountId purchaseAccountId inventoryAccountId preferredVendorId warehouseId");
   if (!item) throw new NotFoundError("Item");
   res.json({ success: true, data: item });
 });
@@ -84,6 +84,17 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     payload.inventoryValue = 0;
   }
 
+  payload.taxId = payload.taxId || null;
+  payload.intraStateTaxId = payload.intraStateTaxId || null;
+  payload.interStateTaxId = payload.interStateTaxId || null;
+  if (payload.taxPreference !== "Taxable") {
+    payload.taxId = null;
+    payload.intraStateTaxId = null;
+    payload.interStateTaxId = null;
+  } else if (!payload.taxId) {
+    payload.taxId = payload.intraStateTaxId || payload.interStateTaxId || null;
+  }
+
   const item = new Item({ organizationId: orgId(req), ...payload });
   attachUser(item, req);
   await item.save();
@@ -98,7 +109,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const allowed = [
     "name", "sku", "identifiers", "unit", "itemGroupId", "description", "itemMode", "brand", "manufacturer",
     "sellingPrice", "sellingDescription", "costPrice", "purchaseDescription",
-    "taxPreference", "taxId", "hsnSacCode", "salesAccountId", "purchaseAccountId", "inventoryAccountId",
+    "taxPreference", "taxId", "intraStateTaxId", "interStateTaxId", "hsnSacCode", "salesAccountId", "purchaseAccountId", "inventoryAccountId",
     "inventoryTracked", "stockOnHand", "inventoryValue", "averageCost", "reorderPoint", "returnableItem",
     "dimensions", "weight", "preferredVendorId", "warehouseId", "valuationMethod", "image", "rearImage",
     "otherImages", "isActive", "itemType",
@@ -108,6 +119,17 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     (item as any).identifiers = Array.isArray(req.body.identifiers)
       ? req.body.identifiers.map((value: unknown) => String(value).trim()).filter(Boolean)
       : [];
+  }
+
+  (item as any).taxId = (item as any).taxId || null;
+  (item as any).intraStateTaxId = (item as any).intraStateTaxId || null;
+  (item as any).interStateTaxId = (item as any).interStateTaxId || null;
+  if ((item as any).taxPreference !== "Taxable") {
+    (item as any).taxId = null;
+    (item as any).intraStateTaxId = null;
+    (item as any).interStateTaxId = null;
+  } else if (!(item as any).taxId) {
+    (item as any).taxId = (item as any).intraStateTaxId || (item as any).interStateTaxId || null;
   }
 
   if (!(item as any).inventoryTracked) {

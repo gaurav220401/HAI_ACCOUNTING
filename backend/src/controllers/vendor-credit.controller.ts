@@ -12,6 +12,11 @@ import asyncHandler from "../utils/asyncHandler";
 import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 import { recomputeContactOutstanding } from "../services/accounting-sync.service";
+import {
+  findAccountIdByName,
+  postVoucher,
+  reverseVoucher,
+} from "../services/gl-posting.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -154,6 +159,121 @@ async function nextVendorCreditNumber(organizationId: any): Promise<string> {
 
   const seq = Number(counter?.seq || 1);
   return `VCR-${String(seq).padStart(5, "0")}`;
+}
+
+function vendorCreditVoucherId(credit: any): string {
+  return `vendor-credit:${String(credit._id)}`;
+}
+
+function isPostedVCStatus(status: string): boolean {
+  return status !== "DRAFT" && status !== "VOID";
+}
+
+/**
+ * Post GL entries for a vendor credit:
+ *  DEBIT  Accounts Payable       → total  (reduce what we owe vendor)
+ *  CREDIT line item account(s)   → amounts (return of expense/purchase)
+ */
+async function postVendorCreditLedger(credit: any, req: AuthenticatedRequest) {
+  if (!isPostedVCStatus(String(credit.status || ""))) return;
+
+  const organizationId = credit.organizationId;
+  const total = round2(toNum(credit.total));
+  if (total <= 0) return;
+
+  const accountsPayableId = await findAccountIdByName({
+    organizationId,
+    names: ["Accounts Payable", "Trade Payables", "Creditors"],
+    rootType: "Liability",
+    accountType: "Accounts Payable",
+  });
+
+  const defaultExpenseId = await findAccountIdByName({
+    organizationId,
+    names: ["Purchases", "Purchase Account", "Expenses", "Other Expenses"],
+    rootType: "Expense",
+    accountType: "Expense",
+  });
+
+  // Build credit lines from line item accounts
+  const creditMap = new Map<string, number>();
+  for (const line of credit.lineItems || []) {
+    if (!line || line.isHeader) continue;
+    const amount = round2(toNum(line.amount));
+    if (amount <= 0) continue;
+    const accountId = String(line.accountId || defaultExpenseId);
+    creditMap.set(accountId, round2((creditMap.get(accountId) || 0) + amount));
+  }
+
+  if (creditMap.size === 0) {
+    creditMap.set(String(defaultExpenseId), total);
+  }
+
+  // Balance credits against total
+  let totalCredits = round2(
+    Array.from(creditMap.values()).reduce((sum, amount) => sum + amount, 0),
+  );
+  const balancingDelta = round2(total - totalCredits);
+  if (Math.abs(balancingDelta) > 0.009) {
+    creditMap.set(
+      String(defaultExpenseId),
+      round2((creditMap.get(String(defaultExpenseId)) || 0) + balancingDelta),
+    );
+  }
+
+  const lines: Array<{
+    accountId: any;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    contactType?: "Vendor";
+    contactId?: any;
+  }> = [];
+
+  // Debit Accounts Payable (we owe less)
+  lines.push({
+    accountId: accountsPayableId,
+    debit: total,
+    description: `Vendor credit ${credit.vendorCreditNumber}`,
+    contactType: "Vendor",
+    contactId: credit.vendorId,
+  });
+
+  // Credit expense/purchase account(s) (return of goods/services)
+  for (const [accountId, amount] of creditMap.entries()) {
+    const rounded = round2(amount);
+    if (rounded <= 0) continue;
+    lines.push({
+      accountId,
+      credit: rounded,
+      description: `Vendor credit return ${credit.vendorCreditNumber}`,
+      contactType: "Vendor",
+      contactId: credit.vendorId,
+    });
+  }
+
+  await postVoucher({
+    organizationId,
+    voucherType: "VendorCredit",
+    voucherId: vendorCreditVoucherId(credit),
+    voucherNo: String(credit.vendorCreditNumber),
+    postingDate: credit.vendorCreditDate ? new Date(credit.vendorCreditDate) : new Date(),
+    lines,
+    description: `Vendor credit posting ${credit.vendorCreditNumber}`,
+    req,
+  });
+}
+
+async function reverseVendorCreditLedger(credit: any, req: AuthenticatedRequest) {
+  await reverseVoucher({
+    organizationId: credit.organizationId,
+    voucherType: "VendorCredit",
+    voucherId: vendorCreditVoucherId(credit),
+    reversalVoucherNo: `REV-${credit.vendorCreditNumber}`,
+    postingDate: new Date(),
+    description: `Vendor credit reversal ${credit.vendorCreditNumber}`,
+    req,
+  });
 }
 
 async function runOptionalTransaction<T>(work: (session?: ClientSession) => Promise<T>): Promise<T> {
@@ -419,6 +539,11 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   attachUser(credit, req);
   await credit.save();
 
+  // Post GL entries for non-draft vendor credits
+  if (isPostedVCStatus(requestedStatus)) {
+    await postVendorCreditLedger(credit, req);
+  }
+
   res.status(201).json({ success: true, data: credit });
 });
 
@@ -437,6 +562,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   if (!credit) throw new NotFoundError("Vendor credit");
   if (credit.status === "VOID") throw new ValidationError("Cannot edit a void vendor credit");
+
+  const prevStatus = String(credit.status || "");
 
   if (toNum(credit.appliedAmount) > 0 && hasFinancialEdits(req.body)) {
     throw new ValidationError("Cannot edit financial fields after applying credit");
@@ -496,12 +623,29 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     balanceAmount: newBalance,
   });
 
+  const previousPosted = isPostedVCStatus(String(prevStatus));
+
   if (credit.status !== "DRAFT") {
     credit.status = deriveStatus(toNum(credit.appliedAmount), totals.total);
   }
 
   attachUser(credit, req);
   await credit.save();
+
+  const nextPosted = isPostedVCStatus(String(credit.status || ""));
+
+  // Handle GL posting transitions
+  if (previousPosted && !nextPosted) {
+    await reverseVendorCreditLedger(credit, req);
+  } else if (!previousPosted && nextPosted) {
+    await postVendorCreditLedger(credit, req);
+  } else if (previousPosted && nextPosted) {
+    // Financial fields changed -> reverse old and post new
+    if (hasFinancialEdits(req.body)) {
+      await reverseVendorCreditLedger(credit, req);
+      await postVendorCreditLedger(credit, req);
+    }
+  }
 
   res.json({ success: true, data: credit });
 });
@@ -759,6 +903,8 @@ export const voidVendorCredit = asyncHandler(async (req: AuthenticatedRequest, r
     throw new ValidationError("Cannot void vendor credit after refund is recorded");
   }
 
+  const wasPosted = isPostedVCStatus(String(credit.status || ""));
+
   credit.status = "VOID";
   credit.balanceAmount = 0;
   credit.comments.push({
@@ -769,6 +915,11 @@ export const voidVendorCredit = asyncHandler(async (req: AuthenticatedRequest, r
   });
   attachUser(credit, req);
   await credit.save();
+
+  // Reverse GL entries when voiding
+  if (wasPosted) {
+    await reverseVendorCreditLedger(credit, req);
+  }
 
   res.json({ success: true, data: credit });
 });
@@ -795,6 +946,11 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   }
   if (!["DRAFT", "OPEN"].includes(String(credit.status))) {
     throw new ValidationError("Only DRAFT or OPEN vendor credits can be deleted");
+  }
+
+  // Reverse GL entries before soft-deleting
+  if (isPostedVCStatus(String(credit.status || ""))) {
+    await reverseVendorCreditLedger(credit, req);
   }
 
   credit.isDeleted = true;
@@ -836,6 +992,12 @@ export const cloneVendorCredit = asyncHandler(async (req: AuthenticatedRequest, 
 
   attachUser(credit, req);
   await credit.save();
+
+  // Post GL entries for cloned vendor credit
+  if (isPostedVCStatus(String(credit.status || ""))) {
+    await postVendorCreditLedger(credit, req);
+  }
+
   res.status(201).json({ success: true, data: credit });
 });
 

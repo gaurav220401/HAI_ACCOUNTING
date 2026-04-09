@@ -3,10 +3,18 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, RefreshCw, Save, Upload } from "lucide-react";
+import { AlertTriangle, Loader2, PencilLine, RefreshCw, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import SetupConfigShell from "@/components/settings/setup-config-shell";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -61,6 +69,9 @@ export default function OpeningBalancesSettingsPage() {
   const [migrationDate, setMigrationDate] = useState("");
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isConfigured, setIsConfigured] = useState(false);
+  const [isEditing, setIsEditing] = useState(true);
+  const [confirmAdjustmentOpen, setConfirmAdjustmentOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -70,12 +81,13 @@ export default function OpeningBalancesSettingsPage() {
     if (!orgLoading && needsOrgSetup) router.push("/org-setup");
   }, [orgLoading, needsOrgSetup, router]);
 
-  async function loadOpeningBalances() {
+  async function loadOpeningBalances(options?: { forceEdit?: boolean }) {
     setFetching(true);
     try {
       const res = await accountApi.getOpeningBalances();
       const data = res.data;
       setMigrationDate(toDateInputValue(data.migrationDate));
+      setIsConfigured(Boolean(data.isConfigured));
       setGroups(
         (data.groups || []).map((group) => ({
           ...group,
@@ -86,6 +98,12 @@ export default function OpeningBalancesSettingsPage() {
           })),
         })),
       );
+
+      if (options?.forceEdit !== undefined) {
+        setIsEditing(options.forceEdit);
+      } else {
+        setIsEditing((prev) => (prev ? true : !Boolean(data.isConfigured)));
+      }
     } catch {
       toast.error("Failed to load opening balances");
     } finally {
@@ -96,6 +114,21 @@ export default function OpeningBalancesSettingsPage() {
   useEffect(() => {
     void loadOpeningBalances();
   }, []);
+
+  const visibleGroups = useMemo(() => {
+    if (isEditing) return groups;
+
+    return groups
+      .map((group) => ({
+        ...group,
+        accounts: group.accounts.filter((account) => {
+          const debit = parseAmount(account.debitInput);
+          const credit = parseAmount(account.creditInput);
+          return debit > 0 || credit > 0;
+        }),
+      }))
+      .filter((group) => group.accounts.length > 0);
+  }, [groups, isEditing]);
 
   const totals = useMemo(() => {
     let totalDebit = 0;
@@ -166,7 +199,7 @@ export default function OpeningBalancesSettingsPage() {
     );
   }
 
-  async function handleSave() {
+  async function persistOpeningBalances() {
     setSaving(true);
     try {
       const entries = groups.flatMap((group) =>
@@ -183,12 +216,24 @@ export default function OpeningBalancesSettingsPage() {
       });
 
       toast.success("Opening balances saved");
-      await loadOpeningBalances();
+      await loadOpeningBalances({ forceEdit: false });
     } catch {
       toast.error("Failed to save opening balances");
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleSaveClick() {
+    if (totals.difference > 0) {
+      setConfirmAdjustmentOpen(true);
+      return;
+    }
+    void persistOpeningBalances();
+  }
+
+  async function handleEditClick() {
+    await loadOpeningBalances({ forceEdit: true });
   }
 
   return (
@@ -205,14 +250,27 @@ export default function OpeningBalancesSettingsPage() {
             {fetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             <span className="ml-2">Refresh</span>
           </Button>
-          <Button onClick={handleSave} disabled={saving || fetching}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            <span className="ml-2">Save</span>
-          </Button>
+          {isEditing ? (
+            <Button onClick={handleSaveClick} disabled={saving || fetching}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              <span className="ml-2">Save</span>
+            </Button>
+          ) : (
+            <Button onClick={() => void handleEditClick()} disabled={saving || fetching}>
+              <PencilLine className="h-4 w-4" />
+              <span className="ml-2">Edit</span>
+            </Button>
+          )}
         </div>
       )}
     >
       <div className="space-y-5">
+        {isConfigured && !isEditing && (
+          <div className="rounded-lg border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+            Opening balances are in view mode. Click <span className="font-medium text-foreground">Edit</span> to open all fields and update values.
+          </div>
+        )}
+
         <div className="rounded-lg border p-4">
           <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 items-center">
             <div className="space-y-1">
@@ -221,6 +279,7 @@ export default function OpeningBalancesSettingsPage() {
                 type="date"
                 value={migrationDate}
                 onChange={(e) => setMigrationDate(e.target.value)}
+                disabled={!isEditing}
               />
             </div>
             <div className="text-sm text-muted-foreground">
@@ -229,7 +288,7 @@ export default function OpeningBalancesSettingsPage() {
           </div>
         </div>
 
-        {groups.map((group, groupIndex) => (
+        {visibleGroups.map((group, groupIndex) => (
           <section key={group.rootType} className="rounded-lg border overflow-hidden">
             <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
               <h2 className="font-medium">{ROOT_LABELS[group.rootType] || group.rootType}</h2>
@@ -264,22 +323,30 @@ export default function OpeningBalancesSettingsPage() {
                         )}
                       </td>
                       <td className="px-4 py-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={account.debitInput}
-                          onChange={(e) => updateDebit(groupIndex, accountIndex, e.target.value)}
-                        />
+                        {isEditing ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={account.debitInput}
+                            onChange={(e) => updateDebit(groupIndex, accountIndex, e.target.value)}
+                          />
+                        ) : (
+                          <span>{parseAmount(account.debitInput) > 0 ? fmtCurrency(parseAmount(account.debitInput)) : "-"}</span>
+                        )}
                       </td>
                       <td className="px-4 py-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={account.creditInput}
-                          onChange={(e) => updateCredit(groupIndex, accountIndex, e.target.value)}
-                        />
+                        {isEditing ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={account.creditInput}
+                            onChange={(e) => updateCredit(groupIndex, accountIndex, e.target.value)}
+                          />
+                        ) : (
+                          <span>{parseAmount(account.creditInput) > 0 ? fmtCurrency(parseAmount(account.creditInput)) : "-"}</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -317,6 +384,38 @@ export default function OpeningBalancesSettingsPage() {
           </div>
         </section>
       </div>
+
+      <Dialog open={confirmAdjustmentOpen} onOpenChange={setConfirmAdjustmentOpen}>
+        <DialogContent className="max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5" />
+              Adjustment Required
+            </DialogTitle>
+            <DialogDescription className="text-sm text-foreground/90 leading-relaxed">
+              The total debits and credits differ by {fmtCurrency(totals.difference)} INR.
+              You can go back and adjust the balances to remove the difference,
+              or continue and the difference will be transferred to the Opening Balance Adjustment account.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-start gap-2">
+            <Button
+              type="button"
+              onClick={() => {
+                setConfirmAdjustmentOpen(false);
+                void persistOpeningBalances();
+              }}
+              disabled={saving}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <span className={cn(saving ? "ml-2" : "")}>Continue</span>
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setConfirmAdjustmentOpen(false)} disabled={saving}>
+              Go Back
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SetupConfigShell>
   );
 }

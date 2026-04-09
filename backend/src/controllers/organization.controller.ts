@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Types } from "mongoose";
 import Organization from "../models/organization.model";
 import User from "../models/user.model";
 import asyncHandler from "../utils/asyncHandler";
@@ -9,6 +10,7 @@ import {
   ValidationError,
   ForbiddenError,
 } from "../utils/errors";
+import { ensureDefaultChartOfAccounts } from "../services/chart-of-accounts.service";
 import { upsertDefaultUnits } from "../utils/defaultUnits"; // auto-seed GST units on org creation
 
 // â”€â”€ Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -69,6 +71,12 @@ export const create = asyncHandler(
 
     attachUser(organization, req);
     await organization.save();
+
+    // Seed standard chart of accounts for every new organization.
+    await ensureDefaultChartOfAccounts({
+      organizationId: organization._id as Types.ObjectId,
+      actor: req,
+    });
 
     // Set as active org for the creating user if they don't have one yet
     if (!req.user.activeOrganization) {

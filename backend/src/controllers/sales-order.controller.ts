@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -15,6 +16,16 @@ function computeTotals(lineItems: any[], shippingCharges: number, adjustment: nu
   const subTotal = (lineItems || []).reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
   const total = subTotal + (Number(shippingCharges) || 0) + (Number(adjustment) || 0);
   return { subTotal, total };
+}
+
+function normalizeLineItems(items: any[] = []) {
+  return (items || []).map((line) => {
+    const { taxPercent, ...rest } = line || {};
+    return {
+      ...rest,
+      taxId: rest.taxId || null,
+    };
+  });
 }
 
 /** GET /api/sales-orders?search=...&status=...&page=1&limit=25 */
@@ -55,6 +66,7 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** POST /api/sales-orders */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = orgId(req);
   const {
     customerId,
     salesOrderNumber,
@@ -72,11 +84,20 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     throw new ValidationError("At least one line item is required");
   }
 
-  const { subTotal, total } = computeTotals(lineItems, shippingCharges, adjustment);
+  const linkedLineItems = normalizeLineItems(
+    await applyItemTaxLinkageToItems({
+      organizationId: oid,
+      contactId: customerId,
+      items: lineItems,
+    }),
+  );
+
+  const { subTotal, total } = computeTotals(linkedLineItems, shippingCharges, adjustment);
 
   const order = new SalesOrder({
-    organizationId: orgId(req),
+    organizationId: oid,
     ...req.body,
+    lineItems: linkedLineItems,
     subTotal,
     total,
     status,
@@ -89,7 +110,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** PATCH /api/sales-orders/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) } as any);
+  const oid = orgId(req);
+  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
   if (!order) throw new NotFoundError("Sales Order");
 
   const allowed = [
@@ -114,7 +136,25 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     if (req.body[f] !== undefined) (order as any)[f] = req.body[f];
   });
 
-  if (req.body.lineItems || req.body.shippingCharges !== undefined || req.body.adjustment !== undefined) {
+  if (req.body.lineItems || req.body.customerId !== undefined) {
+    const customerId = req.body.customerId ?? (order as any).customerId;
+    const sourceLineItems = req.body.lineItems || (order as any).lineItems || [];
+    const linkedLineItems = normalizeLineItems(
+      await applyItemTaxLinkageToItems({
+        organizationId: oid,
+        contactId: customerId,
+        items: sourceLineItems,
+      }),
+    );
+    (order as any).lineItems = linkedLineItems;
+  }
+
+  if (
+    req.body.lineItems ||
+    req.body.customerId !== undefined ||
+    req.body.shippingCharges !== undefined ||
+    req.body.adjustment !== undefined
+  ) {
     const { subTotal, total } = computeTotals(
       (order as any).lineItems,
       (order as any).shippingCharges,

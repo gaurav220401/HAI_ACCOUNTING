@@ -282,6 +282,8 @@ export interface IAccount extends Document {
   organizationId: Types.ObjectId;
   name: string;
   code?: string;
+  accountNumber?: string;
+  ifsc?: string;
   parentId?: Types.ObjectId | null;
   rootType: AccountRootType;
   accountType: AccountType;
@@ -453,7 +455,9 @@ export interface IItem extends Document {
   costPrice: number;
   purchaseDescription?: string;
   taxPreference: TaxPreference;
-  taxId?: Types.ObjectId | null; // ref: Tax
+  taxId?: Types.ObjectId | null; // ref: Tax (legacy single-tax)
+  intraStateTaxId?: Types.ObjectId | null; // ref: Tax — GST (Intra State)
+  interStateTaxId?: Types.ObjectId | null; // ref: Tax — IGST (Inter State)
   hsnSacCode?: string;
   salesAccountId?: Types.ObjectId | null;
   purchaseAccountId?: Types.ObjectId | null;

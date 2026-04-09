@@ -1,6 +1,7 @@
 import { Response } from "express";
 import PurchaseOrder from "../models/purchase-order.model";
 import Organization from "../models/organization.model";
+import Contact from "../models/contact.model";
 import { AuthenticatedRequest } from "../types";
 import Bill from "../models/bill.model";
 
@@ -9,6 +10,8 @@ import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 import { sendPurchaseOrderEmail as sendPurchaseOrderEmailService } from "../services/email.service";
 import { generatePurchaseOrderPdf } from "../services/pdf.service";
+import { findAccountIdByName } from "../services/gl-posting.service";
+import { syncBillCreationAccounting } from "../services/bill-accounting.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -548,17 +551,41 @@ export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res:
   }
 
   const billNumber = await nextBillNumber(oid);
-  
+
+  // Resolve Accounts Payable from vendor contact or default
+  let resolvedAPId = null;
+  if (po.vendorId) {
+    const vendor = await Contact.findOne({
+      _id: po.vendorId,
+      organizationId: oid,
+      isDeleted: false,
+    }).select("accountsPayableId").lean();
+    resolvedAPId = vendor?.accountsPayableId || null;
+  }
+  if (!resolvedAPId) {
+    try {
+      resolvedAPId = await findAccountIdByName({
+        organizationId: oid,
+        names: ["Accounts Payable", "Trade Payables", "Creditors"],
+        rootType: "Liability",
+        accountType: "Accounts Payable",
+      });
+    } catch {
+      resolvedAPId = null;
+    }
+  }
+
   // Create the Bill
   const bill = new Bill({
     organizationId: oid,
     vendorId: po.vendorId,
     billNumber,
+    referenceNumber: po.referenceNumber || "",
     orderNumber: po.purchaseOrderNumber,
     billDate: new Date(),
     dueDate: po.deliveryDate || null,
     paymentTermsId: po.paymentTermsId,
-    accountsPayableId: null, // User will need to set this if not default
+    accountsPayableId: resolvedAPId,
     subject: po.referenceNumber ? `Bill for PO: ${po.purchaseOrderNumber} (Ref: ${po.referenceNumber})` : `Bill for PO: ${po.purchaseOrderNumber}`,
     lineItems: po.lineItems.map(li => ({
       isHeader: li.isHeader,
@@ -574,11 +601,14 @@ export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res:
     })),
     subTotal: po.subTotal,
     discountLevel: po.discountLevel,
+    discountAccountId: po.discountAccountId,
     discountPercent: po.discountPercent,
     discountAmount: po.discountAmount,
     taxType: po.taxType,
     tdsId: po.tdsId,
+    tcsId: po.tcsId,
     taxAmount: po.taxAmount,
+    tcsAmount: po.tcsAmount,
     adjustmentLabel: po.adjustmentLabel,
     adjustmentAmount: po.adjustmentAmount,
     total: po.total,
@@ -607,6 +637,8 @@ export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res:
     isSystem: true,
   });
   await po.save();
+
+  await syncBillCreationAccounting({ bill, req });
   
   res.json({ 
     success: true, 

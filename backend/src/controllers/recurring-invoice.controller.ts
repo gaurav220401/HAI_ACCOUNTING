@@ -16,6 +16,7 @@ import {
   normalizeInvoiceItems,
   summarizeInvoiceTotals,
 } from "../services/recurring-invoice.service";
+import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -54,7 +55,7 @@ function validateRecurringInput(req: AuthenticatedRequest) {
   }
 }
 
-function applyRecurringMutation(profile: any, body: any) {
+async function applyRecurringMutation(profile: any, body: any) {
   const fields = [
     "profileName",
     "referenceNumber",
@@ -91,8 +92,22 @@ function applyRecurringMutation(profile: any, body: any) {
   }
 
   if (body.items !== undefined) {
+    const linkedItems = await applyItemTaxLinkageToItems({
+      organizationId: profile.organizationId,
+      contactId: body.customerId ?? profile.customerId,
+      items: body.items as any[],
+    });
     profile.items = normalizeInvoiceItems(
-      body.items as Partial<IInvoiceItem>[],
+      linkedItems as Partial<IInvoiceItem>[],
+    );
+  } else if (body.customerId !== undefined) {
+    const linkedItems = await applyItemTaxLinkageToItems({
+      organizationId: profile.organizationId,
+      contactId: body.customerId,
+      items: profile.items as any[],
+    });
+    profile.items = normalizeInvoiceItems(
+      linkedItems as Partial<IInvoiceItem>[],
     );
   }
 
@@ -239,8 +254,13 @@ export const create = asyncHandler(
     validateRecurringInput(req);
 
     const oid = orgId(req);
+    const linkedItems = await applyItemTaxLinkageToItems({
+      organizationId: oid,
+      contactId: req.body.customerId,
+      items: req.body.items as any[],
+    });
     const items = normalizeInvoiceItems(
-      req.body.items as Partial<IInvoiceItem>[],
+      linkedItems as Partial<IInvoiceItem>[],
     );
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
@@ -318,7 +338,7 @@ export const update = asyncHandler(
 
     if (!profile) throw new NotFoundError("Recurring invoice profile");
 
-    applyRecurringMutation(profile, req.body);
+    await applyRecurringMutation(profile, req.body);
     recomputeNextRunDate(profile);
 
     profile.recentActivities = [

@@ -25,6 +25,7 @@ import {
   postVoucher,
   reverseVoucher,
 } from "../services/gl-posting.service";
+import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 
 /** Parse a field that may arrive as a JS array (JSON body) or a JSON string (FormData). */
 function parseStringArray(val: unknown): string[] {
@@ -47,8 +48,18 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
-function normalizeItems(items: any[] = []) {
-  return items.map((item) => {
+async function normalizeItems(
+  organizationId: any,
+  customerId: any,
+  items: any[] = [],
+) {
+  const linkedItems = await applyItemTaxLinkageToItems({
+    organizationId,
+    contactId: customerId,
+    items,
+  });
+
+  return linkedItems.map((item) => {
     const quantity = Number(item.quantity) || 1;
     const rate = Number(item.rate) || 0;
     const lineTotal = quantity * rate;
@@ -455,7 +466,7 @@ export const create = asyncHandler(
 
     const invoiceNumber =
       req.body.invoiceNumber || (await nextInvoiceNumber(oid));
-    const items = normalizeItems(req.body.items || []);
+    const items = await normalizeItems(oid, req.body.customerId, req.body.items || []);
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
     const taxAmount = Number(req.body.taxAmount) || 0;
@@ -592,7 +603,18 @@ export const update = asyncHandler(
     });
 
     if (req.body.items) {
-      invoice.items = normalizeItems(req.body.items);
+      const customerId = req.body.customerId ?? invoice.customerId;
+      invoice.items = await normalizeItems(
+        invoice.organizationId,
+        customerId,
+        req.body.items,
+      );
+    } else if (req.body.customerId !== undefined) {
+      invoice.items = await normalizeItems(
+        invoice.organizationId,
+        req.body.customerId,
+        invoice.items as any[],
+      );
     }
 
     invoice.subTotal = invoice.items.reduce(

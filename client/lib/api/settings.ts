@@ -9,7 +9,8 @@ export interface Tax {
   orgId: string;
   name: string;
   taxType: TaxType;
-  rate?: number;
+  rate: number;
+  taxAuthority?: string;
   components?: Array<{ taxId: string; name: string; rate: number }>;
   accountId?: string;
   isSystem?: boolean;

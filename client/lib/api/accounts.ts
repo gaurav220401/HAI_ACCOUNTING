@@ -31,6 +31,8 @@ export interface Account {
   organizationId: string;
   name: string;
   code?: string;
+  accountNumber?: string;
+  ifsc?: string;
   rootType: AccountRootType;
   accountType: AccountType;
   parentId?: string | null;
@@ -44,6 +46,90 @@ export interface Account {
   createdAt: string;
   updatedAt: string;
   children?: Account[];
+}
+
+export interface AccountDetailsTransaction {
+  id: string;
+  postingDate: string;
+  voucherType: string;
+  voucherId: string;
+  voucherNo: string;
+  description: string;
+  contactType: "Customer" | "Vendor" | "None" | string;
+  contactName: string | null;
+  currency: string;
+  exchangeRate: number;
+  debitBCY: number;
+  creditBCY: number;
+  amountBCY: number;
+  debitFCY: number;
+  creditFCY: number;
+  amountFCY: number;
+  isReversal: boolean;
+  createdAt: string;
+}
+
+export interface AccountDetailsAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  extension: string;
+  sizeBytes: number;
+  url: string;
+  uploadedAt: string | null;
+  processingStatus: string;
+}
+
+export interface AccountDetailsData {
+  account: Account;
+  summary: {
+    openingBalanceBCY: number;
+    totalDebitBCY: number;
+    totalCreditBCY: number;
+    movementBCY: number;
+    closingBalanceBCY: number;
+    closingBalanceSide: "Debit" | "Credit" | "Zero";
+    transactionCount: number;
+    currencies: string[];
+    firstPostingDate: string | null;
+    lastPostingDate: string | null;
+  };
+  vouchersByType: Record<string, number>;
+  linkage: {
+    glEntries: number;
+    bills: number;
+    invoices: number;
+    expenses: number;
+    purchaseOrders: number;
+    recurringBills: number;
+    recurringInvoices: number;
+    recurringExpenses: number;
+    vendorCredits: number;
+    journals: number;
+    paymentMade: number;
+    paymentReceived: number;
+    contacts: number;
+    items: number;
+    paymentModes: number;
+    expenseCategories: number;
+    currencyAdjustments: number;
+    tdsTaxes: number;
+    tcsTaxes: number;
+    documents: number;
+  };
+  attachments: AccountDetailsAttachment[];
+  transactions: AccountDetailsTransaction[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    hasMore: boolean;
+  };
+  filters: {
+    from: string | null;
+    to: string | null;
+  };
 }
 
 export interface OpeningBalanceAccountRow {
@@ -88,6 +174,8 @@ export interface SaveOpeningBalanceInput {
 export interface CreateAccountInput {
   name: string;
   code?: string;
+  accountNumber?: string;
+  ifsc?: string;
   rootType: AccountRootType;
   accountType: AccountType;
   parentId?: string;
@@ -118,6 +206,16 @@ export const accountApi = {
    */
   listForItem: (section: "sales" | "purchase") =>
     apiFetch<{ data: GroupedAccounts }>(`/accounts/for-item?section=${section}`),
+
+  getDetails: (id: string, params?: { page?: number; limit?: number; from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set("page", String(params.page));
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    const q = qs.toString();
+    return apiFetch<{ data: AccountDetailsData }>(`/accounts/${id}/details${q ? `?${q}` : ""}`);
+  },
 
   getOpeningBalances: () =>
     apiFetch<{ data: OpeningBalanceData }>("/accounts/opening-balances"),

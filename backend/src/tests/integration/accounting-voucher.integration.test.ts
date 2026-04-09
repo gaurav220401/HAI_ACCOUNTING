@@ -9,8 +9,13 @@ import Invoice from "../../models/invoice.model";
 import Organization from "../../models/organization.model";
 import PaymentMade from "../../models/payment-made.model";
 import PaymentReceived from "../../models/payment-received.model";
+import PurchaseOrder from "../../models/purchase-order.model";
+import RecurringBill from "../../models/recurring-bill.model";
 import * as paymentMadeController from "../../controllers/payment-made.controller";
 import * as paymentReceivedController from "../../controllers/payment-received.controller";
+import * as purchaseOrderController from "../../controllers/purchase-order.controller";
+import * as accountController from "../../controllers/account.controller";
+import { executeRecurringRun } from "../../services/recurring-bill.execution";
 
 let replSet: MongoMemoryReplSet;
 
@@ -599,4 +604,245 @@ test("payment received void creates reversing vouchers and restores invoice bala
   for (const value of net.values()) {
     assert.equal(round2(value), 0);
   }
+});
+
+test("purchase order conversion posts bill vouchers and syncs vendor outstanding", async () => {
+  const fx = await seedCoreFixture();
+
+  const purchasesAccount = await mongoose.model("Account").findOne({
+    organizationId: fx.org._id,
+    name: "Purchases",
+  });
+  assert.ok(purchasesAccount);
+
+  const po = await PurchaseOrder.create({
+    organizationId: fx.org._id,
+    vendorId: fx.vendor._id,
+    purchaseOrderNumber: "PO-100001",
+    referenceNumber: "PO-REF-001",
+    purchaseOrderDate: new Date("2026-01-26T00:00:00.000Z"),
+    lineItems: [
+      {
+        name: "Raw Material",
+        quantity: 1,
+        rate: 500,
+        amount: 500,
+        accountId: purchasesAccount!._id,
+      },
+    ],
+    subTotal: 500,
+    total: 500,
+    status: "Open",
+  });
+
+  const convertRes = await invokeHandler(
+    purchaseOrderController.convertToBill,
+    makeReq({
+      organizationId: fx.org._id,
+      userId: fx.userId,
+      params: { id: String(po._id) },
+    }),
+  );
+
+  assert.equal(convertRes.statusCode, 200);
+  assert.equal(convertRes.body.success, true);
+
+  const billId = String(convertRes.body.data.billId);
+
+  const billEntries = await GlEntry.find({
+    organizationId: fx.org._id,
+    voucherType: "Bill",
+    voucherId: `bill:${billId}`,
+    isReversal: false,
+  }).lean();
+  assert.equal(billEntries.length, 2);
+
+  const convertedPo = await PurchaseOrder.findById(po._id).lean();
+  assert.equal(convertedPo?.status, "Billed");
+
+  const vendorAfter = await Contact.findById(fx.vendor._id).lean();
+  const payableRows = await Bill.aggregate([
+    {
+      $match: {
+        organizationId: fx.org._id,
+        vendorId: fx.vendor._id,
+        isDeleted: false,
+        status: { $nin: ["Draft", "Void"] },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: { $ifNull: ["$balanceDue", 0] } },
+      },
+    },
+  ]);
+  const expectedOutstanding = round2(Number(payableRows[0]?.total || 0));
+  assert.equal(round2(Number(vendorAfter?.outstandingPayable || 0)), expectedOutstanding);
+});
+
+test("recurring bill execution posts vouchers and advances profile state", async () => {
+  const fx = await seedCoreFixture();
+
+  const purchasesAccount = await mongoose.model("Account").findOne({
+    organizationId: fx.org._id,
+    name: "Purchases",
+  });
+  assert.ok(purchasesAccount);
+
+  const runDate = new Date("2026-01-27T00:00:00.000Z");
+  const recurring = await RecurringBill.create({
+    organizationId: fx.org._id,
+    profileName: "Weekly Materials",
+    vendorId: fx.vendor._id,
+    frequency: "Weekly",
+    repeatEvery: 1,
+    startDate: runDate,
+    nextBillDate: runDate,
+    neverExpires: true,
+    discountLevel: "transaction",
+    taxType: "none",
+    lineItems: [
+      {
+        name: "Raw Material",
+        quantity: 1,
+        rate: 750,
+        amount: 750,
+        accountId: purchasesAccount!._id,
+      },
+    ],
+    subTotal: 750,
+    total: 750,
+    generatedBillIds: [],
+    status: "Active",
+    createdBy: fx.userId,
+    updatedBy: fx.userId,
+  });
+
+  const runResult = await executeRecurringRun(recurring, runDate, fx.userId);
+  assert.equal(runResult.skipped, false);
+
+  const billId = String(runResult.bill._id);
+
+  const billEntries = await GlEntry.find({
+    organizationId: fx.org._id,
+    voucherType: "Bill",
+    voucherId: `bill:${billId}`,
+    isReversal: false,
+  }).lean();
+  assert.equal(billEntries.length, 2);
+
+  const recurringAfter = await RecurringBill.findById(recurring._id).lean();
+  assert.ok(recurringAfter);
+  assert.equal(String(recurringAfter!.generatedBillIds[0]), billId);
+  assert.ok(recurringAfter!.lastBillDate);
+  assert.ok(recurringAfter!.nextBillDate);
+
+  const vendorAfter = await Contact.findById(fx.vendor._id).lean();
+  const payableRows = await Bill.aggregate([
+    {
+      $match: {
+        organizationId: fx.org._id,
+        vendorId: fx.vendor._id,
+        isDeleted: false,
+        status: { $nin: ["Draft", "Void"] },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: { $ifNull: ["$balanceDue", 0] } },
+      },
+    },
+  ]);
+  const expectedOutstanding = round2(Number(payableRows[0]?.total || 0));
+  assert.equal(round2(Number(vendorAfter?.outstandingPayable || 0)), expectedOutstanding);
+});
+
+test("predefined accounts cannot be deleted but remain editable", async () => {
+  const fx = await seedCoreFixture();
+
+  const account = await mongoose.model("Account").create({
+    organizationId: fx.org._id,
+    name: "Locked Receivable",
+    code: "1151",
+    rootType: "Asset",
+    accountType: "Accounts Receivable",
+    isGroup: false,
+    isSystemAccount: true,
+    isDeleted: false,
+    isActive: true,
+    openingBalance: 0,
+    balance: 0,
+  });
+
+  await assert.rejects(
+    invokeHandler(
+      accountController.remove,
+      makeReq({
+        organizationId: fx.org._id,
+        userId: fx.userId,
+        params: { id: String(account._id) },
+      }),
+    ),
+    (error: any) =>
+      error?.statusCode === 400 &&
+      String(error?.message || "").includes("Predefined accounts cannot be deleted"),
+  );
+
+  const stillThere = await mongoose.model("Account").findById(account._id).lean();
+  assert.equal(Boolean((stillThere as any)?.isDeleted), false);
+});
+
+test("accounts referenced in ledger cannot be deleted", async () => {
+  const fx = await seedCoreFixture();
+
+  const account = await mongoose.model("Account").create({
+    organizationId: fx.org._id,
+    name: "Linked Account",
+    code: "1152",
+    rootType: "Asset",
+    accountType: "Other Current Asset",
+    isGroup: false,
+    isSystemAccount: false,
+    isDeleted: false,
+    isActive: true,
+    openingBalance: 0,
+    balance: 0,
+  });
+
+  await GlEntry.create({
+    organizationId: fx.org._id,
+    voucherType: "System",
+    voucherId: "acc-del-guard-1",
+    voucherNo: "ACC-DEL-1",
+    postingDate: new Date("2026-01-28T00:00:00.000Z"),
+    accountId: account._id,
+    debit: 10,
+    credit: 0,
+    contactType: "None",
+    contactId: null,
+    currency: "INR",
+    exchangeRate: 1,
+    description: "Deletion guard test",
+    isReversal: false,
+    reversalOf: null,
+  });
+
+  await assert.rejects(
+    invokeHandler(
+      accountController.remove,
+      makeReq({
+        organizationId: fx.org._id,
+        userId: fx.userId,
+        params: { id: String(account._id) },
+      }),
+    ),
+    (error: any) =>
+      error?.statusCode === 400 &&
+      String(error?.message || "").includes("General Ledger entries"),
+  );
+
+  const stillThere = await mongoose.model("Account").findById(account._id).lean();
+  assert.equal(Boolean((stillThere as any)?.isDeleted), false);
 });

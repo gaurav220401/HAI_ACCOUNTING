@@ -14,6 +14,113 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import {
+  findAccountIdByName,
+  postVoucher,
+  reverseVoucher,
+} from "../services/gl-posting.service";
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Sync a vendor's opening balance to the Accounts Payable account.
+ * Opening balance for a vendor means the business owes the vendor that amount.
+ *  DEBIT  Opening Balance Adjustments (Equity/Liability) → amount
+ *  CREDIT Accounts Payable                               → amount
+ * (opposite if opening balance is negative)
+ */
+async function syncVendorOpeningBalance(
+  contact: any,
+  openingBalance: number,
+  previousOpeningBalance: number,
+  req: AuthenticatedRequest,
+) {
+  const organizationId = contact.organizationId;
+  const delta = round2(openingBalance - previousOpeningBalance);
+  if (Math.abs(delta) < 0.01) return;
+
+  // Reverse any previous opening balance GL entries for this contact
+  const voucherId = `contact-opening:${String(contact._id)}`;
+  await reverseVoucher({
+    organizationId,
+    voucherType: "System",
+    voucherId,
+    reversalVoucherNo: `REV-OB-${contact.displayName}`,
+    postingDate: new Date(),
+    description: `Reverse opening balance for ${contact.displayName}`,
+    req,
+  });
+
+  // If new opening balance is 0, we're done after reversal
+  if (Math.abs(openingBalance) < 0.01) return;
+
+  const accountsPayableId = contact.accountsPayableId ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Accounts Payable", "Trade Payables", "Creditors"],
+      rootType: "Liability",
+      accountType: "Accounts Payable",
+    }));
+
+  const adjustmentId = await findAccountIdByName({
+    organizationId,
+    names: ["Opening Balance Adjustments", "Opening Balance Offset"],
+    rootType: "Liability",
+  });
+
+  const absAmount = round2(Math.abs(openingBalance));
+  const lines: Array<{
+    accountId: any;
+    debit?: number;
+    credit?: number;
+    description?: string;
+    contactType?: "Vendor";
+    contactId?: any;
+  }> = [];
+
+  if (openingBalance > 0) {
+    // Vendor is owed money → Credit AP (increase liability), Debit adjustment
+    lines.push({
+      accountId: adjustmentId,
+      debit: absAmount,
+      description: `Opening balance for vendor ${contact.displayName}`,
+    });
+    lines.push({
+      accountId: accountsPayableId,
+      credit: absAmount,
+      description: `Opening balance payable to ${contact.displayName}`,
+      contactType: "Vendor",
+      contactId: contact._id,
+    });
+  } else {
+    // Negative opening balance → Debit AP (reduce liability), Credit adjustment
+    lines.push({
+      accountId: accountsPayableId,
+      debit: absAmount,
+      description: `Opening balance advance from ${contact.displayName}`,
+      contactType: "Vendor",
+      contactId: contact._id,
+    });
+    lines.push({
+      accountId: adjustmentId,
+      credit: absAmount,
+      description: `Opening balance adj for vendor ${contact.displayName}`,
+    });
+  }
+
+  await postVoucher({
+    organizationId,
+    voucherType: "System",
+    voucherId,
+    voucherNo: `OB-${contact.displayName}`,
+    postingDate: new Date(),
+    lines,
+    description: `Opening balance for vendor ${contact.displayName}`,
+    req,
+  });
+}
 
 async function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -218,6 +325,13 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const contact = new Contact({ organizationId: await orgId(req), ...req.body });
   attachUser(contact, req);
   await contact.save();
+
+  // Sync opening balance to Accounts Payable for vendors
+  const ob = Number(req.body.openingBalance || 0);
+  if (Math.abs(ob) >= 0.01 && (contactType === "Vendor" || contactType === "Both")) {
+    await syncVendorOpeningBalance(contact, ob, 0, req);
+  }
+
   res.status(201).json({ success: true, data: contact });
 });
 
@@ -225,6 +339,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const contact = await Contact.findOne({ _id: req.params.id, organizationId: await orgId(req) });
   if (!contact) throw new NotFoundError("Contact");
+
+  const previousOpeningBalance = Number(contact.openingBalance || 0);
 
   const allowed = [
     "displayName", "companyName", "email", "phone", "mobile", "currency",
@@ -242,6 +358,17 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   allowed.forEach((f) => { if (req.body[f] !== undefined) (contact as any)[f] = req.body[f]; });
   attachUser(contact, req);
   await contact.save();
+
+  // Sync opening balance to Accounts Payable for vendors if changed
+  const ct = contact.contactType;
+  if (
+    req.body.openingBalance !== undefined &&
+    (ct === "Vendor" || ct === "Both")
+  ) {
+    const newOB = Number(req.body.openingBalance || 0);
+    await syncVendorOpeningBalance(contact, newOB, previousOpeningBalance, req);
+  }
+
   res.json({ success: true, data: contact });
 });
 

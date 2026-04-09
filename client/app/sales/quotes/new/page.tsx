@@ -29,6 +29,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import {
   quoteApi,
   type CreateQuoteInput,
@@ -150,6 +151,8 @@ export default function NewQuotePage() {
 
   // ─── Line item helpers ────────────────────────────────────────────
 
+  const selectedCustomer = customers.find((entry) => entry._id === customerId);
+
   const updateLine = useCallback(
     (key: number, field: keyof LineItem, value: any) => {
       setLines((prev) =>
@@ -170,6 +173,12 @@ export default function NewQuotePage() {
     (key: number, itemId: string) => {
       const item = items.find((i) => i._id === itemId);
       if (!item) return;
+      const linkedTax = getItemTaxForTransaction({
+        item,
+        contact: selectedCustomer,
+        organizationState: activeOrganization?.address?.state,
+        taxes,
+      });
       setLines((prev) =>
         prev.map((l) =>
           l.key === key ?
@@ -179,13 +188,42 @@ export default function NewQuotePage() {
               name: item.name,
               description: item.description || "",
               rate: item.sellingPrice || 0,
+              taxId: linkedTax.taxId,
+              taxPercent: linkedTax.taxPercent,
             }
           : l,
         ),
       );
     },
-    [items],
+    [items, selectedCustomer, activeOrganization?.address?.state, taxes],
   );
+
+  useEffect(() => {
+    setLines((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        if (!line.itemId) return line;
+        const item = items.find((entry) => entry._id === line.itemId);
+        if (!item) return line;
+        const linkedTax = getItemTaxForTransaction({
+          item,
+          contact: selectedCustomer,
+          organizationState: activeOrganization?.address?.state,
+          taxes,
+        });
+        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+          return line;
+        }
+        changed = true;
+        return {
+          ...line,
+          taxId: linkedTax.taxId,
+          taxPercent: linkedTax.taxPercent,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
   // ─── Calculations ────────────────────────────────────────────────
 

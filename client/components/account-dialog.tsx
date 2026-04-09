@@ -200,6 +200,8 @@ const ACCOUNT_TYPE_GROUPS: Array<{ rootType: AccountRootType; types: AccountType
   { rootType: "Expense", types: ["Expense", "Cost Of Goods Sold", "Other Expense"] },
 ];
 
+const CURRENCY_OPTIONS = ["INR", "USD", "EUR", "GBP", "AED", "SGD"] as const;
+
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 interface AccountDialogProps {
@@ -221,12 +223,16 @@ export function AccountDialog({
   allAccounts,
 }: AccountDialogProps) {
   const isEdit = !!editAccount;
+  const isPredefined = Boolean(editAccount?.isSystemAccount);
 
   const [accountType, setAccountType] = useState<AccountType>("Other Asset");
   const [name, setName] = useState("");
   const [isSubAccount, setIsSubAccount] = useState(false);
   const [parentId, setParentId] = useState("");
   const [code, setCode] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [ifsc, setIfsc] = useState("");
+  const [currency, setCurrency] = useState("INR");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -238,6 +244,9 @@ export function AccountDialog({
       setAccountType(editAccount.accountType as AccountType);
       setName(editAccount.name);
       setCode(editAccount.code ?? "");
+      setAccountNumber(editAccount.accountNumber ?? "");
+      setIfsc(editAccount.ifsc ?? "");
+      setCurrency(editAccount.currency || "INR");
       setDescription(editAccount.description ?? "");
       setParentId(editAccount.parentId ?? "");
       setIsSubAccount(!!editAccount.parentId);
@@ -245,6 +254,9 @@ export function AccountDialog({
       setAccountType("Other Asset");
       setName("");
       setCode("");
+      setAccountNumber("");
+      setIfsc("");
+      setCurrency("INR");
       setDescription("");
       setParentId("");
       setIsSubAccount(false);
@@ -277,6 +289,9 @@ export function AccountDialog({
         accountType,
         rootType: selectedRootType,
         code: code.trim() || undefined,
+        accountNumber: accountType === "Bank" ? accountNumber.trim() || undefined : undefined,
+        ifsc: accountType === "Bank" ? ifsc.trim().toUpperCase() || undefined : undefined,
+        currency: accountType === "Bank" ? currency : undefined,
         description: description.trim() || undefined,
         parentId: isSubAccount && parentId ? parentId : undefined,
       };
@@ -296,7 +311,7 @@ export function AccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 gap-0">
+      <DialogContent className="w-[min(96vw,52rem)] max-w-[52rem] max-h-[92vh] p-0 gap-0 overflow-hidden grid grid-rows-[auto_minmax(0,1fr)_auto]">
         {/* Header */}
         <DialogHeader className="px-6 pt-5 pb-4 border-b">
           <DialogTitle className="text-base font-semibold">
@@ -304,28 +319,33 @@ export function AccountDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="min-h-0 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-5">
           {errors.general && (
             <p className="text-sm text-destructive bg-destructive/10 rounded px-3 py-2">{errors.general}</p>
           )}
 
           {/* Account Type + description tooltip side-by-side */}
-          <div className="flex gap-4 items-start">
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
             <div className="flex-1 space-y-1.5">
               <Label className="font-medium">
                 Account Type <span className="text-destructive">*</span>
               </Label>
               <Select
                 value={accountType}
+                disabled={isEdit && isPredefined}
                 onValueChange={(v) => {
                   setAccountType(v as AccountType);
                   setParentId(""); // reset parent when type changes
+                  if (v !== "Bank") {
+                    setAccountNumber("");
+                    setIfsc("");
+                  }
                 }}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="max-h-80">
+                <SelectContent position="popper" sideOffset={6} className="max-h-[min(60vh,22rem)]">
                   {ACCOUNT_TYPE_GROUPS.map((g) => (
                     <SelectGroup key={g.rootType}>
                       <SelectLabel className="text-xs font-bold uppercase tracking-wide text-muted-foreground px-2 py-1">
@@ -340,12 +360,18 @@ export function AccountDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {isEdit && isPredefined && (
+                <p className="text-xs text-muted-foreground">
+                  Predefined account type is locked. You can still edit name, code, description, and sub-account.
+                </p>
+              )}
             </div>
 
             {/* Description card */}
             {meta && (
-              <div className="w-56 rounded-lg bg-slate-800 text-white p-3 text-xs leading-relaxed shrink-0 mt-6">
-                <p className="font-semibold mb-1">{selectedRootType}</p>
+              <div className="w-full lg:w-56 rounded-lg bg-slate-800 text-white p-3 text-xs leading-relaxed shrink-0 mt-1 lg:mt-6">
+                <p className="font-semibold mb-1">{meta.label}</p>
+                <p className="text-slate-400 mb-1.5">Root Type: {selectedRootType}</p>
                 <p className="text-slate-300">{meta.description}</p>
                 {meta.bullets && (
                   <ul className="mt-2 space-y-0.5 list-disc list-inside text-slate-300">
@@ -386,7 +412,9 @@ export function AccountDialog({
               />
               <Label htmlFor="sub-account" className="font-normal cursor-pointer flex items-center gap-1.5">
                 Make this a sub-account
-                <span className="text-muted-foreground text-xs">(optional)</span>
+                <span className="text-muted-foreground text-xs">
+                  (Select this option if you are creating a sub-account.)
+                </span>
               </Label>
             </div>
 
@@ -397,7 +425,7 @@ export function AccountDialog({
                   <SelectTrigger className={errors.parentId ? "border-destructive" : ""}>
                     <SelectValue placeholder="Select parent account" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-56">
+                  <SelectContent position="popper" sideOffset={6} className="max-h-[min(50vh,16rem)]">
                     {parentCandidates.length === 0 ? (
                       <SelectItem value="__none" disabled>
                         No accounts of type {selectedRootType} yet
@@ -427,6 +455,44 @@ export function AccountDialog({
             />
           </div>
 
+          {accountType === "Bank" && (
+            <>
+              <div className="space-y-1.5">
+                <Label className="font-medium">Account Number</Label>
+                <Input
+                  value={accountNumber}
+                  onChange={(e) => setAccountNumber(e.target.value)}
+                  placeholder="Enter bank account number"
+                  className="max-w-md"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-medium">IFSC</Label>
+                <Input
+                  value={ifsc}
+                  onChange={(e) => setIfsc(e.target.value.toUpperCase())}
+                  placeholder="e.g. HDFC0001234"
+                  className="max-w-md"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-medium">Currency</Label>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger className="max-w-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" sideOffset={6} className="max-h-56">
+                    {CURRENCY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+
           {/* Description */}
           <div className="space-y-1.5">
             <Label className="font-medium">Description</Label>
@@ -442,7 +508,7 @@ export function AccountDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 px-6 py-4 border-t bg-muted/20">
+        <div className="flex items-center gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t bg-muted/20">
           <Button onClick={handleSave} disabled={saving} className="min-w-[72px]">
             {saving ? "Saving..." : "Save"}
           </Button>

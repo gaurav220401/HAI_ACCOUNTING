@@ -8,11 +8,46 @@ import {
   ValidationError,
   ForbiddenError,
 } from "../utils/errors";
+import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
   return id;
+}
+
+async function normalizeQuoteItems(
+  organizationId: any,
+  customerId: any,
+  items: any[] = [],
+) {
+  const linkedItems = await applyItemTaxLinkageToItems({
+    organizationId,
+    contactId: customerId,
+    items,
+  });
+
+  return linkedItems.map((item: any) => {
+    const qty = Number(item.quantity) || 1;
+    const rate = Number(item.rate) || 0;
+    const lineTotal = qty * rate;
+    const discPct = Number(item.discountPercent) || 0;
+    const discAmt =
+      Number(item.discountAmount) || (lineTotal * discPct) / 100;
+    const afterDiscount = lineTotal - discAmt;
+    const taxPct = Number(item.taxPercent) || 0;
+    const taxAmt = Number(item.taxAmount) || (afterDiscount * taxPct) / 100;
+    return {
+      ...item,
+      quantity: qty,
+      rate,
+      discountPercent: discPct,
+      discountAmount: discAmt,
+      taxPercent: taxPct,
+      taxAmount: taxAmt,
+      amount: afterDiscount + taxAmt,
+    };
+  });
 }
 
 /** Generate next quote number like QT-000001 */
@@ -111,28 +146,11 @@ export const create = asyncHandler(
 
     const quoteNumber = req.body.quoteNumber || (await nextQuoteNumber(oid));
 
-    // Calculate item-level amounts
-    const items = (req.body.items || []).map((item: any) => {
-      const qty = Number(item.quantity) || 1;
-      const rate = Number(item.rate) || 0;
-      const lineTotal = qty * rate;
-      const discPct = Number(item.discountPercent) || 0;
-      const discAmt =
-        Number(item.discountAmount) || (lineTotal * discPct) / 100;
-      const afterDiscount = lineTotal - discAmt;
-      const taxPct = Number(item.taxPercent) || 0;
-      const taxAmt = Number(item.taxAmount) || (afterDiscount * taxPct) / 100;
-      return {
-        ...item,
-        quantity: qty,
-        rate,
-        discountPercent: discPct,
-        discountAmount: discAmt,
-        taxPercent: taxPct,
-        taxAmount: taxAmt,
-        amount: afterDiscount + taxAmt,
-      };
-    });
+    const items = await normalizeQuoteItems(
+      oid,
+      req.body.customerId,
+      req.body.items || [],
+    );
 
     const subTotal = items.reduce(
       (s: number, i: any) => s + i.quantity * i.rate,
@@ -234,27 +252,18 @@ export const update = asyncHandler(
 
     // Recalculate totals
     if (req.body.items) {
-      quote.items = req.body.items.map((item: any) => {
-        const qty = Number(item.quantity) || 1;
-        const rate = Number(item.rate) || 0;
-        const lineTotal = qty * rate;
-        const discPct = Number(item.discountPercent) || 0;
-        const discAmt =
-          Number(item.discountAmount) || (lineTotal * discPct) / 100;
-        const afterDiscount = lineTotal - discAmt;
-        const taxPct = Number(item.taxPercent) || 0;
-        const taxAmt = Number(item.taxAmount) || (afterDiscount * taxPct) / 100;
-        return {
-          ...item,
-          quantity: qty,
-          rate,
-          discountPercent: discPct,
-          discountAmount: discAmt,
-          taxPercent: taxPct,
-          taxAmount: taxAmt,
-          amount: afterDiscount + taxAmt,
-        };
-      });
+      const customerId = req.body.customerId ?? quote.customerId;
+      quote.items = await normalizeQuoteItems(
+        quote.organizationId,
+        customerId,
+        req.body.items,
+      );
+    } else if (req.body.customerId !== undefined) {
+      quote.items = await normalizeQuoteItems(
+        quote.organizationId,
+        req.body.customerId,
+        quote.items as any[],
+      );
     }
 
     quote.subTotal = quote.items.reduce(

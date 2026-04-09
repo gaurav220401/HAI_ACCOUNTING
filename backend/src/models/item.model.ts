@@ -31,6 +31,8 @@ const itemSchema = new Schema<IItem>(
       default: "Taxable",
     },
     taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
+    intraStateTaxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
+    interStateTaxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
     hsnSacCode: { type: String, default: "" },
     salesAccountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
     purchaseAccountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },

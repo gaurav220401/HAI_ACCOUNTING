@@ -66,29 +66,113 @@ function makeCRUD<T extends any>(Model: any, label: string, allowedFields: strin
 }
 
 async function ensureDefaultTaxes(organization: any) {
-  const existing = await Tax.countDocuments({ organizationId: organization });
-  if (existing > 0) return false;
+  let insertedCount = 0;
 
-  const taxes = [
-    { name: "CGST 2.5%", taxType: "Tax", rate: 2.5, description: "Central GST 2.5% (for 5% slab)" },
-    { name: "SGST 2.5%", taxType: "Tax", rate: 2.5, description: "State GST 2.5% (for 5% slab)" },
-    { name: "IGST 5%", taxType: "Tax", rate: 5, description: "Integrated GST 5%" },
-    { name: "CGST 6%", taxType: "Tax", rate: 6, description: "Central GST 6% (for 12% slab)" },
-    { name: "SGST 6%", taxType: "Tax", rate: 6, description: "State GST 6% (for 12% slab)" },
-    { name: "IGST 12%", taxType: "Tax", rate: 12, description: "Integrated GST 12%" },
-    { name: "CGST 9%", taxType: "Tax", rate: 9, description: "Central GST 9% (for 18% slab)" },
-    { name: "SGST 9%", taxType: "Tax", rate: 9, description: "State GST 9% (for 18% slab)" },
-    { name: "IGST 18%", taxType: "Tax", rate: 18, description: "Integrated GST 18%" },
-    { name: "CGST 14%", taxType: "Tax", rate: 14, description: "Central GST 14% (for 28% slab)" },
-    { name: "SGST 14%", taxType: "Tax", rate: 14, description: "State GST 14% (for 28% slab)" },
-    { name: "IGST 28%", taxType: "Tax", rate: 28, description: "Integrated GST 28%" },
-    { name: "Exempt (0%)", taxType: "Tax", rate: 0, description: "Tax exempt" },
+  // ── Step 1: Ensure individual base taxes exist ──────────────────────────
+  const baseTaxes = [
+    // Zero-rated
+    { name: "CGST 0%", taxType: "Tax", rate: 0, description: "Central GST 0%", taxAuthority: "CGST" },
+    { name: "SGST 0%", taxType: "Tax", rate: 0, description: "State GST 0%", taxAuthority: "SGST" },
+    { name: "IGST0", taxType: "Tax", rate: 0, description: "Integrated GST 0%", taxAuthority: "IGST" },
+    // 5% slab
+    { name: "CGST 2.5%", taxType: "Tax", rate: 2.5, description: "Central GST 2.5% (for 5% slab)", taxAuthority: "CGST" },
+    { name: "SGST 2.5%", taxType: "Tax", rate: 2.5, description: "State GST 2.5% (for 5% slab)", taxAuthority: "SGST" },
+    { name: "IGST5", taxType: "Tax", rate: 5, description: "Integrated GST 5%", taxAuthority: "IGST" },
+    // 12% slab
+    { name: "CGST 6%", taxType: "Tax", rate: 6, description: "Central GST 6% (for 12% slab)", taxAuthority: "CGST" },
+    { name: "SGST 6%", taxType: "Tax", rate: 6, description: "State GST 6% (for 12% slab)", taxAuthority: "SGST" },
+    { name: "IGST12", taxType: "Tax", rate: 12, description: "Integrated GST 12%", taxAuthority: "IGST" },
+    // 18% slab
+    { name: "CGST 9%", taxType: "Tax", rate: 9, description: "Central GST 9% (for 18% slab)", taxAuthority: "CGST" },
+    { name: "SGST 9%", taxType: "Tax", rate: 9, description: "State GST 9% (for 18% slab)", taxAuthority: "SGST" },
+    { name: "IGST18", taxType: "Tax", rate: 18, description: "Integrated GST 18%", taxAuthority: "IGST" },
+    // 28% slab
+    { name: "CGST 14%", taxType: "Tax", rate: 14, description: "Central GST 14% (for 28% slab)", taxAuthority: "CGST" },
+    { name: "SGST 14%", taxType: "Tax", rate: 14, description: "State GST 14% (for 28% slab)", taxAuthority: "SGST" },
+    { name: "IGST28", taxType: "Tax", rate: 28, description: "Integrated GST 28%", taxAuthority: "IGST" },
+    // 40% slab (Luxury/Demerit)
+    { name: "CGST 20%", taxType: "Tax", rate: 20, description: "Central GST 20% (for 40% slab)", taxAuthority: "CGST" },
+    { name: "SGST 20%", taxType: "Tax", rate: 20, description: "State GST 20% (for 40% slab)", taxAuthority: "SGST" },
+    { name: "IGST40", taxType: "Tax", rate: 40, description: "Integrated GST 40%", taxAuthority: "IGST" },
   ];
 
-  await Tax.insertMany(
-    taxes.map((t) => ({ organizationId: organization, ...t, isSystemTax: true, isActive: true })),
-  );
-  return true;
+  for (const tax of baseTaxes) {
+    const result = await Tax.updateOne(
+      { organizationId: organization, name: tax.name },
+      {
+        $setOnInsert: {
+          organizationId: organization,
+          ...tax,
+          isSystemTax: true,
+          isActive: true,
+        },
+      },
+      { upsert: true },
+    );
+    insertedCount += result.upsertedCount || 0;
+  }
+
+  // ── Step 2: Build lookup map for tax-group components ──────────────────
+  const componentNames = [
+    "CGST 0%", "SGST 0%",
+    "CGST 2.5%", "SGST 2.5%",
+    "CGST 6%", "SGST 6%",
+    "CGST 9%", "SGST 9%",
+    "CGST 14%", "SGST 14%",
+    "CGST 20%", "SGST 20%",
+  ];
+
+  const componentDocs = await Tax.find({
+    organizationId: organization,
+    name: { $in: componentNames },
+  })
+    .select("_id name")
+    .lean();
+
+  const componentIdByName: Record<string, any> = {};
+  for (const doc of componentDocs) {
+    componentIdByName[(doc as any).name] = (doc as any)._id;
+  }
+
+  // ── Step 3: Ensure GST tax groups exist (for intra-state selection) ─────
+  const taxGroups = [
+    { name: "GST0", rate: 0, cgst: "CGST 0%", sgst: "SGST 0%" },
+    { name: "GST5", rate: 5, cgst: "CGST 2.5%", sgst: "SGST 2.5%" },
+    { name: "GST12", rate: 12, cgst: "CGST 6%", sgst: "SGST 6%" },
+    { name: "GST18", rate: 18, cgst: "CGST 9%", sgst: "SGST 9%" },
+    { name: "GST28", rate: 28, cgst: "CGST 14%", sgst: "SGST 14%" },
+    { name: "GST40", rate: 40, cgst: "CGST 20%", sgst: "SGST 20%" },
+  ];
+
+  for (const group of taxGroups) {
+    const cgstId = componentIdByName[group.cgst];
+    const sgstId = componentIdByName[group.sgst];
+    if (!cgstId || !sgstId) continue;
+
+    const result = await Tax.updateOne(
+      { organizationId: organization, name: group.name },
+      {
+        $setOnInsert: {
+          organizationId: organization,
+          name: group.name,
+          taxType: "TaxGroup",
+          rate: group.rate,
+          components: [
+            { taxId: cgstId, rate: group.rate / 2 },
+            { taxId: sgstId, rate: group.rate / 2 },
+          ],
+          description: `${group.name} [${group.rate}%] - Intra-state supply`,
+          taxAuthority: "GST",
+          isSystemTax: true,
+          isActive: true,
+        },
+      },
+      { upsert: true },
+    );
+    insertedCount += result.upsertedCount || 0;
+  }
+
+  return insertedCount > 0;
 }
 
 async function ensureDefaultPaymentTerms(organization: any) {
@@ -170,8 +254,8 @@ export const taxCRUD = {
 export const seedTaxes = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization = orgId(req);
   const seeded = await ensureDefaultTaxes(organization);
-  if (!seeded) return res.json({ success: true, message: "Taxes already exist" });
-  res.status(201).json({ success: true, message: "Default GST taxes created" });
+  if (!seeded) return res.json({ success: true, message: "Default GST taxes already present" });
+  res.status(201).json({ success: true, message: "Default GST taxes ensured" });
 });
 
 // ─── Payment Terms ─────────────────────────────────────────────────────────
