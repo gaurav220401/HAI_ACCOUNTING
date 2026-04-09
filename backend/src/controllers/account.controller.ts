@@ -4,6 +4,7 @@ import Account from "../models/account.model";
 import Bill from "../models/bill.model";
 import Contact from "../models/contact.model";
 import CurrencyAdjustment from "../models/currency-adjustment.model";
+import DocumentModel from "../models/document.model";
 import Expense from "../models/expense.model";
 import ExpenseCategory from "../models/expense-category.model";
 import GlEntry from "../models/gl-entry.model";
@@ -60,6 +61,36 @@ function toAmount(value: unknown): number {
 
 function toTrimmedString(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function parseDateParam(value: unknown, field: string): Date | null {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ValidationError(`${field} must be a valid date`);
+  }
+  return parsed;
+}
+
+function startOfDay(value: Date): Date {
+  const d = new Date(value);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfDay(value: Date): Date {
+  const d = new Date(value);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function toPositiveInt(value: unknown, fallback: number, min = 1, max = 500): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  const parsed = Math.trunc(n);
+  if (parsed < min) return min;
+  if (parsed > max) return max;
+  return parsed;
 }
 
 function calculateTotals(entries: Array<{ debit: number; credit: number }>) {
@@ -250,6 +281,336 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
   if (req.query.excludeGroups === "true") filter.isGroup = false;
   const accounts = await Account.find(filter).sort({ name: 1 }).lean();
   res.json({ success: true, data: accounts });
+});
+
+/** GET /api/accounts/:id/details */
+export const details = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req) as Types.ObjectId;
+  const accountId = String(req.params.id || "").trim();
+  if (!Types.ObjectId.isValid(accountId)) {
+    throw new ValidationError("Invalid account id");
+  }
+
+  const accountObjectId = new Types.ObjectId(accountId);
+  const page = toPositiveInt(req.query.page, 1, 1, 100000);
+  const limit = toPositiveInt(req.query.limit, 12, 1, 200);
+  const from = parseDateParam(req.query.from, "from");
+  const to = parseDateParam(req.query.to, "to");
+
+  if (from && to && startOfDay(from) > endOfDay(to)) {
+    throw new ValidationError("from must be before or equal to to");
+  }
+
+  const account = await Account.findOne({
+    _id: accountObjectId,
+    organizationId,
+    isDeleted: false,
+  }).lean();
+
+  if (!account) throw new NotFoundError("Account");
+
+  const glMatch: Record<string, unknown> = {
+    organizationId,
+    accountId: accountObjectId,
+  };
+
+  const postingDateFilter: Record<string, Date> = {};
+  if (from) postingDateFilter.$gte = startOfDay(from);
+  if (to) postingDateFilter.$lte = endOfDay(to);
+  if (Object.keys(postingDateFilter).length > 0) {
+    glMatch.postingDate = postingDateFilter;
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [
+    aggregateRows,
+    transactionCount,
+    transactionRows,
+    voucherRows,
+    currencyRows,
+    firstEntry,
+    lastEntry,
+    billsCount,
+    invoicesCount,
+    expensesCount,
+    purchaseOrdersCount,
+    recurringBillsCount,
+    recurringInvoicesCount,
+    recurringExpensesCount,
+    vendorCreditsCount,
+    journalsCount,
+    paymentMadeCount,
+    paymentReceivedCount,
+    contactsCount,
+    itemsCount,
+    paymentModesCount,
+    expenseCategoriesCount,
+    currencyAdjustmentsCount,
+    tdsTaxesCount,
+    tcsTaxesCount,
+    attachmentsCount,
+    attachmentRows,
+  ] = await Promise.all([
+    GlEntry.aggregate([
+      { $match: glMatch },
+      {
+        $group: {
+          _id: null,
+          totalDebit: { $sum: { $ifNull: ["$debit", 0] } },
+          totalCredit: { $sum: { $ifNull: ["$credit", 0] } },
+        },
+      },
+    ]),
+    GlEntry.countDocuments(glMatch),
+    GlEntry.find(glMatch)
+      .populate("contactId", "displayName companyName")
+      .sort({ postingDate: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    GlEntry.aggregate([
+      { $match: glMatch },
+      { $group: { _id: "$voucherType", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]),
+    GlEntry.aggregate([
+      { $match: glMatch },
+      { $group: { _id: "$currency" } },
+      { $sort: { _id: 1 } },
+    ]),
+    GlEntry.findOne(glMatch).select("postingDate").sort({ postingDate: 1, _id: 1 }).lean(),
+    GlEntry.findOne(glMatch).select("postingDate").sort({ postingDate: -1, _id: -1 }).lean(),
+    Bill.countDocuments({
+      organizationId,
+      $or: [
+        { "lineItems.accountId": accountObjectId },
+        { accountsPayableId: accountObjectId },
+        { discountAccountId: accountObjectId },
+      ],
+    }),
+    Invoice.countDocuments({ organizationId, "items.accountId": accountObjectId }),
+    Expense.countDocuments({
+      organizationId,
+      $or: [
+        { expenseAccountId: accountObjectId },
+        { "lineItems.expenseAccountId": accountObjectId },
+        { paidThroughAccountId: accountObjectId },
+      ],
+    }),
+    PurchaseOrder.countDocuments({
+      organizationId,
+      $or: [{ "lineItems.accountId": accountObjectId }, { discountAccountId: accountObjectId }],
+    }),
+    RecurringBill.countDocuments({
+      organizationId,
+      $or: [{ "lineItems.accountId": accountObjectId }, { discountAccountId: accountObjectId }],
+    }),
+    RecurringInvoice.countDocuments({ organizationId, "items.accountId": accountObjectId }),
+    RecurringExpense.countDocuments({
+      organizationId,
+      $or: [{ expenseAccountId: accountObjectId }, { paidThroughAccountId: accountObjectId }],
+    }),
+    VendorCredit.countDocuments({ organizationId, "lineItems.accountId": accountObjectId }),
+    Journal.countDocuments({ organizationId, "lineItems.accountId": accountObjectId }),
+    PaymentMade.countDocuments({
+      organization_id: organizationId,
+      $or: [{ paid_through_account: accountObjectId }, { deposit_to_account: accountObjectId }],
+    }),
+    PaymentReceived.countDocuments({
+      organization_id: organizationId,
+      deposited_to_account: accountObjectId,
+    }),
+    Contact.countDocuments({ organizationId, accountsPayableId: accountObjectId }),
+    Item.countDocuments({
+      organizationId,
+      $or: [
+        { salesAccountId: accountObjectId },
+        { purchaseAccountId: accountObjectId },
+        { inventoryAccountId: accountObjectId },
+      ],
+    }),
+    PaymentMode.countDocuments({ organizationId, accountId: accountObjectId }),
+    ExpenseCategory.countDocuments({ organizationId, accountId: accountObjectId }),
+    CurrencyAdjustment.countDocuments({ organizationId, "lines.accountId": accountObjectId }),
+    TdsTax.countDocuments({
+      organizationId,
+      $or: [
+        { tdsPayableAccountId: accountObjectId },
+        { tdsReceivableAccountId: accountObjectId },
+      ],
+    }),
+    TcsTax.countDocuments({
+      organizationId,
+      $or: [
+        { tcsPayableAccountId: accountObjectId },
+        { tcsReceivableAccountId: accountObjectId },
+      ],
+    }),
+    DocumentModel.countDocuments({
+      organizationId,
+      isDeleted: false,
+      links: { $elemMatch: { entityType: "account", entityId: accountId } },
+    }),
+    DocumentModel.find({
+      organizationId,
+      isDeleted: false,
+      links: { $elemMatch: { entityType: "account", entityId: accountId } },
+    })
+      .select("fileName mimeType extension sizeBytes url uploadedAt processingStatus")
+      .sort({ uploadedAt: -1 })
+      .limit(8)
+      .lean(),
+  ]);
+
+  const aggregate = (aggregateRows?.[0] || {}) as { totalDebit?: number; totalCredit?: number };
+  const totalDebitBCY = round2(Number(aggregate.totalDebit || 0));
+  const totalCreditBCY = round2(Number(aggregate.totalCredit || 0));
+  const movementBCY = round2(totalDebitBCY - totalCreditBCY);
+  const openingBalanceBCY = round2(Number(account.openingBalance || 0));
+  const closingBalanceBCY = round2(openingBalanceBCY + movementBCY);
+
+  type PopulatedContact = { displayName?: string; companyName?: string } | null;
+  type TransactionRow = {
+    _id: Types.ObjectId;
+    postingDate: Date;
+    voucherType: string;
+    voucherId: string;
+    voucherNo: string;
+    description?: string;
+    contactType?: string;
+    contactId?: PopulatedContact;
+    currency?: string;
+    exchangeRate?: number;
+    debit?: number;
+    credit?: number;
+    isReversal?: boolean;
+    createdAt?: Date;
+  };
+
+  const transactions = (transactionRows as TransactionRow[]).map((entry) => {
+    const debitBCY = round2(Number(entry.debit || 0));
+    const creditBCY = round2(Number(entry.credit || 0));
+    const exchangeRate = Number(entry.exchangeRate || 1);
+    const safeRate = exchangeRate > 0 ? exchangeRate : 1;
+    const debitFCY = round2(debitBCY / safeRate);
+    const creditFCY = round2(creditBCY / safeRate);
+    const contactName = entry.contactId
+      ? entry.contactId.displayName || entry.contactId.companyName || null
+      : null;
+
+    return {
+      id: String(entry._id),
+      postingDate: entry.postingDate,
+      voucherType: entry.voucherType,
+      voucherId: entry.voucherId,
+      voucherNo: entry.voucherNo,
+      description: entry.description || "",
+      contactType: entry.contactType || "None",
+      contactName,
+      currency: entry.currency || "",
+      exchangeRate: round2(safeRate),
+      debitBCY,
+      creditBCY,
+      amountBCY: round2(debitBCY - creditBCY),
+      debitFCY,
+      creditFCY,
+      amountFCY: round2(debitFCY - creditFCY),
+      isReversal: Boolean(entry.isReversal),
+      createdAt: entry.createdAt || entry.postingDate,
+    };
+  });
+
+  const vouchersByType: Record<string, number> = {};
+  for (const row of voucherRows as Array<{ _id: string; count: number }>) {
+    const key = String(row._id || "");
+    if (!key) continue;
+    vouchersByType[key] = Number(row.count || 0);
+  }
+
+  const currencies = (currencyRows as Array<{ _id: string | null }>)
+    .map((row) => String(row._id || "").trim())
+    .filter(Boolean);
+
+  type AttachmentRow = {
+    _id: Types.ObjectId;
+    fileName?: string;
+    mimeType?: string;
+    extension?: string;
+    sizeBytes?: number;
+    url?: string;
+    uploadedAt?: Date;
+    processingStatus?: string;
+  };
+
+  const attachments = (attachmentRows as AttachmentRow[]).map((row) => ({
+    id: String(row._id),
+    fileName: row.fileName || "Untitled",
+    mimeType: row.mimeType || "application/octet-stream",
+    extension: row.extension || "",
+    sizeBytes: Number(row.sizeBytes || 0),
+    url: row.url || "",
+    uploadedAt: row.uploadedAt || null,
+    processingStatus: row.processingStatus || "PROCESSING",
+  }));
+
+  const pages = transactionCount === 0 ? 1 : Math.ceil(transactionCount / limit);
+
+  res.json({
+    success: true,
+    data: {
+      account,
+      summary: {
+        openingBalanceBCY,
+        totalDebitBCY,
+        totalCreditBCY,
+        movementBCY,
+        closingBalanceBCY,
+        closingBalanceSide:
+          closingBalanceBCY > 0 ? "Debit" : closingBalanceBCY < 0 ? "Credit" : "Zero",
+        transactionCount,
+        currencies,
+        firstPostingDate: firstEntry?.postingDate || null,
+        lastPostingDate: lastEntry?.postingDate || null,
+      },
+      vouchersByType,
+      linkage: {
+        glEntries: transactionCount,
+        bills: billsCount,
+        invoices: invoicesCount,
+        expenses: expensesCount,
+        purchaseOrders: purchaseOrdersCount,
+        recurringBills: recurringBillsCount,
+        recurringInvoices: recurringInvoicesCount,
+        recurringExpenses: recurringExpensesCount,
+        vendorCredits: vendorCreditsCount,
+        journals: journalsCount,
+        paymentMade: paymentMadeCount,
+        paymentReceived: paymentReceivedCount,
+        contacts: contactsCount,
+        items: itemsCount,
+        paymentModes: paymentModesCount,
+        expenseCategories: expenseCategoriesCount,
+        currencyAdjustments: currencyAdjustmentsCount,
+        tdsTaxes: tdsTaxesCount,
+        tcsTaxes: tcsTaxesCount,
+        documents: attachmentsCount,
+      },
+      attachments,
+      transactions,
+      pagination: {
+        page,
+        limit,
+        total: transactionCount,
+        pages,
+        hasMore: page < pages,
+      },
+      filters: {
+        from,
+        to,
+      },
+    },
+  });
 });
 
 /**

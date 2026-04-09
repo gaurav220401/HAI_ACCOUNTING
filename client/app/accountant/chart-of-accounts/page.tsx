@@ -6,15 +6,19 @@ import {
   Plus, Settings2, ChevronDown, TreePine, RefreshCw, MoreHorizontal,
   Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AccountDetailsPanel, type AccountAmountView } from "@/components/account-details-panel";
+import { AccountTransactionsReportDialog } from "@/components/account-transactions-report-dialog";
 import { PageHeader } from "@/components/page-header";
 import { AccountDialog } from "@/components/account-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -26,6 +30,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { accountApi, type Account, type UpdateAccountInput } from "@/lib/api/accounts";
+import { documentsApi } from "@/lib/api/documents";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -250,8 +256,10 @@ function AccountRow({
   accountMap,
   columns,
   selected,
+  isDetailsActive,
   wrapText,
   onSelect,
+  onOpenDetails,
   onEdit,
   onDelete,
   onToggleActive,
@@ -260,8 +268,10 @@ function AccountRow({
   accountMap: Map<string, Account>;
   columns: ColumnConfig[];
   selected: boolean;
+  isDetailsActive: boolean;
   wrapText: boolean;
   onSelect: (id: string) => void;
+  onOpenDetails: (a: Account) => void;
   onEdit: (a: Account) => void;
   onDelete: (a: Account) => void;
   onToggleActive: (a: Account) => void;
@@ -273,7 +283,9 @@ function AccountRow({
     : "px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[250px]";
 
   return (
-    <tr className={`group border-b last:border-0 hover:bg-muted/40 transition-colors ${selected ? "bg-primary/5" : ""}`}>
+    <tr
+      className={`group border-b last:border-0 hover:bg-muted/40 transition-colors ${selected ? "bg-primary/5" : ""} ${isDetailsActive ? "bg-emerald-50/70" : ""}`}
+    >
       {/* Lock or Checkbox */}
       <td className="w-9 px-3 py-2.5 text-center">
         <Checkbox
@@ -290,7 +302,7 @@ function AccountRow({
               <td key={col.id} className={cellClass}>
                 <span
                   className="text-sm text-primary cursor-pointer hover:underline font-medium"
-                  onClick={() => onEdit(account)}
+                  onClick={() => onOpenDetails(account)}
                 >
                   {account.name}
                 </span>
@@ -366,6 +378,7 @@ export default function ChartOfAccountsPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
   const { activeOrganization, needsOrgSetup, loading: orgLoading } = useOrganization();
+  const isMobile = useIsMobile();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -388,6 +401,18 @@ export default function ChartOfAccountsPage() {
   // Bulk delete confirmation
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
+  // Account details panel
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsData, setDetailsData] = useState<Awaited<ReturnType<typeof accountApi.getDetails>>["data"] | null>(null);
+  const [detailsPage, setDetailsPage] = useState(1);
+  const [amountView, setAmountView] = useState<AccountAmountView>("BCY");
+  const [detailReportOpen, setDetailReportOpen] = useState(false);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+
   // ─── Auth guards ─────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -409,6 +434,21 @@ export default function ChartOfAccountsPage() {
       // noop
     } finally {
       setFetching(false);
+    }
+  }, []);
+
+  const fetchAccountDetails = useCallback(async (accountId: string, page = 1) => {
+    setDetailsLoading(true);
+    setDetailsError(null);
+    try {
+      const res = await accountApi.getDetails(accountId, { page, limit: 12 });
+      setDetailsData(res.data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load account details";
+      setDetailsError(message);
+      setDetailsData(null);
+    } finally {
+      setDetailsLoading(false);
     }
   }, []);
 
@@ -507,10 +547,74 @@ export default function ChartOfAccountsPage() {
 
   function openCreate() { setEditTarget(null); setDialogOpen(true); }
   function openEdit(account: Account) { setEditTarget(account); setDialogOpen(true); }
+  function openDetails(account: Account) {
+    setDetailsPage(1);
+    setAmountView("BCY");
+    setSelectedAccountId(account._id);
+    if (isMobile) setMobileDetailsOpen(true);
+  }
+
+  function closeDetailsPanel() {
+    setSelectedAccountId(null);
+    setDetailsData(null);
+    setDetailsError(null);
+    setDetailReportOpen(false);
+    setMobileDetailsOpen(false);
+  }
+
+  function openDetailedReport() {
+    if (!selectedAccountId) {
+      toast.error("Select an account first");
+      return;
+    }
+    setMobileDetailsOpen(false);
+    setDetailReportOpen(true);
+  }
 
   function handleColumnSave(cols: ColumnConfig[]) {
     setColumns(cols);
     setCustomizeOpen(false);
+  }
+
+  async function refreshSelectedDetails() {
+    if (!selectedAccountId) return;
+    await fetchAccountDetails(selectedAccountId, detailsPage);
+  }
+
+  function triggerAttachmentPicker() {
+    if (!selectedAccountId) {
+      toast.error("Select an account first");
+      return;
+    }
+    attachmentInputRef.current?.click();
+  }
+
+  async function handleAttachmentSelection(files: FileList | null) {
+    const file = files?.[0];
+    if (!file || !selectedAccountId) return;
+
+    setUploadingAttachment(true);
+    try {
+      const uploaded = await documentsApi.upload(file, {
+        source: "manual",
+        inboxType: "files",
+      });
+
+      await documentsApi.link(uploaded.data._id, {
+        entityType: "account",
+        entityId: selectedAccountId,
+        linkSource: "manual",
+      });
+
+      toast.success("File linked to account");
+      await fetchAccountDetails(selectedAccountId, detailsPage);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to upload and link file";
+      toast.error(message);
+    } finally {
+      setUploadingAttachment(false);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    }
   }
 
   // ─── Derived ─────────────────────────────────────────────────────────
@@ -525,7 +629,31 @@ export default function ChartOfAccountsPage() {
     });
   }, [accounts, viewFilter]);
 
+  const panelOpen = Boolean(selectedAccountId);
+
   const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
+
+  useEffect(() => {
+    if (displayed.length === 0) {
+      setSelectedAccountId(null);
+      setDetailsData(null);
+      setDetailsError(null);
+      setDetailReportOpen(false);
+      return;
+    }
+
+    if (selectedAccountId && !displayed.some((a) => a._id === selectedAccountId)) {
+      setSelectedAccountId(null);
+      setDetailsData(null);
+      setDetailsError(null);
+      setDetailReportOpen(false);
+    }
+  }, [displayed, selectedAccountId]);
+
+  useEffect(() => {
+    if (!selectedAccountId) return;
+    void fetchAccountDetails(selectedAccountId, detailsPage);
+  }, [selectedAccountId, detailsPage, fetchAccountDetails]);
 
   // ─── Loading ─────────────────────────────────────────────────────────
 
@@ -576,10 +704,13 @@ export default function ChartOfAccountsPage() {
             </div>
           ) : (
             /* ── Table layout ────────────────────────────────────── */
-            <div className="flex flex-col h-full overflow-hidden">
+            <div className="flex h-full min-h-0 overflow-hidden">
+              <div
+                className={`flex min-h-0 flex-col overflow-hidden transition-all duration-200 ${panelOpen ? "flex-1 lg:w-[320px] lg:flex-none lg:shrink-0 lg:border-r" : "flex-1"}`}
+              >
 
               {/* Bulk selection toolbar — replaces sub-header when items selected */}
-              {selectedIds.size > 0 ? (
+              {!panelOpen && selectedIds.size > 0 ? (
                 <BulkActionToolbar
                   count={selectedIds.size}
                   onMarkActive={bulkMarkActive}
@@ -631,89 +762,184 @@ export default function ChartOfAccountsPage() {
                 </div>
               )}
 
-              {/* Scrollable table */}
-              <div className="flex-1 overflow-auto">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
-                    <tr className="border-b">
-                      {/* Column-header dropdown trigger */}
-                      <th className="w-9 px-3 py-2.5">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button className="p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors">
-                              <SlidersHorizontal className="h-3.5 w-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" className="w-52">
-                            <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
-                              <SlidersHorizontal className="h-4 w-4 mr-2 text-primary" />
-                              Customize Columns
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setWrapText((w) => !w)}>
-                              <WrapText className="h-4 w-4 mr-2" />
-                              {wrapText ? "No Wrap" : "Wrap Text"}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </th>
-
-                      {visibleColumns.map((col) => (
-                        <th
-                          key={col.id}
-                          className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide"
-                        >
-                          <span className="flex items-center gap-1">
-                            {col.label}
-                            {col.id === "accountType" && (
-                              <ChevronsUpDown className="h-3 w-3 text-muted-foreground/60" />
-                            )}
-                          </span>
+              {panelOpen ? (
+                <div className="flex-1 overflow-y-auto divide-y">
+                  {displayed.length === 0 ? (
+                    <div className="px-4 py-10 text-sm text-muted-foreground">No {viewFilter.toLowerCase()} accounts found.</div>
+                  ) : (
+                    displayed.map((account) => (
+                      <button
+                        key={account._id}
+                        className={`w-full border-l-2 px-4 py-3 text-left transition-colors hover:bg-muted/20 ${selectedAccountId === account._id ? "border-l-primary bg-primary/10" : "border-l-transparent"}`}
+                        onClick={() => openDetails(account)}
+                      >
+                        <p className={`text-sm font-medium ${selectedAccountId === account._id ? "text-primary" : "text-foreground"}`}>
+                          {account.name}
+                          {account.code ? ` (${account.code})` : ""}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{account.accountType}</p>
+                        {!account.isActive && <p className="mt-0.5 text-[11px] text-muted-foreground">Inactive</p>}
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1 overflow-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
+                      <tr className="border-b">
+                        {/* Column-header dropdown trigger */}
+                        <th className="w-9 px-3 py-2.5">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button className="p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors">
+                                <SlidersHorizontal className="h-3.5 w-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-52">
+                              <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
+                                <SlidersHorizontal className="h-4 w-4 mr-2 text-primary" />
+                                Customize Columns
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setWrapText((w) => !w)}>
+                                <WrapText className="h-4 w-4 mr-2" />
+                                {wrapText ? "No Wrap" : "Wrap Text"}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </th>
-                      ))}
 
-                      {/* Search icon in header */}
-                      <th className="w-12 px-2 py-2.5 text-right">
-                        <button className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors">
-                          <Search className="h-3.5 w-3.5" />
-                        </button>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayed.length === 0 ? (
-                      <tr>
-                        <td colSpan={visibleColumns.length + 2} className="px-6 py-16 text-center text-muted-foreground text-sm">
-                          No {viewFilter.toLowerCase()} accounts found.
-                        </td>
+                        {visibleColumns.map((col) => (
+                          <th
+                            key={col.id}
+                            className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide"
+                          >
+                            <span className="flex items-center gap-1">
+                              {col.label}
+                              {col.id === "accountType" && (
+                                <ChevronsUpDown className="h-3 w-3 text-muted-foreground/60" />
+                              )}
+                            </span>
+                          </th>
+                        ))}
+
+                        {/* Search icon in header */}
+                        <th className="w-12 px-2 py-2.5 text-right">
+                          <button className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors">
+                            <Search className="h-3.5 w-3.5" />
+                          </button>
+                        </th>
                       </tr>
-                    ) : (
-                      displayed.map((account) => (
-                        <AccountRow
-                          key={account._id}
-                          account={account}
-                          accountMap={accountMap}
-                          columns={columns}
-                          selected={selectedIds.has(account._id)}
-                          wrapText={wrapText}
-                          onSelect={toggleSelect}
-                          onEdit={openEdit}
-                          onDelete={setDeleteTarget}
-                          onToggleActive={handleToggleActive}
-                        />
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {displayed.length === 0 ? (
+                        <tr>
+                          <td colSpan={visibleColumns.length + 2} className="px-6 py-16 text-center text-muted-foreground text-sm">
+                            No {viewFilter.toLowerCase()} accounts found.
+                          </td>
+                        </tr>
+                      ) : (
+                        displayed.map((account) => (
+                          <AccountRow
+                            key={account._id}
+                            account={account}
+                            accountMap={accountMap}
+                            columns={columns}
+                            selected={selectedIds.has(account._id)}
+                            isDetailsActive={selectedAccountId === account._id}
+                            wrapText={wrapText}
+                            onSelect={toggleSelect}
+                            onOpenDetails={openDetails}
+                            onEdit={openEdit}
+                            onDelete={setDeleteTarget}
+                            onToggleActive={handleToggleActive}
+                          />
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Footer count */}
               <div className="px-6 py-2.5 border-t text-xs text-muted-foreground">
                 {displayed.length} account{displayed.length !== 1 ? "s" : ""}
               </div>
+
+              </div>
+
+              {panelOpen && (
+                <div className="hidden min-h-0 flex-1 lg:block">
+                  <AccountDetailsPanel
+                    details={detailsData}
+                    loading={detailsLoading}
+                    error={detailsError}
+                    baseCurrency={activeOrganization?.baseCurrency || "INR"}
+                    amountView={amountView}
+                    onAmountViewChange={setAmountView}
+                    onRefresh={() => void refreshSelectedDetails()}
+                    onUploadClick={triggerAttachmentPicker}
+                    onOpenMoreDetails={openDetailedReport}
+                    uploading={uploadingAttachment}
+                    onEdit={() => {
+                      if (detailsData?.account) openEdit(detailsData.account);
+                    }}
+                    onDelete={() => {
+                      if (detailsData?.account) setDeleteTarget(detailsData.account);
+                    }}
+                    canDelete={!detailsData?.account?.isSystemAccount}
+                    onClose={closeDetailsPanel}
+                  />
+                </div>
+              )}
+
+              <Sheet open={mobileDetailsOpen} onOpenChange={setMobileDetailsOpen}>
+                <SheetContent side="right" className="w-full p-0 sm:max-w-[720px]">
+                  <AccountDetailsPanel
+                    details={detailsData}
+                    loading={detailsLoading}
+                    error={detailsError}
+                    baseCurrency={activeOrganization?.baseCurrency || "INR"}
+                    amountView={amountView}
+                    onAmountViewChange={setAmountView}
+                    onRefresh={() => void refreshSelectedDetails()}
+                    onUploadClick={triggerAttachmentPicker}
+                    onOpenMoreDetails={openDetailedReport}
+                    uploading={uploadingAttachment}
+                    onEdit={() => {
+                      if (detailsData?.account) openEdit(detailsData.account);
+                    }}
+                    onDelete={() => {
+                      if (detailsData?.account) setDeleteTarget(detailsData.account);
+                    }}
+                    canDelete={!detailsData?.account?.isSystemAccount}
+                    onClose={() => setMobileDetailsOpen(false)}
+                    compact
+                  />
+                </SheetContent>
+              </Sheet>
             </div>
           )}
         </div>
+
+        <input
+          ref={attachmentInputRef}
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            void handleAttachmentSelection(e.target.files);
+          }}
+        />
       </SidebarInset>
+
+      <AccountTransactionsReportDialog
+        open={detailReportOpen}
+        onOpenChange={setDetailReportOpen}
+        accountId={selectedAccountId}
+        accountName={detailsData?.account?.name || "Account"}
+        organizationName={activeOrganization?.name || "Organization"}
+        baseCurrency={activeOrganization?.baseCurrency || "INR"}
+      />
 
       {/* Account Dialog (Create / Edit) */}
       <AccountDialog
