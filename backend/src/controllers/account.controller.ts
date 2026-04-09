@@ -182,7 +182,11 @@ async function findAccountUsageArea(accountId: Types.ObjectId, organizationId: T
     },
     {
       area: "Contacts",
-      exists: () => Contact.exists({ organizationId, accountsPayableId: accountId }),
+      exists: () =>
+        Contact.exists({
+          organizationId,
+          $or: [{ accountsPayableId: accountId }, { accountsReceivableId: accountId }],
+        }),
     },
     {
       area: "Items",
@@ -421,7 +425,10 @@ export const details = asyncHandler(async (req: AuthenticatedRequest, res: Respo
       organization_id: organizationId,
       deposited_to_account: accountObjectId,
     }),
-    Contact.countDocuments({ organizationId, accountsPayableId: accountObjectId }),
+    Contact.countDocuments({
+      organizationId,
+      $or: [{ accountsPayableId: accountObjectId }, { accountsReceivableId: accountObjectId }],
+    }),
     Item.countDocuments({
       organizationId,
       $or: [

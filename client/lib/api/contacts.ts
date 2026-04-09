@@ -5,8 +5,25 @@ import type { PaginatedResponse, ListParams } from "./client";
 
 export type ContactType = "Customer" | "Vendor" | "Both";
 export type TaxTreatment =
-  | "Taxable" | "TaxExempt" | "ReverseCharge" | "SEZ"
-  | "Overseas" | "Composition" | "UIN";
+  | "Registered Business - Regular"
+  | "Registered Business - Composition"
+  | "Unregistered Business"
+  | "Consumer"
+  | "Overseas"
+  | "Special Economic Zone"
+  | "Deemed Export"
+  | "Tax Deductor"
+  | "SEZ Developer"
+  | "Input Service Distributor"
+  // legacy values retained for backward compatibility
+  | "Taxable"
+  | "TaxExempt"
+  | "ReverseCharge"
+  | "SEZ"
+  | "Composition"
+  | "UIN";
+
+export type ContactTaxPreference = "Taxable" | "Tax Exempt";
 
 export interface Address {
   attention?: string;
@@ -90,8 +107,13 @@ export interface Contact {
   language?: string;
   // Financial
   taxTreatment?: TaxTreatment;
+  taxPreference?: ContactTaxPreference;
+  exemptionReason?: string;
   placeOfSupply?: string;
+  businessLegalName?: string;
+  businessTradeName?: string;
   paymentTermsId?: string;
+  accountsReceivableId?: string;
   accountsPayableId?: string;
   openingBalance?: number;
   tdsCategory?: string;
@@ -101,6 +123,7 @@ export interface Contact {
   billingAddress?: Address;
   shippingAddress?: Address;
   // Relations
+  linkedContactId?: string;
   contactPersons?: ContactPerson[];
   bankDetails?: BankDetail[];
   salesPersonId?: string;
@@ -119,7 +142,7 @@ export interface Contact {
   documents?: ContactDocument[];
   isActive: boolean;
   legalComplianceLocked?: boolean;
-  statementTemplate?: Record<string, any>;
+  statementTemplate?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -140,8 +163,13 @@ export interface CreateContactInput {
   language?: string;
   // Financial
   taxTreatment?: TaxTreatment;
+  taxPreference?: ContactTaxPreference;
+  exemptionReason?: string;
   placeOfSupply?: string;
+  businessLegalName?: string;
+  businessTradeName?: string;
   paymentTermsId?: string;
+  accountsReceivableId?: string;
   accountsPayableId?: string;
   openingBalance?: number;
   tdsCategory?: string;
@@ -151,6 +179,7 @@ export interface CreateContactInput {
   billingAddress?: Address;
   shippingAddress?: Address;
   // Relations
+  linkedContactId?: string;
   contactPersons?: ContactPerson[];
   bankDetails?: BankDetail[];
   salesPersonId?: string;
@@ -170,7 +199,7 @@ export interface CreateContactInput {
   isActive?: boolean;
 }
 
-export type UpdateContactInput = Partial<CreateContactInput> & { isActive?: boolean; statementTemplate?: Record<string, any> };
+export type UpdateContactInput = Partial<CreateContactInput> & { isActive?: boolean; statementTemplate?: Record<string, unknown> };
 
 export interface ContactListParams extends ListParams {
   type?: ContactType | "All";
@@ -251,6 +280,12 @@ export const contactApi = {
     apiFetch<{ success: boolean; data: { sourceVendorId: string; targetVendorId: string } }>(`/contacts/${sourceVendorId}/merge`, {
       method: "POST",
       body: JSON.stringify({ targetVendorId }),
+    }),
+
+  mergeCustomers: (sourceCustomerId: string, targetCustomerId: string) =>
+    apiFetch<{ success: boolean; data: { sourceVendorId: string; targetVendorId: string } }>(`/contacts/${sourceCustomerId}/merge`, {
+      method: "POST",
+      body: JSON.stringify({ targetVendorId: targetCustomerId }),
     }),
 
   remove: (id: string) =>

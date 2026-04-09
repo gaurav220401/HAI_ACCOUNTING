@@ -2291,7 +2291,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
 
     saveTemplateTimeout.current = setTimeout(async () => {
       try {
-        await contactApi.update(vendor._id, { statementTemplate: templateConfig });
+        await contactApi.update(vendor._id, { statementTemplate: { ...templateConfig } as Record<string, unknown> });
         setTemplateSyncStatus("synced");
 
         if (templateSyncResetTimeout.current) {

@@ -91,6 +91,7 @@ export interface SalesOrderConvertToInvoiceResponse {
 
 export interface SalesOrderListParams extends ListParams {
   status?: SalesOrderStatus;
+  customerId?: string;
 }
 
 export const salesOrderApi = {

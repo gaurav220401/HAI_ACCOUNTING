@@ -1,6 +1,7 @@
 import mongoose, { ClientSession } from "mongoose";
 import { Response } from "express";
 import Bill from "../models/bill.model";
+import Contact from "../models/contact.model";
 import { Counter } from "../models/counter.model";
 import Organization from "../models/organization.model";
 import VendorCredit from "../models/vendor-credit.model";
@@ -32,6 +33,15 @@ function toNum(value: unknown, fallback = 0): number {
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function scalarId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    return String((value as { _id?: unknown })._id || "");
+  }
+  return String(value);
 }
 
 function calcLineItems(items: any[], discountLevel: "transaction" | "line_item") {
@@ -181,12 +191,21 @@ async function postVendorCreditLedger(credit: any, req: AuthenticatedRequest) {
   const total = round2(toNum(credit.total));
   if (total <= 0) return;
 
-  const accountsPayableId = await findAccountIdByName({
-    organizationId,
-    names: ["Accounts Payable", "Trade Payables", "Creditors"],
-    rootType: "Liability",
-    accountType: "Accounts Payable",
-  });
+  const vendorId = scalarId(credit.vendorId);
+  const vendor = vendorId
+    ? await Contact.findOne({ _id: vendorId, organizationId })
+        .select("accountsPayableId")
+        .lean()
+    : null;
+
+  const accountsPayableId =
+    vendor?.accountsPayableId ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Accounts Payable", "Trade Payables", "Creditors"],
+      rootType: "Liability",
+      accountType: "Accounts Payable",
+    }));
 
   const defaultExpenseId = await findAccountIdByName({
     organizationId,

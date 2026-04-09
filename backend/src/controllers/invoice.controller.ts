@@ -1,5 +1,6 @@
 import { Response } from "express";
 import Invoice from "../models/invoice.model";
+import Contact from "../models/contact.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -196,12 +197,21 @@ async function postInvoiceLedger(invoice: any, req: AuthenticatedRequest) {
   const receivableAmount = round2(toNum(invoice.total));
   if (receivableAmount <= 0) return;
 
-  const arAccountId = await findAccountIdByName({
-    organizationId,
-    names: ["Accounts Receivable", "Trade Receivables", "Debtors"],
-    rootType: "Asset",
-    accountType: "Accounts Receivable",
-  });
+  const customerId = String(invoice.customerId || "");
+  const customer = customerId
+    ? await Contact.findOne({ _id: customerId, organizationId })
+        .select("accountsReceivableId")
+        .lean()
+    : null;
+
+  const arAccountId =
+    customer?.accountsReceivableId ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Accounts Receivable", "Trade Receivables", "Debtors"],
+      rootType: "Asset",
+      accountType: "Accounts Receivable",
+    }));
 
   const defaultSalesAccountId = await findAccountIdByName({
     organizationId,
@@ -393,14 +403,18 @@ export const list = asyncHandler(
     const {
       status,
       search,
+      customerId,
+      customer_id,
       page = 1,
       limit = 25,
       sortBy = "invoiceDate",
       sortOrder = "desc",
-    } = req.query;
+    } = req.query as Record<string, string>;
 
     const filter: any = { organizationId: orgId(req) };
     if (status && status !== "All") filter.status = status;
+    const customerFilterId = customerId || customer_id;
+    if (customerFilterId) filter.customerId = customerFilterId;
     if (search) {
       filter.$or = [
         { invoiceNumber: { $regex: search, $options: "i" } },

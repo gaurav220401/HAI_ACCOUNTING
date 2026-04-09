@@ -68,6 +68,7 @@ export interface PaymentInvoiceMap {
 
 export interface PaymentReceivedListParams extends ListParams {
   customer_id?: string;
+  customerId?: string;
   status?: string;
 }
 
@@ -101,7 +102,12 @@ export const paymentReceivedApi = {
     apiFetch<{ success: boolean; data: { payment_number: string } }>("/payments-received/next-number"),
 
   list: (params?: PaymentReceivedListParams) => {
-    const qs = buildQuery({ ...params });
+    const queryParams = { ...params };
+    if (queryParams.customerId && !queryParams.customer_id) {
+      queryParams.customer_id = queryParams.customerId;
+    }
+    delete queryParams.customerId;
+    const qs = buildQuery(queryParams);
     return apiFetch<PaginatedResponse<PaymentReceived>>(`/payments-received${qs}`);
   },
 

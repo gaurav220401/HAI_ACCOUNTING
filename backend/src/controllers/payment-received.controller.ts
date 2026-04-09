@@ -1,6 +1,7 @@
 import mongoose, { ClientSession, Types } from "mongoose";
 import { Response } from "express";
 import { Counter } from "../models/counter.model";
+import Contact from "../models/contact.model";
 import Invoice from "../models/invoice.model";
 import PaymentInvoiceMap from "../models/payment-invoice-map.model";
 import PaymentReceived, { IPaymentReceived } from "../models/payment-received.model";
@@ -60,6 +61,15 @@ function paymentReceivedVoucherId(payment: IPaymentReceived, event: string, key?
   return `${paymentReceivedVoucherPrefix(payment)}:${event}${key ? `:${key}` : ""}`;
 }
 
+function scalarId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    return String((value as { _id?: unknown })._id || "");
+  }
+  return String(value);
+}
+
 async function resolvePaymentReceivedAccounts(payment: IPaymentReceived) {
   const organizationId = payment.organization_id;
 
@@ -71,12 +81,21 @@ async function resolvePaymentReceivedAccounts(payment: IPaymentReceived) {
       rootType: "Asset",
     }));
 
-  const accountsReceivableId = await findAccountIdByName({
-    organizationId,
-    names: ["Accounts Receivable", "Trade Receivables", "Debtors"],
-    rootType: "Asset",
-    accountType: "Accounts Receivable",
-  });
+  const customerId = scalarId(payment.customer_id);
+  const customer = customerId
+    ? await Contact.findOne({ _id: customerId, organizationId })
+        .select("accountsReceivableId")
+        .lean()
+    : null;
+
+  const accountsReceivableId =
+    customer?.accountsReceivableId ||
+    (await findAccountIdByName({
+      organizationId,
+      names: ["Accounts Receivable", "Trade Receivables", "Debtors"],
+      rootType: "Asset",
+      accountType: "Accounts Receivable",
+    }));
 
   const customerAdvanceId = await findAccountIdByName({
     organizationId,
@@ -396,6 +415,7 @@ export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res:
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const {
     customer_id,
+    customerId,
     status,
     search,
     page = 1,
@@ -408,7 +428,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
     organization_id: orgId(req),
     is_deleted: false,
   };
-  if (customer_id) filter.customer_id = customer_id;
+  if (customer_id || customerId) filter.customer_id = customer_id || customerId;
   if (status && status !== "All") filter.status = status;
   if (search) {
     filter.$or = [

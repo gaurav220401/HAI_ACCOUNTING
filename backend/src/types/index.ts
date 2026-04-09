@@ -305,13 +305,25 @@ export interface IAccount extends Document {
 // ─── 1.3 Contacts ─────────────────────────────────────────────────────
 export type ContactType = "Customer" | "Vendor" | "Both";
 export type TaxTreatment =
+  | "Registered Business - Regular"
+  | "Registered Business - Composition"
+  | "Unregistered Business"
+  | "Consumer"
+  | "Overseas"
+  | "Special Economic Zone"
+  | "Deemed Export"
+  | "Tax Deductor"
+  | "SEZ Developer"
+  | "Input Service Distributor"
+  // Legacy values retained for backward compatibility
   | "Taxable"
   | "TaxExempt"
   | "ReverseCharge"
   | "SEZ"
-  | "Overseas"
   | "Composition"
   | "UIN";
+
+export type ContactTaxPreference = "Taxable" | "Tax Exempt";
 
 export interface IComment {
   _id: Types.ObjectId;
@@ -365,8 +377,14 @@ export interface IContact extends Document {
   // Financial
   paymentTermsId?: Types.ObjectId | null;
   accountsPayableId?: Types.ObjectId | null; // Accounts Payable account
+  accountsReceivableId?: Types.ObjectId | null; // Accounts Receivable account
   openingBalance?: number;
   taxTreatment: TaxTreatment;
+  taxPreference?: ContactTaxPreference;
+  exemptionReason?: string;
+  placeOfSupply?: string;
+  businessLegalName?: string;
+  businessTradeName?: string;
   taxId?: string; // GSTIN / VAT / PAN
   gstin?: string; // GSTIN (primary GST number)
   pan?: string; // PAN number

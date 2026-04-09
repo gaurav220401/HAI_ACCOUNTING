@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/collapsible";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 
-// ─── Types (mirrors vendor-detail-view.tsx) ───────────────────────────────────
+// ─── Types (mirrors statement template config usage) ──────────────────────────
 
 interface TemplateConfig {
   templateId: string;
@@ -262,7 +262,6 @@ export default function EditTemplatePage() {
   const [previewKey, setPreviewKey] = useState(0);
   const [templateSyncStatus, setTemplateSyncStatus] = useState<"idle" | "saving" | "synced" | "error">("idle");
   const [isDirty, setIsDirty] = useState(false);
-  const [initialConfig, setInitialConfig] = useState<TemplateConfig>(DEFAULT_TEMPLATE_CONFIG);
   const statusResetTimeout = useRef<NodeJS.Timeout | null>(null);
   const fileInputRefHeader = useRef<HTMLInputElement>(null);
   const fileInputRefFooter = useRef<HTMLInputElement>(null);
@@ -282,27 +281,15 @@ export default function EditTemplatePage() {
   useEffect(() => {
     if (!firebaseUser || loading) return;
     const id = params?.id;
-    if (!id) { setFetching(false); return; }
-
-    try {
-      const stored = localStorage.getItem(TEMPLATE_STORAGE_KEY(id));
-      if (stored) {
-        const parsed = JSON.parse(stored) as Partial<TemplateConfig>;
-        const next = { ...DEFAULT_TEMPLATE_CONFIG, ...parsed, margins: { ...DEFAULT_TEMPLATE_CONFIG.margins, ...(parsed.margins ?? {}) } };
-        setConfig(next);
-        setInitialConfig(next);
-        setIsDirty(false);
-      }
-    } catch { /* ignore */ }
+    if (!id) return;
 
     contactApi.getById(id)
       .then((res) => {
-        const vendorData = (res as any).data ?? res;
+        const vendorData = res.data;
         setVendor(vendorData);
         if (vendorData?.statementTemplate) {
           const merged = { ...DEFAULT_TEMPLATE_CONFIG, ...vendorData.statementTemplate, margins: { ...DEFAULT_TEMPLATE_CONFIG.margins, ...(vendorData.statementTemplate?.margins ?? {}) } };
           setConfig(merged);
-          setInitialConfig(merged);
           setIsDirty(false);
         }
       })
@@ -342,15 +329,15 @@ export default function EditTemplatePage() {
       if (statusResetTimeout.current) clearTimeout(statusResetTimeout.current);
       statusResetTimeout.current = setTimeout(() => setTemplateSyncStatus("idle"), 2500);
       toast.success("Template synced to cloud");
-      router.push(`/purchases/vendors?selectedId=${params?.id}&tab=statement`);
-    } catch (err) {
+      router.push(`/sales/customers?selectedId=${params?.id}&tab=statement`);
+    } catch {
       setTemplateSyncStatus("error");
       toast.error("Failed to sync template. Please try again.");
     }
   }
 
   function handleClose() {
-    router.push(`/purchases/vendors?selectedId=${params?.id}&tab=statement`);
+    router.push(`/sales/customers?selectedId=${params?.id}&tab=statement`);
   }
 
   if (loading || orgLoading || !firebaseUser || fetching) {
@@ -369,12 +356,12 @@ export default function EditTemplatePage() {
     { id: "other",         label: "Other\nDetails",       icon: <AlignLeft className="h-5 w-5" /> },
   ];
 
-  const pvName    = vendor?.displayName ?? "Sample Vendor Co.";
+  const pvName    = vendor?.displayName ?? "Sample Customer Co.";
   const pvCompany = (vendor?.companyName && vendor.companyName !== vendor.displayName) ? vendor.companyName : "";
   const pvEmail   = vendor?.email ?? "";
-  const pvAddr    = (vendor as any)?.billingAddress
-    ? [(vendor as any).billingAddress.street, (vendor as any).billingAddress.city,
-       (vendor as any).billingAddress.state, (vendor as any).billingAddress.country]
+  const pvAddr    = vendor?.billingAddress
+    ? [vendor.billingAddress.street, vendor.billingAddress.city,
+       vendor.billingAddress.state, vendor.billingAddress.country]
         .filter(Boolean).join(", ")
     : "";
 
@@ -814,10 +801,10 @@ export default function EditTemplatePage() {
                   </div>
                 </EtCollapsible>
 
-                <EtCollapsible title="Vendor Details" defaultOpen={false}>
+                <EtCollapsible title="Customer Details" defaultOpen={false}>
                   <div className="space-y-3">
                     <div>
-                      <Label className="text-xs mb-1.5 block">Vendor Name</Label>
+                      <Label className="text-xs mb-1.5 block">Customer Name</Label>
                       <div className="flex items-center gap-4 flex-wrap">
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs text-muted-foreground">Font Color</span>
@@ -1094,7 +1081,7 @@ export default function EditTemplatePage() {
                     to enter additional information apart from your Terms &amp; Conditions.
                     It can include by-laws, clauses and other details pertaining to your organization.
                     This will be included on a separate page at the end of every{" "}
-                    <span className="font-medium text-foreground">Vendor Statement</span>.
+                    <span className="font-medium text-foreground">Customer Statement</span>.
                   </p>
                   <Button
                     variant="outline" size="sm"

@@ -86,6 +86,7 @@ export type UpdateDeliveryChallanInput = Partial<CreateDeliveryChallanInput>;
 
 export interface DeliveryChallanListParams extends ListParams {
   status?: DeliveryChallanStatus | "All";
+  customerId?: string;
 }
 
 // ─── API ────────────────────────────────────────────────────────────────
