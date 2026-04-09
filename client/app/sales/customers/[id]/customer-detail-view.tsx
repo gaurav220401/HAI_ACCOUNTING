@@ -59,7 +59,6 @@ import {
 } from "@/lib/api/recurring-invoices";
 import { smtpApi } from "@/lib/api/smtp";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -93,8 +92,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
 type CustomerTab = "overview" | "comments" | "transactions" | "mails" | "statement";
-type ChartPeriod = "6m" | "12m";
+type ChartPeriod = "6m" | "12m" | "fiscal" | "prev_fiscal";
+type ChartBasis = "accrual" | "cash";
 type StatementTypeFilter = "All" | "Invoices" | "Payments";
+
+const CHART_PERIOD_LABELS: Record<ChartPeriod, string> = {
+  "6m": "Last 6 Months",
+  "12m": "Last 12 Months",
+  fiscal: "This Fiscal Year",
+  prev_fiscal: "Previous Fiscal Year",
+};
 
 interface StatementTemplateConfig {
   paperSize: "A4" | "A5" | "Letter";
@@ -250,6 +257,17 @@ function fmtCurrency(value?: number, currency = "INR"): string {
   }).format(value ?? 0);
 }
 
+function currencyCodeWithName(currency = "INR"): string {
+  const code = String(currency || "INR").toUpperCase();
+  try {
+    const displayNames = new Intl.DisplayNames(["en"], { type: "currency" });
+    const label = displayNames.of(code);
+    return label ? `${code} - ${label}` : code;
+  } catch {
+    return code;
+  }
+}
+
 function fmtDate(value?: string): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -298,9 +316,27 @@ function paymentCustomerId(payment: PaymentReceived): string {
 
 function getMonthBuckets(period: ChartPeriod) {
   const now = new Date();
-  const span = period === "6m" ? 6 : 12;
+  let start: Date;
+  let span: number;
+
+  if (period === "6m") {
+    span = 6;
+    start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  } else if (period === "12m") {
+    span = 12;
+    start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  } else if (period === "fiscal") {
+    span = 12;
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    start = new Date(fyStartYear, 3, 1);
+  } else {
+    span = 12;
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() - 1 : now.getFullYear() - 2;
+    start = new Date(fyStartYear, 3, 1);
+  }
+
   return Array.from({ length: span }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (span - 1 - index), 1);
+    const date = new Date(start.getFullYear(), start.getMonth() + index, 1);
     return {
       year: date.getFullYear(),
       month: date.getMonth(),
@@ -309,14 +345,16 @@ function getMonthBuckets(period: ChartPeriod) {
   });
 }
 
-function getInvoiceMonthlyData(invoices: Invoice[], period: ChartPeriod) {
+function getMonthlyData(rows: Array<{ date?: string; amount: number }>, period: ChartPeriod) {
   return getMonthBuckets(period).map(({ year, month, label }) => {
-    const total = invoices
-      .filter((invoice) => {
-        const date = new Date(invoice.invoiceDate);
+    const total = rows
+      .filter((row) => {
+        if (!row.date) return false;
+        const date = new Date(row.date);
+        if (Number.isNaN(date.getTime())) return false;
         return date.getFullYear() === year && date.getMonth() === month;
       })
-      .reduce((sum, invoice) => sum + (invoice.total || 0), 0);
+      .reduce((sum, row) => sum + Number(row.amount || 0), 0);
     return { label, total };
   });
 }
@@ -471,6 +509,7 @@ export function CustomerDetailView({
   const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>("6m");
+  const [chartBasis, setChartBasis] = useState<ChartBasis>("accrual");
 
   const [addressOpen, setAddressOpen] = useState(true);
   const [otherOpen, setOtherOpen] = useState(true);
@@ -694,7 +733,27 @@ export function CustomerDetailView({
     [payments],
   );
 
-  const chartData = useMemo(() => getInvoiceMonthlyData(invoices, chartPeriod), [invoices, chartPeriod]);
+  const chartData = useMemo(() => {
+    if (chartBasis === "cash") {
+      return getMonthlyData(
+        payments.map((row) => ({
+          date: row.payment_date,
+          amount: Number(row.amount_used_for_invoices || row.total_amount_received || 0),
+        })),
+        chartPeriod,
+      );
+    }
+
+    return getMonthlyData(
+      invoices.map((row) => ({ date: row.invoiceDate, amount: Number(row.total || 0) })),
+      chartPeriod,
+    );
+  }, [chartBasis, chartPeriod, invoices, payments]);
+
+  const chartTotal = useMemo(
+    () => chartData.reduce((sum, row) => sum + row.total, 0),
+    [chartData],
+  );
 
   const statementRows = useMemo(() => {
     const start = new Date(`${statementStart}T00:00:00`);
@@ -1243,9 +1302,18 @@ export function CustomerDetailView({
                 </button>
               </p>
 
+              <div className="mt-5 rounded-md border px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment due period</p>
+                <p className="mt-1 text-sm font-medium">{customer.paymentTermsId ? "Custom Terms" : "Due on Receipt"}</p>
+              </div>
+
               <div className="mt-5 rounded-md border">
-                <div className="border-b px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b px-4 py-3">
                   <p className="text-[26px] font-normal">Receivables</p>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <p>Opening Balance</p>
+                    <p className="text-sm font-semibold text-foreground">{fmtCurrency(Number(customer.openingBalance || 0), customer.currency || "INR")}</p>
+                  </div>
                 </div>
                 <div className="overflow-x-auto px-4 py-3">
                   <table className="w-full min-w-[520px] text-sm">
@@ -1258,7 +1326,7 @@ export function CustomerDetailView({
                     </thead>
                     <tbody>
                       <tr>
-                        <td className="px-2 py-2">{customer.currency || "INR"}</td>
+                        <td className="px-2 py-2">{currencyCodeWithName(customer.currency || "INR")}</td>
                         <td className="px-2 py-2 font-semibold text-primary">{fmtCurrency(outstandingReceivables, customer.currency || "INR")}</td>
                         <td className="px-2 py-2 font-semibold">{fmtCurrency(unusedCredits, customer.currency || "INR")}</td>
                       </tr>
@@ -1279,18 +1347,49 @@ export function CustomerDetailView({
                   <div>
                     <p className="text-[24px] font-normal">Income</p>
                     <p className="text-sm text-muted-foreground">This chart is displayed in the organization base currency.</p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums">{fmtCurrency(chartTotal, customer.currency || "INR")}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Select value={chartPeriod} onValueChange={(value) => setChartPeriod(value as ChartPeriod)}>
-                      <SelectTrigger className="h-8 w-[170px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="6m">Last 6 Months</SelectItem>
-                        <SelectItem value="12m">Last 12 Months</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Badge variant="outline">Accrual</Badge>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                          {CHART_PERIOD_LABELS[chartPeriod]} <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52">
+                        {(Object.entries(CHART_PERIOD_LABELS) as Array<[ChartPeriod, string]>).map(([value, label]) => (
+                          <DropdownMenuItem
+                            key={value}
+                            onClick={() => setChartPeriod(value)}
+                            className={chartPeriod === value ? "bg-primary/10 text-primary" : ""}
+                          >
+                            {label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <span className="text-muted-foreground">|</span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                          {chartBasis === "accrual" ? "Accrual" : "Cash"} <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => setChartBasis("accrual")}
+                          className={chartBasis === "accrual" ? "bg-primary/10 text-primary" : ""}
+                        >
+                          Accrual
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setChartBasis("cash")}
+                          className={chartBasis === "cash" ? "bg-primary/10 text-primary" : ""}
+                        >
+                          Cash
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 
@@ -1307,7 +1406,7 @@ export function CustomerDetailView({
                 </div>
 
                 <div className="mt-2 border-t pt-3 text-base font-semibold">
-                  Total Income ({chartPeriod === "6m" ? "Last 6 Months" : "Last 12 Months"}) - {fmtCurrency(chartData.reduce((sum, row) => sum + row.total, 0), customer.currency || "INR")}
+                  Total Income ({chartBasis === "accrual" ? "Accrual" : "Cash"}, {CHART_PERIOD_LABELS[chartPeriod]}) - {fmtCurrency(chartTotal, customer.currency || "INR")}
                 </div>
               </div>
 

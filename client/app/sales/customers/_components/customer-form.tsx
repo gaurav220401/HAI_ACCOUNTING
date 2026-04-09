@@ -535,13 +535,24 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
   useEffect(() => {
     if (!initialData) return;
 
-    setCustomerType(initialData.companyName ? "Business" : "Individual");
+    const initialCustomerType = initialData.companyName ? "Business" : "Individual";
+    const initialComputedDisplayName = displayNameFromInputs(
+      initialCustomerType,
+      initialData.salutation || "",
+      initialData.firstName || "",
+      initialData.lastName || "",
+      initialData.companyName || "",
+    );
+
+    setCustomerType(initialCustomerType);
     setSalutation(initialData.salutation || "");
     setFirstName(initialData.firstName || "");
     setLastName(initialData.lastName || "");
     setCompanyName(initialData.companyName || "");
-    setDisplayName(initialData.displayName || "");
-    setDisplayNameManual(true);
+    setDisplayName(initialData.displayName?.trim() || initialComputedDisplayName);
+    setDisplayNameManual(
+      Boolean(initialData.displayName && initialData.displayName.trim() !== initialComputedDisplayName.trim()),
+    );
 
     setEmail(initialData.email || "");
     setPhone(initialData.phone || "");
