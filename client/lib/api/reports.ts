@@ -154,7 +154,7 @@ export const reportApi = {
   vendorCreditDetails: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/vendor-credit-details${buildQuery(params || {})}`),
 
-  purchaseOrderDetails: (params?: { from?: string; to?: string; status?: string }) =>
+  purchaseOrderDetails: (params?: { from?: string; to?: string; status?: string; vendorId?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/purchase-order-details${buildQuery(params || {})}`),
 
   payableSummary: (params?: { asOf?: string }) =>
@@ -164,11 +164,11 @@ export const reportApi = {
   customerBalanceSummary: () =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>("/reports/customer-balance-summary"),
 
-  invoiceDetails: (params?: { from?: string; to?: string; status?: string }) =>
+  invoiceDetails: (params?: { from?: string; to?: string; status?: string; customerId?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/invoice-details${buildQuery(params || {})}`),
 
-  receivableSummary: () =>
-    apiFetch<{ success: boolean; data: GenericReportResponse }>("/reports/receivable-summary"),
+  receivableSummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/receivable-summary${buildQuery(params || {})}`),
 
   // Purchases & Expenses
   expenseDetails: (params?: { from?: string; to?: string }) =>

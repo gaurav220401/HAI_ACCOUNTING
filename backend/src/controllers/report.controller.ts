@@ -488,12 +488,14 @@ export const purchaseOrderDetails = asyncHandler(async (req: AuthenticatedReques
   const from = parseDate(req.query.from, "from") || defaultFrom();
   const to = parseDate(req.query.to, "to") || defaultTo();
   const status = req.query.status as string | undefined;
+  const vendorId = req.query.vendorId as string | undefined;
 
   const filter: any = {
     organizationId, isDeleted: false,
     purchaseOrderDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
   };
   if (status && status !== "All") filter.status = status;
+  if (vendorId) filter.vendorId = vendorId;
 
   const pos = await PurchaseOrder.find(filter)
     .populate("vendorId", "displayName companyName")
@@ -521,13 +523,14 @@ export const payableSummary = asyncHandler(async (req: AuthenticatedRequest, res
   const bills = await Bill.find({
     organizationId, isDeleted: false,
     status: { $nin: ["Draft", "Void"] },
+    billDate: { $lte: endOfDay(asOf) },
     balanceDue: { $gt: 0 },
   })
     .populate("vendorId", "displayName companyName")
     .sort({ dueDate: 1 })
     .lean();
 
-  const now = new Date();
+  const now = endOfDay(asOf);
   const current: any[] = [];
   const overdue15: any[] = [];
   const overdue30: any[] = [];
@@ -606,12 +609,14 @@ export const invoiceDetails = asyncHandler(async (req: AuthenticatedRequest, res
   const from = parseDate(req.query.from, "from") || defaultFrom();
   const to = parseDate(req.query.to, "to") || defaultTo();
   const status = req.query.status as string | undefined;
+  const customerId = req.query.customerId as string | undefined;
 
   const filter: any = {
     organizationId, isDeleted: false,
     invoiceDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
   };
   if (status && status !== "All") filter.status = status;
+  if (customerId) filter.customerId = customerId;
 
   const invoices = await Invoice.find(filter)
     .populate("customerId", "displayName companyName")
@@ -641,17 +646,19 @@ export const invoiceDetails = asyncHandler(async (req: AuthenticatedRequest, res
 
 export const receivableSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, "asOf") || new Date();
 
   const invoices = await Invoice.find({
     organizationId, isDeleted: false,
     status: { $nin: ["Draft", "Void"] },
+    invoiceDate: { $lte: endOfDay(asOf) },
     balanceDue: { $gt: 0 },
   })
     .populate("customerId", "displayName companyName")
     .sort({ dueDate: 1 })
     .lean();
 
-  const now = new Date();
+  const now = endOfDay(asOf);
   const current: any[] = [];
   const overdue15: any[] = [];
   const overdue30: any[] = [];
@@ -685,6 +692,7 @@ export const receivableSummary = asyncHandler(async (req: AuthenticatedRequest, 
   res.json({
     success: true,
     data: {
+      asOf,
       buckets: {
         current: { rows: current, total: sumBucket(current) },
         "1-15": { rows: overdue15, total: sumBucket(overdue15) },
