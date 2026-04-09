@@ -96,6 +96,127 @@ type CustomerTab = "overview" | "comments" | "transactions" | "mails" | "stateme
 type ChartPeriod = "6m" | "12m";
 type StatementTypeFilter = "All" | "Invoices" | "Payments";
 
+interface StatementTemplateConfig {
+  paperSize: "A4" | "A5" | "Letter";
+  margins: { top: number; bottom: number; left: number; right: number };
+  fontFamily: string;
+  fontSize: number;
+  backgroundColor: string;
+  showOrgLogo: boolean;
+  orgLogoSize: number;
+  showOrgName: boolean;
+  orgNameColor: string;
+  orgNameFontSize: number;
+  showOrgAddress: boolean;
+  vendorNameFontColor: string;
+  vendorNameFontSize: number;
+  showBillTo: boolean;
+  billToLabel: string;
+  showDocTitle: boolean;
+  docTitle: string;
+  docTitleFontSize: number;
+  docTitleFontColor: string;
+  showAccountSummary: boolean;
+  accountSummaryLabel: string;
+  showOpeningBalance: boolean;
+  openingBalanceLabel: string;
+  showInvoicedAmount: boolean;
+  invoicedAmountLabel: string;
+  showAmountPaid: boolean;
+  amountPaidLabel: string;
+  showBalanceDue: boolean;
+  balanceDueLabel: string;
+  colDate: boolean;
+  dateLabel: string;
+  colTransactionType: boolean;
+  transactionTypeLabel: string;
+  colTransactionDetails: boolean;
+  transactionDetailsLabel: string;
+  colAmount: boolean;
+  amountLabel: string;
+  colPayments: boolean;
+  paymentsLabel: string;
+  colBalance: boolean;
+  balanceLabel: string;
+  tableHeaderFontSize: number;
+  tableHeaderBgColor: string;
+  tableHeaderFontColor: string;
+  oddRowColor: string;
+  evenRowColor: string;
+  showFooter: boolean;
+  footerFontSize: number;
+  footerFontColor: string;
+  footerCustomContent: string;
+  colorTheme: string;
+  [key: string]: unknown;
+}
+
+const DEFAULT_STATEMENT_TEMPLATE_CONFIG: StatementTemplateConfig = {
+  paperSize: "A4",
+  margins: { top: 0.7, bottom: 0.7, left: 0.55, right: 0.4 },
+  fontFamily: "Inter, sans-serif",
+  fontSize: 12,
+  backgroundColor: "#ffffff",
+  showOrgLogo: true,
+  orgLogoSize: 60,
+  showOrgName: true,
+  orgNameColor: "#333333",
+  orgNameFontSize: 10,
+  showOrgAddress: true,
+  vendorNameFontColor: "#333333",
+  vendorNameFontSize: 9,
+  showBillTo: true,
+  billToLabel: "To",
+  showDocTitle: true,
+  docTitle: "Statement of Accounts",
+  docTitleFontSize: 16,
+  docTitleFontColor: "#000000",
+  showAccountSummary: true,
+  accountSummaryLabel: "Account Summary",
+  showOpeningBalance: true,
+  openingBalanceLabel: "Opening Balance",
+  showInvoicedAmount: true,
+  invoicedAmountLabel: "Billed Amount",
+  showAmountPaid: true,
+  amountPaidLabel: "Amount Paid",
+  showBalanceDue: true,
+  balanceDueLabel: "Balance Due",
+  colDate: true,
+  dateLabel: "Date",
+  colTransactionType: true,
+  transactionTypeLabel: "Transactions",
+  colTransactionDetails: true,
+  transactionDetailsLabel: "Details",
+  colAmount: true,
+  amountLabel: "Amount",
+  colPayments: true,
+  paymentsLabel: "Payments",
+  colBalance: true,
+  balanceLabel: "Balance",
+  tableHeaderFontSize: 9,
+  tableHeaderBgColor: "#3c3d3a",
+  tableHeaderFontColor: "#ffffff",
+  oddRowColor: "#ffffff",
+  evenRowColor: "#f6f5f5",
+  showFooter: true,
+  footerFontSize: 9,
+  footerFontColor: "#666666",
+  footerCustomContent: "This is a computer-generated statement.",
+  colorTheme: "default",
+};
+
+const STATEMENT_COLOR_THEMES = [
+  { id: "default", label: "Default", colors: ["#3c3d3a", "#ffffff"] },
+  { id: "vibrant-blue", label: "Blue", colors: ["#1a56db", "#e1effe"] },
+  { id: "vibrant-green", label: "Green", colors: ["#057a55", "#def7ec"] },
+  { id: "vibrant-orange", label: "Orange", colors: ["#e3a008", "#fdf3cc"] },
+  { id: "vibrant-red", label: "Red", colors: ["#e02424", "#fde8e8"] },
+  { id: "vibrant-teal", label: "Teal", colors: ["#0694a2", "#d5f5f6"] },
+  { id: "vibrant-purple", label: "Purple", colors: ["#7e3af2", "#edebfe"] },
+];
+
+const STATEMENT_TEMPLATE_STORAGE_KEY = (id: string) => `stmt-tmpl-config-${id}`;
+
 interface StatementRow {
   date: string;
   type: "Invoice" | "Payment";
@@ -360,6 +481,7 @@ export function CustomerDetailView({
   const [statementTypeFilter, setStatementTypeFilter] = useState<StatementTypeFilter>("All");
   const [statementStart, setStatementStart] = useState(toIsoDate(monthStart(new Date())));
   const [statementEnd, setStatementEnd] = useState(toIsoDate(new Date()));
+  const [templateConfig, setTemplateConfig] = useState<StatementTemplateConfig>(DEFAULT_STATEMENT_TEMPLATE_CONFIG);
 
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailTo, setEmailTo] = useState("");
@@ -377,6 +499,12 @@ export function CustomerDetailView({
   const [customersForMerge, setCustomersForMerge] = useState<Contact[]>([]);
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [mergeSaving, setMergeSaving] = useState(false);
+
+  const orgLogo = activeOrganization?.logo ?? "";
+  const orgName = activeOrganization?.name ?? "";
+  const orgAddress = activeOrganization?.address as
+    | { street?: string; city?: string; state?: string; zip?: string; phone?: string }
+    | undefined;
 
   useEffect(() => {
     setCustomer(initialCustomer);
@@ -486,6 +614,55 @@ export function CustomerDetailView({
     setStatementStart(toIsoDate(start));
     setStatementEnd(toIsoDate(end));
   }, [statementRange]);
+
+  useEffect(() => {
+    if (!customer._id) return;
+
+    const fromCustomer =
+      customer.statementTemplate && typeof customer.statementTemplate === "object"
+        ? (customer.statementTemplate as Partial<StatementTemplateConfig>)
+        : undefined;
+
+    let fromStorage: Partial<StatementTemplateConfig> | undefined;
+    try {
+      const stored = localStorage.getItem(STATEMENT_TEMPLATE_STORAGE_KEY(customer._id));
+      if (stored) {
+        fromStorage = JSON.parse(stored) as Partial<StatementTemplateConfig>;
+      }
+    } catch {
+      fromStorage = undefined;
+    }
+
+    const merged: StatementTemplateConfig = {
+      ...DEFAULT_STATEMENT_TEMPLATE_CONFIG,
+      ...(fromCustomer ?? {}),
+      ...(fromStorage ?? {}),
+      margins: {
+        ...DEFAULT_STATEMENT_TEMPLATE_CONFIG.margins,
+        ...(fromCustomer?.margins ?? {}),
+        ...(fromStorage?.margins ?? {}),
+      },
+    };
+    setTemplateConfig(merged);
+  }, [customer._id, customer.statementTemplate]);
+
+  useEffect(() => {
+    if (activeTab !== "statement" || !customer._id) return;
+
+    try {
+      const stored = localStorage.getItem(STATEMENT_TEMPLATE_STORAGE_KEY(customer._id));
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored) as Partial<StatementTemplateConfig>;
+      setTemplateConfig((prev) => ({
+        ...prev,
+        ...parsed,
+        margins: { ...prev.margins, ...(parsed.margins ?? {}) },
+      }));
+    } catch {
+      // Ignore malformed local cache and continue using server template.
+    }
+  }, [activeTab, customer._id]);
 
   const primaryContact = useMemo(() => {
     const fromPersons = customer.contactPersons?.find((row) => row.isPrimary) || customer.contactPersons?.[0];
@@ -766,7 +943,7 @@ export function CustomerDetailView({
   }
 
   function printStatement() {
-    const area = document.querySelector(".customer-statement-print-area") as HTMLElement | null;
+    const area = document.querySelector(".statement-print-area") as HTMLElement | null;
     if (!area) {
       window.print();
       return;
@@ -778,24 +955,21 @@ export function CustomerDetailView({
       return;
     }
 
-    win.document.write(`
-      <html>
-        <head>
-          <title>Customer Statement - ${customer.displayName}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #111827; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; }
-            th { background: #f9fafb; text-align: left; }
-          </style>
-        </head>
-        <body>${area.outerHTML}</body>
-      </html>
-    `);
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
+      <title>Statement - ${customer.displayName}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #f3f4f6; font-family: ${templateConfig.fontFamily}; }
+        .statement-print-area { display: flex !important; flex-direction: column !important; background: white; margin: 0 auto; }
+        table { border-collapse: collapse; width: 100%; }
+        img { max-width: 100%; display: block; }
+        @page { size: A4 portrait; margin: 0; }
+        @media print { body { background: white; } .statement-print-area { box-shadow: none !important; } }
+      </style>
+      </head><body>${area.outerHTML}</body></html>`);
     win.document.close();
     win.focus();
-    win.print();
-    win.close();
+    setTimeout(() => win.print(), 600);
   }
 
   function exportStatementPdf() {
@@ -804,33 +978,64 @@ export function CustomerDetailView({
   }
 
   function exportStatementXlsx() {
-    const rows = visibleStatementRows.map((row) => ({
-      Date: fmtDate(row.date),
-      Type: row.type,
-      Reference: row.ref,
-      Debit: row.debit,
-      Credit: row.credit,
-      Balance: row.balance,
-    }));
-
-    const summary = [
-      {
-        Date: "",
-        Type: "",
-        Reference: "Opening Balance",
-        Debit: Number(customer.openingBalance || 0),
-        Credit: "",
-        Balance: "",
-      },
+    const wsData: (string | number)[][] = [
+      [templateConfig.accountSummaryLabel, "", "", "", "", ""],
+      [templateConfig.openingBalanceLabel, Number(customer.openingBalance || 0), "", "", "", ""],
+      [templateConfig.invoicedAmountLabel, invoiceAmount, "", "", "", ""],
+      [templateConfig.amountPaidLabel, amountReceived, "", "", "", ""],
+      [templateConfig.balanceDueLabel, statementClosingBalance, "", "", "", ""],
+      [],
+      [
+        templateConfig.dateLabel,
+        templateConfig.transactionTypeLabel,
+        templateConfig.transactionDetailsLabel,
+        templateConfig.amountLabel,
+        templateConfig.paymentsLabel,
+        templateConfig.balanceLabel,
+      ],
+      ...visibleStatementRows.map((row) => [
+        fmtDate(row.date),
+        row.type,
+        row.ref,
+        row.debit,
+        row.credit,
+        row.balance,
+      ] as (string | number)[]),
     ];
 
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet([...summary, ...rows]);
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, ws, "Statement");
     XLSX.writeFile(wb, `${customer.displayName}_statement.xlsx`);
   }
 
   const newTransactionBase = `customerId=${encodeURIComponent(customer._id)}`;
+  const statementRangeLabel = `${fmtDate(statementStart)} To ${fmtDate(statementEnd)}`;
+  const statementCustomerAddress =
+    addressLines(customer.billingAddress) ||
+    addressLines(customer.shippingAddress) ||
+    placeOfSupplyLabel(customer.placeOfSupply);
+  const statementPaperWidth =
+    templateConfig.paperSize === "A5"
+      ? "148mm"
+      : templateConfig.paperSize === "Letter"
+        ? "216mm"
+        : "210mm";
+  const statementPaperMinHeight =
+    templateConfig.paperSize === "A5"
+      ? "210mm"
+      : templateConfig.paperSize === "Letter"
+        ? "279mm"
+        : "297mm";
+  const statementActiveColumnCount = [
+    templateConfig.colDate,
+    templateConfig.colTransactionType,
+    templateConfig.colTransactionDetails,
+    templateConfig.colAmount,
+    templateConfig.colPayments,
+    templateConfig.colBalance,
+  ].filter(Boolean).length;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1413,114 +1618,270 @@ export function CustomerDetailView({
         </TabsContent>
 
         <TabsContent value="statement" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={statementRange} onValueChange={(value) => setStatementRange(value as "thisMonth" | "last6Months") }>
-                <SelectTrigger className="h-8 w-[165px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="thisMonth">This Month</SelectItem>
-                  <SelectItem value="last6Months">Last 6 Months</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="flex flex-wrap items-center gap-2 border-b bg-background px-5 py-3 print:hidden">
+            <Select value={statementRange} onValueChange={(value) => setStatementRange(value as "thisMonth" | "last6Months") }>
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="last6Months">Last 6 Months</SelectItem>
+              </SelectContent>
+            </Select>
 
-              <Select value={statementTypeFilter} onValueChange={(value) => setStatementTypeFilter(value as StatementTypeFilter)}>
-                <SelectTrigger className="h-8 w-[130px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">Filter By: All</SelectItem>
-                  <SelectItem value="Invoices">Invoices</SelectItem>
-                  <SelectItem value="Payments">Payments</SelectItem>
-                </SelectContent>
-              </Select>
+            <Select value={statementTypeFilter} onValueChange={(value) => setStatementTypeFilter(value as StatementTypeFilter)}>
+              <SelectTrigger className="h-8 w-[130px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">Filter: All</SelectItem>
+                <SelectItem value="Invoices">Invoices</SelectItem>
+                <SelectItem value="Payments">Payments</SelectItem>
+              </SelectContent>
+            </Select>
 
-              <Input type="date" className="h-8 w-[150px]" value={statementStart} onChange={(event) => setStatementStart(event.target.value)} />
-              <Input type="date" className="h-8 w-[150px]" value={statementEnd} onChange={(event) => setStatementEnd(event.target.value)} />
+            <div className="flex items-center gap-1.5 rounded border bg-muted/20 px-2.5 py-1.5 text-xs">
+              <span className="text-muted-foreground">From</span>
+              <input
+                type="date"
+                className="w-28 bg-transparent text-xs outline-none"
+                value={statementStart}
+                onChange={(event) => setStatementStart(event.target.value)}
+              />
+              <span className="mx-1 text-muted-foreground">-</span>
+              <span className="text-muted-foreground">To</span>
+              <input
+                type="date"
+                className="w-28 bg-transparent text-xs outline-none"
+                value={statementEnd}
+                onChange={(event) => setStatementEnd(event.target.value)}
+              />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={printStatement}><Printer className="h-4 w-4" /></Button>
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={exportStatementPdf}><Download className="h-4 w-4" /></Button>
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={exportStatementXlsx}><FileSpreadsheet className="h-4 w-4" /></Button>
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={openEmailDialog}><Send className="h-4 w-4" /></Button>
-              <Button variant="outline" size="sm" onClick={() => router.push(`/sales/customers/${customer._id}/edit-template`)}>
-                <Pencil className="mr-1 h-4 w-4" /> Customize
-              </Button>
-            </div>
+            <div className="flex-1" />
+
+            <Select
+              value={templateConfig.colorTheme}
+              onValueChange={(value) => {
+                const theme = STATEMENT_COLOR_THEMES.find((row) => row.id === value);
+                setTemplateConfig((prev) => {
+                  const next: StatementTemplateConfig = {
+                    ...prev,
+                    colorTheme: value,
+                    tableHeaderBgColor: theme ? theme.colors[0] : prev.tableHeaderBgColor,
+                  };
+                  try {
+                    localStorage.setItem(STATEMENT_TEMPLATE_STORAGE_KEY(customer._id), JSON.stringify(next));
+                  } catch {
+                    // Ignore local storage errors and keep runtime config.
+                  }
+                  return next;
+                });
+              }}
+            >
+              <SelectTrigger className="h-8 w-44 shrink-0 text-xs">
+                <SelectValue placeholder="Select Color Theme" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATEMENT_COLOR_THEMES.map((theme) => (
+                  <SelectItem key={theme.id} value={theme.id}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-0.5">
+                        {theme.colors.map((color, colorIndex) => (
+                          <div key={colorIndex} className="h-3 w-3 rounded-sm border border-border" style={{ backgroundColor: color }} />
+                        ))}
+                      </div>
+                      <span>{theme.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={printStatement}>
+              <Printer className="mr-1.5 h-3.5 w-3.5" />Print
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportStatementPdf}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />PDF
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportStatementXlsx}>
+              <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />XLS
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openEmailDialog}>
+              <Send className="mr-1.5 h-3.5 w-3.5" />Email
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => router.push(`/sales/customers/${customer._id}/edit-template`)}>
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />Customize
+            </Button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto px-4 py-5">
-            <div className="customer-statement-print-area mx-auto max-w-[900px] bg-white shadow-sm">
-              <div className="border-b px-6 py-5 text-center">
-                <p className="text-[34px] font-normal">Customer Statement for {customer.displayName}</p>
-                <p className="text-sm text-muted-foreground">From {fmtDate(statementStart)} To {fmtDate(statementEnd)}</p>
-              </div>
+          <div className="flex-1 overflow-y-auto bg-gray-100 px-4 py-6 print:bg-white print:p-0 print:overflow-visible">
+            <div
+              className="statement-print-area customer-statement-print-area mx-auto flex flex-col bg-white shadow-sm print:shadow-none"
+              style={{
+                width: statementPaperWidth,
+                minHeight: statementPaperMinHeight,
+                fontFamily: templateConfig.fontFamily,
+                fontSize: `${templateConfig.fontSize}pt`,
+                backgroundColor: templateConfig.backgroundColor,
+              }}
+            >
+              <div style={{ flex: 1, padding: `${templateConfig.margins.top}in ${templateConfig.margins.right}in 0 ${templateConfig.margins.left}in` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+                  <div style={{ maxWidth: "45%" }}>
+                    {templateConfig.showOrgLogo && orgLogo ? (
+                      <img
+                        src={orgLogo}
+                        alt={orgName}
+                        style={{ height: `${templateConfig.orgLogoSize}px`, width: "auto", objectFit: "contain", display: "block" }}
+                      />
+                    ) : null}
+                  </div>
 
-              <div className="grid grid-cols-1 gap-4 border-b px-6 py-5 md:grid-cols-2">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">To</p>
-                  <p className="font-semibold text-primary">{customer.displayName}</p>
-                  <p className="text-sm text-muted-foreground">{placeOfSupplyLabel(customer.placeOfSupply)}</p>
-                  {primaryContact.email ? <p className="text-sm text-muted-foreground">{primaryContact.email}</p> : null}
-                </div>
-                <div className="text-right">
-                  <p className="text-[32px] font-normal">Statement of Accounts</p>
-                  <p className="text-sm text-muted-foreground">{fmtDate(statementStart)} To {fmtDate(statementEnd)}</p>
-                </div>
-              </div>
+                  <div style={{ textAlign: "right", maxWidth: "50%" }}>
+                    {templateConfig.showOrgName ? (
+                      <p style={{ fontWeight: "700", color: templateConfig.orgNameColor, fontSize: `${templateConfig.orgNameFontSize}pt`, margin: 0, lineHeight: 1.3 }}>
+                        {orgName || "Your Organization"}
+                      </p>
+                    ) : null}
 
-              <div className="grid grid-cols-1 gap-4 border-b px-6 py-4 md:grid-cols-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Opening Balance</p>
-                  <p className="font-semibold">{fmtCurrency(customer.openingBalance || 0, customer.currency || "INR")}</p>
+                    {templateConfig.showOrgAddress && orgAddress ? (
+                      <>
+                        {(orgAddress.city || orgAddress.state) ? (
+                          <p style={{ margin: "2px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>
+                            {[orgAddress.city, orgAddress.state].filter(Boolean).join(", ")}
+                          </p>
+                        ) : null}
+                        {orgAddress.zip ? <p style={{ margin: "1px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>{orgAddress.zip}</p> : null}
+                        {orgAddress.street ? <p style={{ margin: "1px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>{orgAddress.street}</p> : null}
+                        {orgAddress.phone ? <p style={{ margin: "1px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>Ph: {orgAddress.phone}</p> : null}
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Invoiced Amount</p>
-                  <p className="font-semibold">{fmtCurrency(invoiceAmount, customer.currency || "INR")}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Amount Received</p>
-                  <p className="font-semibold">{fmtCurrency(amountReceived, customer.currency || "INR")}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Balance Due</p>
-                  <p className="font-semibold">{fmtCurrency(statementClosingBalance, customer.currency || "INR")}</p>
-                </div>
-              </div>
 
-              <div className="overflow-x-auto px-6 py-5">
-                <table className="w-full min-w-[760px] text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="px-2 py-2 font-semibold">Date</th>
-                      <th className="px-2 py-2 font-semibold">Transaction Type</th>
-                      <th className="px-2 py-2 font-semibold">Details</th>
-                      <th className="px-2 py-2 text-right font-semibold">Debit</th>
-                      <th className="px-2 py-2 text-right font-semibold">Credit</th>
-                      <th className="px-2 py-2 text-right font-semibold">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleStatementRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-2 py-7 text-center text-muted-foreground">No transactions in this period</td>
-                      </tr>
-                    ) : (
-                      visibleStatementRows.map((row, index) => (
-                        <tr key={`${row.ref}-${index}`} className="border-b last:border-0">
-                          <td className="px-2 py-2">{fmtDate(row.date)}</td>
-                          <td className="px-2 py-2">{row.type}</td>
-                          <td className="px-2 py-2">{row.ref}</td>
-                          <td className="px-2 py-2 text-right tabular-nums">{row.debit ? fmtCurrency(row.debit, customer.currency || "INR") : "-"}</td>
-                          <td className="px-2 py-2 text-right tabular-nums">{row.credit ? fmtCurrency(row.credit, customer.currency || "INR") : "-"}</td>
-                          <td className="px-2 py-2 text-right tabular-nums">{fmtCurrency(row.balance, customer.currency || "INR")}</td>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+                  <div style={{ maxWidth: "50%" }}>
+                    {templateConfig.showBillTo ? (
+                      <p style={{ fontSize: "8pt", fontWeight: "600", color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 3px" }}>
+                        {templateConfig.billToLabel}
+                      </p>
+                    ) : null}
+                    <p style={{ fontWeight: "600", color: templateConfig.vendorNameFontColor, fontSize: `${templateConfig.vendorNameFontSize}pt`, margin: 0, lineHeight: 1.35 }}>
+                      {customer.displayName}
+                    </p>
+                    {customer.companyName && customer.companyName !== customer.displayName ? (
+                      <p style={{ margin: "2px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>{customer.companyName}</p>
+                    ) : null}
+                    {statementCustomerAddress ? (
+                      <p style={{ margin: "2px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>{statementCustomerAddress}</p>
+                    ) : null}
+                    {primaryContact.email ? <p style={{ margin: "2px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>{primaryContact.email}</p> : null}
+                  </div>
+
+                  <div style={{ textAlign: "right", maxWidth: "48%" }}>
+                    {templateConfig.showDocTitle ? (
+                      <h1 style={{ fontWeight: "700", color: templateConfig.docTitleFontColor, fontSize: `${templateConfig.docTitleFontSize}pt`, margin: 0, lineHeight: 1.2 }}>
+                        {templateConfig.docTitle}
+                      </h1>
+                    ) : null}
+                    <p style={{ margin: "4px 0 0", fontSize: "8.5pt", color: "#6b7280" }}>{statementRangeLabel}</p>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: `2px solid ${templateConfig.tableHeaderBgColor}`, marginBottom: "16px" }} />
+
+                {templateConfig.showAccountSummary ? (
+                  <div style={{ marginBottom: "18px" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: templateConfig.tableHeaderBgColor, color: templateConfig.tableHeaderFontColor }}>
+                          <th colSpan={2} style={{ padding: "6px 10px", textAlign: "left", fontWeight: "600", fontSize: `${templateConfig.tableHeaderFontSize}pt` }}>
+                            {templateConfig.accountSummaryLabel}
+                          </th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {([
+                          [templateConfig.showOpeningBalance, templateConfig.openingBalanceLabel, Number(customer.openingBalance || 0)],
+                          [templateConfig.showInvoicedAmount, templateConfig.invoicedAmountLabel, invoiceAmount],
+                          [templateConfig.showAmountPaid, templateConfig.amountPaidLabel, amountReceived],
+                          [templateConfig.showBalanceDue, templateConfig.balanceDueLabel, statementClosingBalance],
+                        ] as [boolean, string, number][])
+                          .filter(([show]) => show)
+                          .map(([, label, value], index) => (
+                            <tr key={label} style={{ backgroundColor: index % 2 === 0 ? templateConfig.evenRowColor : templateConfig.oddRowColor }}>
+                              <td style={{ width: "60%", padding: "5px 10px", color: "#4b5563" }}>{label}</td>
+                              <td style={{ padding: "5px 10px", textAlign: "right", fontWeight: "500" }}>{fmtCurrency(value, customer.currency || "INR")}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                <div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "9pt" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: templateConfig.tableHeaderBgColor, color: templateConfig.tableHeaderFontColor, fontSize: `${templateConfig.tableHeaderFontSize}pt` }}>
+                        {templateConfig.colDate ? <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: "600" }}>{templateConfig.dateLabel}</th> : null}
+                        {templateConfig.colTransactionType ? <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: "600" }}>{templateConfig.transactionTypeLabel}</th> : null}
+                        {templateConfig.colTransactionDetails ? <th style={{ padding: "7px 10px", textAlign: "left", fontWeight: "600" }}>{templateConfig.transactionDetailsLabel}</th> : null}
+                        {templateConfig.colAmount ? <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: "600" }}>{templateConfig.amountLabel}</th> : null}
+                        {templateConfig.colPayments ? <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: "600" }}>{templateConfig.paymentsLabel}</th> : null}
+                        {templateConfig.colBalance ? <th style={{ padding: "7px 10px", textAlign: "right", fontWeight: "600" }}>{templateConfig.balanceLabel}</th> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleStatementRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={Math.max(statementActiveColumnCount, 1)} style={{ padding: "20px", textAlign: "center", color: "#9ca3af" }}>
+                            No transactions in this period
+                          </td>
+                        </tr>
+                      ) : (
+                        visibleStatementRows.map((row, index) => (
+                          <tr
+                            key={`${row.ref}-${index}`}
+                            style={{
+                              backgroundColor: index % 2 === 0 ? templateConfig.evenRowColor : templateConfig.oddRowColor,
+                            }}
+                          >
+                            {templateConfig.colDate ? <td style={{ padding: "5px 10px" }}>{fmtDate(row.date)}</td> : null}
+                            {templateConfig.colTransactionType ? <td style={{ padding: "5px 10px" }}>{row.type}</td> : null}
+                            {templateConfig.colTransactionDetails ? <td style={{ padding: "5px 10px", fontSize: "8.5pt" }}>{row.ref}</td> : null}
+                            {templateConfig.colAmount ? <td style={{ padding: "5px 10px", textAlign: "right" }}>{row.debit > 0 ? fmtCurrency(row.debit, customer.currency || "INR") : "-"}</td> : null}
+                            {templateConfig.colPayments ? <td style={{ padding: "5px 10px", textAlign: "right" }}>{row.credit > 0 ? fmtCurrency(row.credit, customer.currency || "INR") : "-"}</td> : null}
+                            {templateConfig.colBalance ? <td style={{ padding: "5px 10px", textAlign: "right", fontWeight: "500" }}>{fmtCurrency(row.balance, customer.currency || "INR")}</td> : null}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                    {templateConfig.colBalance ? (
+                      <tfoot>
+                        <tr style={{ fontWeight: "700", borderTop: `2px solid ${templateConfig.tableHeaderBgColor}` }}>
+                          {statementActiveColumnCount > 1 ? (
+                            <td colSpan={statementActiveColumnCount - 1} style={{ padding: "7px 10px", textAlign: "right" }}>
+                              {templateConfig.balanceDueLabel}
+                            </td>
+                          ) : null}
+                          <td style={{ padding: "7px 10px", textAlign: "right" }}>{fmtCurrency(statementClosingBalance, customer.currency || "INR")}</td>
+                        </tr>
+                      </tfoot>
+                    ) : null}
+                  </table>
+                </div>
+              </div>
+
+              <div style={{ padding: `8px ${templateConfig.margins.right}in ${templateConfig.margins.bottom}in ${templateConfig.margins.left}in` }}>
+                {templateConfig.showFooter ? (
+                  <>
+                    <div style={{ borderTop: "1px solid #d1d5db", marginBottom: "6px" }} />
+                    <p style={{ margin: 0, textAlign: "center", fontSize: `${templateConfig.footerFontSize}pt`, color: templateConfig.footerFontColor }}>
+                      {templateConfig.footerCustomContent || "This is a computer-generated statement."}
+                    </p>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>
