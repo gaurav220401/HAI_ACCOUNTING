@@ -218,6 +218,10 @@ function pickDefaultAccountId(accounts: Account[], preferredNames: string[]): st
   return accounts[0]._id;
 }
 
+function preventNumberWheelChange(event: React.WheelEvent<HTMLInputElement>) {
+  event.currentTarget.blur();
+}
+
 interface UnitAbbreviationOption {
   abbreviation: string;
   name: string;
@@ -1036,6 +1040,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
           "Purchase",
         ]);
         const defaultInventoryAccountId = pickDefaultAccountId(inventoryList, [
+          "Inventory Asset (Stock)",
           "Inventory Asset",
           "Inventory",
           "Stock",
@@ -1095,16 +1100,38 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   }, [form.taxPreference, form.intraStateTaxId, form.interStateTaxId, intraTaxOptions, interTaxOptions]);
 
   useEffect(() => {
-    if (form.taxPreference !== "Taxable") return;
+    if (!form.hasInventoryInfo) return;
+    if (form.inventoryAccountId) return;
+    if (inventoryAccounts.length === 0) return;
 
-    if (form.intraStateTaxId && !intraTaxOptions.some((tax) => tax._id === form.intraStateTaxId)) {
+    const defaultInventoryAccountId = pickDefaultAccountId(inventoryAccounts, [
+      "Inventory Asset (Stock)",
+      "Inventory Asset",
+      "Inventory",
+      "Stock",
+      "Closing Stock",
+    ]);
+
+    if (defaultInventoryAccountId) {
+      set("inventoryAccountId", defaultInventoryAccountId);
+    }
+  }, [form.hasInventoryInfo, form.inventoryAccountId, inventoryAccounts]);
+
+  useEffect(() => {
+    if (form.taxPreference !== "Taxable") return;
+    if (intraTaxOptions.length === 0 && interTaxOptions.length === 0) return;
+
+    const intraId = String(form.intraStateTaxId || "");
+    const interId = String(form.interStateTaxId || "");
+
+    if (intraId && intraTaxOptions.length > 0 && !intraTaxOptions.some((tax) => String(tax._id) === intraId)) {
       const fallbackIntra = pickDefaultTaxOption(intraTaxOptions, "GST18")?._id || "";
-      set("intraStateTaxId", fallbackIntra);
+      set("intraStateTaxId", String(fallbackIntra));
     }
 
-    if (form.interStateTaxId && !interTaxOptions.some((tax) => tax._id === form.interStateTaxId)) {
+    if (interId && interTaxOptions.length > 0 && !interTaxOptions.some((tax) => String(tax._id) === interId)) {
       const fallbackInter = pickDefaultTaxOption(interTaxOptions, "IGST18")?._id || "";
-      set("interStateTaxId", fallbackInter);
+      set("interStateTaxId", String(fallbackInter));
     }
   }, [form.taxPreference, form.intraStateTaxId, form.interStateTaxId, intraTaxOptions, interTaxOptions]);
 
@@ -1622,10 +1649,10 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     Intra state tax rate can be used when transactions are raised for contacts within your home state.
                   </p>
                   <Select
-                    value={form.intraStateTaxId || INTRA_TAX_PLACEHOLDER}
+                    value={String(form.intraStateTaxId || INTRA_TAX_PLACEHOLDER)}
                     onValueChange={(v) => {
                       if (v === INTRA_TAX_PLACEHOLDER) return;
-                      set("intraStateTaxId", v);
+                      set("intraStateTaxId", String(v));
                     }}
                   >
                     <SelectTrigger className="h-9 text-sm w-full">
@@ -1645,7 +1672,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                           </SelectItem>
                         ) : (
                           intraTaxOptions.map((t) => (
-                            <SelectItem key={t._id} value={t._id}>
+                            <SelectItem key={String(t._id)} value={String(t._id)}>
                               {formatTaxOptionLabel(t)}
                             </SelectItem>
                           ))
@@ -1665,10 +1692,10 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     Inter state tax rate can be used when transactions are raised for contacts outside your home state.
                   </p>
                   <Select
-                    value={form.interStateTaxId || INTER_TAX_PLACEHOLDER}
+                    value={String(form.interStateTaxId || INTER_TAX_PLACEHOLDER)}
                     onValueChange={(v) => {
                       if (v === INTER_TAX_PLACEHOLDER) return;
-                      set("interStateTaxId", v);
+                      set("interStateTaxId", String(v));
                     }}
                   >
                     <SelectTrigger className="h-9 text-sm w-full">
@@ -1688,7 +1715,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                           </SelectItem>
                         ) : (
                           interTaxOptions.map((t) => (
-                            <SelectItem key={t._id} value={t._id}>
+                            <SelectItem key={String(t._id)} value={String(t._id)}>
                               {formatTaxOptionLabel(t)}
                             </SelectItem>
                           ))
@@ -1726,6 +1753,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   className="rounded-l-none h-9 text-sm"
                   value={form.sellingPrice}
                   onChange={(e) => set("sellingPrice", e.target.value)}
+                  onWheel={preventNumberWheelChange}
                   placeholder="0.00"
                 />
               </div>
@@ -1784,6 +1812,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   className="rounded-l-none h-9 text-sm"
                   value={form.costPrice}
                   onChange={(e) => set("costPrice", e.target.value)}
+                  onWheel={preventNumberWheelChange}
                   placeholder="0.00"
                 />
               </div>
@@ -1915,6 +1944,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   className="h-9 text-sm"
                   value={form.reorderPoint}
                   onChange={(e) => set("reorderPoint", e.target.value)}
+                  onWheel={preventNumberWheelChange}
                   placeholder="0"
                 />
               </div>
@@ -1928,6 +1958,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   className={`h-9 text-sm ${errors.stockOnHand ? "border-destructive" : ""}`}
                   value={form.stockOnHand}
                   onChange={(e) => set("stockOnHand", e.target.value)}
+                  onWheel={preventNumberWheelChange}
                   placeholder="0"
                 />
                 {errors.stockOnHand && <p className="text-xs text-destructive">{errors.stockOnHand}</p>}
@@ -1944,6 +1975,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     className={`rounded-l-none h-9 text-sm ${errors.averageCost ? "border-destructive" : ""}`}
                     value={form.averageCost}
                     onChange={(e) => set("averageCost", e.target.value)}
+                    onWheel={preventNumberWheelChange}
                     placeholder="0.00"
                   />
                 </div>

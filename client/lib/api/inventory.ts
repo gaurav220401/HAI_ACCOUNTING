@@ -56,6 +56,7 @@ export interface InventoryOverviewResponse {
 export interface CreateInventoryAdjustmentInput {
   itemId: string;
   direction: InventoryDirection;
+  adjustmentType?: "Quantity" | "Value";
   quantityDelta: number;
   unitCost?: number;
   valueDelta?: number;

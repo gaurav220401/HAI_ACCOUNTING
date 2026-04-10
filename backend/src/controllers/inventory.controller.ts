@@ -138,14 +138,21 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     throw new ValidationError("Valid itemId is required");
   }
 
+  const adjustmentTypeRaw = String(req.body.adjustmentType || "Quantity").trim().toLowerCase();
+  const isValueAdjustment = adjustmentTypeRaw === "value";
+
   const direction = req.body.direction === "Decrease" ? "Decrease" : "Increase";
 
-  const quantityInput = Number(req.body.quantityDelta ?? req.body.quantity);
-  if (!Number.isFinite(quantityInput) || quantityInput <= 0) {
+  const quantityRaw = req.body.quantityDelta ?? req.body.quantity;
+  const hasQuantity = quantityRaw !== undefined && quantityRaw !== null && quantityRaw !== "";
+  const quantityInput = hasQuantity ? Number(quantityRaw) : 0;
+
+  if (!isValueAdjustment && (!Number.isFinite(quantityInput) || quantityInput <= 0)) {
     throw new ValidationError("quantityDelta must be a positive number");
   }
-  const quantity = round2(Math.abs(quantityInput));
-  const signedQuantity = direction === "Decrease" ? -quantity : quantity;
+
+  const quantity = hasQuantity ? round2(Math.abs(quantityInput)) : 0;
+  const signedQuantity = hasQuantity ? (direction === "Decrease" ? -quantity : quantity) : 0;
 
   const item = await Item.findOne({
     _id: itemId,
@@ -159,25 +166,36 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
   }
 
   const projectedStock = round2(Number(item.stockOnHand || 0) + signedQuantity);
-  if (direction === "Decrease" && projectedStock < 0) {
+  if (signedQuantity < 0 && projectedStock < 0) {
     throw new ValidationError("Insufficient stock for this adjustment");
   }
 
+  const hasValueDelta = req.body.valueDelta !== undefined && req.body.valueDelta !== null && req.body.valueDelta !== "";
+
   let valueDelta = 0;
-  if (req.body.valueDelta !== undefined && req.body.valueDelta !== null && req.body.valueDelta !== "") {
+  if (hasValueDelta) {
     const parsedValue = Number(req.body.valueDelta);
     if (!Number.isFinite(parsedValue)) {
       throw new ValidationError("valueDelta must be numeric");
     }
     valueDelta = round2(parsedValue);
   } else {
+    if (isValueAdjustment) {
+      throw new ValidationError("valueDelta is required for value adjustment");
+    }
     const unitCostInput = Number(req.body.unitCost ?? item.averageCost ?? item.costPrice ?? 0);
     const unitCost = Number.isFinite(unitCostInput) ? unitCostInput : 0;
     valueDelta = round2(signedQuantity * unitCost);
   }
 
-  if (direction === "Decrease" && valueDelta > 0) valueDelta = -valueDelta;
-  if (direction === "Increase" && valueDelta < 0) valueDelta = Math.abs(valueDelta);
+  if (signedQuantity !== 0) {
+    if (direction === "Decrease" && valueDelta > 0) valueDelta = -valueDelta;
+    if (direction === "Increase" && valueDelta < 0) valueDelta = Math.abs(valueDelta);
+  }
+
+  if (isValueAdjustment && signedQuantity === 0 && Math.abs(valueDelta) <= 0.0001) {
+    throw new ValidationError("valueDelta cannot be zero for value adjustment");
+  }
 
   const warehouseInput = String(req.body.warehouseId || "").trim();
   if (warehouseInput && !Types.ObjectId.isValid(warehouseInput)) {
@@ -189,11 +207,13 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     ? (reasonInput as InventoryAdjustmentReason)
     : "Other";
 
-  await applyStockDeltas({
-    organizationId,
-    deltas: { [itemId]: signedQuantity },
-    req,
-  });
+  if (Math.abs(signedQuantity) > 0.0001) {
+    await applyStockDeltas({
+      organizationId,
+      deltas: { [itemId]: signedQuantity },
+      req,
+    });
+  }
 
   if (Math.abs(valueDelta) > 0.0001) {
     await applyInventoryValueDeltas({
