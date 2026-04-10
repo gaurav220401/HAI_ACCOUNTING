@@ -32,6 +32,7 @@ import bulkUpdateRoutes from "./bulk-update.routes";
 import documentRoutes from "./document.routes";
 import reportRoutes from "./report.routes";
 import inventoryRoutes from "./inventory.routes";
+import fixedAssetRoutes from "./fixed-asset.routes";
 
 const router = Router();
 
@@ -68,5 +69,6 @@ router.use("/bulk-update", bulkUpdateRoutes);
 router.use("/documents", documentRoutes);
 router.use("/reports", reportRoutes);
 router.use("/inventory", inventoryRoutes);
+router.use("/fixed-assets", fixedAssetRoutes);
 
 export default router;
