@@ -116,35 +116,35 @@ const GST_TREATMENT_OPTIONS: GstTreatmentOption[] = [
   },
   {
     value: "Special Economic Zone",
-    description: "Business (Unit) located in a Special Economic Zone (SEZ) of India or a SEZ Developer",
+    description: "Business (Unit) that is located in a Special Economic Zone (SEZ) of India or a SEZ Developer",
     requiresGstin: true,
     showPlaceOfSupply: true,
     showTaxPreference: true,
   },
   {
     value: "Deemed Export",
-    description: "Supply of goods to an EOU or against Advance Authorization / EPCG",
+    description: "Supply of goods to an Export Oriented Unit or against Advanced Authorization/Export Promotion Capital Goods.",
     requiresGstin: true,
     showPlaceOfSupply: true,
     showTaxPreference: true,
   },
   {
     value: "Tax Deductor",
-    description: "Departments of government, governmental agencies or local authorities",
+    description: "Departments of the State/Central government, governmental agencies or local authorities",
     requiresGstin: true,
     showPlaceOfSupply: true,
     showTaxPreference: true,
   },
   {
     value: "SEZ Developer",
-    description: "An organisation that owns at least 26% equity in creating SEZ business units",
+    description: "A person/organisation who owns at least 26% of the equity in creating business units in a Special Economic Zone (SEZ)",
     requiresGstin: true,
     showPlaceOfSupply: true,
     showTaxPreference: true,
   },
   {
     value: "Input Service Distributor",
-    description: "Office that receives service tax invoices for the same PAN across states",
+    description: "Input Service Distributor (ISD) is an office that receives tax invoices for services used by the company in different states under the same PAN.",
     requiresGstin: true,
     showPlaceOfSupply: true,
     showTaxPreference: true,
@@ -1065,19 +1065,21 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
 
         <TabsContent value="other-details" className="space-y-4 pt-6">
           <Row label="GST Treatment" required>
-            <div className="space-y-2">
-              <Select value={taxTreatment} onValueChange={(v) => setTaxTreatment(v as TaxTreatment)}>
-                <SelectTrigger className="h-10 max-w-[430px]">
-                  <SelectValue placeholder="Select a GST treatment" />
-                </SelectTrigger>
-                <SelectContent>
-                  {GST_TREATMENT_OPTIONS.map((row) => (
-                    <SelectItem key={row.value} value={row.value}>{row.value}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">{treatmentMeta.description}</p>
-            </div>
+            <Select value={taxTreatment} onValueChange={(v) => setTaxTreatment(v as TaxTreatment)}>
+              <SelectTrigger className="h-10 max-w-[430px]">
+                <SelectValue placeholder="Select a GST treatment" />
+              </SelectTrigger>
+              <SelectContent>
+                {GST_TREATMENT_OPTIONS.map((row) => (
+                  <SelectItem key={row.value} value={row.value}>
+                    <div>
+                      <div className="font-medium">{row.value}</div>
+                      <div className="text-xs text-muted-foreground">{row.description}</div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Row>
 
           {treatmentMeta.requiresGstin ? (
