@@ -232,13 +232,10 @@ function emptyContactPerson(): ContactPerson {
 }
 
 function displayNameFromInputs(
-  customerType: CustomerTypeUi,
   salutation: string,
   firstName: string,
   lastName: string,
-  companyName: string,
 ): string {
-  if (customerType === "Business") return companyName.trim();
   return [salutation, firstName, lastName].map((s) => s.trim()).filter(Boolean).join(" ");
 }
 
@@ -499,8 +496,8 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
   const [error, setError] = useState("");
 
   const computedDisplayName = useMemo(
-    () => displayNameFromInputs(customerType, salutation, firstName, lastName, companyName),
-    [customerType, salutation, firstName, lastName, companyName],
+    () => displayNameFromInputs(salutation, firstName, lastName),
+    [salutation, firstName, lastName],
   );
 
   const treatmentMeta = useMemo(() => optionByTreatment(taxTreatment), [taxTreatment]);
@@ -540,11 +537,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
 
     const initialCustomerType = initialData.companyName ? "Business" : "Individual";
     const initialComputedDisplayName = displayNameFromInputs(
-      initialCustomerType,
       initialData.salutation || "",
       initialData.firstName || "",
       initialData.lastName || "",
-      initialData.companyName || "",
     );
 
     setCustomerType(initialCustomerType);

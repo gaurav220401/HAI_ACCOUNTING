@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -47,6 +47,24 @@ export default function CustomersPage() {
 
   const panelOpen = !!selectedId;
 
+  const fetchContacts = useCallback(async () => {
+    setFetching(true);
+    try {
+      const includeInactive = statusFilter !== "Active";
+      const res = await contactApi.list({
+        type: "Customer",
+        page: 1,
+        limit: 200,
+        includeInactive,
+      });
+      setContacts(res.data ?? []);
+    } catch {
+      setContacts([]);
+    } finally {
+      setFetching(false);
+    }
+  }, [statusFilter]);
+
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
@@ -63,39 +81,10 @@ export default function CustomersPage() {
   }, [firebaseUser, loading, activeOrganization?._id, statusFilter]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const query = new URLSearchParams(window.location.search);
-    const selected = query.get("selectedId");
-    const tab = query.get("tab");
-
-    setSelectedTab(tab);
-
-    if (selected) {
-      void selectCustomer(selected, tab || undefined);
-    } else {
-      setSelectedId(null);
-      setSelectedCustomer(null);
+    if (selectedId && !fetching && !contacts.find((c) => c._id === selectedId)) {
+      void fetchContacts();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function fetchContacts() {
-    setFetching(true);
-    try {
-      const includeInactive = statusFilter !== "Active";
-      const res = await contactApi.list({
-        type: "Customer",
-        page: 1,
-        limit: 200,
-        includeInactive,
-      });
-      setContacts(res.data ?? []);
-    } catch {
-      setContacts([]);
-    } finally {
-      setFetching(false);
-    }
-  }
+  }, [selectedId, contacts, fetching, fetchContacts]);
 
   async function selectCustomer(id: string, tabOverride?: string) {
     setSelectedId(id);
