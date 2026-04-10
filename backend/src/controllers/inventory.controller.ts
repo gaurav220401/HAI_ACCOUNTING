@@ -9,6 +9,7 @@ import {
   applyInventoryValueDeltas,
   applyStockDeltas,
 } from "../services/accounting-sync.service";
+import { findAccountIdByName, postVoucher } from "../services/gl-posting.service";
 import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import {
@@ -35,6 +36,38 @@ function getOrgId(req: AuthenticatedRequest): Types.ObjectId {
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+async function resolveInventoryAssetAccountId(params: {
+  organizationId: Types.ObjectId;
+  item: any;
+}): Promise<Types.ObjectId> {
+  const explicit = String(params.item?.inventoryAccountId || "");
+  if (Types.ObjectId.isValid(explicit)) return new Types.ObjectId(explicit);
+
+  return findAccountIdByName({
+    organizationId: params.organizationId,
+    names: ["Inventory Asset (Stock)", "Inventory Asset", "Inventory", "Stock"],
+    rootType: "Asset",
+  });
+}
+
+async function resolveAdjustmentOffsetAccountId(params: {
+  organizationId: Types.ObjectId;
+  item: any;
+  reqAccountId?: string;
+}): Promise<Types.ObjectId> {
+  const reqAccountId = String(params.reqAccountId || "").trim();
+  if (Types.ObjectId.isValid(reqAccountId)) return new Types.ObjectId(reqAccountId);
+
+  const purchaseAccountId = String(params.item?.purchaseAccountId || "");
+  if (Types.ObjectId.isValid(purchaseAccountId)) return new Types.ObjectId(purchaseAccountId);
+
+  return findAccountIdByName({
+    organizationId: params.organizationId,
+    names: ["Cost of Goods Sold", "COGS", "Purchases", "Inventory Adjustments", "Inventory Adjustment"],
+    rootType: "Expense",
+  });
 }
 
 export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -159,7 +192,7 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     organizationId,
     isDeleted: false,
     inventoryTracked: true,
-  }).select("stockOnHand inventoryValue averageCost costPrice");
+  }).select("stockOnHand inventoryValue averageCost costPrice inventoryAccountId purchaseAccountId");
 
   if (!item) {
     throw new NotFoundError("Inventory tracked item");
@@ -233,7 +266,11 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     throw new NotFoundError("Item");
   }
 
+  const adjustedAt = req.body.adjustedAt ? new Date(req.body.adjustedAt) : new Date();
+  const adjustmentId = new Types.ObjectId();
+
   const adjustment = new InventoryAdjustment({
+    _id: adjustmentId,
     organizationId,
     itemId,
     warehouseId: warehouseInput || null,
@@ -243,13 +280,60 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     reason,
     referenceNumber: String(req.body.referenceNumber || "").trim(),
     notes: String(req.body.notes || "").trim(),
-    adjustedAt: req.body.adjustedAt ? new Date(req.body.adjustedAt) : new Date(),
+    adjustedAt,
     resultingStockOnHand: round2(Number(updatedItem.stockOnHand || 0)),
     resultingInventoryValue: round2(Number((updatedItem as any).inventoryValue || 0)),
   });
 
   attachUser(adjustment, req);
   await adjustment.save();
+
+  if (Math.abs(valueDelta) > 0.0001) {
+    try {
+      const [inventoryAccountId, offsetAccountId] = await Promise.all([
+        resolveInventoryAssetAccountId({ organizationId, item }),
+        resolveAdjustmentOffsetAccountId({
+          organizationId,
+          item,
+          reqAccountId: req.body.accountId,
+        }),
+      ]);
+
+      if (String(inventoryAccountId) !== String(offsetAccountId)) {
+        const amount = round2(Math.abs(valueDelta));
+        const inventoryDebit = valueDelta > 0 ? amount : 0;
+        const inventoryCredit = valueDelta < 0 ? amount : 0;
+        const offsetDebit = valueDelta < 0 ? amount : 0;
+        const offsetCredit = valueDelta > 0 ? amount : 0;
+
+        await postVoucher({
+          organizationId,
+          voucherType: "System",
+          voucherId: `inventory-adjustment:${String(adjustmentId)}`,
+          voucherNo: `INV-ADJ-${String(adjustmentId).slice(-6).toUpperCase()}`,
+          postingDate: adjustedAt,
+          description: `Inventory adjustment - ${reason}`,
+          req,
+          lines: [
+            {
+              accountId: inventoryAccountId,
+              debit: inventoryDebit,
+              credit: inventoryCredit,
+              description: `Inventory value adjustment for item ${itemId}`,
+            },
+            {
+              accountId: offsetAccountId,
+              debit: offsetDebit,
+              credit: offsetCredit,
+              description: `Inventory adjustment offset for item ${itemId}`,
+            },
+          ],
+        });
+      }
+    } catch {
+      // Non-blocking: stock adjustments should still persist even if GL posting fallback fails.
+    }
+  }
 
   await adjustment.populate("itemId", "name sku");
   await adjustment.populate("warehouseId", "name");

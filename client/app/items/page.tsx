@@ -202,7 +202,10 @@ export default function ItemsPage() {
     setAdjustStockForm({
       mode: "Quantity",
       date: new Date().toISOString().slice(0, 10),
-      account: accountName(detail.inventoryAccountId as PopulatedAccount | string | null),
+      account:
+        accountName(detail.purchaseAccountId as PopulatedAccount | string | null) !== "—"
+          ? accountName(detail.purchaseAccountId as PopulatedAccount | string | null)
+          : accountName(detail.inventoryAccountId as PopulatedAccount | string | null),
       referenceNumber: "",
       quantityAdjusted: "",
       costPrice: String(Number(detail.averageCost || detail.costPrice || 0)),
@@ -283,6 +286,7 @@ export default function ItemsPage() {
           adjustmentType: "Quantity",
           direction: quantityAdjusted < 0 ? "Decrease" : "Increase",
           quantityDelta: Math.abs(quantityAdjusted),
+          accountId: accountId(detail.purchaseAccountId as PopulatedAccount | string | null) || undefined,
           unitCost,
           reason: adjustStockForm.reason,
           referenceNumber: adjustStockForm.referenceNumber || undefined,
@@ -301,6 +305,7 @@ export default function ItemsPage() {
           adjustmentType: "Value",
           direction: valueDelta < 0 ? "Decrease" : "Increase",
           quantityDelta: 0,
+          accountId: accountId(detail.purchaseAccountId as PopulatedAccount | string | null) || undefined,
           valueDelta,
           reason: adjustStockForm.reason,
           referenceNumber: adjustStockForm.referenceNumber || undefined,
@@ -436,6 +441,13 @@ export default function ItemsPage() {
     if (typeof field === "object") return field.name;
     return field;
   }
+
+  function accountId(field: PopulatedAccount | string | null | undefined): string {
+    if (!field) return "";
+    if (typeof field === "object") return String(field._id || "");
+    return String(field);
+  }
+
   function unitDisplay(field: PopulatedUnit | string | null | undefined) {
     if (!field) return "—";
     if (typeof field === "object") return field.abbreviation;

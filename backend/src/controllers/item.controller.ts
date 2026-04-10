@@ -1,4 +1,6 @@
 import { Response } from "express";
+import { Types } from "mongoose";
+import Account from "../models/account.model";
 import Item from "../models/item.model";
 import ItemGroup from "../models/item-group.model";
 import UnitOfMeasurement from "../models/unit.model";
@@ -24,6 +26,90 @@ function escapeRegex(value: string): string {
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+type InventoryAccountSnapshot = {
+  inventoryTracked: boolean;
+  inventoryAccountId?: unknown;
+  inventoryValue?: unknown;
+};
+
+function toObjectIdString(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return Types.ObjectId.isValid(value) ? value : "";
+  if (typeof value === "object" && value !== null && "_id" in (value as Record<string, unknown>)) {
+    const id = String((value as { _id?: unknown })._id || "");
+    return Types.ObjectId.isValid(id) ? id : "";
+  }
+  const raw = String(value);
+  return Types.ObjectId.isValid(raw) ? raw : "";
+}
+
+function toInventoryValue(value: unknown): number {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return round2(n);
+}
+
+function computeInventoryAccountDelta(
+  previous: InventoryAccountSnapshot | null,
+  next: InventoryAccountSnapshot | null,
+): Map<string, number> {
+  const out = new Map<string, number>();
+
+  const apply = (accountId: string, delta: number) => {
+    if (!accountId || Math.abs(delta) < 0.0001) return;
+    out.set(accountId, round2((out.get(accountId) || 0) + delta));
+  };
+
+  if (previous?.inventoryTracked) {
+    const accountId = toObjectIdString(previous.inventoryAccountId);
+    const value = toInventoryValue(previous.inventoryValue);
+    apply(accountId, -value);
+  }
+
+  if (next?.inventoryTracked) {
+    const accountId = toObjectIdString(next.inventoryAccountId);
+    const value = toInventoryValue(next.inventoryValue);
+    apply(accountId, value);
+  }
+
+  for (const [key, value] of Array.from(out.entries())) {
+    if (Math.abs(value) < 0.0001) out.delete(key);
+  }
+
+  return out;
+}
+
+async function syncInventoryAccountOpening(params: {
+  organizationId: Types.ObjectId | string;
+  previous: InventoryAccountSnapshot | null;
+  next: InventoryAccountSnapshot | null;
+}): Promise<void> {
+  const organizationId = String(params.organizationId);
+  const deltas = computeInventoryAccountDelta(params.previous, params.next);
+  if (deltas.size === 0) return;
+
+  const ops = Array.from(deltas.entries()).map(([accountId, delta]) => ({
+    updateOne: {
+      filter: {
+        _id: accountId,
+        organizationId,
+        isDeleted: false,
+        isGroup: false,
+      },
+      update: {
+        $inc: {
+          openingBalance: delta,
+          balance: delta,
+        },
+      },
+    },
+  }));
+
+  if (ops.length > 0) {
+    await Account.bulkWrite(ops);
+  }
 }
 
 // ─── Items ─────────────────────────────────────────────────────────────────
@@ -66,6 +152,8 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** POST /api/items */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+
   if (!req.body.name) throw new ValidationError("Item name is required");
   if (!req.body.itemType) throw new ValidationError("itemType is required (Goods or Service)");
 
@@ -103,16 +191,34 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     payload.taxId = payload.intraStateTaxId || payload.interStateTaxId || null;
   }
 
-  const item = new Item({ organizationId: orgId(req), ...payload });
+  const item = new Item({ organizationId, ...payload });
   attachUser(item, req);
   await item.save();
+
+  await syncInventoryAccountOpening({
+    organizationId,
+    previous: null,
+    next: {
+      inventoryTracked: Boolean(item.inventoryTracked),
+      inventoryAccountId: (item as any).inventoryAccountId,
+      inventoryValue: (item as any).inventoryValue,
+    },
+  });
+
   res.status(201).json({ success: true, data: item });
 });
 
 /** PATCH /api/items/:id */
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const item = await Item.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const organizationId = orgId(req);
+  const item = await Item.findOne({ _id: req.params.id, organizationId });
   if (!item) throw new NotFoundError("Item");
+
+  const previousInventorySnapshot: InventoryAccountSnapshot = {
+    inventoryTracked: Boolean((item as any).inventoryTracked),
+    inventoryAccountId: (item as any).inventoryAccountId,
+    inventoryValue: (item as any).inventoryValue,
+  };
 
   const allowed = [
     "name", "sku", "identifiers", "unit", "itemGroupId", "description", "itemMode", "brand", "manufacturer",
@@ -167,6 +273,17 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   attachUser(item, req);
   await item.save();
+
+  await syncInventoryAccountOpening({
+    organizationId,
+    previous: previousInventorySnapshot,
+    next: {
+      inventoryTracked: Boolean((item as any).inventoryTracked),
+      inventoryAccountId: (item as any).inventoryAccountId,
+      inventoryValue: (item as any).inventoryValue,
+    },
+  });
+
   res.json({ success: true, data: item });
 });
 

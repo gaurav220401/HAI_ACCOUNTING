@@ -58,6 +58,7 @@ export interface CreateInventoryAdjustmentInput {
   direction: InventoryDirection;
   adjustmentType?: "Quantity" | "Value";
   quantityDelta: number;
+  accountId?: string;
   unitCost?: number;
   valueDelta?: number;
   warehouseId?: string;
