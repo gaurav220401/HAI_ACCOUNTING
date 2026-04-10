@@ -148,3 +148,18 @@ export type {
   UpdateDeliveryChallanInput,
   DeliveryChallanListParams,
 } from "./delivery-challans";
+
+export { fixedAssetApi } from "./fixed-assets";
+export type {
+  FixedAsset,
+  FixedAssetStatus,
+  FixedAssetType,
+  DepreciationMethod,
+  DepreciationFrequency,
+  AssetLifeUnit,
+  ComputationType,
+  CreateFixedAssetInput,
+  UpdateFixedAssetInput,
+  CreateFixedAssetTypeInput,
+  UpdateFixedAssetTypeInput,
+} from "./fixed-assets";

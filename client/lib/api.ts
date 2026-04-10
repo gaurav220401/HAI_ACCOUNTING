@@ -35,7 +35,7 @@ async function getIdToken(): Promise<string | null> {
  */
 export async function apiFetch(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
   const token = await getIdToken();
 
@@ -103,7 +103,7 @@ export async function updateProfile(
     gender: string;
     phone: string;
     photoURL: string;
-  }>
+  }>,
 ) {
   const res = await apiFetch("/auth/profile", {
     method: "PUT",
@@ -210,3 +210,18 @@ export type {
   CreateTimesheetEntryInput,
   TimeLog,
 } from "./api/projects";
+
+export { fixedAssetApi } from "./api/fixed-assets";
+export type {
+  FixedAsset,
+  FixedAssetStatus,
+  FixedAssetType,
+  DepreciationMethod,
+  DepreciationFrequency,
+  AssetLifeUnit,
+  ComputationType,
+  CreateFixedAssetInput,
+  UpdateFixedAssetInput,
+  CreateFixedAssetTypeInput,
+  UpdateFixedAssetTypeInput,
+} from "./api/fixed-assets";
