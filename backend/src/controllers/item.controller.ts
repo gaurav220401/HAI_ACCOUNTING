@@ -1,6 +1,5 @@
 import { Response } from "express";
 import { Types } from "mongoose";
-import Account from "../models/account.model";
 import Item from "../models/item.model";
 import ItemGroup from "../models/item-group.model";
 import UnitOfMeasurement from "../models/unit.model";
@@ -8,6 +7,8 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import { applyInventoryOpeningDeltas } from "../services/inventory-opening.service";
+import { findAccountIdByName } from "../services/gl-posting.service";
 import {
   upsertDefaultUnits,
   getUnitOptionByAbbreviation,
@@ -33,6 +34,13 @@ type InventoryAccountSnapshot = {
   inventoryAccountId?: unknown;
   inventoryValue?: unknown;
 };
+
+const INVENTORY_ASSET_ACCOUNT_NAMES = [
+  "Inventory Asset (Stock)",
+  "Inventory Asset",
+  "Inventory",
+  "Stock",
+];
 
 function toObjectIdString(value: unknown): string {
   if (!value) return "";
@@ -81,35 +89,65 @@ function computeInventoryAccountDelta(
   return out;
 }
 
+async function resolveDefaultInventoryAccountId(
+  organizationId: Types.ObjectId | string,
+): Promise<string> {
+  try {
+    const accountId = await findAccountIdByName({
+      organizationId,
+      names: INVENTORY_ASSET_ACCOUNT_NAMES,
+      rootType: "Asset",
+      accountType: "Stock",
+    });
+    return String(accountId);
+  } catch {
+    return "";
+  }
+}
+
 async function syncInventoryAccountOpening(params: {
   organizationId: Types.ObjectId | string;
   previous: InventoryAccountSnapshot | null;
   next: InventoryAccountSnapshot | null;
 }): Promise<void> {
-  const organizationId = String(params.organizationId);
-  const deltas = computeInventoryAccountDelta(params.previous, params.next);
+  const needsFallbackAccount =
+    (params.previous?.inventoryTracked && !toObjectIdString(params.previous.inventoryAccountId))
+    || (params.next?.inventoryTracked && !toObjectIdString(params.next.inventoryAccountId));
+
+  const fallbackInventoryAccountId = needsFallbackAccount
+    ? await resolveDefaultInventoryAccountId(params.organizationId)
+    : "";
+
+  const normalizedPrevious: InventoryAccountSnapshot | null = params.previous
+    ? {
+      ...params.previous,
+      inventoryAccountId: params.previous.inventoryTracked
+        ? (toObjectIdString(params.previous.inventoryAccountId) || fallbackInventoryAccountId || null)
+        : params.previous.inventoryAccountId,
+    }
+    : null;
+
+  const normalizedNext: InventoryAccountSnapshot | null = params.next
+    ? {
+      ...params.next,
+      inventoryAccountId: params.next.inventoryTracked
+        ? (toObjectIdString(params.next.inventoryAccountId) || fallbackInventoryAccountId || null)
+        : params.next.inventoryAccountId,
+    }
+    : null;
+
+  const deltas = computeInventoryAccountDelta(normalizedPrevious, normalizedNext);
   if (deltas.size === 0) return;
 
-  const ops = Array.from(deltas.entries()).map(([accountId, delta]) => ({
-    updateOne: {
-      filter: {
-        _id: accountId,
-        organizationId,
-        isDeleted: false,
-        isGroup: false,
-      },
-      update: {
-        $inc: {
-          openingBalance: delta,
-          balance: delta,
-        },
-      },
-    },
-  }));
-
-  if (ops.length > 0) {
-    await Account.bulkWrite(ops);
+  const payload: Record<string, number> = {};
+  for (const [accountId, delta] of deltas.entries()) {
+    payload[accountId] = delta;
   }
+
+  await applyInventoryOpeningDeltas({
+    organizationId: params.organizationId,
+    deltas: payload,
+  });
 }
 
 // ─── Items ─────────────────────────────────────────────────────────────────
@@ -289,12 +327,27 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 /** DELETE /api/items/:id */
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const item = await Item.findOne({ _id: req.params.id, organizationId: orgId(req) });
+  const organizationId = orgId(req);
+  const item = await Item.findOne({ _id: req.params.id, organizationId });
   if (!item) throw new NotFoundError("Item");
+
+  const previousInventorySnapshot: InventoryAccountSnapshot = {
+    inventoryTracked: Boolean((item as any).inventoryTracked),
+    inventoryAccountId: (item as any).inventoryAccountId,
+    inventoryValue: (item as any).inventoryValue,
+  };
+
   item.isDeleted = true;
   item.deletedAt = new Date();
   attachUser(item, req);
   await item.save();
+
+  await syncInventoryAccountOpening({
+    organizationId,
+    previous: previousInventorySnapshot,
+    next: null,
+  });
+
   res.json({ success: true, message: "Item deleted" });
 });
 

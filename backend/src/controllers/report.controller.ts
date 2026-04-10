@@ -11,6 +11,7 @@ import PaymentMade from "../models/payment-made.model";
 import PaymentReceived from "../models/payment-received.model";
 import PurchaseOrder from "../models/purchase-order.model";
 import VendorCredit from "../models/vendor-credit.model";
+import { reconcileInventoryOpeningBalances } from "../services/inventory-opening.service";
 import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, ValidationError } from "../utils/errors";
@@ -127,11 +128,21 @@ async function loadMovementMap(params: {
   return out;
 }
 
+async function reconcileInventoryOpeningsSafely(organizationId: Types.ObjectId): Promise<void> {
+  try {
+    await reconcileInventoryOpeningBalances({ organizationId });
+  } catch {
+    // Report rendering should still work even if reconciliation cannot run.
+  }
+}
+
 // ─── FINANCIAL STATEMENT REPORTS ─────────────────────────────────────
 
 export const trialBalance = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
   const asOf = parseDate(req.query.asOf, "asOf");
+
+  await reconcileInventoryOpeningsSafely(organizationId);
 
   const [accountMap, movementMap] = await Promise.all([
     loadAccounts(organizationId),
@@ -240,6 +251,8 @@ export const profitAndLoss = asyncHandler(async (req: AuthenticatedRequest, res:
 export const balanceSheet = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
   const asOf = parseDate(req.query.asOf, "asOf") || new Date();
+
+  await reconcileInventoryOpeningsSafely(organizationId);
 
   const [accountMap, movementMap] = await Promise.all([
     loadAccounts(organizationId),
