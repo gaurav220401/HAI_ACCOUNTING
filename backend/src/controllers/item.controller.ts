@@ -6,12 +6,20 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
-import { upsertDefaultUnits } from "../utils/defaultUnits"; // GST defaults
+import {
+  upsertDefaultUnits,
+  getUnitOptionByAbbreviation,
+  normalizeUnitAbbreviation,
+} from "../utils/defaultUnits";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
   return id;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function round2(value: number): number {
@@ -211,8 +219,26 @@ export const listUnits = asyncHandler(async (req: AuthenticatedRequest, res: Res
 });
 
 export const createUnit = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  if (!req.body.name || !req.body.abbreviation) throw new ValidationError("name and abbreviation are required");
-  const unit = new UnitOfMeasurement({ organizationId: orgId(req), ...req.body });
+  const organizationId = orgId(req);
+  const abbreviation = normalizeUnitAbbreviation(req.body.abbreviation);
+  const option = getUnitOptionByAbbreviation(abbreviation);
+
+  if (!abbreviation || !option) {
+    throw new ValidationError("Please select a valid unit abbreviation from the standard list");
+  }
+
+  const existing = await UnitOfMeasurement.findOne({
+    organizationId,
+    abbreviation: { $regex: `^${escapeRegex(abbreviation)}$`, $options: "i" },
+  }).lean();
+  if (existing) {
+    throw new ValidationError("A unit with this abbreviation already exists");
+  }
+
+  const name = String(req.body.name || "").trim() || option.name;
+  if (!name) throw new ValidationError("name is required");
+
+  const unit = new UnitOfMeasurement({ organizationId, name, abbreviation });
   await unit.save();
   res.status(201).json({ success: true, data: unit });
 });

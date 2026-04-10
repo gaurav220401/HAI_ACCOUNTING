@@ -218,20 +218,100 @@ function pickDefaultAccountId(accounts: Account[], preferredNames: string[]): st
   return accounts[0]._id;
 }
 
+interface UnitAbbreviationOption {
+  abbreviation: string;
+  name: string;
+}
+
+const UNIT_ABBREVIATION_OPTIONS: UnitAbbreviationOption[] = [
+  { abbreviation: "BAG", name: "Bag" },
+  { abbreviation: "BGS", name: "Bags" },
+  { abbreviation: "BKL", name: "Buckles" },
+  { abbreviation: "BOU", name: "Billion Of Units" },
+  { abbreviation: "BOX", name: "Box" },
+  { abbreviation: "BTL", name: "Bottles" },
+  { abbreviation: "BUN", name: "Bunches" },
+  { abbreviation: "CBM", name: "Cubic Meter" },
+  { abbreviation: "CCM", name: "Cubic Centimeter" },
+  { abbreviation: "CIN", name: "Cubic Inches" },
+  { abbreviation: "CMS", name: "Centimeter" },
+  { abbreviation: "CQM", name: "Cubic Meters" },
+  { abbreviation: "CTN", name: "Carton" },
+  { abbreviation: "DOZ", name: "Dozen" },
+  { abbreviation: "DRM", name: "Drum" },
+  { abbreviation: "FTS", name: "Feet" },
+  { abbreviation: "GGR", name: "Great Gross" },
+  { abbreviation: "GMS", name: "Grams" },
+  { abbreviation: "GRS", name: "Gross" },
+  { abbreviation: "GYD", name: "Gross Yards" },
+  { abbreviation: "HKS", name: "Hanks" },
+  { abbreviation: "INC", name: "Inches" },
+  { abbreviation: "KGS", name: "Kilograms" },
+  { abbreviation: "KLR", name: "Kiloliter" },
+  { abbreviation: "KME", name: "Kilometers" },
+  { abbreviation: "LBS", name: "Pounds" },
+  { abbreviation: "LOT", name: "Lots" },
+  { abbreviation: "LTR", name: "Liters" },
+  { abbreviation: "MGS", name: "Milli Grams" },
+  { abbreviation: "MLT", name: "Milli Litre" },
+  { abbreviation: "MTR", name: "Meter" },
+  { abbreviation: "MTS", name: "Metric Ton" },
+  { abbreviation: "NOS", name: "Numbers" },
+  { abbreviation: "ODD", name: "Odds" },
+  { abbreviation: "PAC", name: "Packs" },
+  { abbreviation: "PCS", name: "Pieces" },
+  { abbreviation: "PRS", name: "Pairs" },
+  { abbreviation: "QTL", name: "Quintal" },
+  { abbreviation: "ROL", name: "Rolls" },
+  { abbreviation: "SDM", name: "Decameter Square" },
+  { abbreviation: "SET", name: "Sets" },
+  { abbreviation: "SHT", name: "Sheets" },
+  { abbreviation: "SQF", name: "Square Feet" },
+  { abbreviation: "SQI", name: "Square Inches" },
+  { abbreviation: "SQM", name: "Square Meter" },
+  { abbreviation: "SQY", name: "Square Yards" },
+  { abbreviation: "TBS", name: "Tablets" },
+  { abbreviation: "THD", name: "Thousands" },
+  { abbreviation: "TOL", name: "Tola" },
+  { abbreviation: "TON", name: "Great Britain Ton" },
+  { abbreviation: "TUB", name: "Tubes" },
+  { abbreviation: "UGS", name: "Us Gallons" },
+  { abbreviation: "UNT", name: "Units" },
+  { abbreviation: "VLS", name: "Vials" },
+  { abbreviation: "YDS", name: "Yards" },
+  { abbreviation: "CAN", name: "Cans" },
+  { abbreviation: "BDL", name: "Bundles" },
+  { abbreviation: "BAL", name: "Bale" },
+  { abbreviation: "TGM", name: "Ten Gross" },
+  { abbreviation: "OTH", name: "Others" },
+];
+
 // ─── Create Unit Dialog ───────────────────────────────────────────────────────
 
 function CreateUnitDialog({
   open,
   onOpenChange,
   onCreated,
+  existingAbbreviations,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated: (unit: UnitOfMeasurement) => void;
+  existingAbbreviations: string[];
 }) {
   const [name, setName] = useState("");
   const [abbr, setAbbr] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const existingAbbreviationSet = useMemo(
+    () => new Set(existingAbbreviations.map((value) => String(value || "").trim().toUpperCase())),
+    [existingAbbreviations],
+  );
+
+  const availableAbbreviationOptions = useMemo(
+    () => UNIT_ABBREVIATION_OPTIONS.filter((option) => !existingAbbreviationSet.has(option.abbreviation)),
+    [existingAbbreviationSet],
+  );
 
   function reset() { setName(""); setAbbr(""); }
 
@@ -240,9 +320,18 @@ function CreateUnitDialog({
       toast.error("Name and abbreviation are required");
       return;
     }
+
+    if (existingAbbreviationSet.has(abbr.trim().toUpperCase())) {
+      toast.error("A unit with this abbreviation already exists");
+      return;
+    }
+
     setSaving(true);
     try {
-      const res = await itemApi.createUnit({ name: name.trim(), abbreviation: abbr.trim() });
+      const res = await itemApi.createUnit({
+        name: name.trim(),
+        abbreviation: abbr.trim().toUpperCase(),
+      });
       onCreated(res.data);
       toast.success(`Unit "${res.data.name}" created`);
       reset();
@@ -278,20 +367,43 @@ function CreateUnitDialog({
             <label className="text-sm font-medium">
               Abbreviation<span className="text-destructive ml-0.5">*</span>
             </label>
-            <Input
-              value={abbr}
-              onChange={(e) => setAbbr(e.target.value)}
-              placeholder="e.g. kg"
-              className="h-9 text-sm"
-              onKeyDown={(e) => e.key === "Enter" && handleSave()}
-            />
+            <Select
+              value={abbr || "__none"}
+              onValueChange={(value) => {
+                const selectedAbbreviation = value === "__none" ? "" : value;
+                setAbbr(selectedAbbreviation);
+
+                const option = UNIT_ABBREVIATION_OPTIONS.find((entry) => entry.abbreviation === selectedAbbreviation);
+                if (option && !name.trim()) {
+                  setName(option.name);
+                }
+              }}
+            >
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="Select abbreviation" />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                <SelectItem value="__none">Select abbreviation</SelectItem>
+                {availableAbbreviationOptions.length > 0 ? (
+                  availableAbbreviationOptions.map((option) => (
+                    <SelectItem key={option.abbreviation} value={option.abbreviation}>
+                      {option.abbreviation} ({option.name})
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="__all_used" disabled>
+                    All standard abbreviations already used
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => { reset(); onOpenChange(false); }}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
+          <Button size="sm" onClick={handleSave} disabled={saving || !abbr.trim() || !name.trim()}>
             {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Saving…</> : "Create Unit"}
           </Button>
         </DialogFooter>
@@ -1396,6 +1508,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 open={createUnitOpen}
                 onOpenChange={setCreateUnitOpen}
                 onCreated={handleUnitCreated}
+                existingAbbreviations={units.map((unit) => String(unit.abbreviation || "").toUpperCase())}
               />
             </div>
 
