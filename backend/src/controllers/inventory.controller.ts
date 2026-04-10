@@ -9,6 +9,7 @@ import {
   applyInventoryValueDeltas,
   applyStockDeltas,
 } from "../services/accounting-sync.service";
+import { findAccountIdByName, postVoucher } from "../services/gl-posting.service";
 import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import {
@@ -35,6 +36,38 @@ function getOrgId(req: AuthenticatedRequest): Types.ObjectId {
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+async function resolveInventoryAssetAccountId(params: {
+  organizationId: Types.ObjectId;
+  item: any;
+}): Promise<Types.ObjectId> {
+  const explicit = String(params.item?.inventoryAccountId || "");
+  if (Types.ObjectId.isValid(explicit)) return new Types.ObjectId(explicit);
+
+  return findAccountIdByName({
+    organizationId: params.organizationId,
+    names: ["Inventory Asset (Stock)", "Inventory Asset", "Inventory", "Stock"],
+    rootType: "Asset",
+  });
+}
+
+async function resolveAdjustmentOffsetAccountId(params: {
+  organizationId: Types.ObjectId;
+  item: any;
+  reqAccountId?: string;
+}): Promise<Types.ObjectId> {
+  const reqAccountId = String(params.reqAccountId || "").trim();
+  if (Types.ObjectId.isValid(reqAccountId)) return new Types.ObjectId(reqAccountId);
+
+  const purchaseAccountId = String(params.item?.purchaseAccountId || "");
+  if (Types.ObjectId.isValid(purchaseAccountId)) return new Types.ObjectId(purchaseAccountId);
+
+  return findAccountIdByName({
+    organizationId: params.organizationId,
+    names: ["Cost of Goods Sold", "COGS", "Purchases", "Inventory Adjustments", "Inventory Adjustment"],
+    rootType: "Expense",
+  });
 }
 
 export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -138,46 +171,64 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     throw new ValidationError("Valid itemId is required");
   }
 
+  const adjustmentTypeRaw = String(req.body.adjustmentType || "Quantity").trim().toLowerCase();
+  const isValueAdjustment = adjustmentTypeRaw === "value";
+
   const direction = req.body.direction === "Decrease" ? "Decrease" : "Increase";
 
-  const quantityInput = Number(req.body.quantityDelta ?? req.body.quantity);
-  if (!Number.isFinite(quantityInput) || quantityInput <= 0) {
+  const quantityRaw = req.body.quantityDelta ?? req.body.quantity;
+  const hasQuantity = quantityRaw !== undefined && quantityRaw !== null && quantityRaw !== "";
+  const quantityInput = hasQuantity ? Number(quantityRaw) : 0;
+
+  if (!isValueAdjustment && (!Number.isFinite(quantityInput) || quantityInput <= 0)) {
     throw new ValidationError("quantityDelta must be a positive number");
   }
-  const quantity = round2(Math.abs(quantityInput));
-  const signedQuantity = direction === "Decrease" ? -quantity : quantity;
+
+  const quantity = hasQuantity ? round2(Math.abs(quantityInput)) : 0;
+  const signedQuantity = hasQuantity ? (direction === "Decrease" ? -quantity : quantity) : 0;
 
   const item = await Item.findOne({
     _id: itemId,
     organizationId,
     isDeleted: false,
     inventoryTracked: true,
-  }).select("stockOnHand inventoryValue averageCost costPrice");
+  }).select("stockOnHand inventoryValue averageCost costPrice inventoryAccountId purchaseAccountId");
 
   if (!item) {
     throw new NotFoundError("Inventory tracked item");
   }
 
   const projectedStock = round2(Number(item.stockOnHand || 0) + signedQuantity);
-  if (direction === "Decrease" && projectedStock < 0) {
+  if (signedQuantity < 0 && projectedStock < 0) {
     throw new ValidationError("Insufficient stock for this adjustment");
   }
 
+  const hasValueDelta = req.body.valueDelta !== undefined && req.body.valueDelta !== null && req.body.valueDelta !== "";
+
   let valueDelta = 0;
-  if (req.body.valueDelta !== undefined && req.body.valueDelta !== null && req.body.valueDelta !== "") {
+  if (hasValueDelta) {
     const parsedValue = Number(req.body.valueDelta);
     if (!Number.isFinite(parsedValue)) {
       throw new ValidationError("valueDelta must be numeric");
     }
     valueDelta = round2(parsedValue);
   } else {
+    if (isValueAdjustment) {
+      throw new ValidationError("valueDelta is required for value adjustment");
+    }
     const unitCostInput = Number(req.body.unitCost ?? item.averageCost ?? item.costPrice ?? 0);
     const unitCost = Number.isFinite(unitCostInput) ? unitCostInput : 0;
     valueDelta = round2(signedQuantity * unitCost);
   }
 
-  if (direction === "Decrease" && valueDelta > 0) valueDelta = -valueDelta;
-  if (direction === "Increase" && valueDelta < 0) valueDelta = Math.abs(valueDelta);
+  if (signedQuantity !== 0) {
+    if (direction === "Decrease" && valueDelta > 0) valueDelta = -valueDelta;
+    if (direction === "Increase" && valueDelta < 0) valueDelta = Math.abs(valueDelta);
+  }
+
+  if (isValueAdjustment && signedQuantity === 0 && Math.abs(valueDelta) <= 0.0001) {
+    throw new ValidationError("valueDelta cannot be zero for value adjustment");
+  }
 
   const warehouseInput = String(req.body.warehouseId || "").trim();
   if (warehouseInput && !Types.ObjectId.isValid(warehouseInput)) {
@@ -189,11 +240,13 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     ? (reasonInput as InventoryAdjustmentReason)
     : "Other";
 
-  await applyStockDeltas({
-    organizationId,
-    deltas: { [itemId]: signedQuantity },
-    req,
-  });
+  if (Math.abs(signedQuantity) > 0.0001) {
+    await applyStockDeltas({
+      organizationId,
+      deltas: { [itemId]: signedQuantity },
+      req,
+    });
+  }
 
   if (Math.abs(valueDelta) > 0.0001) {
     await applyInventoryValueDeltas({
@@ -213,7 +266,11 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     throw new NotFoundError("Item");
   }
 
+  const adjustedAt = req.body.adjustedAt ? new Date(req.body.adjustedAt) : new Date();
+  const adjustmentId = new Types.ObjectId();
+
   const adjustment = new InventoryAdjustment({
+    _id: adjustmentId,
     organizationId,
     itemId,
     warehouseId: warehouseInput || null,
@@ -223,13 +280,60 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     reason,
     referenceNumber: String(req.body.referenceNumber || "").trim(),
     notes: String(req.body.notes || "").trim(),
-    adjustedAt: req.body.adjustedAt ? new Date(req.body.adjustedAt) : new Date(),
+    adjustedAt,
     resultingStockOnHand: round2(Number(updatedItem.stockOnHand || 0)),
     resultingInventoryValue: round2(Number((updatedItem as any).inventoryValue || 0)),
   });
 
   attachUser(adjustment, req);
   await adjustment.save();
+
+  if (Math.abs(valueDelta) > 0.0001) {
+    try {
+      const [inventoryAccountId, offsetAccountId] = await Promise.all([
+        resolveInventoryAssetAccountId({ organizationId, item }),
+        resolveAdjustmentOffsetAccountId({
+          organizationId,
+          item,
+          reqAccountId: req.body.accountId,
+        }),
+      ]);
+
+      if (String(inventoryAccountId) !== String(offsetAccountId)) {
+        const amount = round2(Math.abs(valueDelta));
+        const inventoryDebit = valueDelta > 0 ? amount : 0;
+        const inventoryCredit = valueDelta < 0 ? amount : 0;
+        const offsetDebit = valueDelta < 0 ? amount : 0;
+        const offsetCredit = valueDelta > 0 ? amount : 0;
+
+        await postVoucher({
+          organizationId,
+          voucherType: "System",
+          voucherId: `inventory-adjustment:${String(adjustmentId)}`,
+          voucherNo: `INV-ADJ-${String(adjustmentId).slice(-6).toUpperCase()}`,
+          postingDate: adjustedAt,
+          description: `Inventory adjustment - ${reason}`,
+          req,
+          lines: [
+            {
+              accountId: inventoryAccountId,
+              debit: inventoryDebit,
+              credit: inventoryCredit,
+              description: `Inventory value adjustment for item ${itemId}`,
+            },
+            {
+              accountId: offsetAccountId,
+              debit: offsetDebit,
+              credit: offsetCredit,
+              description: `Inventory adjustment offset for item ${itemId}`,
+            },
+          ],
+        });
+      }
+    } catch {
+      // Non-blocking: stock adjustments should still persist even if GL posting fallback fails.
+    }
+  }
 
   await adjustment.populate("itemId", "name sku");
   await adjustment.populate("warehouseId", "name");
