@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Loader2, Paperclip, X } from "lucide-react";
+import { Calendar, Loader2, Paperclip, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { billApi, type Bill } from "@/lib/api/bills";
 import { contactApi, type Contact } from "@/lib/api/contacts";
@@ -100,9 +101,24 @@ export function PaymentMadeEditor({
   const [saving, setSaving] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
+  const [showPaidThroughDD, setShowPaidThroughDD] = useState(false);
+  const [paidThroughSearch, setPaidThroughSearch] = useState("");
+  const [showDepositToDD, setShowDepositToDD] = useState(false);
+  const [depositToSearch, setDepositToSearch] = useState("");
+
   const selectedVendor = useMemo(
     () => vendors.find((v) => v._id === form.vendor_id) || null,
     [vendors, form.vendor_id],
+  );
+
+  const selectedPaidThrough = useMemo(
+    () => accounts.find((a) => a._id === form.paid_through_account) || null,
+    [accounts, form.paid_through_account],
+  );
+
+  const selectedDepositTo = useMemo(
+    () => accounts.find((a) => a._id === form.deposit_to_account) || null,
+    [accounts, form.deposit_to_account],
   );
 
   useEffect(() => {
@@ -474,42 +490,70 @@ export function PaymentMadeEditor({
 
                   <div className="vendor-dependent space-y-1.5">
                     <Label>Paid Through*</Label>
-                    <Select
-                      disabled={vendorLocked}
-                      value={form.paid_through_account}
-                      onValueChange={(v) => setForm((prev) => ({ ...prev, paid_through_account: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {accounts.map((acc) => (
-                          <SelectItem key={acc._id} value={acc._id}>
-                            {acc.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <DropdownMenu open={showPaidThroughDD} onOpenChange={(o) => { setShowPaidThroughDD(o); if (!o) setPaidThroughSearch(""); }}>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-3 h-10 hover:bg-muted/30 text-muted-foreground transition-colors" disabled={vendorLocked}>
+                          <span className="truncate text-left flex-1 mr-2">{selectedPaidThrough ? `${selectedPaidThrough.code ? `[${selectedPaidThrough.code}] ` : ""}${selectedPaidThrough.name}` : "Select account"}</span>
+                          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                        <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                          <Input className="h-7 text-xs" placeholder="Search accounts" value={paidThroughSearch} onChange={(e) => setPaidThroughSearch(e.target.value)} autoFocus />
+                        </div>
+                        <div className="max-h-56 overflow-y-auto">
+                          {accounts.filter((account) => 
+                            account.name.toLowerCase().includes(paidThroughSearch.toLowerCase()) || 
+                            (account.code && account.code.toLowerCase().includes(paidThroughSearch.toLowerCase()))
+                          ).map((account) => (
+                            <button key={account._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", form.paid_through_account === account._id && "bg-primary/10 font-medium")}
+                              onClick={() => { setForm((prev) => ({ ...prev, paid_through_account: account._id })); setShowPaidThroughDD(false); setPaidThroughSearch(""); }}>
+                              {account.code ? `[${account.code}] ` : ""}{account.name}
+                            </button>
+                          ))}
+                          {accounts.filter((account) => 
+                            account.name.toLowerCase().includes(paidThroughSearch.toLowerCase()) || 
+                            (account.code && account.code.toLowerCase().includes(paidThroughSearch.toLowerCase()))
+                          ).length === 0 && (
+                            <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
+                          )}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   <div className="vendor-dependent space-y-1.5">
                     <Label>Deposit To</Label>
-                    <Select
-                      disabled={vendorLocked}
-                      value={form.deposit_to_account}
-                      onValueChange={(v) => setForm((prev) => ({ ...prev, deposit_to_account: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {accounts.map((acc) => (
-                          <SelectItem key={acc._id} value={acc._id}>
-                            {acc.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <DropdownMenu open={showDepositToDD} onOpenChange={(o) => { setShowDepositToDD(o); if (!o) setDepositToSearch(""); }}>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-3 h-10 hover:bg-muted/30 text-muted-foreground transition-colors" disabled={vendorLocked}>
+                          <span className="truncate text-left flex-1 mr-2">{selectedDepositTo ? `${selectedDepositTo.code ? `[${selectedDepositTo.code}] ` : ""}${selectedDepositTo.name}` : "Select account"}</span>
+                          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                        <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                          <Input className="h-7 text-xs" placeholder="Search accounts" value={depositToSearch} onChange={(e) => setDepositToSearch(e.target.value)} autoFocus />
+                        </div>
+                        <div className="max-h-56 overflow-y-auto">
+                          {accounts.filter((account) => 
+                            account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
+                            (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
+                          ).map((account) => (
+                            <button key={account._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", form.deposit_to_account === account._id && "bg-primary/10 font-medium")}
+                              onClick={() => { setForm((prev) => ({ ...prev, deposit_to_account: account._id })); setShowDepositToDD(false); setDepositToSearch(""); }}>
+                              {account.code ? `[${account.code}] ` : ""}{account.name}
+                            </button>
+                          ))}
+                          {accounts.filter((account) => 
+                            account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
+                            (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
+                          ).length === 0 && (
+                            <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
+                          )}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   <div className="vendor-dependent space-y-1.5">

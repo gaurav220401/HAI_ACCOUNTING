@@ -324,7 +324,313 @@ function ProfitLossView({ data }: { data: ProfitLossResponse }) {
   );
 }
 
+type BalanceSheetTableLine = {
+  accountId: string;
+  code: string;
+  name: string;
+  accountType?: string;
+  amount: number;
+};
+
+type BalanceSheetRenderRow = {
+  kind: "heading" | "account" | "total";
+  label: string;
+  code?: string;
+  amount?: number;
+  depth: number;
+};
+
+function sumBalanceLines(lines: BalanceSheetTableLine[]): number {
+  return lines.reduce((sum, row) => sum + row.amount, 0);
+}
+
+function sortBalanceLines(lines: BalanceSheetTableLine[]): BalanceSheetTableLine[] {
+  return [...lines].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+function normalizeBalanceText(value?: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function textIncludesAny(text: string, needles: string[]): boolean {
+  return needles.some((needle) => text.includes(needle));
+}
+
+function isLineAccountType(line: BalanceSheetTableLine, accountTypes: string[]): boolean {
+  const lineType = normalizeBalanceText(line.accountType);
+  return accountTypes.some((type) => lineType === normalizeBalanceText(type));
+}
+
+function consumeLinesByMatcher(
+  pool: BalanceSheetTableLine[],
+  matcher: (line: BalanceSheetTableLine) => boolean,
+): BalanceSheetTableLine[] {
+  const picked: BalanceSheetTableLine[] = [];
+
+  for (let idx = pool.length - 1; idx >= 0; idx -= 1) {
+    const row = pool[idx];
+    if (matcher(row)) {
+      picked.push(row);
+      pool.splice(idx, 1);
+    }
+  }
+
+  return sortBalanceLines(picked);
+}
+
+function isCashAndBankAssetLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Cash", "Bank", "Payment Clearing Account"]) ||
+    textIncludesAny(name, ["petty cash", "cash in hand", "cash", "bank", "current account", "savings account"])
+  );
+}
+
+function isBankLikeLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Bank"]) ||
+    textIncludesAny(name, ["bank", "current account", "savings account"])
+  );
+}
+
+function isCashLikeLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Cash", "Payment Clearing Account"]) ||
+    (textIncludesAny(name, ["cash", "petty cash", "cash in hand"]) && !textIncludesAny(name, ["bank"]))
+  );
+}
+
+function isAccountsReceivableLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Accounts Receivable"]) ||
+    textIncludesAny(name, ["accounts receivable", "receivable", "debtors", "debtor"])
+  );
+}
+
+function isOtherCurrentAssetLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Other Current Asset", "Stock"]) ||
+    textIncludesAny(name, ["inventory", "stock", "prepaid", "advance tax"])
+  );
+}
+
+function isNonCurrentAssetLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Non Current Asset", "Deferred Tax Asset", "Intangible Asset"]) ||
+    textIncludesAny(name, ["non current", "deferred tax asset", "intangible"])
+  );
+}
+
+function isFixedAssetLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Fixed Asset"]) ||
+    textIncludesAny(name, [
+      "acc dep",
+      "accumulated depreciation",
+      "depreciation",
+      "furniture",
+      "fixture",
+      "equipment",
+      "machinery",
+      "vehicle",
+      "plant",
+      "computer",
+      "office equipment",
+    ])
+  );
+}
+
+function isAccountsPayableLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Accounts Payable"]) ||
+    textIncludesAny(name, ["accounts payable", "trade payable", "creditors", "creditor"])
+  );
+}
+
+function isOtherCurrentLiabilityLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Other Current Liability", "Credit Card", "Overseas Tax Payable"]) ||
+    textIncludesAny(name, ["accrued", "accrual", "credit card", "gst payable", "tax payable", "tcs payable", "tds payable"])
+  );
+}
+
+function isNonCurrentLiabilityLine(line: BalanceSheetTableLine): boolean {
+  const name = normalizeBalanceText(line.name);
+  return (
+    isLineAccountType(line, ["Non Current Liability", "Deferred Tax Liability"]) ||
+    textIncludesAny(name, ["long term", "term loan", "deferred tax liability", "non current liability"])
+  );
+}
+
+function toAccountRows(lines: BalanceSheetTableLine[], depth: number): BalanceSheetRenderRow[] {
+  return lines.map((line) => ({
+    kind: "account",
+    label: line.name,
+    code: line.code || "",
+    amount: line.amount,
+    depth,
+  }));
+}
+
+function buildFlatGroupRows(label: string, lines: BalanceSheetTableLine[], depth: number): { rows: BalanceSheetRenderRow[]; total: number } {
+  const sortedLines = sortBalanceLines(lines);
+  const total = sumBalanceLines(sortedLines);
+
+  return {
+    rows: [
+      { kind: "heading", label, depth },
+      ...toAccountRows(sortedLines, depth + 1),
+      { kind: "total", label: `Total for ${label}`, amount: total, depth },
+    ],
+    total,
+  };
+}
+
+function buildAssetHierarchyRows(lines: BalanceSheetTableLine[]): BalanceSheetRenderRow[] {
+  const pool = sortBalanceLines(lines);
+  const rows: BalanceSheetRenderRow[] = [];
+
+  rows.push({ kind: "heading", label: "Current Assets", depth: 1 });
+  let currentAssetsTotal = 0;
+
+  const cashAndEqPool = consumeLinesByMatcher(pool, isCashAndBankAssetLine);
+  const bankRows = consumeLinesByMatcher(cashAndEqPool, isBankLikeLine);
+  const cashRows = consumeLinesByMatcher(cashAndEqPool, isCashLikeLine);
+  const otherCashEqRows = sortBalanceLines(cashAndEqPool);
+
+  rows.push({ kind: "heading", label: "Cash and Cash Equivalents", depth: 2 });
+  const cashGroup = buildFlatGroupRows("Cash", cashRows, 3);
+  rows.push(...cashGroup.rows);
+  const bankGroup = buildFlatGroupRows("Bank", bankRows, 3);
+  rows.push(...bankGroup.rows);
+  let cashAndEqTotal = cashGroup.total + bankGroup.total;
+
+  if (otherCashEqRows.length) {
+    const otherCashEqGroup = buildFlatGroupRows("Other Cash Equivalents", otherCashEqRows, 3);
+    rows.push(...otherCashEqGroup.rows);
+    cashAndEqTotal += otherCashEqGroup.total;
+  }
+
+  rows.push({ kind: "total", label: "Total for Cash and Cash Equivalents", amount: cashAndEqTotal, depth: 2 });
+  currentAssetsTotal += cashAndEqTotal;
+
+  const accountsReceivable = buildFlatGroupRows(
+    "Accounts Receivable",
+    consumeLinesByMatcher(pool, isAccountsReceivableLine),
+    2,
+  );
+  rows.push(...accountsReceivable.rows);
+  currentAssetsTotal += accountsReceivable.total;
+
+  const otherCurrentAssets = buildFlatGroupRows(
+    "Other current assets",
+    consumeLinesByMatcher(pool, isOtherCurrentAssetLine),
+    2,
+  );
+  rows.push(...otherCurrentAssets.rows);
+  currentAssetsTotal += otherCurrentAssets.total;
+
+  rows.push({ kind: "total", label: "Total for Current Assets", amount: currentAssetsTotal, depth: 1 });
+
+  const nonCurrentAssets = buildFlatGroupRows(
+    "Non Current Assets",
+    consumeLinesByMatcher(pool, isNonCurrentAssetLine),
+    1,
+  );
+  rows.push(...nonCurrentAssets.rows);
+
+  const fixedAssets = buildFlatGroupRows("Fixed Assets", consumeLinesByMatcher(pool, isFixedAssetLine), 1);
+  rows.push(...fixedAssets.rows);
+
+  const knownOtherAssets = consumeLinesByMatcher(pool, (line) => isLineAccountType(line, ["Other Asset"]));
+  const fallbackAssets = sortBalanceLines(pool);
+  pool.length = 0;
+  const otherAssets = buildFlatGroupRows("Other Assets", [...knownOtherAssets, ...fallbackAssets], 1);
+  rows.push(...otherAssets.rows);
+
+  return rows;
+}
+
+function buildLiabilityHierarchyRows(lines: BalanceSheetTableLine[]): BalanceSheetRenderRow[] {
+  const pool = sortBalanceLines(lines);
+  const rows: BalanceSheetRenderRow[] = [];
+
+  rows.push({ kind: "heading", label: "Current Liabilities", depth: 2 });
+  let currentLiabilitiesTotal = 0;
+
+  const accountsPayable = buildFlatGroupRows(
+    "Accounts Payable",
+    consumeLinesByMatcher(pool, isAccountsPayableLine),
+    3,
+  );
+  rows.push(...accountsPayable.rows);
+  currentLiabilitiesTotal += accountsPayable.total;
+
+  const otherCurrentLiabilities = buildFlatGroupRows(
+    "Other Current Liabilities",
+    consumeLinesByMatcher(pool, isOtherCurrentLiabilityLine),
+    3,
+  );
+  rows.push(...otherCurrentLiabilities.rows);
+  currentLiabilitiesTotal += otherCurrentLiabilities.total;
+
+  rows.push({ kind: "total", label: "Total for Current Liabilities", amount: currentLiabilitiesTotal, depth: 2 });
+
+  const nonCurrentLiabilities = buildFlatGroupRows(
+    "Non Current Liabilities",
+    consumeLinesByMatcher(pool, isNonCurrentLiabilityLine),
+    2,
+  );
+  rows.push(...nonCurrentLiabilities.rows);
+
+  const knownOtherLiabilities = consumeLinesByMatcher(pool, (line) => isLineAccountType(line, ["Other Liability"]));
+  const fallbackLiabilities = sortBalanceLines(pool);
+  pool.length = 0;
+  const otherLiabilities = buildFlatGroupRows("Other Liabilities", [...knownOtherLiabilities, ...fallbackLiabilities], 2);
+  rows.push(...otherLiabilities.rows);
+
+  return rows;
+}
+
+function buildEquityHierarchyRows(lines: BalanceSheetTableLine[]): BalanceSheetRenderRow[] {
+  const pool = sortBalanceLines(lines);
+  const knownEquities = consumeLinesByMatcher(pool, (line) => isLineAccountType(line, ["Equity"]));
+  const fallbackEquities = sortBalanceLines(pool);
+  return toAccountRows([...knownEquities, ...fallbackEquities], 2);
+}
+
 function BalanceSheetView({ data }: { data: BalanceSheetResponse }) {
+  const assetRows = buildAssetHierarchyRows(data.assets as BalanceSheetTableLine[]);
+  const liabilityRows = buildLiabilityHierarchyRows(data.liabilities as BalanceSheetTableLine[]);
+  const equityRows = buildEquityHierarchyRows(data.equity as BalanceSheetTableLine[]);
+  const liabilitiesAndEquityTotal = Number((data.totals.totalLiabilities + data.totals.totalEquity).toFixed(2));
+  const hasEquationDiff = Math.abs(data.totals.equationDifference) > 0.009;
+
+  const tableRows: BalanceSheetRenderRow[] = [
+    { kind: "heading", label: "Assets", depth: 0 },
+    ...assetRows,
+    { kind: "total", label: "Total for Assets", amount: data.totals.totalAssets, depth: 0 },
+    { kind: "heading", label: "Liabilities & Equities", depth: 0 },
+    { kind: "heading", label: "Liabilities", depth: 1 },
+    ...liabilityRows,
+    { kind: "total", label: "Total for Liabilities", amount: data.totals.totalLiabilities, depth: 1 },
+    { kind: "heading", label: "Equities", depth: 1 },
+    ...equityRows,
+    { kind: "total", label: "Total for Equities", amount: data.totals.totalEquity, depth: 1 },
+    { kind: "total", label: "Total for Liabilities & Equities", amount: liabilitiesAndEquityTotal, depth: 1 },
+  ];
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -332,15 +638,60 @@ function BalanceSheetView({ data }: { data: BalanceSheetResponse }) {
         <SummaryCard label="Total Liabilities" value={data.totals.totalLiabilities} color="amber" />
         <SummaryCard label="Total Equity" value={data.totals.totalEquity} color="purple" />
       </div>
+      {hasEquationDiff && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Balance check difference detected: {fmtCurrency(data.totals.equationDifference)}.
+        </div>
+      )}
       <div className="text-center py-2">
         <h2 className="text-base font-semibold">Balance Sheet</h2>
         <p className="text-xs text-muted-foreground">As of {fmtDate(data.asOf)}</p>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <AccountTable title="Assets" rows={data.assets} color="blue" />
-        <AccountTable title="Liabilities" rows={data.liabilities} color="amber" />
-        <AccountTable title="Equity" rows={data.equity} color="purple" />
+
+      <div className="rounded-lg border overflow-hidden bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[860px]">
+            <thead className="bg-muted/30 border-b">
+              <tr className="text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-2.5 text-left font-semibold">Account</th>
+                <th className="px-4 py-2.5 text-left font-semibold w-40">Account Code</th>
+                <th className="px-4 py-2.5 text-right font-semibold w-56">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row, idx) => (
+                <tr
+                  key={`${row.kind}-${row.label}-${idx}`}
+                  className={cn(
+                    "border-t",
+                    row.kind === "heading" && "bg-muted/10",
+                    row.kind === "total" && "bg-muted/20",
+                  )}
+                >
+                  <td
+                    className={cn(
+                      "py-2 text-sm",
+                      (row.kind === "heading" || row.kind === "total") && "font-semibold",
+                    )}
+                    style={{ paddingLeft: `${16 + row.depth * 16}px`, paddingRight: "16px" }}
+                  >
+                    {row.kind === "account" ? (
+                      <span className="text-blue-600">{row.label}</span>
+                    ) : (
+                      row.label
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-sm text-muted-foreground">{row.code || ""}</td>
+                  <td className={cn("px-4 py-2 text-right font-mono", row.kind === "total" && "font-semibold")}>
+                    {row.amount === undefined ? "" : fmtCurrency(row.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+      <p className="text-xs text-muted-foreground">Amount is displayed in your base currency INR.</p>
     </div>
   );
 }
@@ -500,6 +851,23 @@ const REPORTS: ReportDef[] = [
   {
     id: "control-reconciliation", name: "Control Reconciliation", category: "financial-statements",
     apiCall: "controlReconciliation", useAsOf: true, columns: [],
+  },
+  // Activity
+  {
+    id: "account-transactions", name: "Account Transactions", category: "activity", apiCall: "accountTransactions",
+    useDateRange: true,
+    columns: [
+      { key: "postingDate", label: "Date", format: "date" },
+      { key: "accountName", label: "Account" },
+      { key: "transactionDetails", label: "Transaction Details" },
+      { key: "transactionType", label: "Transaction Type" },
+      { key: "transactionNo", label: "Transaction#" },
+      { key: "referenceNo", label: "Reference#" },
+      { key: "debit", label: "Debit", align: "right", format: "currency" },
+      { key: "credit", label: "Credit", align: "right", format: "currency" },
+      { key: "amount", label: "Amount", align: "right", format: "currency" },
+      { key: "amountSide", label: "Dr/Cr" },
+    ],
   },
   // Sales
   {

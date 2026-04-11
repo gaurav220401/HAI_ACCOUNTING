@@ -16,6 +16,9 @@ const billLineItemSchema = new Schema(
     amount: { type: Number, required: true, default: 0 },
     accountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
     customerId: { type: Schema.Types.ObjectId, ref: "Contact", default: null },
+    taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
+    taxName: { type: String, default: "" },
+    taxRate: { type: Number, default: 0 },
   },
   { _id: true },
 );
@@ -52,6 +55,7 @@ const billSchema = new Schema<IBill>(
     },
     subject: { type: String, default: "" },
     lineItems: { type: [billLineItemSchema], required: true, default: [] },
+    fixedAssetIds: { type: [Schema.Types.ObjectId], ref: "FixedAsset", default: [] },
     subTotal: { type: Number, default: 0 },
     discountLevel: {
       type: String,

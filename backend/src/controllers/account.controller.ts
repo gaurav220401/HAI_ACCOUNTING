@@ -7,6 +7,7 @@ import CurrencyAdjustment from "../models/currency-adjustment.model";
 import DocumentModel from "../models/document.model";
 import Expense from "../models/expense.model";
 import ExpenseCategory from "../models/expense-category.model";
+import FixedAssetType from "../models/fixed-asset-type.model";
 import GlEntry from "../models/gl-entry.model";
 import Invoice from "../models/invoice.model";
 import Item from "../models/item.model";
@@ -61,6 +62,46 @@ function toAmount(value: unknown): number {
 
 function toTrimmedString(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+async function resolveFixedAssetItemMapping(params: {
+  organizationId: Types.ObjectId;
+  accountType: AccountType;
+  createItemAsFixedAssetRaw: unknown;
+  fixedAssetTypeIdRaw: unknown;
+}): Promise<{ createItemAsFixedAsset: boolean; fixedAssetTypeId: Types.ObjectId | null }> {
+  const createItemAsFixedAsset = Boolean(params.createItemAsFixedAssetRaw);
+
+  if (!createItemAsFixedAsset) {
+    return { createItemAsFixedAsset: false, fixedAssetTypeId: null };
+  }
+
+  if (params.accountType !== "Fixed Asset") {
+    throw new ValidationError(
+      "Create Item as Fixed Asset can only be enabled for Fixed Asset accounts",
+    );
+  }
+
+  const fixedAssetTypeId = String(params.fixedAssetTypeIdRaw || "").trim();
+  if (!fixedAssetTypeId || !Types.ObjectId.isValid(fixedAssetTypeId)) {
+    throw new ValidationError("fixedAssetTypeId is required when Create Item as Fixed Asset is enabled");
+  }
+
+  const exists = await FixedAssetType.exists({
+    _id: new Types.ObjectId(fixedAssetTypeId),
+    organizationId: params.organizationId,
+    isDeleted: false,
+    isActive: true,
+  });
+
+  if (!exists) {
+    throw new ValidationError("Selected Fixed Asset Type was not found");
+  }
+
+  return {
+    createItemAsFixedAsset: true,
+    fixedAssetTypeId: new Types.ObjectId(fixedAssetTypeId),
+  };
 }
 
 function parseDateParam(value: unknown, field: string): Date | null {
@@ -866,6 +907,13 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!accountType) throw new ValidationError("accountType is required");
   validateAccountTypeForRootType(rootType, accountType);
 
+  const fixedAssetItemMapping = await resolveFixedAssetItemMapping({
+    organizationId,
+    accountType,
+    createItemAsFixedAssetRaw: req.body.createItemAsFixedAsset,
+    fixedAssetTypeIdRaw: req.body.fixedAssetTypeId,
+  });
+
   const parentIdInput = req.body.parentId;
   let parentId: Types.ObjectId | null = null;
   if (parentIdInput !== undefined && parentIdInput !== null && parentIdInput !== "") {
@@ -897,6 +945,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     isGroup: Boolean(req.body.isGroup),
     currency: toTrimmedString(req.body.currency),
     description: toTrimmedString(req.body.description),
+    createItemAsFixedAsset: fixedAssetItemMapping.createItemAsFixedAsset,
+    fixedAssetTypeId: fixedAssetItemMapping.fixedAssetTypeId,
   });
   attachUser(account, req);
   await account.save();
@@ -955,6 +1005,26 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   account.rootType = nextRootType;
   account.accountType = nextAccountType;
+
+  const fixedAssetItemMapping = await resolveFixedAssetItemMapping({
+    organizationId,
+    accountType: nextAccountType,
+    createItemAsFixedAssetRaw:
+      req.body.createItemAsFixedAsset !== undefined
+        ? req.body.createItemAsFixedAsset
+        : nextAccountType === "Fixed Asset"
+          ? (account as any).createItemAsFixedAsset
+          : false,
+    fixedAssetTypeIdRaw:
+      req.body.fixedAssetTypeId !== undefined
+        ? req.body.fixedAssetTypeId
+        : nextAccountType === "Fixed Asset"
+          ? (account as any).fixedAssetTypeId
+          : null,
+  });
+
+  (account as any).createItemAsFixedAsset = fixedAssetItemMapping.createItemAsFixedAsset;
+  (account as any).fixedAssetTypeId = fixedAssetItemMapping.fixedAssetTypeId;
 
   if (account.accountType !== "Bank") {
     account.accountNumber = "";

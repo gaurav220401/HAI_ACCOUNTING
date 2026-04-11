@@ -272,15 +272,15 @@ export const balanceSheet = asyncHandler(async (req: AuthenticatedRequest, res: 
     if (account.rootType === "Asset") {
       const amount = signed;
       if (Math.abs(amount) < 0.009) continue;
-      assets.push({ accountId, code: account.code || "", name: account.name, amount });
+      assets.push({ accountId, code: account.code || "", name: account.name, accountType: account.accountType, amount });
     } else if (account.rootType === "Liability") {
       const amount = round2(-signed);
       if (Math.abs(amount) < 0.009) continue;
-      liabilities.push({ accountId, code: account.code || "", name: account.name, amount });
+      liabilities.push({ accountId, code: account.code || "", name: account.name, accountType: account.accountType, amount });
     } else if (account.rootType === "Equity") {
       const amount = round2(-signed);
       if (Math.abs(amount) < 0.009) continue;
-      equity.push({ accountId, code: account.code || "", name: account.name, amount });
+      equity.push({ accountId, code: account.code || "", name: account.name, accountType: account.accountType, amount });
     } else if (account.rootType === "Income") {
       incomeTotal = round2(incomeTotal + (-signed));
     } else if (account.rootType === "Expense") {
@@ -290,7 +290,7 @@ export const balanceSheet = asyncHandler(async (req: AuthenticatedRequest, res: 
 
   const currentEarnings = round2(incomeTotal - expenseTotal);
   if (Math.abs(currentEarnings) >= 0.009) {
-    equity.push({ accountId: "__current_earnings__", code: "", name: "Current Earnings", amount: currentEarnings });
+    equity.push({ accountId: "__current_earnings__", code: "", name: "Current Earnings", accountType: "Equity", amount: currentEarnings });
   }
 
   [assets, liabilities, equity].forEach((arr) => arr.sort((a, b) => String(a.name).localeCompare(String(b.name))));
@@ -353,6 +353,102 @@ export const controlReconciliation = asyncHandler(async (req: AuthenticatedReque
       asOf: asOf || new Date(),
       receivables: { glBalance: glReceivable, subledgerBalance: subledgerReceivable, difference: round2(glReceivable - subledgerReceivable), controlAccounts: arAccounts },
       payables: { glBalance: glPayable, subledgerBalance: subledgerPayable, difference: round2(glPayable - subledgerPayable), controlAccounts: apAccounts },
+    },
+  });
+});
+
+// ─── ACCOUNTING ACTIVITY REPORTS ─────────────────────────────────────
+
+export const accountTransactionsReport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  const accountId = String(req.query.accountId || "").trim();
+  const voucherType = String(req.query.voucherType || "").trim();
+
+  if (startOfDay(from) > endOfDay(to)) {
+    throw new ValidationError("from must be before or equal to to");
+  }
+
+  const filter: any = {
+    organizationId,
+    postingDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  };
+
+  if (accountId) {
+    if (!Types.ObjectId.isValid(accountId)) {
+      throw new ValidationError("accountId must be a valid id");
+    }
+    filter.accountId = new Types.ObjectId(accountId);
+  }
+
+  if (voucherType && voucherType !== "All") {
+    filter.voucherType = voucherType;
+  }
+
+  const entries = await GlEntry.find(filter)
+    .populate("accountId", "name code")
+    .populate("contactId", "displayName companyName")
+    .sort({ postingDate: 1, _id: 1 })
+    .lean();
+
+  const rows = (entries as any[]).map((entry) => {
+    const account = entry.accountId as any;
+    const contact = entry.contactId as any;
+    const debit = round2(toNum(entry.debit));
+    const credit = round2(toNum(entry.credit));
+    const signedAmount = round2(debit - credit);
+    const rawType = String(entry.voucherType || "System");
+    const description = String(entry.description || "").trim();
+    const isOpening = rawType === "System" && description.toLowerCase().includes("opening");
+    const transactionType = isOpening
+      ? "Opening Balance"
+      : entry.isReversal
+        ? `${rawType} (Reversal)`
+        : rawType;
+    const contactName = contact?.displayName || contact?.companyName || "";
+
+    return {
+      postingDate: entry.postingDate,
+      accountId: account?._id ? String(account._id) : String(entry.accountId || ""),
+      accountCode: account?.code || "",
+      accountName: account?.name || "Unknown Account",
+      transactionDetails: description || contactName || "--",
+      transactionType,
+      transactionNo: entry.voucherNo || "-",
+      referenceNo: entry.voucherId || "-",
+      voucherType: rawType,
+      voucherId: entry.voucherId || "",
+      voucherNo: entry.voucherNo || "",
+      contactName: contactName || null,
+      debit,
+      credit,
+      amount: Math.abs(signedAmount),
+      amountSide: signedAmount >= 0 ? "Dr" : "Cr",
+      isReversal: Boolean(entry.isReversal),
+    };
+  });
+
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.totalDebit = round2(acc.totalDebit + row.debit);
+      acc.totalCredit = round2(acc.totalCredit + row.credit);
+      return acc;
+    },
+    { totalDebit: 0, totalCredit: 0 },
+  );
+
+  res.json({
+    success: true,
+    data: {
+      from,
+      to,
+      rows,
+      totals: {
+        ...totals,
+        netMovement: round2(totals.totalDebit - totals.totalCredit),
+      },
+      count: rows.length,
     },
   });
 });

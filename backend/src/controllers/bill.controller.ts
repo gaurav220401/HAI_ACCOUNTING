@@ -1,8 +1,13 @@
 import { Response } from "express";
+import { Types } from "mongoose";
+import Account from "../models/account.model";
 import Bill from "../models/bill.model";
 import Contact from "../models/contact.model";
+import FixedAsset from "../models/fixed-asset.model";
+import PaymentMade from "../models/payment-made.model";
 import PurchaseOrder from "../models/purchase-order.model";
 import PaymentBillMap from "../models/payment-bill-map.model";
+import VendorCredit from "../models/vendor-credit.model";
 import VendorCreditApplication from "../models/vendor-credit-application.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
@@ -21,6 +26,7 @@ import {
   reverseBillLedger,
   syncBillCreationAccounting,
 } from "../services/bill-accounting.service";
+import { findAccountIdByName, postVoucher } from "../services/gl-posting.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -43,8 +49,14 @@ async function nextBillNumber(organizationId: any): Promise<string> {
   return `BILL-${String(next).padStart(5, "0")}`;
 }
 
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function calcLineItems(items: any[], discountLevel: string) {
   return (items || []).map((item: any) => {
+    const taxRate = toNum(item.taxRate);
+    const taxName = String(item.taxName || "").trim();
     if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
     const qty = Number(item.quantity) || 1;
     const rate = Number(item.rate) || 0;
@@ -52,9 +64,27 @@ function calcLineItems(items: any[], discountLevel: string) {
     if (discountLevel === "line_item") {
       const discPct = Number(item.discountPercent) || 0;
       const discAmt = Number(item.discountAmount) || (lineTotal * discPct) / 100;
-      return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: lineTotal - discAmt };
+      return {
+        ...item,
+        quantity: qty,
+        rate,
+        taxRate,
+        taxName,
+        discountPercent: discPct,
+        discountAmount: discAmt,
+        amount: lineTotal - discAmt,
+      };
     }
-    return { ...item, quantity: qty, rate, discountPercent: 0, discountAmount: 0, amount: lineTotal };
+    return {
+      ...item,
+      quantity: qty,
+      rate,
+      taxRate,
+      taxName,
+      discountPercent: 0,
+      discountAmount: 0,
+      amount: lineTotal,
+    };
   });
 }
 
@@ -62,6 +92,32 @@ function toNum(val: unknown, fallback = 0): number {
   if (val === undefined || val === null || val === "") return fallback;
   const n = Number(val);
   return isNaN(n) ? fallback : n;
+}
+
+function normalizeObjectId(value: unknown): string | null {
+  if (!value) return null;
+
+  if (value instanceof Types.ObjectId) {
+    return String(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return Types.ObjectId.isValid(trimmed) ? trimmed : null;
+  }
+
+  if (typeof value === "object") {
+    const candidate = (value as any)._id;
+    if (candidate instanceof Types.ObjectId) {
+      return String(candidate);
+    }
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      return Types.ObjectId.isValid(trimmed) ? trimmed : null;
+    }
+  }
+
+  return null;
 }
 
 function computeBillTotals(input: {
@@ -112,6 +168,189 @@ function applyOverdueState(bill: any) {
   }
 }
 
+function deriveVendorCreditStatus(appliedAmount: number, total: number): "OPEN" | "PARTIALLY_APPLIED" | "CLOSED" {
+  if (appliedAmount <= 0) return "OPEN";
+  if (round2(appliedAmount) >= round2(total)) return "CLOSED";
+  return "PARTIALLY_APPLIED";
+}
+
+function recomputePaymentExcess(payment: any): void {
+  payment.total_amount_paid = round2(Math.max(0, toNum(payment.total_amount_paid)));
+  payment.amount_used_for_bills = round2(Math.max(0, toNum(payment.amount_used_for_bills)));
+  payment.amount_refunded = round2(Math.max(0, toNum(payment.amount_refunded)));
+
+  const excess = round2(
+    toNum(payment.total_amount_paid) -
+      toNum(payment.amount_used_for_bills) -
+      toNum(payment.amount_refunded),
+  );
+  payment.amount_in_excess = round2(Math.max(0, excess));
+}
+
+function paymentMadeVoucherPrefix(payment: any): string {
+  return `payment-made:${String(payment._id)}`;
+}
+
+function paymentMadeVoucherId(payment: any, event: string, key?: string): string {
+  return `${paymentMadeVoucherPrefix(payment)}:${event}${key ? `:${key}` : ""}`;
+}
+
+async function postPaymentUnapplyOnBillDelete(params: {
+  payment: any;
+  amount: number;
+  bill: any;
+  req: AuthenticatedRequest;
+}): Promise<void> {
+  const { payment, amount, bill, req } = params;
+  if (String(payment.status || "") !== "PAID") return;
+  if (amount <= 0) return;
+
+  const vendor = await Contact.findOne({
+    _id: payment.vendor_id,
+    organizationId: payment.organization_id,
+    isDeleted: false,
+  })
+    .select("accountsPayableId")
+    .lean();
+
+  const accountsPayableId =
+    vendor?.accountsPayableId ||
+    (await findAccountIdByName({
+      organizationId: payment.organization_id,
+      names: ["Accounts Payable", "Trade Payables", "Creditors"],
+      rootType: "Liability",
+      accountType: "Accounts Payable",
+    }));
+
+  const vendorAdvanceId = await findAccountIdByName({
+    organizationId: payment.organization_id,
+    names: ["Advances to Suppliers", "Vendor Advances", "Advances to Vendors"],
+    rootType: "Asset",
+    accountType: "Other Current Asset",
+  });
+
+  await postVoucher({
+    organizationId: payment.organization_id,
+    voucherType: "PaymentMade",
+    voucherId: paymentMadeVoucherId(payment, "unapply", `bill-delete-${String(bill._id)}-${String(payment._id)}`),
+    voucherNo: String(payment.payment_number || ""),
+    postingDate: new Date(),
+    lines: [
+      {
+        accountId: vendorAdvanceId,
+        debit: amount,
+        description: `Bill delete unapply ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+      {
+        accountId: accountsPayableId,
+        credit: amount,
+        description: `Bill delete unapply ${payment.payment_number}`,
+        contactType: "Vendor",
+        contactId: payment.vendor_id,
+      },
+    ],
+    description: `Bill deleted unapply ${String(payment.payment_number || "")}`,
+    req,
+  });
+}
+
+async function unapplyPaymentMappingsForBill(bill: any, req: AuthenticatedRequest): Promise<void> {
+  const maps = await PaymentBillMap.find({
+    organization_id: bill.organizationId,
+    bill_id: bill._id,
+    is_deleted: false,
+    applied_amount: { $gt: 0 },
+  });
+
+  for (const map of maps) {
+    const amount = round2(toNum(map.applied_amount));
+    if (amount <= 0) continue;
+
+    const payment = await PaymentMade.findOne({
+      _id: map.payment_id,
+      organization_id: bill.organizationId,
+      is_deleted: false,
+    });
+
+    if (payment) {
+      await postPaymentUnapplyOnBillDelete({
+        payment,
+        amount,
+        bill,
+        req,
+      });
+
+      payment.amount_used_for_bills = round2(
+        Math.max(0, toNum(payment.amount_used_for_bills) - amount),
+      );
+      recomputePaymentExcess(payment);
+      payment.audit_log.push({
+        action: "UNAPPLY_FROM_BILL",
+        details: `Bill ${bill.billNumber} deleted. Unapplied ${amount.toLocaleString("en-IN")}`,
+        amount,
+        bill_id: bill._id,
+        at: new Date(),
+        by: req.user?.email || req.user?.name || "System",
+      });
+      attachUser(payment, req);
+      await payment.save();
+    }
+
+    map.applied_amount = 0;
+    map.is_deleted = true;
+    map.deleted_at = new Date();
+    attachUser(map, req);
+    await map.save();
+  }
+}
+
+async function unapplyVendorCreditApplicationsForBill(bill: any, req: AuthenticatedRequest): Promise<void> {
+  const apps = await VendorCreditApplication.find({
+    organizationId: bill.organizationId,
+    billId: bill._id,
+    isDeleted: false,
+    amount: { $gt: 0 },
+  });
+
+  for (const app of apps) {
+    const amount = round2(toNum(app.amount));
+    if (amount <= 0) continue;
+
+    const credit = await VendorCredit.findOne({
+      _id: app.vendorCreditId,
+      organizationId: bill.organizationId,
+      isDeleted: false,
+    });
+
+    if (credit) {
+      credit.appliedAmount = round2(Math.max(0, toNum(credit.appliedAmount) - amount));
+      const refundedAmount = toNum((credit as any).refundedAmount);
+      credit.balanceAmount = round2(
+        Math.max(0, toNum(credit.total) - toNum(credit.appliedAmount) - refundedAmount),
+      );
+      if (credit.status !== "VOID") {
+        credit.status = deriveVendorCreditStatus(toNum(credit.appliedAmount), toNum(credit.total));
+      }
+      credit.comments.push({
+        author: req.user?.name || req.user?.email || "System",
+        text: `Bill ${bill.billNumber} deleted. Unapplied ${amount.toLocaleString("en-IN")}`,
+        time: new Date(),
+        isSystem: true,
+      });
+      attachUser(credit, req);
+      await credit.save();
+    }
+
+    app.amount = 0;
+    app.isDeleted = true;
+    app.deletedAt = new Date();
+    attachUser(app, req);
+    await app.save();
+  }
+}
+
 async function resolveVendorPayableAccount(
   organizationId: any,
   vendorId: any,
@@ -129,6 +368,89 @@ async function resolveVendorPayableAccount(
     .lean();
 
   return vendor?.accountsPayableId || null;
+}
+
+async function createDraftFixedAssetsForBill(bill: any, req: AuthenticatedRequest): Promise<string[]> {
+  const lineItems: any[] = Array.isArray(bill.lineItems) ? bill.lineItems : [];
+  const accountIds = Array.from(new Set(
+    lineItems
+      .filter((li: any) => li && !li.isHeader)
+      .map((li: any) => normalizeObjectId(li.accountId))
+      .filter((id: string | null): id is string => Boolean(id)),
+  ));
+
+  if (accountIds.length === 0) return [];
+
+  const accounts = await Account.find({
+    _id: { $in: accountIds.map((id) => new Types.ObjectId(id)) },
+    organizationId: bill.organizationId,
+    accountType: "Fixed Asset",
+    createItemAsFixedAsset: true,
+    fixedAssetTypeId: { $ne: null },
+  }).populate("fixedAssetTypeId");
+
+  if (accounts.length === 0) return [];
+
+  const accountMap = new Map<string, any>(accounts.map((account: any) => [String(account._id), account]));
+  const createdIds: string[] = [];
+
+  for (const line of lineItems) {
+    if (!line || line.isHeader) continue;
+    const lineAccountId = normalizeObjectId(line.accountId);
+    if (!lineAccountId) continue;
+
+    const account = accountMap.get(lineAccountId);
+    if (!account || !account.fixedAssetTypeId) continue;
+
+    const fixedAssetType: any = account.fixedAssetTypeId;
+    if (!fixedAssetType || fixedAssetType.isDeleted || fixedAssetType.isActive === false) continue;
+
+    const amount = round2(Number(line.amount || 0));
+    if (amount <= 0) continue;
+
+    const quantity = Math.max(1, Number(line.quantity || 1) || 1);
+    const assetName = String(line.name || line.description || `Fixed Asset from ${bill.billNumber}`).trim() || `Fixed Asset ${bill.billNumber}`;
+
+    const asset = new FixedAsset({
+      organizationId: bill.organizationId,
+      assetName,
+      sourceBillId: bill._id,
+      sourceBillNumber: String(bill.billNumber || "").trim(),
+      purchaseValue: amount,
+      purchaseQuantity: quantity,
+      currentQuantity: quantity,
+      currentValue: amount,
+      disposalValue: 0,
+      fixedAssetTypeId: fixedAssetType._id,
+      purchaseDate: bill.billDate ? new Date(bill.billDate) : new Date(),
+      warrantyExpirationDate: null,
+      description: String(line.description || `Created from bill ${bill.billNumber}`).trim(),
+      depreciationMethod: fixedAssetType.depreciationMethod,
+      depreciationPercentage: fixedAssetType.depreciationPercentage ?? null,
+      depreciationFrequency: fixedAssetType.depreciationFrequency,
+      assetLifeValue: fixedAssetType.assetLifeValue,
+      assetLifeUnit: fixedAssetType.assetLifeUnit,
+      computationType: fixedAssetType.computationType,
+      depreciationStartDate: bill.billDate ? new Date(bill.billDate) : new Date(),
+      fixedAssetAccountId: fixedAssetType.fixedAssetAccountId,
+      accumulatedDepreciationAccountId: fixedAssetType.accumulatedDepreciationAccountId,
+      depreciationExpenseAccountId: fixedAssetType.depreciationExpenseAccountId,
+      status: "DRAFT",
+      comments: [
+        {
+          author: req.user?.name || req.user?.email || "System",
+          text: `Fixed asset created from bill ${bill.billNumber}.`,
+          time: new Date(),
+          isSystem: true,
+        },
+      ],
+    });
+    attachUser(asset, req);
+    await asset.save();
+    createdIds.push(String(asset._id));
+  }
+
+  return createdIds;
 }
 
 /** GET /api/bills/next-number */
@@ -231,6 +553,8 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     .populate("paymentTermsId", "name days")
     .populate("lineItems.itemId", "name sku costPrice")
     .populate("lineItems.accountId", "name accountType")
+    .populate("lineItems.customerId", "displayName companyName")
+    .populate("lineItems.taxId", "name rate taxType")
     .populate("accountsPayableId", "name accountType")
     .populate("tdsId", "taxName rate sectionCode")
     .populate("tcsId", "taxName rate sectionCode")
@@ -382,6 +706,16 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   applyOverdueState(bill);
   await bill.save();
 
+  try {
+    const fixedAssetIds = await createDraftFixedAssetsForBill(bill, req);
+    if (fixedAssetIds.length > 0) {
+      bill.fixedAssetIds = fixedAssetIds.map((id) => new Types.ObjectId(id));
+      await bill.save();
+    }
+  } catch (error) {
+    console.error("Auto-create fixed assets failed", error);
+  }
+
   await syncBillCreationAccounting({ bill, req });
 
   res.status(201).json({ success: true, data: bill });
@@ -444,12 +778,13 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   if (!source) throw new NotFoundError("Bill");
 
   const billNumber = await nextBillNumber(source.organizationId);
-  const { _id, __v, ...cloneData } = source as any;
+  const { _id, __v, fixedAssetIds, ...cloneData } = source as any;
 
   const bill = new Bill({
     ...cloneData,
     billNumber,
     billDate: new Date(),
+    fixedAssetIds: [],
     status: "Open",
     amountPaid: 0,
     balanceDue: source.total || 0,
@@ -464,6 +799,16 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   });
   attachUser(bill, req);
   await bill.save();
+
+  try {
+    const clonedFixedAssetIds = await createDraftFixedAssetsForBill(bill, req);
+    if (clonedFixedAssetIds.length > 0) {
+      bill.fixedAssetIds = clonedFixedAssetIds.map((id) => new Types.ObjectId(id));
+      await bill.save();
+    }
+  } catch (error) {
+    console.error("Auto-create fixed assets failed for cloned bill", error);
+  }
 
   await syncBillCreationAccounting({ bill, req });
 
@@ -599,6 +944,18 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     await reverseBillLedger(bill, req);
   }
 
+  if ((!bill.fixedAssetIds || bill.fixedAssetIds.length === 0) && req.body.lineItems) {
+    try {
+      const fixedAssetIds = await createDraftFixedAssetsForBill(bill, req);
+      if (fixedAssetIds.length > 0) {
+        bill.fixedAssetIds = fixedAssetIds.map((id) => new Types.ObjectId(id));
+        await bill.save();
+      }
+    } catch (error) {
+      console.error("Auto-create fixed assets failed", error);
+    }
+  }
+
   await recomputeContactOutstanding({
     organizationId: bill.organizationId as any,
     contactId: bill.vendorId as any,
@@ -636,12 +993,37 @@ export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Re
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
-  if (bill.status !== "Draft") throw new ValidationError("Only draft bills can be deleted. Void other bills.");
 
   const vendorId = bill.vendorId;
+  const wasPosted = isPostedBillStatus(String(bill.status || ""));
+  const previousStockDeltas = wasPosted
+    ? collectBillStockDeltas(bill.lineItems as any[])
+    : {};
+
+  await unapplyPaymentMappingsForBill(bill, req);
+  await unapplyVendorCreditApplicationsForBill(bill, req);
+
+  if (wasPosted) {
+    if (Object.keys(previousStockDeltas).length > 0) {
+      await applyStockDeltas({
+        organizationId: bill.organizationId as any,
+        deltas: invertStockDeltas(previousStockDeltas),
+        req,
+      });
+    }
+
+    await reverseBillLedger(bill, req);
+  }
 
   bill.isDeleted = true;
   bill.deletedAt = new Date();
+  bill.comments.push({
+    author: req.user?.name || req.user?.email || "System",
+    text: "Bill deleted",
+    time: new Date(),
+    isSystem: true,
+  });
+  attachUser(bill, req);
   await bill.save();
 
   await recomputeContactOutstanding({

@@ -17,7 +17,10 @@ export interface BillLineItem {
   discountPercent?: number;
   discountAmount?: number;
   amount: number;
-  customerId?: string | null;
+  customerId?: string | { _id: string; displayName?: string; companyName?: string } | null;
+  taxId?: string | { _id: string; name: string; rate: number; taxType?: string } | null;
+  taxName?: string;
+  taxRate?: number;
 }
 
 export interface Bill {

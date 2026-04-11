@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { itemApi, type Item } from "@/lib/api/items";
-import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
+import { settingsApi, type PaymentTerms, type Tax, type TaxType } from "@/lib/api/settings";
 import { billApi, type Bill, type CreateBillInput, type UpdateBillInput, type BillStatus, type DiscountLevel, type BillSourcePurchaseOrder } from "@/lib/api/bills";
 import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/lib/api/tds-taxes";
 import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
@@ -35,50 +35,28 @@ function getName(v: any): string {
   return String(v);
 }
 
+const NEW_VENDOR_OPTION = "__new_vendor__";
+const NEW_LINE_TAX_OPTION = "__new_line_tax__";
 
-const SUPPLY_STATES = [
-   { code: "AN", name: "Andaman and Nicobar Islands" },
-   { code: "AP", name: "Andhra Pradesh" },
-   { code: "AR", name: "Arunachal Pradesh" },
-   { code: "AS", name: "Assam" },
-   { code: "BR", name: "Bihar" },
-   { code: "CG", name: "Chhattisgarh" },
-   { code: "GA", name: "Goa" },
-   { code: "GJ", name: "Gujarat" },
-   { code: "HR", name: "Haryana" },
-   { code: "HP", name: "Himachal Pradesh" },
-   { code: "JH", name: "Jharkhand" },
-   { code: "KA", name: "Karnataka" },
-   { code: "KL", name: "Kerala" },
-   { code: "MP", name: "Madhya Pradesh" },
-   { code: "MH", name: "Maharashtra" },
-   { code: "MN", name: "Manipur" },
-   { code: "ML", name: "Meghalaya" },
-   { code: "MZ", name: "Mizoram" },
-   { code: "NL", name: "Nagaland" },
-   { code: "OD", name: "Odisha" },
-   { code: "PB", name: "Punjab" },
-   { code: "RJ", name: "Rajasthan" },
-   { code: "SK", name: "Sikkim" },
-   { code: "TN", name: "Tamil Nadu" },
-   { code: "TS", name: "Telangana" },
-   { code: "TR", name: "Tripura" },
-   { code: "UP", name: "Uttar Pradesh" },
-   { code: "UK", name: "Uttarakhand" },
-   { code: "WB", name: "West Bengal" },
-   { code: "CH", name: "Chandigarh" },
-   { code: "DN", name: "Dadra and Nagar Haveli and Daman and Diu" },
-   { code: "DL", name: "Delhi" },
-   { code: "JK", name: "Jammu and Kashmir" },
-   { code: "LA", name: "Ladakh" },
-   { code: "LD", name: "Lakshadweep" },
-   { code: "PY", name: "Puducherry" },
-   { code: "OT", name: "Other Territory" },
+const LINE_TAX_PRESETS: Array<{ name: string; description: string; rate: number }> = [
+   {
+      name: "Non-Taxable",
+      description: "Supplies on which you do not charge GST or include in GST returns.",
+      rate: 0,
+   },
+   {
+      name: "Out of Scope",
+      description: "Supplies on which you do not charge GST or include in GST returns.",
+      rate: 0,
+   },
+   {
+      name: "Non-GST Supply",
+      description: "Supplies outside GST such as petroleum products and liquor.",
+      rate: 0,
+   },
 ];
-const SUPPLY_OPTIONS = SUPPLY_STATES.map((s) => ({
-   value: `[${s.code}] - ${s.name}`,
-   label: `[${s.code}] - ${s.name}`,
-}));
+
+const GST_GROUP_NAMES = ["GST0", "GST5", "GST12", "GST18", "GST28", "GST40"];
 
 // --- Types ---
 export interface LineRow {
@@ -90,6 +68,11 @@ export interface LineRow {
   accountId: string;
   accountName: string;
   description: string;
+   customerId: string;
+   customerName: string;
+   taxId: string;
+   taxName: string;
+   taxRate: number;
    unit?: string;
   quantity: number;
   rate: number;
@@ -107,6 +90,11 @@ const newRow = (): LineRow => ({
   accountId: "",
   accountName: "",
   description: "",
+   customerId: "",
+   customerName: "",
+   taxId: "",
+   taxName: "",
+   taxRate: 0,
    unit: "",
   quantity: 1,
   rate: 0,
@@ -517,9 +505,21 @@ function ManageTCSDialog({
    );
 }
 
-function ItemSelectorPopup({ items, onSelect }: { items: Item[]; onSelect: (item: Item) => void }) {
+function ItemSelectorPopup({
+   items,
+   onSelect,
+   onCreateItem,
+}: {
+   items: Item[];
+   onSelect: (item: Item) => void;
+   onCreateItem?: (name: string) => void | Promise<void>;
+}) {
    const [q, setQ] = useState("");
    const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
+   const normalizedQuery = q.trim().toLowerCase();
+   const exactExists = normalizedQuery.length > 0
+      && items.some((i) => i.name.trim().toLowerCase() === normalizedQuery);
+   const canCreate = Boolean(onCreateItem) && normalizedQuery.length > 0 && !exactExists;
 
    return (
       <div className="w-full overflow-hidden">
@@ -542,7 +542,22 @@ function ItemSelectorPopup({ items, onSelect }: { items: Item[]; onSelect: (item
             ))}
          </div>
          <div className="p-2 border-t">
-            <button type="button" className="text-xs text-primary hover:underline">+ Add New Item</button>
+            <button
+               type="button"
+               className="text-xs text-primary hover:underline disabled:opacity-60 disabled:no-underline"
+               disabled={!canCreate}
+               onClick={() => {
+                  const nextName = q.trim();
+                  if (!nextName || !onCreateItem) return;
+                  void onCreateItem(nextName);
+               }}
+            >
+               {exactExists
+                  ? "Item already exists"
+                  : q.trim()
+                     ? `+ Create \"${q.trim()}\"`
+                     : "+ Add New Item"}
+            </button>
          </div>
       </div>
    );
@@ -607,6 +622,282 @@ function AccountDropdown({
    );
 }
 
+function VendorSearchDialog({
+   open,
+   onClose,
+   vendors,
+   onSelect,
+   onCreateNew,
+}: {
+   open: boolean;
+   onClose: () => void;
+   vendors: Contact[];
+   onSelect: (vendor: Contact) => void;
+   onCreateNew: () => void;
+}) {
+   const [q, setQ] = useState("");
+
+   useEffect(() => {
+      if (open) setQ("");
+   }, [open]);
+
+   const filtered = vendors.filter((v) => {
+      const name = v.displayName || v.companyName || "";
+      const email = v.email || "";
+      const query = q.trim().toLowerCase();
+      if (!query) return true;
+      return name.toLowerCase().includes(query) || email.toLowerCase().includes(query);
+   });
+
+   return (
+      <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+         <DialogContent className="max-w-lg">
+            <DialogHeader>
+               <DialogTitle>Select Vendor</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+               <Input
+                  className="h-9"
+                  placeholder="Search vendor by name or email"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  autoFocus
+               />
+
+               <div className="border rounded-md max-h-72 overflow-y-auto">
+                  {filtered.length === 0 ? (
+                     <p className="text-xs text-muted-foreground text-center py-6">No vendors found</p>
+                  ) : (
+                     filtered.map((v) => (
+                        <button
+                           key={v._id}
+                           type="button"
+                           className="w-full text-left px-3 py-2.5 text-sm hover:bg-muted/40 border-b last:border-b-0"
+                           onClick={() => {
+                              onSelect(v);
+                              onClose();
+                           }}
+                        >
+                           <div className="font-medium">{v.displayName || v.companyName}</div>
+                           {v.email && <div className="text-xs text-muted-foreground">{v.email}</div>}
+                        </button>
+                     ))
+                  )}
+               </div>
+            </div>
+
+            <DialogFooter>
+               <Button type="button" variant="outline" onClick={onClose}>Close</Button>
+               <Button
+                  type="button"
+                  className="gap-1"
+                  onClick={() => {
+                     onClose();
+                     onCreateNew();
+                  }}
+               >
+                  <Plus className="h-3.5 w-3.5" />
+                  New Vendor
+               </Button>
+            </DialogFooter>
+         </DialogContent>
+      </Dialog>
+   );
+}
+
+function QuickCreateVendorDialog({
+   open,
+   onClose,
+   onCreated,
+}: {
+   open: boolean;
+   onClose: () => void;
+   onCreated: (vendor: Contact) => void;
+}) {
+   const [saving, setSaving] = useState(false);
+   const [displayName, setDisplayName] = useState("");
+   const [companyName, setCompanyName] = useState("");
+   const [email, setEmail] = useState("");
+   const [phone, setPhone] = useState("");
+
+   useEffect(() => {
+      if (!open) return;
+      setDisplayName("");
+      setCompanyName("");
+      setEmail("");
+      setPhone("");
+      setSaving(false);
+   }, [open]);
+
+   async function handleCreateVendor() {
+      const name = displayName.trim();
+      if (!name) {
+         toast.error("Vendor name is required");
+         return;
+      }
+
+      setSaving(true);
+      try {
+         const res = await contactApi.create({
+            contactType: "Vendor",
+            displayName: name,
+            companyName: companyName.trim() || undefined,
+            email: email.trim() || undefined,
+            phone: phone.trim() || undefined,
+         });
+         onCreated(res.data);
+         toast.success("Vendor created");
+         onClose();
+      } catch {
+         toast.error("Failed to create vendor");
+      } finally {
+         setSaving(false);
+      }
+   }
+
+   return (
+      <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+         <DialogContent className="max-w-md">
+            <DialogHeader>
+               <DialogTitle>New Vendor</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+               <div>
+                  <Label className="text-xs font-medium text-red-500">Vendor Name *</Label>
+                  <Input className="mt-1 h-9" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+               </div>
+               <div>
+                  <Label className="text-xs font-medium">Company Name</Label>
+                  <Input className="mt-1 h-9" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+               </div>
+               <div className="grid grid-cols-2 gap-3">
+                  <div>
+                     <Label className="text-xs font-medium">Email</Label>
+                     <Input className="mt-1 h-9" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  </div>
+                  <div>
+                     <Label className="text-xs font-medium">Phone</Label>
+                     <Input className="mt-1 h-9" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  </div>
+               </div>
+            </div>
+
+            <DialogFooter>
+               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+               <Button type="button" onClick={handleCreateVendor} disabled={saving}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Save Vendor
+               </Button>
+            </DialogFooter>
+         </DialogContent>
+      </Dialog>
+   );
+}
+
+function QuickCreateTaxDialog({
+   open,
+   onClose,
+   onCreated,
+}: {
+   open: boolean;
+   onClose: () => void;
+   onCreated: (tax: Tax) => void;
+}) {
+   const [saving, setSaving] = useState(false);
+   const [name, setName] = useState("");
+   const [rate, setRate] = useState(0);
+   const [taxType, setTaxType] = useState<TaxType>("Tax");
+
+   useEffect(() => {
+      if (!open) return;
+      setName("");
+      setRate(0);
+      setTaxType("Tax");
+      setSaving(false);
+   }, [open]);
+
+   async function handleCreateTax() {
+      const taxName = name.trim();
+      if (!taxName) {
+         toast.error("Tax name is required");
+         return;
+      }
+      if (rate < 0) {
+         toast.error("Tax rate cannot be negative");
+         return;
+      }
+
+      setSaving(true);
+      try {
+         const res = await settingsApi.taxes.create({
+            name: taxName,
+            rate,
+            taxType,
+            taxAuthority: "GST",
+            isActive: true,
+         });
+         toast.success("Tax created");
+         onCreated(res.data);
+         onClose();
+      } catch {
+         toast.error("Failed to create tax");
+      } finally {
+         setSaving(false);
+      }
+   }
+
+   return (
+      <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+         <DialogContent className="max-w-md">
+            <DialogHeader>
+               <DialogTitle>New Tax</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+               <div>
+                  <Label className="text-xs font-medium text-red-500">Tax Name *</Label>
+                  <Input className="mt-1 h-9" value={name} onChange={(e) => setName(e.target.value)} />
+               </div>
+               <div>
+                  <Label className="text-xs font-medium text-red-500">Rate (%) *</Label>
+                  <Input
+                     className="mt-1 h-9"
+                     type="number"
+                     min={0}
+                     step="0.01"
+                     value={rate}
+                     onChange={(e) => setRate(Math.max(0, Number(e.target.value) || 0))}
+                  />
+               </div>
+               <div>
+                  <Label className="text-xs font-medium">Tax Type</Label>
+                  <Select value={taxType} onValueChange={(value) => setTaxType(value as TaxType)}>
+                     <SelectTrigger className="mt-1 h-9">
+                        <SelectValue placeholder="Select a Tax Type" />
+                     </SelectTrigger>
+                     <SelectContent>
+                        <SelectItem value="Tax">Tax</SelectItem>
+                        <SelectItem value="TaxGroup">Tax Group</SelectItem>
+                        <SelectItem value="CompoundTax">Compound Tax</SelectItem>
+                     </SelectContent>
+                  </Select>
+               </div>
+            </div>
+
+            <DialogFooter>
+               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+               <Button type="button" onClick={handleCreateTax} disabled={saving}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Save
+               </Button>
+            </DialogFooter>
+         </DialogContent>
+      </Dialog>
+   );
+}
+
 interface BillFormProps {
   initialData?: Bill;
   onSuccess: (bill: Bill) => void;
@@ -637,8 +928,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   const [billDate, setBillDate] = useState(initialData?.billDate ? initialData.billDate.split("T")[0] : TODAY());
   const [dueDate, setDueDate] = useState(initialData?.dueDate ? initialData.dueDate.split("T")[0] : "");
   const [paymentTermsId, setPaymentTermsId] = useState(initialData?.paymentTermsId?._id || initialData?.paymentTermsId || "");
-   const [sourceOfSupply, setSourceOfSupply] = useState(initialData?.sourceOfSupply || "");
-   const [destinationOfSupply, setDestinationOfSupply] = useState(initialData?.destinationOfSupply || "");
+   const [accountsPayableId, setAccountsPayableId] = useState(
+      initialData?.accountsPayableId?._id || initialData?.accountsPayableId || "",
+   );
   const [subject, setSubject] = useState(initialData?.subject || "");
   const [discountLevel, setDiscountLevel] = useState<DiscountLevel>(initialData?.discountLevel || "transaction");
    const [discountAccountId, setDiscountAccountId] = useState(initialData?.discountAccountId?._id || initialData?.discountAccountId || "");
@@ -670,15 +962,18 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
    const [tcsSearch, setTcsSearch] = useState("");
    const [showManageTDS, setShowManageTDS] = useState(false);
    const [showManageTCS, setShowManageTCS] = useState(false);
+   const [showVendorSearch, setShowVendorSearch] = useState(false);
+   const [showCreateVendor, setShowCreateVendor] = useState(false);
+   const [showCreateLineTax, setShowCreateLineTax] = useState(false);
+   const [pendingTaxRowId, setPendingTaxRowId] = useState<string | null>(null);
 
   // Initialize from initialData or newRow
   useEffect(() => {
     if (initialData) {
          setReferenceNumber(initialData.referenceNumber || "");
+         setAccountsPayableId(initialData.accountsPayableId?._id || initialData.accountsPayableId || "");
       setDiscountPercent(initialData.discountPercent || 0);
          setDiscountAccountId(initialData.discountAccountId?._id || initialData.discountAccountId || "");
-      setSourceOfSupply(initialData.sourceOfSupply || "");
-      setDestinationOfSupply(initialData.destinationOfSupply || "");
       setTaxType(initialData.taxType || "none");
       setTdsId(initialData.tdsId?._id || initialData.tdsId || "");
       setTcsId(initialData.tcsId?._id || initialData.tcsId || "");
@@ -696,6 +991,15 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
           accountId: typeof li.accountId === 'object' ? (li.accountId as any)?._id : (li.accountId || ""),
           accountName: typeof li.accountId === 'object' ? (li.accountId as any)?.name : "",
           description: li.description || "",
+          customerId: typeof li.customerId === 'object' ? (li.customerId as any)?._id : (li.customerId || ""),
+          customerName: typeof li.customerId === 'object'
+             ? ((li.customerId as any)?.displayName || (li.customerId as any)?.companyName || "")
+             : "",
+          taxId: typeof li.taxId === 'object' ? (li.taxId as any)?._id : (li.taxId || ""),
+          taxName: typeof li.taxId === 'object' ? ((li.taxId as any)?.name || li.taxName || "") : (li.taxName || ""),
+          taxRate: typeof li.taxId === 'object'
+             ? Number((li.taxId as any)?.rate ?? li.taxRate ?? 0)
+             : Number(li.taxRate || 0),
           quantity: li.quantity || 1,
           rate: li.rate || 0,
           discountPercent: li.discountPercent || 0,
@@ -709,8 +1013,10 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
 
   // Lists
   const [vendors, setVendors] = useState<Contact[]>([]);
+   const [customers, setCustomers] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+   const [lineTaxes, setLineTaxes] = useState<Tax[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
   const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
@@ -718,18 +1024,29 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   useEffect(() => {
      const loadData = async () => {
         try {
-           const [vRes, iRes, ptRes, accRes, tdsRes, tcsRes] = await Promise.all([
+           const [vRes, cRes, iRes, ptRes, accRes, gstTaxRes, tdsRes, tcsRes] = await Promise.all([
               contactApi.list({ type: "Vendor" }),
+              contactApi.list({ type: "Customer" }),
               itemApi.list(),
               settingsApi.paymentTerms.list(),
-              accountApi.list(),
+              accountApi.list({ excludeGroups: true }),
+              settingsApi.taxes.list(),
               tdsTaxApi.list(),
               tcsTaxApi.list(),
            ]);
                 setVendors(vRes.data || []);
+                setCustomers(cRes.data || []);
                 setItems(iRes.data || []);
                 setPaymentTerms(ptRes.data || []);
                 setAccounts(accRes.data || []);
+
+                let nextLineTaxes = gstTaxRes.data || [];
+                if (nextLineTaxes.length === 0) {
+                   await settingsApi.taxes.seed();
+                   const seeded = await settingsApi.taxes.list();
+                   nextLineTaxes = seeded.data || [];
+                }
+                setLineTaxes(nextLineTaxes.filter((t) => t.isActive));
 
                 let nextTds = tdsRes.data || [];
                 let nextTcs = tcsRes.data || [];
@@ -755,8 +1072,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
              setDiscountLevel(bill.discountLevel || "transaction");
              setDiscountPercent(bill.discountPercent || 0);
             setDiscountAccountId(bill.discountAccountId?._id || bill.discountAccountId || "");
-             setSourceOfSupply(bill.sourceOfSupply || "");
-             setDestinationOfSupply(bill.destinationOfSupply || "");
+               setAccountsPayableId(bill.accountsPayableId?._id || bill.accountsPayableId || "");
              setTaxType(bill.taxType || "none");
              setTdsId(bill.tdsId?._id || bill.tdsId || "");
              setTcsId(bill.tcsId?._id || bill.tcsId || "");
@@ -775,6 +1091,11 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                 accountId: typeof li.accountId === 'object' ? li.accountId?._id : (li.accountId || ""),
                 accountName: typeof li.accountId === 'object' ? li.accountId?.name : "",
                 description: li.description || "",
+                customerId: typeof li.customerId === 'object' ? li.customerId?._id : (li.customerId || ""),
+                customerName: typeof li.customerId === 'object' ? (li.customerId?.displayName || li.customerId?.companyName || "") : "",
+                taxId: typeof li.taxId === 'object' ? li.taxId?._id : (li.taxId || ""),
+                taxName: typeof li.taxId === 'object' ? (li.taxId?.name || li.taxName || "") : (li.taxName || ""),
+                taxRate: typeof li.taxId === 'object' ? Number(li.taxId?.rate ?? li.taxRate ?? 0) : Number(li.taxRate || 0),
                 quantity: li.quantity || 1,
                 rate: li.rate || 0,
                 discountPercent: li.discountPercent || 0,
@@ -804,6 +1125,36 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   const tdsAmount = taxType === "TDS" && selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0;
   const tcsAmount = taxType === "TCS" && selectedTcs ? ((subTotal - discountAmt + adjustmentAmount) * selectedTcs.rate) / 100 : 0;
   const total = subTotal - discountAmt - tdsAmount + tcsAmount + adjustmentAmount;
+
+   const gstGroupTaxes = useMemo(
+      () => lineTaxes
+         .filter((tax) => tax.taxType === "TaxGroup" || GST_GROUP_NAMES.includes(tax.name))
+         .sort((a, b) => {
+            const aPreferred = GST_GROUP_NAMES.indexOf(a.name);
+            const bPreferred = GST_GROUP_NAMES.indexOf(b.name);
+            if (aPreferred >= 0 && bPreferred >= 0) return aPreferred - bPreferred;
+            if (aPreferred >= 0) return -1;
+            if (bPreferred >= 0) return 1;
+            return a.name.localeCompare(b.name);
+         }),
+      [lineTaxes],
+   );
+
+   const otherLineTaxes = useMemo(
+      () => lineTaxes
+         .filter((tax) => !gstGroupTaxes.some((g) => g._id === tax._id))
+         .sort((a, b) => a.name.localeCompare(b.name)),
+      [lineTaxes, gstGroupTaxes],
+   );
+
+   function lineTaxSelectValue(row: LineRow): string {
+      if (row.taxId) return `tax:${row.taxId}`;
+      if (row.taxName) {
+         const preset = LINE_TAX_PRESETS.find((p) => p.name === row.taxName);
+         if (preset) return `preset:${preset.name}`;
+      }
+      return "";
+   }
 
    function updateRow(id: string, patch: Partial<LineRow>) {
       setRows((prev) => prev.map((r) => (r.id === id ? calcRow({ ...r, ...patch }, discountLevel) : r)));
@@ -835,8 +1186,167 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
       });
    }
 
+   function handleVendorCreated(vendor: Contact) {
+      setVendors((prev) => {
+         const next = [...prev.filter((v) => v._id !== vendor._id), vendor];
+         next.sort((a, b) => {
+            const aName = (a.displayName || a.companyName || "").toLowerCase();
+            const bName = (b.displayName || b.companyName || "").toLowerCase();
+            return aName.localeCompare(bName);
+         });
+         return next;
+      });
+      setVendorId(vendor._id);
+      setAccountsPayableId(vendor.accountsPayableId || "");
+   }
+
+   useEffect(() => {
+      if (!accounts.length || accountsPayableId) return;
+      const defaultPayable = accounts.find((account) => account.accountType === "Accounts Payable");
+      if (defaultPayable) {
+         setAccountsPayableId(defaultPayable._id);
+      }
+   }, [accounts, accountsPayableId]);
+
+   useEffect(() => {
+      if (!vendorId) return;
+      const selectedVendor = vendors.find((vendor) => vendor._id === vendorId);
+      const vendorPayable = selectedVendor?.accountsPayableId || "";
+      if (vendorPayable) {
+         setAccountsPayableId(vendorPayable);
+      }
+   }, [vendorId, vendors]);
+
+   async function handleCreateItemForRow(rowId: string, providedName?: string) {
+      const row = rows.find((r) => r.id === rowId);
+      const itemName = (providedName || row?.itemName || "").trim();
+      if (!itemName) {
+         toast.error("Item name is required");
+         return;
+      }
+
+      const existing = items.find((i) => i.name.trim().toLowerCase() === itemName.toLowerCase());
+      if (existing) {
+         handleSelectItem(rowId, existing);
+         return;
+      }
+
+      try {
+         const payload: Record<string, unknown> = {
+            name: itemName,
+            itemType: "Service",
+            costPrice: Number(row?.rate || 0),
+            purchaseDescription: row?.description || undefined,
+         };
+         if (row?.accountId) payload.purchaseAccountId = row.accountId;
+
+         const res = await itemApi.create(payload as any);
+         const created = res.data;
+
+         setItems((prev) => {
+            const next = [...prev.filter((i) => i._id !== created._id), created];
+            next.sort((a, b) => a.name.localeCompare(b.name));
+            return next;
+         });
+
+         const createdPurchaseAccountId =
+            typeof created.purchaseAccountId === "object"
+               ? (created.purchaseAccountId as any)?._id || ""
+               : created.purchaseAccountId || "";
+         const resolvedAccountId = row?.accountId || createdPurchaseAccountId;
+         const resolvedAccountName = resolvedAccountId
+            ? accounts.find((a) => a._id === resolvedAccountId)?.name || row?.accountName || ""
+            : row?.accountName || "";
+
+         updateRow(rowId, {
+            itemId: created._id,
+            itemName: created.name,
+            rate: created.costPrice || Number(row?.rate || 0),
+            accountId: resolvedAccountId,
+            accountName: resolvedAccountName,
+         });
+
+         toast.success("Item created");
+      } catch {
+         toast.error("Failed to create item");
+      }
+   }
+
+   function handleLineTaxSelection(rowId: string, value: string) {
+      if (!value) {
+         updateRow(rowId, { taxId: "", taxName: "", taxRate: 0 });
+         return;
+      }
+
+      if (value === NEW_LINE_TAX_OPTION) {
+         setPendingTaxRowId(rowId);
+         setShowCreateLineTax(true);
+         return;
+      }
+
+      if (value.startsWith("preset:")) {
+         const presetName = value.slice("preset:".length);
+         const preset = LINE_TAX_PRESETS.find((entry) => entry.name === presetName);
+         if (!preset) return;
+         updateRow(rowId, {
+            taxId: "",
+            taxName: preset.name,
+            taxRate: preset.rate,
+         });
+         return;
+      }
+
+      if (value.startsWith("tax:")) {
+         const taxId = value.slice("tax:".length);
+         const tax = lineTaxes.find((entry) => entry._id === taxId);
+         if (!tax) return;
+         updateRow(rowId, {
+            taxId: tax._id,
+            taxName: tax.name,
+            taxRate: Number(tax.rate || 0),
+         });
+      }
+   }
+
+   function handleLineTaxCreated(tax: Tax) {
+      setLineTaxes((prev) => {
+         const next = [...prev.filter((entry) => entry._id !== tax._id), tax];
+         next.sort((a, b) => a.name.localeCompare(b.name));
+         return next;
+      });
+
+      if (pendingTaxRowId) {
+         updateRow(pendingTaxRowId, {
+            taxId: tax._id,
+            taxName: tax.name,
+            taxRate: Number(tax.rate || 0),
+         });
+      }
+      setPendingTaxRowId(null);
+   }
+
   async function handleSubmit(status: BillStatus = "Draft") {
      if (!vendorId) return toast.error("Please select a vendor");
+
+     const dataRows = rows.filter((r) => !r.isHeader);
+     if (dataRows.length === 0) {
+        return toast.error("Add at least one line item");
+     }
+
+     for (let i = 0; i < dataRows.length; i += 1) {
+        const line = dataRows[i];
+        const lineNo = i + 1;
+        if (!line.itemName.trim()) {
+           return toast.error(`Line ${lineNo}: item name is required`);
+        }
+        if (!line.accountId) {
+           return toast.error(`Line ${lineNo}: account is required`);
+        }
+        if (Number(line.quantity) <= 0) {
+           return toast.error(`Line ${lineNo}: quantity must be greater than 0`);
+        }
+     }
+
      setSaving(true);
      try {
         const payload: CreateBillInput = {
@@ -845,17 +1355,16 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
            referenceNumber,
            orderNumber,
            billDate,
-           dueDate,
-           paymentTermsId,
-           sourceOfSupply,
-           destinationOfSupply,
+           dueDate: dueDate || null,
+           paymentTermsId: paymentTermsId || null,
+           accountsPayableId: accountsPayableId || null,
            subject,
            discountLevel,
            discountAccountId: discountAccountId || null,
            discountPercent,
            taxType,
-           tdsId,
-           tcsId,
+           tdsId: taxType === "TDS" ? (tdsId || null) : null,
+           tcsId: taxType === "TCS" ? (tcsId || null) : null,
            taxAmount: tdsAmount,
            tcsAmount: tcsAmount,
            adjustmentLabel,
@@ -867,9 +1376,13 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
               isHeader: r.isHeader,
               headerText: r.headerText,
               itemId: r.itemId || null,
-              name: r.itemName,
+              name: r.itemName.trim(),
               accountId: r.accountId || null,
-              description: r.description,
+              customerId: r.customerId || null,
+              taxId: r.taxId || null,
+              taxName: r.taxName || "",
+              taxRate: Number(r.taxRate || 0),
+              description: r.description.trim(),
               quantity: r.quantity,
               rate: r.rate,
               discountPercent: r.discountPercent,
@@ -902,47 +1415,33 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                   <select
                      className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-primary"
                      value={vendorId}
-                     onChange={(e) => setVendorId(e.target.value)}
+                     onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === NEW_VENDOR_OPTION) {
+                           setShowCreateVendor(true);
+                           return;
+                        }
+                        const selectedVendor = vendors.find((v) => v._id === next);
+                        setVendorId(next);
+                        setAccountsPayableId(selectedVendor?.accountsPayableId || "");
+                     }}
                   >
                      <option value="">Select a Vendor</option>
+                     <option value={NEW_VENDOR_OPTION}>+ Create New Vendor</option>
                      {vendors.map((v) => (
                         <option key={v._id} value={v._id}>{v.displayName || v.companyName}</option>
                      ))}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                </div>
-               <Button size="icon" className="h-9 w-9 bg-primary">
+               <Button
+                  type="button"
+                  size="icon"
+                  className="h-9 w-9 bg-primary"
+                  onClick={() => setShowVendorSearch(true)}
+               >
                   <Search className="h-4 w-4" />
                </Button>
-            </div>
-         </div>
-
-         <div className="grid grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
-            <div className="flex items-center gap-3">
-               <Label className="text-sm font-medium text-red-500 w-36 shrink-0">Source Of Supply *</Label>
-               <Select value={sourceOfSupply} onValueChange={setSourceOfSupply}>
-                  <SelectTrigger className="h-9 text-sm flex-1">
-                     <SelectValue placeholder="Select Source" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                     {SUPPLY_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                     ))}
-                  </SelectContent>
-               </Select>
-            </div>
-            <div className="flex items-center gap-3">
-               <Label className="text-sm font-medium text-red-500 w-36 shrink-0">Destination Of Supply *</Label>
-               <Select value={destinationOfSupply} onValueChange={setDestinationOfSupply}>
-                  <SelectTrigger className="h-9 text-sm flex-1">
-                     <SelectValue placeholder="Select Destination" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                     {SUPPLY_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                     ))}
-                  </SelectContent>
-               </Select>
             </div>
          </div>
 
@@ -978,6 +1477,25 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                      {paymentTerms.map((pt) => (
                         <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
                      ))}
+                  </SelectContent>
+               </Select>
+            </div>
+            <div className="flex items-center gap-3">
+               <Label className="text-sm font-medium w-36 shrink-0">Accounts Payable</Label>
+               <Select
+                  value={accountsPayableId || "__auto__"}
+                  onValueChange={(value) => setAccountsPayableId(value === "__auto__" ? "" : value)}
+               >
+                  <SelectTrigger className="h-9 text-sm flex-1">
+                     <SelectValue placeholder="Auto from Vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                     <SelectItem value="__auto__">Auto from Vendor</SelectItem>
+                     {accounts
+                        .filter((account) => account.accountType === "Accounts Payable")
+                        .map((account) => (
+                           <SelectItem key={account._id} value={account._id}>{account.name}</SelectItem>
+                        ))}
                   </SelectContent>
                </Select>
             </div>
@@ -1026,7 +1544,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                </div>
             </div>
             <div className="overflow-x-auto">
-               <table className="w-full text-sm">
+               <table className="w-full text-sm min-w-[1180px]">
                   <thead className="bg-muted/30 border-b">
                      <tr className="text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="w-6 px-2 py-2.5" />
@@ -1034,10 +1552,12 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                         <th className="text-left px-3 py-2.5 font-medium w-44">Account</th>
                         <th className="text-right px-3 py-2.5 font-medium w-24">Quantity</th>
                         <th className="text-right px-3 py-2.5 font-medium w-24">Rate</th>
+                        <th className="text-left px-3 py-2.5 font-medium w-44">Tax</th>
+                        <th className="text-left px-3 py-2.5 font-medium w-44">Customer Details</th>
                         {discountLevel === "line_item" && (
                            <th className="text-right px-3 py-2.5 font-medium w-28">Discount</th>
                         )}
-                        <th className="text-right px-3 py-2.5 font-medium w-28">Amount</th>
+                        <th className="text-right px-3 py-2.5 font-medium w-36">Amount</th>
                         <th className="w-12 px-2 py-2.5" />
                      </tr>
                   </thead>
@@ -1059,34 +1579,43 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                  <GripVertical className="h-4 w-4" />
                               </td>
                               {row.isHeader ? (
-                                 <td colSpan={discountLevel === "line_item" ? 6 : 5} className="px-3 py-2">
+                                 <td colSpan={discountLevel === "line_item" ? 8 : 7} className="px-3 py-2">
                                     <div className="text-[22px] leading-tight font-semibold text-muted-foreground/95">{row.headerText || "Add New Header"}</div>
                                  </td>
                               ) : (
                                  <>
                                     <td className="px-3 py-2 align-top">
-                                       <DropdownMenu
-                                          open={itemSelectorRow === row.id}
-                                          onOpenChange={(open) => setItemSelectorRow(open ? row.id : null)}
-                                       >
-                                          <DropdownMenuTrigger asChild>
-                                             <button
-                                                type="button"
-                                                className={cn("text-sm text-left w-full font-medium", row.itemName ? "text-primary" : "text-muted-foreground")}
-                                             >
-                                                {row.itemName || "Type or click to select an item."}
-                                             </button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
-                                             <ItemSelectorPopup
-                                                items={items}
-                                                onSelect={(item) => {
-                                                   handleSelectItem(row.id, item);
-                                                   setItemSelectorRow(null);
-                                                }}
-                                             />
-                                          </DropdownMenuContent>
-                                       </DropdownMenu>
+                                       <div className="flex items-center gap-2">
+                                          <Input
+                                             className="h-8 text-xs"
+                                             value={row.itemName}
+                                             placeholder="Type item name or pick from list"
+                                             onChange={(e) => updateRow(row.id, { itemName: e.target.value, itemId: "" })}
+                                          />
+                                          <DropdownMenu
+                                             open={itemSelectorRow === row.id}
+                                             onOpenChange={(open) => setItemSelectorRow(open ? row.id : null)}
+                                          >
+                                             <DropdownMenuTrigger asChild>
+                                                <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0">
+                                                   <Search className="h-3.5 w-3.5" />
+                                                </Button>
+                                             </DropdownMenuTrigger>
+                                             <DropdownMenuContent align="end" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
+                                                <ItemSelectorPopup
+                                                   items={items}
+                                                   onSelect={(item) => {
+                                                      handleSelectItem(row.id, item);
+                                                      setItemSelectorRow(null);
+                                                   }}
+                                                   onCreateItem={async (name) => {
+                                                      setItemSelectorRow(null);
+                                                      await handleCreateItemForRow(row.id, name);
+                                                   }}
+                                                />
+                                             </DropdownMenuContent>
+                                          </DropdownMenu>
+                                       </div>
                                        <Textarea
                                           className="mt-1 text-xs text-muted-foreground resize-none border-0 shadow-none p-0 focus-visible:ring-0 min-h-0 h-auto bg-transparent"
                                           rows={1}
@@ -1099,36 +1628,111 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                        <AccountDropdown
                                           value={row.accountId}
                                           onChange={(id, name) => updateRow(row.id, { accountId: id, accountName: name })}
-                                          accounts={accounts.filter((a) => a.rootType === "Expense")}
+                                          accounts={accounts}
                                        />
                                     </td>
                                     <td className="px-3 py-2 align-top text-right">
                                        <Input
                                           type="number"
-                                          className="h-8 text-right"
+                                          className="h-8 text-xs text-right"
                                           value={row.quantity}
+                                          min={0}
                                           onChange={(e) => updateRow(row.id, { quantity: Number(e.target.value) || 0 })}
                                        />
                                     </td>
                                     <td className="px-3 py-2 align-top text-right">
                                        <Input
                                           type="number"
-                                          className="h-8 text-right"
+                                          className="h-8 text-xs text-right"
                                           value={row.rate}
+                                          min={0}
+                                          step="0.01"
                                           onChange={(e) => updateRow(row.id, { rate: Number(e.target.value) || 0 })}
                                        />
+                                    </td>
+                                    <td className="px-3 py-2 align-top">
+                                       <select
+                                          className="w-full h-8 px-2 text-xs border rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                                          value={lineTaxSelectValue(row)}
+                                          onChange={(e) => handleLineTaxSelection(row.id, e.target.value)}
+                                       >
+                                          <option value="">Select a Tax</option>
+                                          <optgroup label="Non Taxable">
+                                             {LINE_TAX_PRESETS.map((preset) => (
+                                                <option key={preset.name} value={`preset:${preset.name}`}>
+                                                   {preset.name}
+                                                </option>
+                                             ))}
+                                          </optgroup>
+                                          {gstGroupTaxes.length > 0 && (
+                                             <optgroup label="Tax Group">
+                                                {gstGroupTaxes.map((tax) => (
+                                                   <option key={tax._id} value={`tax:${tax._id}`}>
+                                                      {tax.name} [{Number(tax.rate || 0)}%]
+                                                   </option>
+                                                ))}
+                                             </optgroup>
+                                          )}
+                                          {otherLineTaxes.length > 0 && (
+                                             <optgroup label="Other Taxes">
+                                                {otherLineTaxes.map((tax) => (
+                                                   <option key={tax._id} value={`tax:${tax._id}`}>
+                                                      {tax.name} [{Number(tax.rate || 0)}%]
+                                                   </option>
+                                                ))}
+                                             </optgroup>
+                                          )}
+                                          <option value={NEW_LINE_TAX_OPTION}>+ New Tax</option>
+                                       </select>
+                                       {row.taxName && (
+                                          <>
+                                             <p className="mt-1 text-[11px] text-muted-foreground truncate" title={row.taxName}>
+                                                {row.taxRate ? `${row.taxName} [${row.taxRate}%]` : row.taxName}
+                                             </p>
+                                             {LINE_TAX_PRESETS.find((preset) => preset.name === row.taxName)?.description && (
+                                                <p className="text-[10px] text-muted-foreground leading-tight">
+                                                   {LINE_TAX_PRESETS.find((preset) => preset.name === row.taxName)?.description}
+                                                </p>
+                                             )}
+                                          </>
+                                       )}
+                                    </td>
+                                    <td className="px-3 py-2 align-top">
+                                       <select
+                                          className="w-full h-8 px-2 text-xs border rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                                          value={row.customerId || ""}
+                                          onChange={(e) => {
+                                             const nextId = e.target.value;
+                                             const selectedCustomer = customers.find((customer) => customer._id === nextId);
+                                             updateRow(row.id, {
+                                                customerId: nextId,
+                                                customerName: selectedCustomer
+                                                   ? (selectedCustomer.displayName || selectedCustomer.companyName || "")
+                                                   : "",
+                                             });
+                                          }}
+                                       >
+                                          <option value="">Select Customer</option>
+                                          {customers.map((customer) => (
+                                             <option key={customer._id} value={customer._id}>
+                                                {customer.displayName || customer.companyName}
+                                             </option>
+                                          ))}
+                                       </select>
                                     </td>
                                     {discountLevel === "line_item" && (
                                        <td className="px-3 py-2 align-top text-right">
                                           <Input
                                              type="number"
-                                             className="h-8 text-right"
+                                             className="h-8 text-xs text-right"
                                              value={row.discountPercent}
                                              onChange={(e) => updateRow(row.id, { discountPercent: Number(e.target.value) || 0 })}
                                           />
                                        </td>
                                     )}
-                                    <td className="px-3 py-2 align-top text-right font-medium">{fmt(row.amount)}</td>
+                                    <td className="px-3 py-2 align-top text-right font-medium tabular-nums whitespace-nowrap">
+                                       {fmt(row.amount)}
+                                    </td>
                                  </>
                               )}
                               <td className="px-2 py-2 text-right">
@@ -1419,6 +2023,29 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
             </div>
             <span className="text-xs text-muted-foreground">PDF Template: &apos;Standard Template&apos;</span>
          </div>
+            <VendorSearchDialog
+               open={showVendorSearch}
+               onClose={() => setShowVendorSearch(false)}
+               vendors={vendors}
+               onSelect={(vendor) => setVendorId(vendor._id)}
+               onCreateNew={() => setShowCreateVendor(true)}
+            />
+            <QuickCreateVendorDialog
+               open={showCreateVendor}
+               onClose={() => setShowCreateVendor(false)}
+               onCreated={handleVendorCreated}
+            />
+            <QuickCreateTaxDialog
+               open={showCreateLineTax}
+               onClose={() => {
+                  setShowCreateLineTax(false);
+                  setPendingTaxRowId(null);
+               }}
+               onCreated={(tax) => {
+                  handleLineTaxCreated(tax);
+                  setShowCreateLineTax(false);
+               }}
+            />
             <ManageTDSDialog
                open={showManageTDS}
                onClose={() => setShowManageTDS(false)}

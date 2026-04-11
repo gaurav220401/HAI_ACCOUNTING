@@ -39,6 +39,7 @@ export interface BalanceSheetLine {
   accountId: string;
   code: string;
   name: string;
+  accountType?: string;
   amount: number;
 }
 
@@ -140,6 +141,10 @@ export const reportApi = {
 
   controlReconciliation: (params?: { asOf?: string }) =>
     apiFetch<{ success: boolean; data: ControlReconciliationResponse }>(`/reports/control-reconciliation${buildQuery(params || {})}`),
+
+  // Activity
+  accountTransactions: (params?: { from?: string; to?: string; accountId?: string; voucherType?: string; basis?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/account-transactions${buildQuery(params || {})}`),
 
   // Payables
   vendorBalanceSummary: (params?: { from?: string; to?: string }) =>

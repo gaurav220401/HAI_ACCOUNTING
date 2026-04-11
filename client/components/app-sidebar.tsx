@@ -123,8 +123,12 @@ const navItems: NavItem[] = [
     items: [
       { title: "Manual Journals", url: "/accountant/journal-entries" },
       { title: "Bulk Update", url: "/accountant/bulk-update" },
-      { title: "Currency Adjustments", url: "/accountant/currency-adjustments" },
+      {
+        title: "Currency Adjustments",
+        url: "/accountant/currency-adjustments",
+      },
       { title: "Chart of Accounts", url: "/accountant/chart-of-accounts" },
+      { title: "Fixed Assets", url: "/accountant/fixed-assets" },
       { title: "Transaction Locking", url: "/accountant/transaction-locking" },
     ],
   },
@@ -192,7 +196,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               if (!item.items || item.items.length === 0) {
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.title}
+                    >
                       <Link href={item.url}>
                         <item.icon />
                         <span>{item.title}</span>

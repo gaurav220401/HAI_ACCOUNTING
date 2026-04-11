@@ -290,6 +290,8 @@ export interface IAccount extends Document {
   isGroup: boolean;
   currency?: string;
   description?: string;
+  createItemAsFixedAsset: boolean;
+  fixedAssetTypeId?: Types.ObjectId | null;
   isSystemAccount: boolean; // system accounts cannot be deleted
   openingBalance: number; // explicit imported opening balance
   balance: number; // denormalized, updated on GL posting
@@ -862,6 +864,9 @@ export interface IBillLineItem {
   amount: number;
   accountId?: Types.ObjectId | null; // Expense account
   customerId?: Types.ObjectId | null; // For billable expenses
+  taxId?: Types.ObjectId | null;
+  taxName?: string;
+  taxRate?: number;
 }
 
 export interface IBill extends Document {
@@ -879,6 +884,7 @@ export interface IBill extends Document {
   accountsPayableId?: Types.ObjectId | null; // Accounts Payable account (Liability)
   subject?: string;
   lineItems: IBillLineItem[];
+  fixedAssetIds?: Types.ObjectId[];
   subTotal: number;
   discountLevel: "transaction" | "line_item";
   discountAccountId?: Types.ObjectId | null;

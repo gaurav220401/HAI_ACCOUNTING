@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +28,7 @@ import {
   type AccountRootType,
   type CreateAccountInput,
 } from "@/lib/api/accounts";
+import { fixedAssetApi, type FixedAssetType } from "@/lib/api/fixed-assets";
 
 // ─── Account type metadata ───────────────────────────────────────────────────
 
@@ -207,10 +208,13 @@ const CURRENCY_OPTIONS = ["INR", "USD", "EUR", "GBP", "AED", "SGD"] as const;
 interface AccountDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: () => void;
+  onSaved: (savedAccount?: Account) => void;
   /** Pass account to edit mode, undefined for create */
   editAccount?: Account | null;
   allAccounts: Account[];
+  initialAccountType?: AccountType;
+  allowedAccountTypes?: AccountType[];
+  saveLabel?: string;
 }
 
 // ─── Dialog ──────────────────────────────────────────────────────────────────
@@ -221,9 +225,36 @@ export function AccountDialog({
   onSaved,
   editAccount,
   allAccounts,
+  initialAccountType,
+  allowedAccountTypes,
+  saveLabel,
 }: AccountDialogProps) {
   const isEdit = !!editAccount;
   const isPredefined = Boolean(editAccount?.isSystemAccount);
+
+  const allowedTypeSet = useMemo(() => {
+    const list =
+      allowedAccountTypes && allowedAccountTypes.length > 0
+        ? allowedAccountTypes
+        : (Object.keys(ACCOUNT_TYPE_META) as AccountType[]);
+    return new Set<AccountType>(list);
+  }, [allowedAccountTypes]);
+
+  const groupedTypeOptions = useMemo(
+    () =>
+      ACCOUNT_TYPE_GROUPS.map((group) => ({
+        rootType: group.rootType,
+        types: group.types.filter((type) => allowedTypeSet.has(type)),
+      })).filter((group) => group.types.length > 0),
+    [allowedTypeSet],
+  );
+
+  const defaultCreateType = useMemo<AccountType>(() => {
+    if (initialAccountType && allowedTypeSet.has(initialAccountType)) {
+      return initialAccountType;
+    }
+    return groupedTypeOptions[0]?.types[0] || "Other Asset";
+  }, [initialAccountType, allowedTypeSet, groupedTypeOptions]);
 
   const [accountType, setAccountType] = useState<AccountType>("Other Asset");
   const [name, setName] = useState("");
@@ -234,6 +265,10 @@ export function AccountDialog({
   const [ifsc, setIfsc] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [description, setDescription] = useState("");
+  const [createItemAsFixedAsset, setCreateItemAsFixedAsset] = useState(false);
+  const [fixedAssetTypeId, setFixedAssetTypeId] = useState("");
+  const [fixedAssetTypes, setFixedAssetTypes] = useState<FixedAssetType[]>([]);
+  const [loadingFixedAssetTypes, setLoadingFixedAssetTypes] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -250,8 +285,10 @@ export function AccountDialog({
       setDescription(editAccount.description ?? "");
       setParentId(editAccount.parentId ?? "");
       setIsSubAccount(!!editAccount.parentId);
+      setCreateItemAsFixedAsset(Boolean(editAccount.createItemAsFixedAsset));
+      setFixedAssetTypeId(String(editAccount.fixedAssetTypeId || ""));
     } else {
-      setAccountType("Other Asset");
+      setAccountType(defaultCreateType);
       setName("");
       setCode("");
       setAccountNumber("");
@@ -260,9 +297,56 @@ export function AccountDialog({
       setDescription("");
       setParentId("");
       setIsSubAccount(false);
+      setCreateItemAsFixedAsset(false);
+      setFixedAssetTypeId("");
     }
     setErrors({});
-  }, [open, editAccount]);
+  }, [open, editAccount, defaultCreateType]);
+
+  useEffect(() => {
+    if (!open) return;
+    let isCancelled = false;
+
+    async function loadFixedAssetTypes() {
+      setLoadingFixedAssetTypes(true);
+      try {
+        const res = await fixedAssetApi.listTypes();
+        if (!isCancelled) {
+          const sorted = [...(res.data || [])].sort((a, b) =>
+            String(a.name || "").localeCompare(String(b.name || "")),
+          );
+          setFixedAssetTypes(sorted);
+        }
+      } catch {
+        if (!isCancelled) {
+          setFixedAssetTypes([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoadingFixedAssetTypes(false);
+        }
+      }
+    }
+
+    void loadFixedAssetTypes();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+    if (!allowedTypeSet.has(accountType)) {
+      setAccountType(defaultCreateType);
+    }
+  }, [open, isEdit, accountType, allowedTypeSet, defaultCreateType]);
+
+  useEffect(() => {
+    if (accountType === "Fixed Asset") return;
+    setCreateItemAsFixedAsset(false);
+    setFixedAssetTypeId("");
+  }, [accountType]);
 
   const meta = ACCOUNT_TYPE_META[accountType];
   const selectedRootType = meta?.rootType;
@@ -276,6 +360,9 @@ export function AccountDialog({
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = "Account name is required";
     if (isSubAccount && !parentId) e.parentId = "Please select a parent account";
+    if (accountType === "Fixed Asset" && createItemAsFixedAsset && !fixedAssetTypeId) {
+      e.fixedAssetTypeId = "Please select Fixed Asset Type";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -294,13 +381,22 @@ export function AccountDialog({
         currency: accountType === "Bank" ? currency : undefined,
         description: description.trim() || undefined,
         parentId: isSubAccount && parentId ? parentId : undefined,
+        createItemAsFixedAsset:
+          accountType === "Fixed Asset" ? createItemAsFixedAsset : false,
+        fixedAssetTypeId:
+          accountType === "Fixed Asset" && createItemAsFixedAsset
+            ? fixedAssetTypeId
+            : undefined,
       };
+      let savedAccount: Account | undefined;
       if (isEdit && editAccount) {
-        await accountApi.update(editAccount._id, input);
+        const res = await accountApi.update(editAccount._id, input);
+        savedAccount = res.data;
       } else {
-        await accountApi.create(input);
+        const res = await accountApi.create(input);
+        savedAccount = res.data;
       }
-      onSaved();
+      onSaved(savedAccount);
       onOpenChange(false);
     } catch (e: unknown) {
       setErrors({ general: (e as Error)?.message ?? "Failed to save account" });
@@ -346,7 +442,7 @@ export function AccountDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent position="popper" sideOffset={6} className="max-h-[min(60vh,22rem)]">
-                  {ACCOUNT_TYPE_GROUPS.map((g) => (
+                  {groupedTypeOptions.map((g) => (
                     <SelectGroup key={g.rootType}>
                       <SelectLabel className="text-xs font-bold uppercase tracking-wide text-muted-foreground px-2 py-1">
                         {g.rootType}
@@ -455,6 +551,65 @@ export function AccountDialog({
             />
           </div>
 
+          {accountType === "Fixed Asset" && (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="create-item-as-fixed-asset"
+                  checked={createItemAsFixedAsset}
+                  onCheckedChange={(checked) => {
+                    const enabled = Boolean(checked);
+                    setCreateItemAsFixedAsset(enabled);
+                    if (!enabled) setFixedAssetTypeId("");
+                  }}
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="create-item-as-fixed-asset" className="font-medium cursor-pointer">
+                    Create Item as Fixed Asset
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    When this account is associated with a line item in a transaction, create the item as a fixed asset.
+                  </p>
+                </div>
+              </div>
+
+              {createItemAsFixedAsset && (
+                <div className="pl-6 space-y-1.5">
+                  <Label className="font-medium">
+                    Fixed Asset Type <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={fixedAssetTypeId || undefined}
+                    onValueChange={setFixedAssetTypeId}
+                    disabled={loadingFixedAssetTypes}
+                  >
+                    <SelectTrigger className={errors.fixedAssetTypeId ? "border-destructive" : ""}>
+                      <SelectValue placeholder="Select the Fixed Asset Type" />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={6} className="max-h-64">
+                      {fixedAssetTypes.length === 0 ? (
+                        <SelectItem value="__none" disabled>
+                          {loadingFixedAssetTypes
+                            ? "Loading fixed asset types..."
+                            : "No active fixed asset types found"}
+                        </SelectItem>
+                      ) : (
+                        fixedAssetTypes.map((type) => (
+                          <SelectItem key={type._id} value={type._id}>
+                            {type.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {errors.fixedAssetTypeId && (
+                    <p className="text-xs text-destructive">{errors.fixedAssetTypeId}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {accountType === "Bank" && (
             <>
               <div className="space-y-1.5">
@@ -510,7 +665,7 @@ export function AccountDialog({
         {/* Footer */}
         <div className="flex items-center gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t bg-muted/20">
           <Button onClick={handleSave} disabled={saving} className="min-w-[72px]">
-            {saving ? "Saving..." : "Save"}
+            {saving ? "Saving..." : saveLabel || "Save"}
           </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
