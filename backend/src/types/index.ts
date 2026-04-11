@@ -864,6 +864,9 @@ export interface IBillLineItem {
   amount: number;
   accountId?: Types.ObjectId | null; // Expense account
   customerId?: Types.ObjectId | null; // For billable expenses
+  taxId?: Types.ObjectId | null;
+  taxName?: string;
+  taxRate?: number;
 }
 
 export interface IBill extends Document {

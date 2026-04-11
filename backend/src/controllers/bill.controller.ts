@@ -45,6 +45,8 @@ async function nextBillNumber(organizationId: any): Promise<string> {
 
 function calcLineItems(items: any[], discountLevel: string) {
   return (items || []).map((item: any) => {
+    const taxRate = toNum(item.taxRate);
+    const taxName = String(item.taxName || "").trim();
     if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
     const qty = Number(item.quantity) || 1;
     const rate = Number(item.rate) || 0;
@@ -52,9 +54,27 @@ function calcLineItems(items: any[], discountLevel: string) {
     if (discountLevel === "line_item") {
       const discPct = Number(item.discountPercent) || 0;
       const discAmt = Number(item.discountAmount) || (lineTotal * discPct) / 100;
-      return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: lineTotal - discAmt };
+      return {
+        ...item,
+        quantity: qty,
+        rate,
+        taxRate,
+        taxName,
+        discountPercent: discPct,
+        discountAmount: discAmt,
+        amount: lineTotal - discAmt,
+      };
     }
-    return { ...item, quantity: qty, rate, discountPercent: 0, discountAmount: 0, amount: lineTotal };
+    return {
+      ...item,
+      quantity: qty,
+      rate,
+      taxRate,
+      taxName,
+      discountPercent: 0,
+      discountAmount: 0,
+      amount: lineTotal,
+    };
   });
 }
 
@@ -231,6 +251,8 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     .populate("paymentTermsId", "name days")
     .populate("lineItems.itemId", "name sku costPrice")
     .populate("lineItems.accountId", "name accountType")
+    .populate("lineItems.customerId", "displayName companyName")
+    .populate("lineItems.taxId", "name rate taxType")
     .populate("accountsPayableId", "name accountType")
     .populate("tdsId", "taxName rate sectionCode")
     .populate("tcsId", "taxName rate sectionCode")
