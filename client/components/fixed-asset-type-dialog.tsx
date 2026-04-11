@@ -40,7 +40,10 @@ import { AccountDialog } from "@/components/account-dialog";
 interface FixedAssetTypeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (type: FixedAssetType) => void;
+  onCreated?: (type: FixedAssetType) => void;
+  onSaved?: (type: FixedAssetType) => void;
+  mode?: "create" | "edit" | "clone";
+  initialType?: FixedAssetType | null;
 }
 
 interface FormState {
@@ -57,7 +60,6 @@ interface FormState {
 }
 
 type AccountFieldKey =
-  | "fixedAssetAccountId"
   | "accumulatedDepreciationAccountId"
   | "depreciationExpenseAccountId";
 
@@ -99,10 +101,22 @@ function sortAccounts(rows: Account[]): Account[] {
   });
 }
 
+function getRefId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    return String((value as { _id: string })._id);
+  }
+  return "";
+}
+
 export function FixedAssetTypeDialog({
   open,
   onOpenChange,
   onCreated,
+  onSaved,
+  mode = "create",
+  initialType,
 }: FixedAssetTypeDialogProps) {
   const [form, setForm] = useState<FormState>(defaultState);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -110,7 +124,9 @@ export function FixedAssetTypeDialog({
   const [saving, setSaving] = useState(false);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [createTargetField, setCreateTargetField] =
-    useState<AccountFieldKey>("fixedAssetAccountId");
+    useState<AccountFieldKey>("accumulatedDepreciationAccountId");
+  const isEditMode = mode === "edit";
+  const isCloneMode = mode === "clone";
 
   useEffect(() => {
     if (!open) return;
@@ -141,12 +157,12 @@ export function FixedAssetTypeDialog({
       : FIXED_ASSET_ACCOUNT_TYPES;
 
   function setCreatedAccountOnField(field: AccountFieldKey, accountId: string) {
-    if (field === "fixedAssetAccountId") {
-      setForm((prev) => ({ ...prev, fixedAssetAccountId: accountId }));
-      return;
-    }
     if (field === "accumulatedDepreciationAccountId") {
-      setForm((prev) => ({ ...prev, accumulatedDepreciationAccountId: accountId }));
+      setForm((prev) => ({
+        ...prev,
+        accumulatedDepreciationAccountId: accountId,
+        fixedAssetAccountId: accountId,
+      }));
       return;
     }
     setForm((prev) => ({ ...prev, depreciationExpenseAccountId: accountId }));
@@ -196,21 +212,57 @@ export function FixedAssetTypeDialog({
   );
 
   const accumulatedAccounts = useMemo(() => {
-    if (fixedAssetAccounts.length > 0) return fixedAssetAccounts;
-    return accounts;
-  }, [fixedAssetAccounts, accounts]);
+    return fixedAssetAccounts;
+  }, [fixedAssetAccounts]);
 
   useEffect(() => {
     if (!open) return;
-    const next = { ...defaultState };
-    if (fixedAssetAccounts[0])
-      next.fixedAssetAccountId = fixedAssetAccounts[0]._id;
-    if (accumulatedAccounts[0])
-      next.accumulatedDepreciationAccountId = accumulatedAccounts[0]._id;
-    if (expenseAccounts[0])
-      next.depreciationExpenseAccountId = expenseAccounts[0]._id;
+
+    const next: FormState = {
+      ...defaultState,
+      fixedAssetAccountId: fixedAssetAccounts[0]?._id || "",
+      accumulatedDepreciationAccountId: accumulatedAccounts[0]?._id || "",
+      depreciationExpenseAccountId: expenseAccounts[0]?._id || "",
+    };
+
+    if ((isEditMode || isCloneMode) && initialType) {
+      next.name =
+        isCloneMode ? `${initialType.name} (Copy)` : String(initialType.name || "");
+      next.depreciationMethod = initialType.depreciationMethod;
+      next.depreciationPercentage =
+        initialType.depreciationMethod === "Declining Balance" &&
+        initialType.depreciationPercentage !== null &&
+        initialType.depreciationPercentage !== undefined
+          ? String(initialType.depreciationPercentage)
+          : "";
+      next.depreciationFrequency = initialType.depreciationFrequency;
+      next.assetLifeValue = String(initialType.assetLifeValue || "12");
+      next.assetLifeUnit = initialType.assetLifeUnit;
+      next.computationType = initialType.computationType;
+      next.fixedAssetAccountId =
+        getRefId(initialType.fixedAssetAccountId) || next.fixedAssetAccountId;
+      next.accumulatedDepreciationAccountId =
+        getRefId(initialType.accumulatedDepreciationAccountId) ||
+        next.accumulatedDepreciationAccountId;
+      next.depreciationExpenseAccountId =
+        getRefId(initialType.depreciationExpenseAccountId) ||
+        next.depreciationExpenseAccountId;
+    }
+
+    if (!next.fixedAssetAccountId && next.accumulatedDepreciationAccountId) {
+      next.fixedAssetAccountId = next.accumulatedDepreciationAccountId;
+    }
+
     setForm(next);
-  }, [open, fixedAssetAccounts, accumulatedAccounts, expenseAccounts]);
+  }, [
+    open,
+    fixedAssetAccounts,
+    accumulatedAccounts,
+    expenseAccounts,
+    initialType,
+    isEditMode,
+    isCloneMode,
+  ]);
 
   async function handleSave() {
     if (!form.name.trim()) {
@@ -232,18 +284,21 @@ export function FixedAssetTypeDialog({
       }
     }
 
+    const effectiveFixedAssetAccountId =
+      form.fixedAssetAccountId || form.accumulatedDepreciationAccountId;
+
     if (
-      !form.fixedAssetAccountId ||
+      !effectiveFixedAssetAccountId ||
       !form.accumulatedDepreciationAccountId ||
       !form.depreciationExpenseAccountId
     ) {
-      toast.error("Please select all account mappings");
+      toast.error("Please select all required account mappings");
       return;
     }
 
     setSaving(true);
     try {
-      const res = await fixedAssetApi.createType({
+      const payload = {
         name: form.name.trim(),
         depreciationMethod: form.depreciationMethod,
         depreciationPercentage:
@@ -254,17 +309,29 @@ export function FixedAssetTypeDialog({
         assetLifeValue: life,
         assetLifeUnit: form.assetLifeUnit,
         computationType: form.computationType,
-        fixedAssetAccountId: form.fixedAssetAccountId,
+        fixedAssetAccountId: effectiveFixedAssetAccountId,
         accumulatedDepreciationAccountId: form.accumulatedDepreciationAccountId,
         depreciationExpenseAccountId: form.depreciationExpenseAccountId,
-      });
+      };
 
-      onCreated(res.data);
-      toast.success("Fixed asset type created");
+      const res =
+        isEditMode && initialType?._id
+          ? await fixedAssetApi.updateType(initialType._id, payload)
+          : await fixedAssetApi.createType(payload);
+
+      onSaved?.(res.data);
+      onCreated?.(res.data);
+      toast.success(
+        isEditMode
+          ? "Fixed asset type updated"
+          : isCloneMode
+            ? "Fixed asset type cloned"
+            : "Fixed asset type created",
+      );
       onOpenChange(false);
     } catch (error) {
       toast.error(
-        (error as Error).message || "Failed to create fixed asset type",
+        (error as Error).message || "Failed to save fixed asset type",
       );
     } finally {
       setSaving(false);
@@ -277,7 +344,13 @@ export function FixedAssetTypeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New Fixed Asset Type</DialogTitle>
+          <DialogTitle>
+            {isEditMode
+              ? "Edit Fixed Asset Type"
+              : isCloneMode
+                ? "Clone Fixed Asset Type"
+                : "New Fixed Asset Type"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -407,44 +480,6 @@ export function FixedAssetTypeDialog({
           </div>
 
           <div className="space-y-2 md:col-span-2">
-            <Label className="text-red-500">Fixed Asset Account*</Label>
-            <Select
-              value={form.fixedAssetAccountId}
-              onValueChange={(value) => {
-                if (value === NEW_ACCOUNT_VALUE) {
-                  openCreateAccountFor("fixedAssetAccountId");
-                  return;
-                }
-                setForm((prev) => ({ ...prev, fixedAssetAccountId: value }));
-              }}
-              disabled={accountSelectDisabled}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select an account" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
-                  <Plus className="h-3.5 w-3.5" />
-                  New Account
-                </SelectItem>
-                <SelectSeparator />
-                {(fixedAssetAccounts.length > 0 ?
-                  fixedAssetAccounts
-                : accounts
-                ).length === 0 ? (
-                  <SelectItem value="__none_fixed" disabled>
-                    No accounts available
-                  </SelectItem>
-                ) : (
-                  renderGroupedAccountItems(
-                    fixedAssetAccounts.length > 0 ? fixedAssetAccounts : accounts,
-                  )
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2 md:col-span-2">
             <Label className="text-red-500">
               Accumulated Depreciation Account*
             </Label>
@@ -458,6 +493,7 @@ export function FixedAssetTypeDialog({
                 setForm((prev) => ({
                   ...prev,
                   accumulatedDepreciationAccountId: value,
+                  fixedAssetAccountId: value,
                 }));
               }}
               disabled={accountSelectDisabled}
@@ -509,15 +545,12 @@ export function FixedAssetTypeDialog({
                   New Account
                 </SelectItem>
                 <SelectSeparator />
-                {(expenseAccounts.length > 0 ? expenseAccounts : accounts)
-                  .length === 0 ? (
+                {expenseAccounts.length === 0 ? (
                   <SelectItem value="__none_exp" disabled>
                     No accounts available
                   </SelectItem>
                 ) : (
-                  renderGroupedAccountItems(
-                    expenseAccounts.length > 0 ? expenseAccounts : accounts,
-                  )
+                  renderGroupedAccountItems(expenseAccounts)
                 )}
               </SelectContent>
             </Select>
@@ -536,7 +569,7 @@ export function FixedAssetTypeDialog({
             {saving ?
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             : <Plus className="mr-2 h-4 w-4" />}
-            Save
+            {isEditMode ? "Save Changes" : "Save"}
           </Button>
         </div>
 

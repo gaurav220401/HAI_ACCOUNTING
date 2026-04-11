@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Edit, Loader2, Plus, Search } from "lucide-react";
+import { ChevronLeft, Edit, Loader2, MoreVertical, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -22,6 +22,12 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FixedAssetTypeDialog } from "@/components/fixed-asset-type-dialog";
 import {
   fixedAssetApi,
@@ -76,6 +82,10 @@ function refName(ref: unknown): string {
     return code ? `[ ${code} ] ${name}` : name;
   }
   return "-";
+}
+
+function sortAssetTypes(rows: FixedAssetType[]): FixedAssetType[] {
+  return [...rows].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
 
 function toDateString(input: string | undefined | null) {
@@ -546,7 +556,10 @@ export default function FixedAssetsPage() {
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [markingActive, setMarkingActive] = useState(false);
+  const [showTypeManager, setShowTypeManager] = useState(false);
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+  const [typeDialogMode, setTypeDialogMode] = useState<"create" | "edit" | "clone">("create");
+  const [selectedType, setSelectedType] = useState<FixedAssetType | null>(null);
   const [assetTypes, setAssetTypes] = useState<FixedAssetType[]>([]);
 
   useEffect(() => {
@@ -562,7 +575,7 @@ export default function FixedAssetsPage() {
   const fetchTypes = useCallback(async () => {
     try {
       const res = await fixedAssetApi.listTypes();
-      setAssetTypes(res.data ?? []);
+      setAssetTypes(sortAssetTypes(res.data ?? []));
     } catch {
       setAssetTypes([]);
     }
@@ -651,6 +664,49 @@ export default function FixedAssetsPage() {
     setDetailTab("overview");
   }
 
+  function openCreateTypeDialog() {
+    setTypeDialogMode("create");
+    setSelectedType(null);
+    setTypeDialogOpen(true);
+  }
+
+  function openEditTypeDialog(type: FixedAssetType) {
+    setTypeDialogMode("edit");
+    setSelectedType(type);
+    setTypeDialogOpen(true);
+  }
+
+  function openCloneTypeDialog(type: FixedAssetType) {
+    setTypeDialogMode("clone");
+    setSelectedType(type);
+    setTypeDialogOpen(true);
+  }
+
+  function handleTypeSaved(saved: FixedAssetType) {
+    setAssetTypes((prev) =>
+      sortAssetTypes([
+        ...prev.filter((type) => type._id !== saved._id),
+        saved,
+      ]),
+    );
+  }
+
+  async function handleDeleteType(type: FixedAssetType) {
+    const ok =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(`Delete fixed asset type \"${type.name}\"?`);
+    if (!ok) return;
+
+    try {
+      await fixedAssetApi.removeType(type._id);
+      setAssetTypes((prev) => prev.filter((row) => row._id !== type._id));
+      toast.success("Fixed asset type deleted");
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to delete fixed asset type");
+    }
+  }
+
   const showEmpty = !fetching && rows.length === 0;
 
   return (
@@ -664,6 +720,89 @@ export default function FixedAssetsPage() {
         />
 
         <main className="p-4 md:p-6 space-y-4">
+          {showTypeManager ? (
+            <div className="rounded-md border bg-background overflow-hidden">
+              <div className="px-4 py-3 border-b flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setShowTypeManager(false)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Fixed Assets</p>
+                    <h2 className="text-2xl font-semibold truncate">Fixed Asset Types</h2>
+                  </div>
+                </div>
+
+                <Button size="sm" onClick={openCreateTypeDialog}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  New
+                </Button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30 text-muted-foreground">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider">Asset Type Name</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider">Depreciation Method</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider">Depreciation Account</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider">Expense Account</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assetTypes.map((type) => (
+                      <tr key={type._id} className="border-b hover:bg-muted/20">
+                        <td className="px-4 py-3 font-medium">{type.name}</td>
+                        <td className="px-4 py-3">{type.depreciationMethod}</td>
+                        <td className="px-4 py-3">{refName(type.accumulatedDepreciationAccountId)}</td>
+                        <td className="px-4 py-3">{refName(type.depreciationExpenseAccountId)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem onClick={() => openEditTypeDialog(type)}>
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openCloneTypeDialog(type)}>
+                                Clone
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => {
+                                  void handleDeleteType(type);
+                                }}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {assetTypes.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
+                          No fixed asset types found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Button
@@ -686,7 +825,10 @@ export default function FixedAssetsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setTypeDialogOpen(true)}
+                onClick={() => {
+                  void fetchTypes();
+                  setShowTypeManager(true);
+                }}
               >
                 Manage Asset Types ({assetTypes.length})
               </Button>
@@ -892,14 +1034,16 @@ export default function FixedAssetsPage() {
               </div>
             }
           </div>
+            </>
+          )}
         </main>
 
         <FixedAssetTypeDialog
           open={typeDialogOpen}
           onOpenChange={setTypeDialogOpen}
-          onCreated={(created) => {
-            setAssetTypes((prev) => [...prev, created]);
-          }}
+          mode={typeDialogMode}
+          initialType={selectedType}
+          onSaved={handleTypeSaved}
         />
       </SidebarInset>
     </SidebarProvider>
