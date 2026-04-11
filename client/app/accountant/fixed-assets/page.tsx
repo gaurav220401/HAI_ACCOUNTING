@@ -69,8 +69,11 @@ function refName(ref: unknown): string {
   if (!ref) return "-";
   if (typeof ref === "string") return "-";
   if (typeof ref === "object" && ref !== null && "name" in ref) {
-    const name = (ref as { name?: string }).name;
-    return name || "-";
+    const row = ref as { name?: string; code?: string };
+    const name = row.name;
+    if (!name) return "-";
+    const code = String(row.code || "").trim();
+    return code ? `[ ${code} ] ${name}` : name;
   }
   return "-";
 }

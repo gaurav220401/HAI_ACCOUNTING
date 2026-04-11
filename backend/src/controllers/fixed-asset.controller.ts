@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Types } from "mongoose";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
@@ -9,20 +10,92 @@ import {
 } from "../utils/errors";
 import FixedAsset from "../models/fixed-asset.model";
 import FixedAssetType from "../models/fixed-asset-type.model";
+import Account from "../models/account.model";
 
-function orgId(req: AuthenticatedRequest) {
+function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
-  return id;
+  return id as Types.ObjectId;
+}
+
+async function findMappedAccount(params: {
+  organizationId: Types.ObjectId;
+  accountId: unknown;
+  fieldLabel: string;
+}) {
+  const accountId = String(params.accountId || "").trim();
+  if (!accountId || !Types.ObjectId.isValid(accountId)) {
+    throw new ValidationError(`${params.fieldLabel} must be a valid account id`);
+  }
+
+  const account = await Account.findOne({
+    _id: accountId,
+    organizationId: params.organizationId,
+    isDeleted: false,
+    isGroup: false,
+  })
+    .select("name code rootType accountType")
+    .lean();
+
+  if (!account) {
+    throw new ValidationError(`${params.fieldLabel} account was not found`);
+  }
+
+  return account;
+}
+
+async function validateFixedAssetAccountMappings(params: {
+  organizationId: Types.ObjectId;
+  fixedAssetAccountId: unknown;
+  accumulatedDepreciationAccountId: unknown;
+  depreciationExpenseAccountId: unknown;
+}) {
+  const [fixedAssetAccount, accumulatedAccount, expenseAccount] =
+    await Promise.all([
+      findMappedAccount({
+        organizationId: params.organizationId,
+        accountId: params.fixedAssetAccountId,
+        fieldLabel: "fixedAssetAccountId",
+      }),
+      findMappedAccount({
+        organizationId: params.organizationId,
+        accountId: params.accumulatedDepreciationAccountId,
+        fieldLabel: "accumulatedDepreciationAccountId",
+      }),
+      findMappedAccount({
+        organizationId: params.organizationId,
+        accountId: params.depreciationExpenseAccountId,
+        fieldLabel: "depreciationExpenseAccountId",
+      }),
+    ]);
+
+  if (fixedAssetAccount.accountType !== "Fixed Asset") {
+    throw new ValidationError(
+      "fixedAssetAccountId must reference an account of type Fixed Asset",
+    );
+  }
+
+  if (accumulatedAccount.accountType !== "Fixed Asset") {
+    throw new ValidationError(
+      "accumulatedDepreciationAccountId must reference an account of type Fixed Asset",
+    );
+  }
+
+  if (expenseAccount.rootType !== "Expense") {
+    throw new ValidationError(
+      "depreciationExpenseAccountId must reference an Expense account",
+    );
+  }
 }
 
 /** GET /api/fixed-assets?status=DRAFT|ACTIVE|DISPOSED|All&search=&page=1&limit=25 */
 export const list = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { status, search, page = 1, limit = 25 } = req.query;
+    const organizationId = orgId(req);
 
     const filter: any = {
-      organizationId: orgId(req),
+      organizationId,
       isDeleted: false,
     };
 
@@ -41,9 +114,9 @@ export const list = asyncHandler(
     const total = await FixedAsset.countDocuments(filter);
     const data = await FixedAsset.find(filter)
       .populate("fixedAssetTypeId", "name")
-      .populate("fixedAssetAccountId", "name")
-      .populate("accumulatedDepreciationAccountId", "name")
-      .populate("depreciationExpenseAccountId", "name")
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code")
       .sort({ createdAt: -1 })
       .skip((+page - 1) * +limit)
       .limit(+limit)
@@ -65,15 +138,16 @@ export const list = asyncHandler(
 /** GET /api/fixed-assets/:id */
 export const getOne = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const asset = await FixedAsset.findOne({
       _id: req.params.id,
-      organizationId: orgId(req),
+      organizationId,
       isDeleted: false,
     })
       .populate("fixedAssetTypeId")
-      .populate("fixedAssetAccountId", "name")
-      .populate("accumulatedDepreciationAccountId", "name")
-      .populate("depreciationExpenseAccountId", "name");
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code");
 
     if (!asset) throw new NotFoundError("Fixed Asset");
 
@@ -84,6 +158,7 @@ export const getOne = asyncHandler(
 /** POST /api/fixed-assets */
 export const create = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const {
       assetName,
       purchaseDate,
@@ -131,8 +206,15 @@ export const create = asyncHandler(
       throw new ValidationError("depreciationExpenseAccountId is required");
     }
 
+    await validateFixedAssetAccountMappings({
+      organizationId,
+      fixedAssetAccountId,
+      accumulatedDepreciationAccountId,
+      depreciationExpenseAccountId,
+    });
+
     const doc = new FixedAsset({
-      organizationId: orgId(req),
+      organizationId,
       ...req.body,
       depreciationPercentage:
         depreciationMethod === "Declining Balance" ?
@@ -146,9 +228,9 @@ export const create = asyncHandler(
 
     const populated = await FixedAsset.findById(doc._id)
       .populate("fixedAssetTypeId", "name")
-      .populate("fixedAssetAccountId", "name")
-      .populate("accumulatedDepreciationAccountId", "name")
-      .populate("depreciationExpenseAccountId", "name");
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code");
 
     res.status(201).json({ success: true, data: populated });
   },
@@ -157,9 +239,10 @@ export const create = asyncHandler(
 /** PATCH /api/fixed-assets/:id */
 export const update = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const asset = await FixedAsset.findOne({
       _id: req.params.id,
-      organizationId: orgId(req),
+      organizationId,
       isDeleted: false,
     });
 
@@ -214,14 +297,22 @@ export const update = asyncHandler(
       (asset as any).depreciationPercentage = null;
     }
 
+    await validateFixedAssetAccountMappings({
+      organizationId,
+      fixedAssetAccountId: (asset as any).fixedAssetAccountId,
+      accumulatedDepreciationAccountId: (asset as any)
+        .accumulatedDepreciationAccountId,
+      depreciationExpenseAccountId: (asset as any).depreciationExpenseAccountId,
+    });
+
     attachUser(asset as any, req);
     await asset.save();
 
     const populated = await FixedAsset.findById(asset._id)
       .populate("fixedAssetTypeId", "name")
-      .populate("fixedAssetAccountId", "name")
-      .populate("accumulatedDepreciationAccountId", "name")
-      .populate("depreciationExpenseAccountId", "name");
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code");
 
     res.json({ success: true, data: populated });
   },
@@ -230,9 +321,10 @@ export const update = asyncHandler(
 /** DELETE /api/fixed-assets/:id */
 export const remove = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const asset = await FixedAsset.findOne({
       _id: req.params.id,
-      organizationId: orgId(req),
+      organizationId,
     });
 
     if (!asset) throw new NotFoundError("Fixed Asset");
@@ -249,14 +341,15 @@ export const remove = asyncHandler(
 /** GET /api/fixed-assets/types */
 export const listTypes = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const data = await FixedAssetType.find({
-      organizationId: orgId(req),
+      organizationId,
       isDeleted: false,
       isActive: true,
     })
-      .populate("fixedAssetAccountId", "name")
-      .populate("accumulatedDepreciationAccountId", "name")
-      .populate("depreciationExpenseAccountId", "name")
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code")
       .sort({ name: 1 })
       .lean();
 
@@ -267,6 +360,7 @@ export const listTypes = asyncHandler(
 /** POST /api/fixed-assets/types */
 export const createType = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const {
       name,
       depreciationMethod,
@@ -308,8 +402,15 @@ export const createType = asyncHandler(
       throw new ValidationError("depreciationExpenseAccountId is required");
     }
 
+    await validateFixedAssetAccountMappings({
+      organizationId,
+      fixedAssetAccountId,
+      accumulatedDepreciationAccountId,
+      depreciationExpenseAccountId,
+    });
+
     const existing = await FixedAssetType.findOne({
-      organizationId: orgId(req),
+      organizationId,
       name: String(name).trim(),
       isDeleted: false,
     });
@@ -320,7 +421,7 @@ export const createType = asyncHandler(
     }
 
     const doc = new FixedAssetType({
-      organizationId: orgId(req),
+      organizationId,
       ...req.body,
       depreciationPercentage:
         depreciationMethod === "Declining Balance" ?
@@ -333,9 +434,9 @@ export const createType = asyncHandler(
     await doc.save();
 
     const populated = await FixedAssetType.findById(doc._id)
-      .populate("fixedAssetAccountId", "name")
-      .populate("accumulatedDepreciationAccountId", "name")
-      .populate("depreciationExpenseAccountId", "name");
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code");
 
     res.status(201).json({ success: true, data: populated });
   },
@@ -344,9 +445,10 @@ export const createType = asyncHandler(
 /** PATCH /api/fixed-assets/types/:typeId */
 export const updateType = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const type = await FixedAssetType.findOne({
       _id: req.params.typeId,
-      organizationId: orgId(req),
+      organizationId,
       isDeleted: false,
     });
 
@@ -389,13 +491,22 @@ export const updateType = asyncHandler(
       (type as any).depreciationPercentage = null;
     }
 
+    await validateFixedAssetAccountMappings({
+      organizationId,
+      fixedAssetAccountId: (type as any).fixedAssetAccountId,
+      accumulatedDepreciationAccountId: (type as any)
+        .accumulatedDepreciationAccountId,
+      depreciationExpenseAccountId: (type as any)
+        .depreciationExpenseAccountId,
+    });
+
     attachUser(type as any, req);
     await type.save();
 
     const populated = await FixedAssetType.findById(type._id)
-      .populate("fixedAssetAccountId", "name")
-      .populate("accumulatedDepreciationAccountId", "name")
-      .populate("depreciationExpenseAccountId", "name");
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code");
 
     res.json({ success: true, data: populated });
   },
@@ -404,9 +515,10 @@ export const updateType = asyncHandler(
 /** DELETE /api/fixed-assets/types/:typeId */
 export const removeType = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
     const type = await FixedAssetType.findOne({
       _id: req.params.typeId,
-      organizationId: orgId(req),
+      organizationId,
     });
 
     if (!type) throw new NotFoundError("Fixed Asset Type");

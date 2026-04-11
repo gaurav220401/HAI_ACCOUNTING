@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { accountApi, type Account } from "@/lib/api/accounts";
+import {
+  accountApi,
+  type Account,
+  type AccountType,
+} from "@/lib/api/accounts";
 import {
   fixedAssetApi,
   type AssetLifeUnit,
@@ -24,10 +28,14 @@ import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AccountDialog } from "@/components/account-dialog";
 
 interface FixedAssetTypeDialogProps {
   open: boolean;
@@ -48,6 +56,11 @@ interface FormState {
   depreciationExpenseAccountId: string;
 }
 
+type AccountFieldKey =
+  | "fixedAssetAccountId"
+  | "accumulatedDepreciationAccountId"
+  | "depreciationExpenseAccountId";
+
 const defaultState: FormState = {
   name: "",
   depreciationMethod: "Straight Line",
@@ -61,6 +74,31 @@ const defaultState: FormState = {
   depreciationExpenseAccountId: "",
 };
 
+const NEW_ACCOUNT_VALUE = "__new_account__";
+const FIXED_ASSET_ACCOUNT_TYPES: AccountType[] = ["Fixed Asset"];
+const DEPRECIATION_EXPENSE_ACCOUNT_TYPES: AccountType[] = [
+  "Expense",
+  "Cost Of Goods Sold",
+  "Other Expense",
+];
+
+function accountLabel(account: Account): string {
+  const code = String(account.code || "").trim();
+  return code ? `[ ${code} ] ${account.name}` : account.name;
+}
+
+function sortAccounts(rows: Account[]): Account[] {
+  return [...rows].sort((a, b) => {
+    const typeCmp = String(a.accountType || "").localeCompare(
+      String(b.accountType || ""),
+    );
+    if (typeCmp !== 0) return typeCmp;
+    const codeCmp = String(a.code || "").localeCompare(String(b.code || ""));
+    if (codeCmp !== 0) return codeCmp;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
 export function FixedAssetTypeDialog({
   open,
   onOpenChange,
@@ -70,6 +108,9 @@ export function FixedAssetTypeDialog({
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
+  const [createTargetField, setCreateTargetField] =
+    useState<AccountFieldKey>("fixedAssetAccountId");
 
   useEffect(() => {
     if (!open) return;
@@ -78,7 +119,7 @@ export function FixedAssetTypeDialog({
       setLoadingAccounts(true);
       try {
         const res = await accountApi.list({ excludeGroups: true });
-        setAccounts(res.data ?? []);
+        setAccounts(sortAccounts(res.data ?? []));
       } catch {
         toast.error("Failed to load chart of accounts");
       } finally {
@@ -88,6 +129,61 @@ export function FixedAssetTypeDialog({
 
     void loadAccounts();
   }, [open]);
+
+  function openCreateAccountFor(field: AccountFieldKey) {
+    setCreateTargetField(field);
+    setCreateAccountOpen(true);
+  }
+
+  const createAccountTypes =
+    createTargetField === "depreciationExpenseAccountId"
+      ? DEPRECIATION_EXPENSE_ACCOUNT_TYPES
+      : FIXED_ASSET_ACCOUNT_TYPES;
+
+  function setCreatedAccountOnField(field: AccountFieldKey, accountId: string) {
+    if (field === "fixedAssetAccountId") {
+      setForm((prev) => ({ ...prev, fixedAssetAccountId: accountId }));
+      return;
+    }
+    if (field === "accumulatedDepreciationAccountId") {
+      setForm((prev) => ({ ...prev, accumulatedDepreciationAccountId: accountId }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, depreciationExpenseAccountId: accountId }));
+  }
+
+  function handleAccountCreated(savedAccount?: Account) {
+    if (!savedAccount?._id) return;
+    setAccounts((prev) =>
+      sortAccounts([
+        ...prev.filter((account) => account._id !== savedAccount._id),
+        savedAccount,
+      ]),
+    );
+    setCreatedAccountOnField(createTargetField, savedAccount._id);
+  }
+
+  function renderGroupedAccountItems(options: Account[]) {
+    const grouped = options.reduce<Record<string, Account[]>>((acc, account) => {
+      const key = account.accountType || account.rootType || "Accounts";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(account);
+      return acc;
+    }, {});
+
+    return Object.entries(grouped).map(([group, groupAccounts]) => (
+      <SelectGroup key={group}>
+        <SelectLabel className="text-xs font-semibold uppercase tracking-wide">
+          {group}
+        </SelectLabel>
+        {groupAccounts.map((account) => (
+          <SelectItem key={account._id} value={account._id}>
+            {accountLabel(account)}
+          </SelectItem>
+        ))}
+      </SelectGroup>
+    ));
+  }
 
   const fixedAssetAccounts = useMemo(
     () => accounts.filter((a) => a.accountType === "Fixed Asset"),
@@ -175,7 +271,7 @@ export function FixedAssetTypeDialog({
     }
   }
 
-  const accountSelectDisabled = loadingAccounts || accounts.length === 0;
+  const accountSelectDisabled = loadingAccounts;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -314,23 +410,36 @@ export function FixedAssetTypeDialog({
             <Label className="text-red-500">Fixed Asset Account*</Label>
             <Select
               value={form.fixedAssetAccountId}
-              onValueChange={(value) =>
-                setForm((prev) => ({ ...prev, fixedAssetAccountId: value }))
-              }
+              onValueChange={(value) => {
+                if (value === NEW_ACCOUNT_VALUE) {
+                  openCreateAccountFor("fixedAssetAccountId");
+                  return;
+                }
+                setForm((prev) => ({ ...prev, fixedAssetAccountId: value }));
+              }}
               disabled={accountSelectDisabled}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select an account" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                  <Plus className="h-3.5 w-3.5" />
+                  New Account
+                </SelectItem>
+                <SelectSeparator />
                 {(fixedAssetAccounts.length > 0 ?
                   fixedAssetAccounts
                 : accounts
-                ).map((account) => (
-                  <SelectItem key={account._id} value={account._id}>
-                    {account.name}
+                ).length === 0 ? (
+                  <SelectItem value="__none_fixed" disabled>
+                    No accounts available
                   </SelectItem>
-                ))}
+                ) : (
+                  renderGroupedAccountItems(
+                    fixedAssetAccounts.length > 0 ? fixedAssetAccounts : accounts,
+                  )
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -341,23 +450,34 @@ export function FixedAssetTypeDialog({
             </Label>
             <Select
               value={form.accumulatedDepreciationAccountId}
-              onValueChange={(value) =>
+              onValueChange={(value) => {
+                if (value === NEW_ACCOUNT_VALUE) {
+                  openCreateAccountFor("accumulatedDepreciationAccountId");
+                  return;
+                }
                 setForm((prev) => ({
                   ...prev,
                   accumulatedDepreciationAccountId: value,
-                }))
-              }
+                }));
+              }}
               disabled={accountSelectDisabled}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select an account" />
               </SelectTrigger>
               <SelectContent>
-                {accumulatedAccounts.map((account) => (
-                  <SelectItem key={account._id} value={account._id}>
-                    {account.name}
+                <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                  <Plus className="h-3.5 w-3.5" />
+                  New Account
+                </SelectItem>
+                <SelectSeparator />
+                {accumulatedAccounts.length === 0 ? (
+                  <SelectItem value="__none_acc" disabled>
+                    No accounts available
                   </SelectItem>
-                ))}
+                ) : (
+                  renderGroupedAccountItems(accumulatedAccounts)
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -368,24 +488,36 @@ export function FixedAssetTypeDialog({
             </Label>
             <Select
               value={form.depreciationExpenseAccountId}
-              onValueChange={(value) =>
+              onValueChange={(value) => {
+                if (value === NEW_ACCOUNT_VALUE) {
+                  openCreateAccountFor("depreciationExpenseAccountId");
+                  return;
+                }
                 setForm((prev) => ({
                   ...prev,
                   depreciationExpenseAccountId: value,
-                }))
-              }
+                }));
+              }}
               disabled={accountSelectDisabled}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select an account" />
               </SelectTrigger>
               <SelectContent>
-                {(expenseAccounts.length > 0 ? expenseAccounts : accounts).map(
-                  (account) => (
-                    <SelectItem key={account._id} value={account._id}>
-                      {account.name}
-                    </SelectItem>
-                  ),
+                <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                  <Plus className="h-3.5 w-3.5" />
+                  New Account
+                </SelectItem>
+                <SelectSeparator />
+                {(expenseAccounts.length > 0 ? expenseAccounts : accounts)
+                  .length === 0 ? (
+                  <SelectItem value="__none_exp" disabled>
+                    No accounts available
+                  </SelectItem>
+                ) : (
+                  renderGroupedAccountItems(
+                    expenseAccounts.length > 0 ? expenseAccounts : accounts,
+                  )
                 )}
               </SelectContent>
             </Select>
@@ -407,6 +539,20 @@ export function FixedAssetTypeDialog({
             Save
           </Button>
         </div>
+
+        <AccountDialog
+          open={createAccountOpen}
+          onOpenChange={setCreateAccountOpen}
+          allAccounts={accounts}
+          initialAccountType={
+            createTargetField === "depreciationExpenseAccountId"
+              ? "Expense"
+              : "Fixed Asset"
+          }
+          allowedAccountTypes={createAccountTypes}
+          saveLabel="Save and Select"
+          onSaved={handleAccountCreated}
+        />
       </DialogContent>
     </Dialog>
   );

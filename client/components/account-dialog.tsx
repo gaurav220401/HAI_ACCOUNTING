@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -207,10 +207,13 @@ const CURRENCY_OPTIONS = ["INR", "USD", "EUR", "GBP", "AED", "SGD"] as const;
 interface AccountDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: () => void;
+  onSaved: (savedAccount?: Account) => void;
   /** Pass account to edit mode, undefined for create */
   editAccount?: Account | null;
   allAccounts: Account[];
+  initialAccountType?: AccountType;
+  allowedAccountTypes?: AccountType[];
+  saveLabel?: string;
 }
 
 // ─── Dialog ──────────────────────────────────────────────────────────────────
@@ -221,9 +224,36 @@ export function AccountDialog({
   onSaved,
   editAccount,
   allAccounts,
+  initialAccountType,
+  allowedAccountTypes,
+  saveLabel,
 }: AccountDialogProps) {
   const isEdit = !!editAccount;
   const isPredefined = Boolean(editAccount?.isSystemAccount);
+
+  const allowedTypeSet = useMemo(() => {
+    const list =
+      allowedAccountTypes && allowedAccountTypes.length > 0
+        ? allowedAccountTypes
+        : (Object.keys(ACCOUNT_TYPE_META) as AccountType[]);
+    return new Set<AccountType>(list);
+  }, [allowedAccountTypes]);
+
+  const groupedTypeOptions = useMemo(
+    () =>
+      ACCOUNT_TYPE_GROUPS.map((group) => ({
+        rootType: group.rootType,
+        types: group.types.filter((type) => allowedTypeSet.has(type)),
+      })).filter((group) => group.types.length > 0),
+    [allowedTypeSet],
+  );
+
+  const defaultCreateType = useMemo<AccountType>(() => {
+    if (initialAccountType && allowedTypeSet.has(initialAccountType)) {
+      return initialAccountType;
+    }
+    return groupedTypeOptions[0]?.types[0] || "Other Asset";
+  }, [initialAccountType, allowedTypeSet, groupedTypeOptions]);
 
   const [accountType, setAccountType] = useState<AccountType>("Other Asset");
   const [name, setName] = useState("");
@@ -251,7 +281,7 @@ export function AccountDialog({
       setParentId(editAccount.parentId ?? "");
       setIsSubAccount(!!editAccount.parentId);
     } else {
-      setAccountType("Other Asset");
+      setAccountType(defaultCreateType);
       setName("");
       setCode("");
       setAccountNumber("");
@@ -262,7 +292,14 @@ export function AccountDialog({
       setIsSubAccount(false);
     }
     setErrors({});
-  }, [open, editAccount]);
+  }, [open, editAccount, defaultCreateType]);
+
+  useEffect(() => {
+    if (!open || isEdit) return;
+    if (!allowedTypeSet.has(accountType)) {
+      setAccountType(defaultCreateType);
+    }
+  }, [open, isEdit, accountType, allowedTypeSet, defaultCreateType]);
 
   const meta = ACCOUNT_TYPE_META[accountType];
   const selectedRootType = meta?.rootType;
@@ -295,12 +332,15 @@ export function AccountDialog({
         description: description.trim() || undefined,
         parentId: isSubAccount && parentId ? parentId : undefined,
       };
+      let savedAccount: Account | undefined;
       if (isEdit && editAccount) {
-        await accountApi.update(editAccount._id, input);
+        const res = await accountApi.update(editAccount._id, input);
+        savedAccount = res.data;
       } else {
-        await accountApi.create(input);
+        const res = await accountApi.create(input);
+        savedAccount = res.data;
       }
-      onSaved();
+      onSaved(savedAccount);
       onOpenChange(false);
     } catch (e: unknown) {
       setErrors({ general: (e as Error)?.message ?? "Failed to save account" });
@@ -346,7 +386,7 @@ export function AccountDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent position="popper" sideOffset={6} className="max-h-[min(60vh,22rem)]">
-                  {ACCOUNT_TYPE_GROUPS.map((g) => (
+                  {groupedTypeOptions.map((g) => (
                     <SelectGroup key={g.rootType}>
                       <SelectLabel className="text-xs font-bold uppercase tracking-wide text-muted-foreground px-2 py-1">
                         {g.rootType}
@@ -510,7 +550,7 @@ export function AccountDialog({
         {/* Footer */}
         <div className="flex items-center gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t bg-muted/20">
           <Button onClick={handleSave} disabled={saving} className="min-w-[72px]">
-            {saving ? "Saving..." : "Save"}
+            {saving ? "Saving..." : saveLabel || "Save"}
           </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel

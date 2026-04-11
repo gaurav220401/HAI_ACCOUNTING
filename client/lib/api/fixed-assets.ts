@@ -10,6 +10,7 @@ export type FixedAssetStatus = "DRAFT" | "ACTIVE" | "DISPOSED";
 export interface RefName {
   _id: string;
   name: string;
+  code?: string;
 }
 
 export interface FixedAssetType {

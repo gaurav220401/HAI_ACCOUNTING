@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -17,11 +17,18 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { accountApi, type Account } from "@/lib/api/accounts";
+import {
+  accountApi,
+  type Account,
+  type AccountType,
+} from "@/lib/api/accounts";
 import {
   fixedAssetApi,
   type AssetLifeUnit,
@@ -31,6 +38,7 @@ import {
   type FixedAssetType,
 } from "@/lib/api/fixed-assets";
 import { FixedAssetTypeDialog } from "@/components/fixed-asset-type-dialog";
+import { AccountDialog } from "@/components/account-dialog";
 
 type FormState = {
   assetName: string;
@@ -55,6 +63,19 @@ type FormState = {
   accumulatedDepreciationAccountId: string;
   depreciationExpenseAccountId: string;
 };
+
+type AccountFieldKey =
+  | "fixedAssetAccountId"
+  | "accumulatedDepreciationAccountId"
+  | "depreciationExpenseAccountId";
+
+const NEW_ACCOUNT_VALUE = "__new_account__";
+const FIXED_ASSET_ACCOUNT_TYPES: AccountType[] = ["Fixed Asset"];
+const DEPRECIATION_EXPENSE_ACCOUNT_TYPES: AccountType[] = [
+  "Expense",
+  "Cost Of Goods Sold",
+  "Other Expense",
+];
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -99,6 +120,23 @@ function getRefId(value: unknown): string {
   return "";
 }
 
+function accountLabel(account: Account): string {
+  const code = String(account.code || "").trim();
+  return code ? `[ ${code} ] ${account.name}` : account.name;
+}
+
+function sortAccounts(rows: Account[]): Account[] {
+  return [...rows].sort((a, b) => {
+    const typeCmp = String(a.accountType || "").localeCompare(
+      String(b.accountType || ""),
+    );
+    if (typeCmp !== 0) return typeCmp;
+    const codeCmp = String(a.code || "").localeCompare(String(b.code || ""));
+    if (codeCmp !== 0) return codeCmp;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
 function MoneyInput({
   value,
   onChange,
@@ -125,6 +163,20 @@ function MoneyInput({
 }
 
 export default function NewFixedAssetPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <NewFixedAssetPageContent />
+    </Suspense>
+  );
+}
+
+function NewFixedAssetPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const cloneId = searchParams.get("clone");
@@ -142,6 +194,9 @@ export default function NewFixedAssetPage() {
   const [loadingData, setLoadingData] = useState(false);
   const [saving, setSaving] = useState(false);
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
+  const [createTargetField, setCreateTargetField] =
+    useState<AccountFieldKey>("fixedAssetAccountId");
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -163,7 +218,7 @@ export default function NewFixedAssetPage() {
       ]);
 
       setAssetTypes(typesRes.data ?? []);
-      setAccounts(accountsRes.data ?? []);
+      setAccounts(sortAccounts(accountsRes.data ?? []));
 
       if (!cloneId) return;
 
@@ -227,6 +282,39 @@ export default function NewFixedAssetPage() {
     fixedAssetAccountOptions.length > 0 ? fixedAssetAccountOptions : accounts;
   const accountOptionsForExpense =
     expenseAccountOptions.length > 0 ? expenseAccountOptions : accounts;
+
+  const createAccountTypes =
+    createTargetField === "depreciationExpenseAccountId"
+      ? DEPRECIATION_EXPENSE_ACCOUNT_TYPES
+      : FIXED_ASSET_ACCOUNT_TYPES;
+
+  function openCreateAccountFor(field: AccountFieldKey) {
+    setCreateTargetField(field);
+    setCreateAccountOpen(true);
+  }
+
+  function setCreatedAccountOnField(field: AccountFieldKey, accountId: string) {
+    if (field === "fixedAssetAccountId") {
+      setForm((prev) => ({ ...prev, fixedAssetAccountId: accountId }));
+      return;
+    }
+    if (field === "accumulatedDepreciationAccountId") {
+      setForm((prev) => ({ ...prev, accumulatedDepreciationAccountId: accountId }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, depreciationExpenseAccountId: accountId }));
+  }
+
+  function handleAccountCreated(savedAccount?: Account) {
+    if (!savedAccount?._id) return;
+    setAccounts((prev) =>
+      sortAccounts([
+        ...prev.filter((account) => account._id !== savedAccount._id),
+        savedAccount,
+      ]),
+    );
+    setCreatedAccountOnField(createTargetField, savedAccount._id);
+  }
 
   function applyTypeDefaults(typeId: string) {
     const selected = assetTypes.find((type) => type._id === typeId);
@@ -362,10 +450,24 @@ export default function NewFixedAssetPage() {
   }
 
   function renderAccountOptions(options: Account[]) {
-    return options.map((account) => (
-      <SelectItem key={account._id} value={account._id}>
-        {account.name}
-      </SelectItem>
+    const grouped = options.reduce<Record<string, Account[]>>((acc, account) => {
+      const key = account.accountType || account.rootType || "Accounts";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(account);
+      return acc;
+    }, {});
+
+    return Object.entries(grouped).map(([group, groupAccounts]) => (
+      <SelectGroup key={group}>
+        <SelectLabel className="text-xs font-semibold uppercase tracking-wide">
+          {group}
+        </SelectLabel>
+        {groupAccounts.map((account) => (
+          <SelectItem key={account._id} value={account._id}>
+            {accountLabel(account)}
+          </SelectItem>
+        ))}
+      </SelectGroup>
     ));
   }
 
@@ -742,18 +844,33 @@ export default function NewFixedAssetPage() {
                     <Label className="text-red-500">Fixed Asset Account*</Label>
                     <Select
                       value={form.fixedAssetAccountId}
-                      onValueChange={(value) =>
+                      onValueChange={(value) => {
+                        if (value === NEW_ACCOUNT_VALUE) {
+                          openCreateAccountFor("fixedAssetAccountId");
+                          return;
+                        }
                         setForm((prev) => ({
                           ...prev,
                           fixedAssetAccountId: value,
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select an account" />
                       </SelectTrigger>
                       <SelectContent>
-                        {renderAccountOptions(accountOptionsForFixed)}
+                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                          <Plus className="h-3.5 w-3.5" />
+                          New Account
+                        </SelectItem>
+                        <SelectSeparator />
+                        {accountOptionsForFixed.length === 0 ? (
+                          <SelectItem value="__none_fixed" disabled>
+                            No accounts available
+                          </SelectItem>
+                        ) : (
+                          renderAccountOptions(accountOptionsForFixed)
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -764,18 +881,35 @@ export default function NewFixedAssetPage() {
                     </Label>
                     <Select
                       value={form.accumulatedDepreciationAccountId}
-                      onValueChange={(value) =>
+                      onValueChange={(value) => {
+                        if (value === NEW_ACCOUNT_VALUE) {
+                          openCreateAccountFor(
+                            "accumulatedDepreciationAccountId",
+                          );
+                          return;
+                        }
                         setForm((prev) => ({
                           ...prev,
                           accumulatedDepreciationAccountId: value,
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select an account" />
                       </SelectTrigger>
                       <SelectContent>
-                        {renderAccountOptions(accountOptionsForAccumulated)}
+                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                          <Plus className="h-3.5 w-3.5" />
+                          New Account
+                        </SelectItem>
+                        <SelectSeparator />
+                        {accountOptionsForAccumulated.length === 0 ? (
+                          <SelectItem value="__none_acc" disabled>
+                            No accounts available
+                          </SelectItem>
+                        ) : (
+                          renderAccountOptions(accountOptionsForAccumulated)
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -786,18 +920,33 @@ export default function NewFixedAssetPage() {
                     </Label>
                     <Select
                       value={form.depreciationExpenseAccountId}
-                      onValueChange={(value) =>
+                      onValueChange={(value) => {
+                        if (value === NEW_ACCOUNT_VALUE) {
+                          openCreateAccountFor("depreciationExpenseAccountId");
+                          return;
+                        }
                         setForm((prev) => ({
                           ...prev,
                           depreciationExpenseAccountId: value,
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select an account" />
                       </SelectTrigger>
                       <SelectContent>
-                        {renderAccountOptions(accountOptionsForExpense)}
+                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                          <Plus className="h-3.5 w-3.5" />
+                          New Account
+                        </SelectItem>
+                        <SelectSeparator />
+                        {accountOptionsForExpense.length === 0 ? (
+                          <SelectItem value="__none_exp" disabled>
+                            No accounts available
+                          </SelectItem>
+                        ) : (
+                          renderAccountOptions(accountOptionsForExpense)
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -842,6 +991,20 @@ export default function NewFixedAssetPage() {
             });
             applyTypeDefaults(created._id);
           }}
+        />
+
+        <AccountDialog
+          open={createAccountOpen}
+          onOpenChange={setCreateAccountOpen}
+          allAccounts={accounts}
+          initialAccountType={
+            createTargetField === "depreciationExpenseAccountId"
+              ? "Expense"
+              : "Fixed Asset"
+          }
+          allowedAccountTypes={createAccountTypes}
+          saveLabel="Save and Select"
+          onSaved={handleAccountCreated}
         />
       </SidebarInset>
     </SidebarProvider>
