@@ -501,6 +501,23 @@ const REPORTS: ReportDef[] = [
     id: "control-reconciliation", name: "Control Reconciliation", category: "financial-statements",
     apiCall: "controlReconciliation", useAsOf: true, columns: [],
   },
+  // Activity
+  {
+    id: "account-transactions", name: "Account Transactions", category: "activity", apiCall: "accountTransactions",
+    useDateRange: true,
+    columns: [
+      { key: "postingDate", label: "Date", format: "date" },
+      { key: "accountName", label: "Account" },
+      { key: "transactionDetails", label: "Transaction Details" },
+      { key: "transactionType", label: "Transaction Type" },
+      { key: "transactionNo", label: "Transaction#" },
+      { key: "referenceNo", label: "Reference#" },
+      { key: "debit", label: "Debit", align: "right", format: "currency" },
+      { key: "credit", label: "Credit", align: "right", format: "currency" },
+      { key: "amount", label: "Amount", align: "right", format: "currency" },
+      { key: "amountSide", label: "Dr/Cr" },
+    ],
+  },
   // Sales
   {
     id: "sales-by-customer", name: "Sales by Customer", category: "sales", apiCall: "salesByCustomer",

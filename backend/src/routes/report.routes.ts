@@ -5,6 +5,7 @@ import {
   profitAndLoss,
   balanceSheet,
   controlReconciliation,
+  accountTransactionsReport,
   vendorBalanceSummary,
   billDetails,
   paymentsMadeReport,
@@ -30,6 +31,9 @@ router.get("/trial-balance", trialBalance);
 router.get("/profit-loss", profitAndLoss);
 router.get("/balance-sheet", balanceSheet);
 router.get("/control-reconciliation", controlReconciliation);
+
+// Activity
+router.get("/account-transactions", accountTransactionsReport);
 
 // Payables
 router.get("/vendor-balance-summary", vendorBalanceSummary);
