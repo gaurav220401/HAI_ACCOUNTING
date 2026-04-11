@@ -39,6 +39,7 @@ export interface BalanceSheetLine {
   accountId: string;
   code: string;
   name: string;
+  accountType?: string;
   amount: number;
 }
 

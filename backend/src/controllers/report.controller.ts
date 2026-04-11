@@ -272,15 +272,15 @@ export const balanceSheet = asyncHandler(async (req: AuthenticatedRequest, res: 
     if (account.rootType === "Asset") {
       const amount = signed;
       if (Math.abs(amount) < 0.009) continue;
-      assets.push({ accountId, code: account.code || "", name: account.name, amount });
+      assets.push({ accountId, code: account.code || "", name: account.name, accountType: account.accountType, amount });
     } else if (account.rootType === "Liability") {
       const amount = round2(-signed);
       if (Math.abs(amount) < 0.009) continue;
-      liabilities.push({ accountId, code: account.code || "", name: account.name, amount });
+      liabilities.push({ accountId, code: account.code || "", name: account.name, accountType: account.accountType, amount });
     } else if (account.rootType === "Equity") {
       const amount = round2(-signed);
       if (Math.abs(amount) < 0.009) continue;
-      equity.push({ accountId, code: account.code || "", name: account.name, amount });
+      equity.push({ accountId, code: account.code || "", name: account.name, accountType: account.accountType, amount });
     } else if (account.rootType === "Income") {
       incomeTotal = round2(incomeTotal + (-signed));
     } else if (account.rootType === "Expense") {
@@ -290,7 +290,7 @@ export const balanceSheet = asyncHandler(async (req: AuthenticatedRequest, res: 
 
   const currentEarnings = round2(incomeTotal - expenseTotal);
   if (Math.abs(currentEarnings) >= 0.009) {
-    equity.push({ accountId: "__current_earnings__", code: "", name: "Current Earnings", amount: currentEarnings });
+    equity.push({ accountId: "__current_earnings__", code: "", name: "Current Earnings", accountType: "Equity", amount: currentEarnings });
   }
 
   [assets, liabilities, equity].forEach((arr) => arr.sort((a, b) => String(a.name).localeCompare(String(b.name))));
