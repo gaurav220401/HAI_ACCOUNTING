@@ -55,6 +55,7 @@ const billSchema = new Schema<IBill>(
     },
     subject: { type: String, default: "" },
     lineItems: { type: [billLineItemSchema], required: true, default: [] },
+    fixedAssetIds: { type: [Schema.Types.ObjectId], ref: "FixedAsset", default: [] },
     subTotal: { type: Number, default: 0 },
     discountLevel: {
       type: String,

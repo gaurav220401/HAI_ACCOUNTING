@@ -884,6 +884,7 @@ export interface IBill extends Document {
   accountsPayableId?: Types.ObjectId | null; // Accounts Payable account (Liability)
   subject?: string;
   lineItems: IBillLineItem[];
+  fixedAssetIds?: Types.ObjectId[];
   subTotal: number;
   discountLevel: "transaction" | "line_item";
   discountAccountId?: Types.ObjectId | null;

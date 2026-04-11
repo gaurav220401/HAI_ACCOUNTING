@@ -31,6 +31,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { billApi, type Bill, type BillStatus } from "@/lib/api/bills";
+import { ApiError } from "@/lib/api/client";
 import { uploadApi } from "@/lib/api/upload";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -54,6 +55,27 @@ const statusColor: Record<BillStatus, string> = {
   Paid: "text-green-600",
   Void: "text-slate-500",
 };
+
+function getOverdueDays(dueDate?: string | null): number {
+  if (!dueDate) return 0;
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return 0;
+
+  const now = new Date();
+  due.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+
+  const diffMs = now.getTime() - due.getTime();
+  if (diffMs <= 0) return 0;
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function getBillStatusLabel(bill: Pick<Bill, "status" | "dueDate">): string {
+  if (bill.status !== "Overdue") return bill.status;
+  const days = getOverdueDays(bill.dueDate || null);
+  if (days <= 0) return "Overdue";
+  return `Overdue ${days} day${days === 1 ? "" : "s"}`;
+}
 
 function getName(v: any): string {
   if (!v) return "";
@@ -86,6 +108,12 @@ function linkifySystemComment(text: string): string {
       /bill\s+(BILL-\d+)/gi,
       '<a href="/purchases/bills" class="text-blue-600 underline underline-offset-2">bill $1</a>',
     );
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.message || fallback;
+  if (error instanceof Error) return error.message || fallback;
+  return fallback;
 }
 
 async function uploadImage(file: File, folder: string = "general"): Promise<string> {
@@ -558,6 +586,8 @@ function BillDetailPanel({
   const [showExpectedPaymentDialog, setShowExpectedPaymentDialog] = useState(false);
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const [showRecordPaymentDialog, setShowRecordPaymentDialog] = useState(false);
+  const canVoidFromActions = bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid";
+  const overdueDays = bill.status === "Overdue" ? getOverdueDays(bill.dueDate || null) : 0;
 
   // Journal data
   const journalLines = buildJournal(bill);
@@ -621,7 +651,9 @@ function BillDetailPanel({
       onStatusChange(bill._id, "Void");
       toast.success("Bill voided");
       setShowVoidDialog(false);
-    } catch { toast.error("Failed to void bill"); } finally { setUpdatingStatus(false); }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to void bill"));
+    } finally { setUpdatingStatus(false); }
   }
 
   function goToPaymentsMade() {
@@ -703,13 +735,20 @@ function BillDetailPanel({
               Mark as Open
             </button>
           ) : bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid" ? (
-            <button
-              type="button"
-              onClick={goToPaymentsMade}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-50 transition-colors rounded"
-            >
-              <CreditCard className="h-3.5 w-3.5" /> Record Payment
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={goToPaymentsMade}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-50 transition-colors rounded"
+              >
+                <CreditCard className="h-3.5 w-3.5" /> Record Payment
+              </button>
+              {bill.status === "Overdue" && overdueDays > 0 && (
+                <span className="text-xs font-semibold uppercase tracking-wide text-red-600">
+                  Overdue {overdueDays} day{overdueDays === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
           ) : (
             <div className={cn("px-3 py-1.5 text-xs font-bold uppercase tracking-wider mx-1 rounded",
               bill.status === "Paid" ? "text-green-600 bg-green-50" : "text-slate-500 bg-slate-50"
@@ -729,7 +768,7 @@ function BillDetailPanel({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 shadow-xl border-gray-200 mt-1">
-              {bill.status !== "Void" && (
+              {canVoidFromActions && (
                 <DropdownMenuItem
                   className="text-xs py-2.5 cursor-pointer text-blue-600 font-semibold bg-blue-50/50 hover:bg-blue-50 focus:bg-blue-50 focus:text-blue-600"
                   onClick={handleMarkAsVoid}
@@ -1225,6 +1264,7 @@ function BillsPageContent() {
   const [filterStatus, setFilterStatus] = useState<"" | BillStatus>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedBillDetails, setSelectedBillDetails] = useState<Bill | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [toDelete, setToDelete] = useState<Bill | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showFilterDD, setShowFilterDD] = useState(false);
@@ -1253,6 +1293,10 @@ function BillsPageContent() {
     const paramId = searchParams.get("billId");
     if (paramId) setSelectedId(paramId);
   }, [searchParams]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => bills.some((bill) => bill._id === id)));
+  }, [bills]);
 
   useEffect(() => {
     if (!selectedId || !firebaseUser || !activeOrganization?._id) {
@@ -1287,6 +1331,25 @@ function BillsPageContent() {
     return [(b.billNumber || ""), (b.referenceNumber || ""), getName(b.vendorId)].some((v) => v.toLowerCase().includes(s));
   });
 
+  const visibleBillIds = filtered.map((bill) => bill._id);
+  const allVisibleSelected = visibleBillIds.length > 0 && visibleBillIds.every((id) => selectedIds.includes(id));
+
+  function toggleSelectAllVisible(checked: boolean) {
+    if (checked) {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...visibleBillIds])));
+      return;
+    }
+    setSelectedIds((prev) => prev.filter((id) => !visibleBillIds.includes(id)));
+  }
+
+  function toggleSelectBill(id: string, checked: boolean) {
+    if (checked) {
+      setSelectedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      return;
+    }
+    setSelectedIds((prev) => prev.filter((selectedIdValue) => selectedIdValue !== id));
+  }
+
   const selectedBillFromList = bills.find((b) => b._id === selectedId) ?? null;
   const selectedBill = selectedBillDetails && selectedBillDetails._id === selectedId
     ? selectedBillDetails
@@ -1306,12 +1369,112 @@ function BillsPageContent() {
       await billApi.remove(toDelete._id);
       toast.success("Bill deleted");
       setBills((prev) => prev.filter((b) => b._id !== toDelete._id));
+      setSelectedIds((prev) => prev.filter((id) => id !== toDelete._id));
       if (selectedId === toDelete._id) setSelectedId(null);
-    } catch { toast.error("Failed to delete"); } finally { setDeleting(false); setToDelete(null); }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to delete"));
+    } finally { setDeleting(false); setToDelete(null); }
   }
 
   function handleStatusChange(id: string, status: BillStatus) {
     setBills((prev) => prev.map((b) => b._id === id ? { ...b, status } : b));
+    setSelectedBillDetails((prev) => prev && prev._id === id ? { ...prev, status } : prev);
+  }
+
+  async function handleQuickVoidFromList(bill: Bill) {
+    try {
+      await billApi.void(bill._id, "Voided from bills list actions");
+      handleStatusChange(bill._id, "Void");
+      toast.success("Bill voided");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to void bill"));
+    }
+  }
+
+  async function handleBulkDeleteSelected() {
+    const selectedBills = bills.filter((bill) => selectedIds.includes(bill._id));
+    if (selectedBills.length === 0) {
+      toast.error("Select at least one bill to delete");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const results = await Promise.allSettled(selectedBills.map((bill) => billApi.remove(bill._id)));
+      const deletedIds: string[] = [];
+      let failedCount = 0;
+
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          deletedIds.push(selectedBills[index]._id);
+        } else {
+          failedCount += 1;
+        }
+      });
+
+      if (deletedIds.length > 0) {
+        setBills((prev) => prev.filter((bill) => !deletedIds.includes(bill._id)));
+        setSelectedIds((prev) => prev.filter((id) => !deletedIds.includes(id)));
+        if (selectedId && deletedIds.includes(selectedId)) {
+          setSelectedId(null);
+          setSelectedBillDetails(null);
+        }
+      }
+
+      if (failedCount === 0) {
+        toast.success(`Deleted ${deletedIds.length} bill(s)`);
+      } else {
+        toast.error(`Deleted ${deletedIds.length} bill(s), failed ${failedCount}`);
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to delete selected bills"));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleBulkVoidSelected() {
+    const selectedBills = bills.filter((bill) => selectedIds.includes(bill._id));
+    const voidableBills = selectedBills.filter(
+      (bill) => bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid",
+    );
+
+    if (voidableBills.length === 0) {
+      toast.error("Select Open, Overdue, or Partially Paid bills to void");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        voidableBills.map((bill) => billApi.void(bill._id, "Voided from bills bulk actions")),
+      );
+
+      const voidedIds: string[] = [];
+      let failedCount = 0;
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          voidedIds.push(voidableBills[index]._id);
+        } else {
+          failedCount += 1;
+        }
+      });
+
+      if (voidedIds.length > 0) {
+        setBills((prev) => prev.map((bill) => (voidedIds.includes(bill._id) ? { ...bill, status: "Void" } : bill)));
+        setSelectedBillDetails((prev) => prev && voidedIds.includes(prev._id) ? { ...prev, status: "Void" } : prev);
+      }
+
+      if (failedCount === 0) {
+        toast.success(`Voided ${voidedIds.length} bill(s)`);
+      } else {
+        toast.error(`Voided ${voidedIds.length} bill(s), failed ${failedCount}`);
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to void selected bills"));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function handlePrint(id: string) {
@@ -1370,6 +1533,27 @@ function BillsPageContent() {
             )}
             actions={(
               <div className="flex items-center gap-1.5">
+                {selectedIds.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 gap-1 text-sm border-blue-200 text-blue-700">
+                        {selectedIds.length} Selected <ChevronDown className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onClick={handleBulkVoidSelected}>
+                        <X className="h-3.5 w-3.5 mr-2" /> Void Selected
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleBulkDeleteSelected} className="text-destructive focus:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete Selected
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setSelectedIds([])}>
+                        Clear Selection
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <Button
                   size="sm"
                   className="h-8 gap-1 text-sm bg-blue-600 hover:bg-blue-700"
@@ -1454,7 +1638,12 @@ function BillsPageContent() {
               <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
                 {!selectedBill && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-1">
-                    <input type="checkbox" className="rounded border" />
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={allVisibleSelected}
+                      onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                    />
                     <span className="ml-1 font-medium uppercase tracking-wide">DATE</span>
                     <span className="ml-auto font-medium uppercase tracking-wide">BILL#</span>
                   </div>
@@ -1481,7 +1670,14 @@ function BillsPageContent() {
                   className="grid text-[11px] uppercase tracking-wide text-muted-foreground font-medium border-b bg-muted/10 shrink-0"
                   style={{ gridTemplateColumns: "36px 90px 150px 130px 1fr 120px 100px 110px 36px" }}
                 >
-                  <div className="px-3 py-2 flex items-center"><input type="checkbox" className="rounded border" /></div>
+                  <div className="px-3 py-2 flex items-center">
+                    <input
+                      type="checkbox"
+                      className="rounded border"
+                      checked={allVisibleSelected}
+                      onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                    />
+                  </div>
                   <div className="px-2 py-2">Date</div>
                   <div className="px-2 py-2">Bill#</div>
                   <div className="px-2 py-2">Reference#</div>
@@ -1556,7 +1752,7 @@ function BillsPageContent() {
                             <div className="text-xs text-muted-foreground mt-0.5">
                               {b.billNumber} • {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>
-                            <div className={cn("text-xs font-medium mt-0.5 uppercase tracking-wide", statusColor[b.status])}>{b.status}</div>
+                            <div className={cn("text-xs font-medium mt-0.5 uppercase tracking-wide", statusColor[b.status])}>{getBillStatusLabel(b)}</div>
                           </div>
                           <div className="text-sm font-semibold shrink-0">₹{fmtCur(b.total)}</div>
                         </div>
@@ -1574,7 +1770,12 @@ function BillsPageContent() {
                         onClick={() => setSelectedId(b._id)}
                       >
                         <div className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" className="rounded border" />
+                          <input
+                            type="checkbox"
+                            className="rounded border"
+                            checked={selectedIds.includes(b._id)}
+                            onChange={(e) => toggleSelectBill(b._id, e.target.checked)}
+                          />
                         </div>
                         <div className="px-2 py-2.5 text-muted-foreground text-xs">
                           {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
@@ -1582,7 +1783,7 @@ function BillsPageContent() {
                         <div className="px-2 py-2.5 text-primary font-medium">{b.billNumber}</div>
                         <div className="px-2 py-2.5 text-muted-foreground">{b.referenceNumber || ""}</div>
                         <div className="px-2 py-2.5">{getName(b.vendorId)}</div>
-                        <div className={cn("px-2 py-2.5 text-xs font-medium uppercase tracking-wide", statusColor[b.status])}>{b.status}</div>
+                        <div className={cn("px-2 py-2.5 text-xs font-medium uppercase tracking-wide", statusColor[b.status])}>{getBillStatusLabel(b)}</div>
                         <div className="px-2 py-2.5 text-right font-medium">₹{fmtCur(b.total)}</div>
                         <div className="px-2 py-2.5 text-right text-muted-foreground">₹{fmtCur(b.balanceDue ?? b.total ?? 0)}</div>
                         <div className="px-2 py-2.5 opacity-0 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
@@ -1594,6 +1795,16 @@ function BillsPageContent() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => router.push(`/purchases/bills/${b._id}/edit`)}>Edit</DropdownMenuItem>
+                              {(b.status === "Open" || b.status === "Overdue" || b.status === "Partially Paid") && (
+                                <DropdownMenuItem onClick={() => router.push(`/purchases/payments-made/new?billId=${b._id}`)}>
+                                  Record Payment
+                                </DropdownMenuItem>
+                              )}
+                              {(b.status === "Open" || b.status === "Overdue" || b.status === "Partially Paid") && (
+                                <DropdownMenuItem onClick={() => { void handleQuickVoidFromList(b); }}>
+                                  Void
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"

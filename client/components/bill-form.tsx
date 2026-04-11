@@ -928,6 +928,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   const [billDate, setBillDate] = useState(initialData?.billDate ? initialData.billDate.split("T")[0] : TODAY());
   const [dueDate, setDueDate] = useState(initialData?.dueDate ? initialData.dueDate.split("T")[0] : "");
   const [paymentTermsId, setPaymentTermsId] = useState(initialData?.paymentTermsId?._id || initialData?.paymentTermsId || "");
+   const [accountsPayableId, setAccountsPayableId] = useState(
+      initialData?.accountsPayableId?._id || initialData?.accountsPayableId || "",
+   );
   const [subject, setSubject] = useState(initialData?.subject || "");
   const [discountLevel, setDiscountLevel] = useState<DiscountLevel>(initialData?.discountLevel || "transaction");
    const [discountAccountId, setDiscountAccountId] = useState(initialData?.discountAccountId?._id || initialData?.discountAccountId || "");
@@ -968,6 +971,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   useEffect(() => {
     if (initialData) {
          setReferenceNumber(initialData.referenceNumber || "");
+         setAccountsPayableId(initialData.accountsPayableId?._id || initialData.accountsPayableId || "");
       setDiscountPercent(initialData.discountPercent || 0);
          setDiscountAccountId(initialData.discountAccountId?._id || initialData.discountAccountId || "");
       setTaxType(initialData.taxType || "none");
@@ -1068,6 +1072,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
              setDiscountLevel(bill.discountLevel || "transaction");
              setDiscountPercent(bill.discountPercent || 0);
             setDiscountAccountId(bill.discountAccountId?._id || bill.discountAccountId || "");
+               setAccountsPayableId(bill.accountsPayableId?._id || bill.accountsPayableId || "");
              setTaxType(bill.taxType || "none");
              setTdsId(bill.tdsId?._id || bill.tdsId || "");
              setTcsId(bill.tcsId?._id || bill.tcsId || "");
@@ -1192,7 +1197,25 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          return next;
       });
       setVendorId(vendor._id);
+      setAccountsPayableId(vendor.accountsPayableId || "");
    }
+
+   useEffect(() => {
+      if (!accounts.length || accountsPayableId) return;
+      const defaultPayable = accounts.find((account) => account.accountType === "Accounts Payable");
+      if (defaultPayable) {
+         setAccountsPayableId(defaultPayable._id);
+      }
+   }, [accounts, accountsPayableId]);
+
+   useEffect(() => {
+      if (!vendorId) return;
+      const selectedVendor = vendors.find((vendor) => vendor._id === vendorId);
+      const vendorPayable = selectedVendor?.accountsPayableId || "";
+      if (vendorPayable) {
+         setAccountsPayableId(vendorPayable);
+      }
+   }, [vendorId, vendors]);
 
    async function handleCreateItemForRow(rowId: string, providedName?: string) {
       const row = rows.find((r) => r.id === rowId);
@@ -1334,6 +1357,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
            billDate,
            dueDate: dueDate || null,
            paymentTermsId: paymentTermsId || null,
+           accountsPayableId: accountsPayableId || null,
            subject,
            discountLevel,
            discountAccountId: discountAccountId || null,
@@ -1397,7 +1421,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                            setShowCreateVendor(true);
                            return;
                         }
+                        const selectedVendor = vendors.find((v) => v._id === next);
                         setVendorId(next);
+                        setAccountsPayableId(selectedVendor?.accountsPayableId || "");
                      }}
                   >
                      <option value="">Select a Vendor</option>
@@ -1451,6 +1477,25 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                      {paymentTerms.map((pt) => (
                         <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
                      ))}
+                  </SelectContent>
+               </Select>
+            </div>
+            <div className="flex items-center gap-3">
+               <Label className="text-sm font-medium w-36 shrink-0">Accounts Payable</Label>
+               <Select
+                  value={accountsPayableId || "__auto__"}
+                  onValueChange={(value) => setAccountsPayableId(value === "__auto__" ? "" : value)}
+               >
+                  <SelectTrigger className="h-9 text-sm flex-1">
+                     <SelectValue placeholder="Auto from Vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                     <SelectItem value="__auto__">Auto from Vendor</SelectItem>
+                     {accounts
+                        .filter((account) => account.accountType === "Accounts Payable")
+                        .map((account) => (
+                           <SelectItem key={account._id} value={account._id}>{account.name}</SelectItem>
+                        ))}
                   </SelectContent>
                </Select>
             </div>

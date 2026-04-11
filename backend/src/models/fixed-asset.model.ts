@@ -18,6 +18,8 @@ export interface IFixedAsset extends Document {
   organizationId: Types.ObjectId;
   assetName: string;
   assetNumber: string;
+  sourceBillId?: Types.ObjectId | null;
+  sourceBillNumber?: string;
   purchaseValue: number;
   purchaseQuantity: number;
   currentQuantity: number;
@@ -58,6 +60,8 @@ const fixedAssetSchema = new Schema<IFixedAsset>(
     },
     assetName: { type: String, required: true, trim: true },
     assetNumber: { type: String, sparse: true },
+    sourceBillId: { type: Schema.Types.ObjectId, ref: "Bill", default: null },
+    sourceBillNumber: { type: String, default: "" },
     purchaseValue: { type: Number, required: true, min: 0, default: 0 },
     purchaseQuantity: { type: Number, min: 0, default: 1 },
     currentQuantity: { type: Number, min: 0, default: 1 },
@@ -127,6 +131,7 @@ fixedAssetSchema.plugin(activityLogPlugin);
 fixedAssetSchema.plugin(softDeletePlugin);
 
 fixedAssetSchema.index({ organizationId: 1, purchaseDate: -1 });
+fixedAssetSchema.index({ organizationId: 1, sourceBillId: 1 });
 fixedAssetSchema.index(
   { organizationId: 1, assetNumber: 1 },
   {

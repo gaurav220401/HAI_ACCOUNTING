@@ -291,8 +291,26 @@ function buildDepreciationProjection(
 }
 
 function AssetOverview({ asset }: { asset: FixedAsset }) {
+  const billId = asset.sourceBillId || "";
+  const billNumber = String(asset.sourceBillNumber || "").trim();
+
   return (
     <div className="space-y-6 p-4">
+      {billId ? (
+        <section className="rounded-md border bg-muted/10 p-4">
+          <h3 className="text-lg font-medium">Associated Transactions</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Bill - {" "}
+            <Link
+              href={`/purchases/bills?billId=${billId}`}
+              className="font-medium text-primary hover:underline"
+            >
+              {billNumber || "View Bill"}
+            </Link>
+          </p>
+        </section>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="rounded-md border bg-muted/20 p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">

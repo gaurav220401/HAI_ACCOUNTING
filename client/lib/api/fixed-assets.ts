@@ -36,6 +36,8 @@ export interface FixedAsset {
   organizationId: string;
   assetName: string;
   assetNumber: string;
+  sourceBillId?: string | null;
+  sourceBillNumber?: string;
   purchaseValue: number;
   purchaseQuantity: number;
   currentQuantity: number;

@@ -11,6 +11,7 @@ import {
 import FixedAsset from "../models/fixed-asset.model";
 import FixedAssetType from "../models/fixed-asset-type.model";
 import Account from "../models/account.model";
+import Bill from "../models/bill.model";
 
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -88,6 +89,57 @@ async function validateFixedAssetAccountMappings(params: {
   }
 }
 
+async function hydrateLegacySourceBillInfo(
+  organizationId: Types.ObjectId,
+  assets: any[],
+): Promise<any[]> {
+  if (!assets.length) return assets;
+
+  const missingAssetIds = assets
+    .filter((asset) => !asset.sourceBillId)
+    .map((asset) => String(asset._id || ""))
+    .filter((id) => Types.ObjectId.isValid(id));
+
+  if (!missingAssetIds.length) return assets;
+
+  const bills = await Bill.find({
+    organizationId,
+    isDeleted: false,
+    fixedAssetIds: {
+      $in: missingAssetIds.map((id) => new Types.ObjectId(id)),
+    },
+  })
+    .select("billNumber fixedAssetIds")
+    .lean();
+
+  if (!bills.length) return assets;
+
+  const sourceByAssetId = new Map<string, { billId: string; billNumber: string }>();
+  for (const bill of bills) {
+    const billId = String(bill._id || "");
+    const billNumber = String((bill as any).billNumber || "").trim();
+    const fixedAssetIds = Array.isArray((bill as any).fixedAssetIds) ? (bill as any).fixedAssetIds : [];
+
+    for (const fixedAssetId of fixedAssetIds) {
+      const assetId = String(fixedAssetId || "");
+      if (!assetId || sourceByAssetId.has(assetId)) continue;
+      sourceByAssetId.set(assetId, { billId, billNumber });
+    }
+  }
+
+  return assets.map((asset) => {
+    if (asset.sourceBillId) return asset;
+    const source = sourceByAssetId.get(String(asset._id || ""));
+    if (!source) return asset;
+
+    return {
+      ...asset,
+      sourceBillId: source.billId,
+      sourceBillNumber: source.billNumber,
+    };
+  });
+}
+
 /** GET /api/fixed-assets?status=DRAFT|ACTIVE|DISPOSED|All&search=&page=1&limit=25 */
 export const list = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -122,9 +174,11 @@ export const list = asyncHandler(
       .limit(+limit)
       .lean();
 
+    const hydrated = await hydrateLegacySourceBillInfo(organizationId, data as any[]);
+
     res.json({
       success: true,
-      data,
+      data: hydrated,
       pagination: {
         total,
         page: +page,
@@ -147,11 +201,14 @@ export const getOne = asyncHandler(
       .populate("fixedAssetTypeId")
       .populate("fixedAssetAccountId", "name code")
       .populate("accumulatedDepreciationAccountId", "name code")
-      .populate("depreciationExpenseAccountId", "name code");
+      .populate("depreciationExpenseAccountId", "name code")
+      .lean();
 
     if (!asset) throw new NotFoundError("Fixed Asset");
 
-    res.json({ success: true, data: asset });
+    const [hydrated] = await hydrateLegacySourceBillInfo(organizationId, [asset]);
+
+    res.json({ success: true, data: hydrated });
   },
 );
 
