@@ -278,6 +278,14 @@ export const create = asyncHandler(
           Number(depreciationPercentage)
         : null,
       status: req.body.status || "DRAFT",
+      comments: [
+        {
+          author: req.user?.name || req.user?.email || "System",
+          text: "Fixed asset created.",
+          time: new Date(),
+          isSystem: true,
+        },
+      ],
     });
 
     attachUser(doc as any, req);
@@ -304,6 +312,8 @@ export const update = asyncHandler(
     });
 
     if (!asset) throw new NotFoundError("Fixed Asset");
+
+    const previousStatus = String(asset.status || "").toUpperCase();
 
     const allowed = [
       "assetName",
@@ -354,6 +364,16 @@ export const update = asyncHandler(
       (asset as any).depreciationPercentage = null;
     }
 
+    const nextStatus = String((asset as any).status || "").toUpperCase();
+    if (previousStatus && nextStatus && previousStatus !== nextStatus) {
+      (asset as any).comments.push({
+        author: req.user?.name || req.user?.email || "System",
+        text: `Status changed from ${previousStatus} to ${nextStatus}.`,
+        time: new Date(),
+        isSystem: true,
+      });
+    }
+
     await validateFixedAssetAccountMappings({
       organizationId,
       fixedAssetAccountId: (asset as any).fixedAssetAccountId,
@@ -375,6 +395,37 @@ export const update = asyncHandler(
   },
 );
 
+/** POST /api/fixed-assets/:id/comments */
+export const addComment = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
+    const text = String(req.body.text || "").trim();
+
+    if (!text) throw new ValidationError("Comment text is required");
+
+    const asset = await FixedAsset.findOne({
+      _id: req.params.id,
+      organizationId,
+      isDeleted: false,
+    });
+
+    if (!asset) throw new NotFoundError("Fixed Asset");
+
+    (asset as any).comments.push({
+      author: req.user?.name || req.user?.email || "User",
+      text,
+      time: new Date(),
+      isSystem: req.body.isSystem === true,
+    });
+
+    attachUser(asset as any, req);
+    await asset.save();
+
+    const comments = (asset as any).comments || [];
+    res.json({ success: true, data: comments[comments.length - 1] });
+  },
+);
+
 /** DELETE /api/fixed-assets/:id */
 export const remove = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -386,6 +437,12 @@ export const remove = asyncHandler(
 
     if (!asset) throw new NotFoundError("Fixed Asset");
 
+    (asset as any).comments.push({
+      author: req.user?.name || req.user?.email || "System",
+      text: "Fixed asset deleted.",
+      time: new Date(),
+      isSystem: true,
+    });
     asset.isDeleted = true;
     asset.deletedAt = new Date();
     attachUser(asset as any, req);

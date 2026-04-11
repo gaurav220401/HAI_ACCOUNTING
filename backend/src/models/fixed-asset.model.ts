@@ -14,6 +14,13 @@ import {
 
 export type FixedAssetStatus = "DRAFT" | "ACTIVE" | "DISPOSED";
 
+export interface IFixedAssetComment {
+  author: string;
+  text: string;
+  time: Date;
+  isSystem: boolean;
+}
+
 export interface IFixedAsset extends Document {
   organizationId: Types.ObjectId;
   assetName: string;
@@ -41,6 +48,7 @@ export interface IFixedAsset extends Document {
   accumulatedDepreciationAccountId: Types.ObjectId;
   depreciationExpenseAccountId: Types.ObjectId;
   status: FixedAssetStatus;
+  comments: IFixedAssetComment[];
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date | null;
@@ -120,6 +128,17 @@ const fixedAssetSchema = new Schema<IFixedAsset>(
       enum: ["DRAFT", "ACTIVE", "DISPOSED"],
       default: "DRAFT",
       index: true,
+    },
+    comments: {
+      type: [
+        {
+          author: { type: String, required: true },
+          text: { type: String, required: true },
+          time: { type: Date, default: Date.now },
+          isSystem: { type: Boolean, default: false },
+        },
+      ],
+      default: [],
     },
     isActive: { type: Boolean, default: true },
   },

@@ -14,6 +14,7 @@ router.delete("/types/:typeId", ctrl.removeType);
 router.get("/", ctrl.list);
 router.get("/:id", ctrl.getOne);
 router.post("/", ctrl.create);
+router.post("/:id/comments", ctrl.addComment);
 router.patch("/:id", ctrl.update);
 router.delete("/:id", ctrl.remove);
 

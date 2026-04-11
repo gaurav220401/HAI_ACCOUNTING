@@ -7,6 +7,13 @@ export type AssetLifeUnit = "Months" | "Days";
 export type ComputationType = "Non Pro Rata" | "Pro Rata";
 export type FixedAssetStatus = "DRAFT" | "ACTIVE" | "DISPOSED";
 
+export interface FixedAssetComment {
+  author: string;
+  text: string;
+  time: string;
+  isSystem: boolean;
+}
+
 export interface RefName {
   _id: string;
   name: string;
@@ -59,6 +66,7 @@ export interface FixedAsset {
   accumulatedDepreciationAccountId: string | RefName;
   depreciationExpenseAccountId: string | RefName;
   status: FixedAssetStatus;
+  comments?: FixedAssetComment[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -139,6 +147,13 @@ export const fixedAssetApi = {
   remove: (id: string) =>
     apiFetch<{ success: boolean; message: string }>(`/fixed-assets/${id}`, {
       method: "DELETE",
+    }),
+
+  addComment: (id: string, text: string, isSystem = false) =>
+    apiFetch<{ data: FixedAssetComment }>(`/fixed-assets/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text, isSystem }),
+      headers: { "Content-Type": "application/json" },
     }),
 
   listTypes: () => apiFetch<{ data: FixedAssetType[] }>("/fixed-assets/types"),

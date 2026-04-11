@@ -436,6 +436,14 @@ async function createDraftFixedAssetsForBill(bill: any, req: AuthenticatedReques
       accumulatedDepreciationAccountId: fixedAssetType.accumulatedDepreciationAccountId,
       depreciationExpenseAccountId: fixedAssetType.depreciationExpenseAccountId,
       status: "DRAFT",
+      comments: [
+        {
+          author: req.user?.name || req.user?.email || "System",
+          text: `Fixed asset created from bill ${bill.billNumber}.`,
+          time: new Date(),
+          isSystem: true,
+        },
+      ],
     });
     attachUser(asset, req);
     await asset.save();

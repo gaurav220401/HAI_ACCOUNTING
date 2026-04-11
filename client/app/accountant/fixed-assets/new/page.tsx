@@ -35,6 +35,7 @@ import {
   type ComputationType,
   type DepreciationFrequency,
   type DepreciationMethod,
+  type FixedAssetStatus,
   type FixedAssetType,
 } from "@/lib/api/fixed-assets";
 import { FixedAssetTypeDialog } from "@/components/fixed-asset-type-dialog";
@@ -180,6 +181,9 @@ function NewFixedAssetPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const cloneId = searchParams.get("clone");
+  const editId = searchParams.get("edit");
+  const sourceAssetId = editId || cloneId;
+  const isEditMode = Boolean(editId);
 
   const { firebaseUser, loading } = useAuth();
   const {
@@ -197,6 +201,7 @@ function NewFixedAssetPageContent() {
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [createTargetField, setCreateTargetField] =
     useState<AccountFieldKey>("fixedAssetAccountId");
+  const [editStatus, setEditStatus] = useState<FixedAssetStatus | null>(null);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -220,10 +225,15 @@ function NewFixedAssetPageContent() {
       setAssetTypes(typesRes.data ?? []);
       setAccounts(sortAccounts(accountsRes.data ?? []));
 
-      if (!cloneId) return;
+      if (!sourceAssetId) return;
 
-      const cloned = await fixedAssetApi.getById(cloneId);
+      const cloned = await fixedAssetApi.getById(sourceAssetId);
       const asset = cloned.data;
+      if (isEditMode) {
+        setEditStatus(asset.status);
+      } else {
+        setEditStatus(null);
+      }
       setForm({
         assetName: asset.assetName,
         purchaseValue: String(asset.purchaseValue || ""),
@@ -258,7 +268,7 @@ function NewFixedAssetPageContent() {
     } finally {
       setLoadingData(false);
     }
-  }, [activeOrganization?._id, cloneId]);
+  }, [activeOrganization?._id, sourceAssetId, isEditMode]);
 
   useEffect(() => {
     if (!loading && !orgLoading && firebaseUser && activeOrganization?._id) {
@@ -412,7 +422,7 @@ function NewFixedAssetPageContent() {
 
     setSaving(true);
     try {
-      await fixedAssetApi.create({
+      const payload = {
         assetName: form.assetName.trim(),
         purchaseValue,
         purchaseQuantity,
@@ -437,10 +447,22 @@ function NewFixedAssetPageContent() {
         fixedAssetAccountId: form.fixedAssetAccountId,
         accumulatedDepreciationAccountId: form.accumulatedDepreciationAccountId,
         depreciationExpenseAccountId: form.depreciationExpenseAccountId,
-        status: "DRAFT",
-      });
+      };
 
-      toast.success("Fixed asset saved as draft");
+      if (isEditMode && editId) {
+        await fixedAssetApi.update(editId, {
+          ...payload,
+          status: editStatus || undefined,
+        });
+        toast.success("Fixed asset updated");
+      } else {
+        await fixedAssetApi.create({
+          ...payload,
+          status: "DRAFT",
+        });
+        toast.success("Fixed asset saved as draft");
+      }
+
       router.push("/accountant/fixed-assets");
     } catch (error) {
       toast.error((error as Error).message || "Failed to save fixed asset");
@@ -491,6 +513,8 @@ function NewFixedAssetPageContent() {
     );
   }
 
+  const formTitle = isEditMode ? "Edit Fixed Asset" : cloneId ? "Clone Fixed Asset" : "New Fixed Asset";
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -507,7 +531,7 @@ function NewFixedAssetPageContent() {
                 Fixed Assets
               </button>
               <span className="text-muted-foreground">/</span>
-              <span className="font-medium">New Fixed Asset</span>
+              <span className="font-medium">{formTitle}</span>
             </div>
           }
         />
@@ -515,7 +539,7 @@ function NewFixedAssetPageContent() {
         <main className="p-4 md:p-6">
           <div className="rounded-lg border bg-background">
             <div className="px-5 py-4 border-b flex items-center justify-between">
-              <h1 className="text-2xl font-semibold">New Fixed Asset</h1>
+              <h1 className="text-2xl font-semibold">{formTitle}</h1>
             </div>
 
             <div className="p-5 space-y-6">
@@ -974,7 +998,7 @@ function NewFixedAssetPageContent() {
                   {saving ?
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   : null}
-                  Save as Draft
+                  {isEditMode ? "Save Changes" : "Save as Draft"}
                 </Button>
               </div>
             </div>

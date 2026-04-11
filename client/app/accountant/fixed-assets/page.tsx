@@ -12,7 +12,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ChevronLeft, Edit, Loader2, MoreVertical, Plus, Search } from "lucide-react";
+import {
+  ChevronLeft,
+  Edit,
+  Loader2,
+  MessageSquare,
+  MoreVertical,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -21,6 +31,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -28,6 +39,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { FixedAssetTypeDialog } from "@/components/fixed-asset-type-dialog";
 import {
   fixedAssetApi,
@@ -96,6 +113,20 @@ function toDateString(input: string | undefined | null) {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  });
+}
+
+function toDateTimeString(input: string | Date | undefined | null) {
+  if (!input) return "-";
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -579,6 +610,10 @@ export default function FixedAssetsPage() {
   const [typeDialogMode, setTypeDialogMode] = useState<"create" | "edit" | "clone">("create");
   const [selectedType, setSelectedType] = useState<FixedAssetType | null>(null);
   const [assetTypes, setAssetTypes] = useState<FixedAssetType[]>([]);
+  const [showComments, setShowComments] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [addingComment, setAddingComment] = useState(false);
+  const [deletingAsset, setDeletingAsset] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -642,6 +677,22 @@ export default function FixedAssetsPage() {
     [rows, selectedId],
   );
 
+  const selectedComments = useMemo(() => {
+    if (!selectedAsset) return [];
+
+    const current = Array.isArray(selectedAsset.comments) ? selectedAsset.comments : [];
+    if (current.length > 0) return current;
+
+    return [
+      {
+        author: "System",
+        text: "Fixed asset created.",
+        time: selectedAsset.createdAt,
+        isSystem: true,
+      },
+    ];
+  }, [selectedAsset]);
+
   useEffect(() => {
     if (!rows.length) {
       setSelectedId(null);
@@ -652,6 +703,11 @@ export default function FixedAssetsPage() {
       setSelectedId(null);
     }
   }, [rows, selectedId]);
+
+  useEffect(() => {
+    setCommentText("");
+    setShowComments(false);
+  }, [selectedId]);
 
   async function handleMarkActive() {
     if (!selectedAsset) return;
@@ -670,6 +726,56 @@ export default function FixedAssetsPage() {
       toast.error((error as Error).message || "Failed to mark asset as active");
     } finally {
       setMarkingActive(false);
+    }
+  }
+
+  async function handleDeleteAsset() {
+    if (!selectedAsset) return;
+
+    const assetLabel = selectedAsset.assetName || selectedAsset.assetNumber;
+    const ok =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(`Delete fixed asset \"${assetLabel}\"?`);
+    if (!ok) return;
+
+    setDeletingAsset(true);
+    try {
+      await fixedAssetApi.remove(selectedAsset._id);
+      setRows((prev) => prev.filter((row) => row._id !== selectedAsset._id));
+      setShowComments(false);
+      toast.success("Fixed asset deleted");
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to delete fixed asset");
+    } finally {
+      setDeletingAsset(false);
+    }
+  }
+
+  async function handleAddComment() {
+    if (!selectedAsset) return;
+    const text = commentText.trim();
+    if (!text) return;
+
+    setAddingComment(true);
+    try {
+      const res = await fixedAssetApi.addComment(selectedAsset._id, text);
+      setRows((prev) =>
+        prev.map((row) =>
+          row._id === selectedAsset._id
+            ? {
+                ...row,
+                comments: [...(row.comments || []), res.data],
+              }
+            : row,
+        ),
+      );
+      setCommentText("");
+      toast.success("Comment added");
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to add comment");
+    } finally {
+      setAddingComment(false);
     }
   }
 
@@ -938,8 +1044,8 @@ export default function FixedAssetsPage() {
                 <div className="min-w-0">
                   <div className="px-4 py-4 border-b">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-4xl font-semibold">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className="text-4xl font-semibold truncate">
                           {selectedAsset.assetName}
                         </h3>
                         <Badge
@@ -952,9 +1058,9 @@ export default function FixedAssetsPage() {
                           {selectedAsset.status}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="ml-auto flex items-center gap-2">
                         <Link
-                          href={`/accountant/fixed-assets/new?clone=${selectedAsset._id}`}
+                          href={`/accountant/fixed-assets/new?edit=${selectedAsset._id}`}
                         >
                           <Button variant="outline" size="sm">
                             <Edit className="h-4 w-4 mr-1" /> Edit
@@ -980,12 +1086,49 @@ export default function FixedAssetsPage() {
                           : null}
                           Mark as Active
                         </Button>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={deletingAsset}
+                              onClick={() => {
+                                void handleDeleteAsset();
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
                         <Button
                           variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedId(null)}
+                          size="icon"
+                          className="relative h-9 w-9"
+                          onClick={() => setShowComments(true)}
+                          title="Comments & History"
                         >
-                          Close
+                          <MessageSquare className="h-4 w-4" />
+                          {selectedComments.length > 0 ?
+                            <span className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full bg-primary px-1 text-[10px] leading-4 text-primary-foreground">
+                              {selectedComments.length > 9 ? "9+" : selectedComments.length}
+                            </span>
+                          : null}
+                        </Button>
+                        <div className="h-5 w-px bg-border" />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => setSelectedId(null)}
+                          title="Close"
+                        >
+                          <X className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -1021,6 +1164,70 @@ export default function FixedAssetsPage() {
                   {detailTab === "overview" ?
                     <AssetOverview asset={selectedAsset} />
                   : <AssetDepreciation asset={selectedAsset} />}
+
+                  <Sheet open={showComments} onOpenChange={setShowComments}>
+                    <SheetContent
+                      side="right"
+                      className="p-0 sm:max-w-[400px]"
+                    >
+                      <SheetHeader className="px-5 py-4 border-b">
+                        <SheetTitle>Comments & History</SheetTitle>
+                      </SheetHeader>
+
+                      <div className="flex h-full flex-col overflow-hidden">
+                        <div className="border-b p-4 space-y-3">
+                          <Textarea
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            placeholder="Type your comment here..."
+                            className="min-h-24"
+                          />
+                          <div>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                void handleAddComment();
+                              }}
+                              disabled={!commentText.trim() || addingComment}
+                            >
+                              {addingComment ?
+                                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                              : null}
+                              Add Comment
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              All Comments
+                            </h4>
+                            <Badge variant="secondary">{selectedComments.length}</Badge>
+                          </div>
+
+                          <div className="space-y-3">
+                            {[...selectedComments]
+                              .reverse()
+                              .map((comment, index) => (
+                                <div
+                                  key={`${comment.time}-${index}`}
+                                  className="rounded-md border p-3"
+                                >
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <span className="font-medium text-foreground">
+                                      {comment.author || "User"}
+                                    </span>
+                                    <span>{toDateTimeString(comment.time)}</span>
+                                  </div>
+                                  <p className="mt-2 text-sm">{comment.text}</p>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    </SheetContent>
+                  </Sheet>
                 </div>
               </div>
             : <div className="overflow-y-auto">
