@@ -290,6 +290,8 @@ export interface IAccount extends Document {
   isGroup: boolean;
   currency?: string;
   description?: string;
+  createItemAsFixedAsset: boolean;
+  fixedAssetTypeId?: Types.ObjectId | null;
   isSystemAccount: boolean; // system accounts cannot be deleted
   openingBalance: number; // explicit imported opening balance
   balance: number; // denormalized, updated on GL posting

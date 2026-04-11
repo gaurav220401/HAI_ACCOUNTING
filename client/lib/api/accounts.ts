@@ -43,6 +43,8 @@ export interface Account {
   openingBalance: number;
   balance: number;
   currency?: string;
+  createItemAsFixedAsset?: boolean;
+  fixedAssetTypeId?: string | null;
   createdAt: string;
   updatedAt: string;
   children?: Account[];
@@ -182,6 +184,8 @@ export interface CreateAccountInput {
   description?: string;
   isGroup?: boolean;
   currency?: string;
+  createItemAsFixedAsset?: boolean;
+  fixedAssetTypeId?: string;
 }
 
 export type UpdateAccountInput = Partial<CreateAccountInput> & { isActive?: boolean; accountType?: AccountType; rootType?: AccountRootType };

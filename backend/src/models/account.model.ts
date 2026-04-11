@@ -45,6 +45,12 @@ const accountSchema = new Schema<IAccount>(
     isGroup: { type: Boolean, default: false },
     currency: { type: String, default: "" },
     description: { type: String, default: "" },
+    createItemAsFixedAsset: { type: Boolean, default: false },
+    fixedAssetTypeId: {
+      type: Schema.Types.ObjectId,
+      ref: "FixedAssetType",
+      default: null,
+    },
     isSystemAccount: { type: Boolean, default: false },
     openingBalance: { type: Number, default: 0 },
     balance: { type: Number, default: 0 },

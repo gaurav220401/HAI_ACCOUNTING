@@ -28,6 +28,7 @@ import {
   type AccountRootType,
   type CreateAccountInput,
 } from "@/lib/api/accounts";
+import { fixedAssetApi, type FixedAssetType } from "@/lib/api/fixed-assets";
 
 // ─── Account type metadata ───────────────────────────────────────────────────
 
@@ -264,6 +265,10 @@ export function AccountDialog({
   const [ifsc, setIfsc] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [description, setDescription] = useState("");
+  const [createItemAsFixedAsset, setCreateItemAsFixedAsset] = useState(false);
+  const [fixedAssetTypeId, setFixedAssetTypeId] = useState("");
+  const [fixedAssetTypes, setFixedAssetTypes] = useState<FixedAssetType[]>([]);
+  const [loadingFixedAssetTypes, setLoadingFixedAssetTypes] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -280,6 +285,8 @@ export function AccountDialog({
       setDescription(editAccount.description ?? "");
       setParentId(editAccount.parentId ?? "");
       setIsSubAccount(!!editAccount.parentId);
+      setCreateItemAsFixedAsset(Boolean(editAccount.createItemAsFixedAsset));
+      setFixedAssetTypeId(String(editAccount.fixedAssetTypeId || ""));
     } else {
       setAccountType(defaultCreateType);
       setName("");
@@ -290,9 +297,43 @@ export function AccountDialog({
       setDescription("");
       setParentId("");
       setIsSubAccount(false);
+      setCreateItemAsFixedAsset(false);
+      setFixedAssetTypeId("");
     }
     setErrors({});
   }, [open, editAccount, defaultCreateType]);
+
+  useEffect(() => {
+    if (!open) return;
+    let isCancelled = false;
+
+    async function loadFixedAssetTypes() {
+      setLoadingFixedAssetTypes(true);
+      try {
+        const res = await fixedAssetApi.listTypes();
+        if (!isCancelled) {
+          const sorted = [...(res.data || [])].sort((a, b) =>
+            String(a.name || "").localeCompare(String(b.name || "")),
+          );
+          setFixedAssetTypes(sorted);
+        }
+      } catch {
+        if (!isCancelled) {
+          setFixedAssetTypes([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoadingFixedAssetTypes(false);
+        }
+      }
+    }
+
+    void loadFixedAssetTypes();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || isEdit) return;
@@ -300,6 +341,12 @@ export function AccountDialog({
       setAccountType(defaultCreateType);
     }
   }, [open, isEdit, accountType, allowedTypeSet, defaultCreateType]);
+
+  useEffect(() => {
+    if (accountType === "Fixed Asset") return;
+    setCreateItemAsFixedAsset(false);
+    setFixedAssetTypeId("");
+  }, [accountType]);
 
   const meta = ACCOUNT_TYPE_META[accountType];
   const selectedRootType = meta?.rootType;
@@ -313,6 +360,9 @@ export function AccountDialog({
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = "Account name is required";
     if (isSubAccount && !parentId) e.parentId = "Please select a parent account";
+    if (accountType === "Fixed Asset" && createItemAsFixedAsset && !fixedAssetTypeId) {
+      e.fixedAssetTypeId = "Please select Fixed Asset Type";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -331,6 +381,12 @@ export function AccountDialog({
         currency: accountType === "Bank" ? currency : undefined,
         description: description.trim() || undefined,
         parentId: isSubAccount && parentId ? parentId : undefined,
+        createItemAsFixedAsset:
+          accountType === "Fixed Asset" ? createItemAsFixedAsset : false,
+        fixedAssetTypeId:
+          accountType === "Fixed Asset" && createItemAsFixedAsset
+            ? fixedAssetTypeId
+            : undefined,
       };
       let savedAccount: Account | undefined;
       if (isEdit && editAccount) {
@@ -494,6 +550,65 @@ export function AccountDialog({
               className="max-w-xs"
             />
           </div>
+
+          {accountType === "Fixed Asset" && (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="create-item-as-fixed-asset"
+                  checked={createItemAsFixedAsset}
+                  onCheckedChange={(checked) => {
+                    const enabled = Boolean(checked);
+                    setCreateItemAsFixedAsset(enabled);
+                    if (!enabled) setFixedAssetTypeId("");
+                  }}
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="create-item-as-fixed-asset" className="font-medium cursor-pointer">
+                    Create Item as Fixed Asset
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    When this account is associated with a line item in a transaction, create the item as a fixed asset.
+                  </p>
+                </div>
+              </div>
+
+              {createItemAsFixedAsset && (
+                <div className="pl-6 space-y-1.5">
+                  <Label className="font-medium">
+                    Fixed Asset Type <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={fixedAssetTypeId || undefined}
+                    onValueChange={setFixedAssetTypeId}
+                    disabled={loadingFixedAssetTypes}
+                  >
+                    <SelectTrigger className={errors.fixedAssetTypeId ? "border-destructive" : ""}>
+                      <SelectValue placeholder="Select the Fixed Asset Type" />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={6} className="max-h-64">
+                      {fixedAssetTypes.length === 0 ? (
+                        <SelectItem value="__none" disabled>
+                          {loadingFixedAssetTypes
+                            ? "Loading fixed asset types..."
+                            : "No active fixed asset types found"}
+                        </SelectItem>
+                      ) : (
+                        fixedAssetTypes.map((type) => (
+                          <SelectItem key={type._id} value={type._id}>
+                            {type.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {errors.fixedAssetTypeId && (
+                    <p className="text-xs text-destructive">{errors.fixedAssetTypeId}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {accountType === "Bank" && (
             <>
