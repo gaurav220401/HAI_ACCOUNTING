@@ -153,10 +153,7 @@ function calculateTotals(entries: Array<{ debit: number; credit: number }>) {
 }
 
 async function ensureOrgChartInitialized(req: AuthenticatedRequest, organizationId: Types.ObjectId) {
-  const hasAccounts = await Account.exists({ organizationId });
-  if (!hasAccounts) {
-    await ensureDefaultChartOfAccounts({ organizationId, actor: req });
-  }
+  await ensureDefaultChartOfAccounts({ organizationId, actor: req });
   await ensureTemplateSystemAccounts({ organizationId });
 }
 
@@ -1102,14 +1099,18 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 /** POST /api/accounts/seed-template — seed standard Indian CoA (Zoho Books style) */
 export const seedTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization = orgId(req) as Types.ObjectId;
-  const existing = await Account.countDocuments({ organizationId: organization });
-  if (existing > 0) throw new ValidationError("Chart of Accounts already exists for this organization");
-
   const seeded = await ensureDefaultChartOfAccounts({ organizationId: organization, actor: req });
+  const { locked } = await ensureTemplateSystemAccounts({ organizationId: organization });
 
   res.status(201).json({
     success: true,
-    message: "Chart of Accounts seeded with Indian Standard template",
-    data: seeded,
+    message:
+      seeded.created > 0 ?
+        "Chart of Accounts template synchronized"
+      : "Chart of Accounts template already up to date",
+    data: {
+      ...seeded,
+      locked,
+    },
   });
 });
