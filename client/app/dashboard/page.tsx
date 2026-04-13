@@ -63,6 +63,53 @@ function getRangeForPeriod(period: PeriodOption, reference: Date): { from: strin
   return getLastMonthsRange(reference, 12);
 }
 
+function formatAxisAmount(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)} M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(abs >= 10_000 ? 0 : 1)} K`;
+  return `${Math.round(value)}`;
+}
+
+function getChartDomain(values: number[]): [number, number] {
+  if (!values.length) return [0, 5_000];
+
+  let min = Math.min(...values, 0);
+  let max = Math.max(...values, 0);
+
+  if (min === max) {
+    if (min === 0) return [0, 5_000];
+    const pad = Math.max(Math.abs(min) * 0.15, 1_000);
+    return [Math.min(0, roundTo2(min - pad)), roundTo2(max + pad)];
+  }
+
+  const range = max - min;
+  const pad = Math.max(range * 0.12, 1_000);
+  return [roundTo2(min - pad), roundTo2(max + pad)];
+}
+
+function roundTo2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function formatDisplayDate(value?: string): string {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatMonthYear(value?: string): string {
+  if (!value) return "";
+  const [year, month] = value.split("-").map((part) => Number(part));
+  if (!year || !month) return value;
+  const date = new Date(year, month - 1, 1);
+  return date.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { firebaseUser, dbUser, loading } = useAuth();
@@ -174,10 +221,19 @@ export default function DashboardPage() {
   const cashFlowIncomingTotal = dashboard?.cashFlow.incomingTotal || 0;
   const cashFlowOutgoingTotal = dashboard?.cashFlow.outgoingTotal || 0;
   const cashClosing = dashboard?.cashFlow.closingBalance || 0;
+  const cashFlowStartDate = dashboard?.periods.cashFlow.from;
+  const cashFlowEndDate = dashboard?.periods.cashFlow.to;
 
   const incomeExpenseData = dashboard?.incomeExpense.months || [];
   const incomeTotal = dashboard?.incomeExpense.totalIncome || 0;
   const expenseTotal = dashboard?.incomeExpense.totalExpense || 0;
+  const incomeExpenseNet = dashboard?.incomeExpense.netAmount ?? incomeTotal - expenseTotal;
+
+  const cashFlowDomain = getChartDomain(cashFlowData.map((row) => row.closing));
+  const incomeExpenseDomain = getChartDomain([
+    ...incomeExpenseData.map((row) => row.income),
+    ...incomeExpenseData.map((row) => row.expense),
+  ]);
 
   const topExpenses = dashboard?.topExpenses.rows || [];
   const bankAccounts = dashboard?.bankCreditCards.rows || [];
@@ -196,7 +252,7 @@ export default function DashboardPage() {
         <div className="flex flex-1 flex-col gap-6 p-6 bg-slate-50/70">
           <div>
             <h1 className="text-2xl font-semibold">Hello, {firstName}</h1>
-            <p className="text-sm text-muted-foreground">Synchronized overview of receivables, payables, cash flow, and expenses.</p>
+            <p className="text-sm text-muted-foreground">Dashboard overview of receivables, payables, cash flow, and expenses.</p>
             {dashboardError ? <p className="text-sm text-red-600 mt-1">{dashboardError}</p> : null}
           </div>
 
@@ -305,18 +361,41 @@ export default function DashboardPage() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 100000)}L`} />
-                    <Tooltip formatter={(value: number) => fmtCurrency(value)} />
-                    <Area type="monotone" dataKey="closing" stroke="#3b82f6" fill="url(#cashClosing)" strokeWidth={2} />
+                    <XAxis dataKey="key" tickLine={false} axisLine={false} tickFormatter={(value) => formatMonthYear(String(value))} />
+                    <YAxis domain={cashFlowDomain} tickLine={false} axisLine={false} tickFormatter={(v) => formatAxisAmount(Number(v))} />
+                    <Tooltip
+                      labelFormatter={(value) => formatMonthYear(String(value))}
+                      formatter={(value: number) => fmtCurrency(value)}
+                    />
+                    <Area
+                      type="linear"
+                      dataKey="closing"
+                      stroke="#3b82f6"
+                      fill="url(#cashClosing)"
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: "#3b82f6", strokeWidth: 0 }}
+                      activeDot={{ r: 4 }}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <div className="space-y-4 text-sm">
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Cash as on start</span><span className="font-semibold">{fmtCurrency(cashFlowStart)}</span></div>
-                <div className="flex items-center justify-between"><span className="text-emerald-600">Incoming</span><span className="font-semibold">{fmtCurrency(cashFlowIncomingTotal)}</span></div>
-                <div className="flex items-center justify-between"><span className="text-rose-600">Outgoing</span><span className="font-semibold">{fmtCurrency(cashFlowOutgoingTotal)}</span></div>
-                <div className="flex items-center justify-between border-t pt-3"><span className="text-blue-700">Cash as on end</span><span className="font-semibold">{fmtCurrency(cashClosing)}</span></div>
+              <div className="space-y-5 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-slate-400" />Cash as on {formatDisplayDate(cashFlowStartDate)}</span>
+                  <span className="font-semibold">{fmtCurrency(cashFlowStart)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-emerald-600 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-emerald-500" />Incoming</span>
+                  <span className="font-semibold">{fmtCurrency(cashFlowIncomingTotal)} ( + )</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-rose-600 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-rose-500" />Outgoing</span>
+                  <span className="font-semibold">{fmtCurrency(cashFlowOutgoingTotal)} ( - )</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t pt-3">
+                  <span className="text-blue-700 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-blue-600" />Cash as on {formatDisplayDate(cashFlowEndDate)}</span>
+                  <span className="font-semibold">{fmtCurrency(cashClosing)} ( = )</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -362,15 +441,18 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={incomeExpenseData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                      <YAxis tickLine={false} axisLine={false} />
-                      <Tooltip formatter={(value: number) => fmtCurrency(value)} />
-                      <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} dot={false} />
+                      <XAxis dataKey="key" tickLine={false} axisLine={false} tickFormatter={(value) => formatMonthYear(String(value))} />
+                      <YAxis domain={incomeExpenseDomain} tickLine={false} axisLine={false} tickFormatter={(v) => formatAxisAmount(Number(v))} />
+                      <Tooltip
+                        labelFormatter={(value) => formatMonthYear(String(value))}
+                        formatter={(value: number) => fmtCurrency(value)}
+                      />
+                      <Line type="linear" dataKey="income" stroke="#10b981" strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} />
+                      <Line type="linear" dataKey="expense" stroke="#ef4444" strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-xs text-muted-foreground">Income and expense values are synchronized with selected basis and period.</p>
+                <p className="text-xs text-muted-foreground">Net {incomeExpenseBasis === "cash" ? "cash" : "income"}: {fmtCurrency(incomeExpenseNet)}</p>
               </CardContent>
             </Card>
 
