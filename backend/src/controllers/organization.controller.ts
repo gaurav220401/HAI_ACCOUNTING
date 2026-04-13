@@ -23,6 +23,22 @@ async function requireMembership(orgId: string, req: AuthenticatedRequest) {
   return org;
 }
 
+function normalizeOrgName(name: unknown): string {
+  return String(name ?? "").trim();
+}
+
+function isOrgNameDuplicateError(error: any): boolean {
+  if (error?.code !== 11000) return false;
+  const keyPattern = error?.keyPattern || {};
+  const msg = String(error?.message || "");
+  return Boolean(
+    keyPattern?.owner ||
+      keyPattern?.name ||
+      msg.includes("owner_1_name_1") ||
+      msg.includes("name_1"),
+  );
+}
+
 /**
  * POST /api/organizations
  * Create a new organization (any authenticated user).
@@ -46,14 +62,23 @@ export const create = asyncHandler(
       address,
     } = req.body;
 
-    // Each org name must be globally unique
-    const existing = await Organization.findOne({ name });
+    const normalizedName = normalizeOrgName(name);
+    if (!normalizedName) {
+      throw new ValidationError("Organization name is required");
+    }
+
+    // Organization name must be unique per owner (case-insensitive).
+    const existing = await Organization.findOne({
+      owner: req.user._id,
+      name: normalizedName,
+      isDeleted: { $ne: true },
+    }).collation({ locale: "en", strength: 2 });
     if (existing) {
-      throw new ValidationError(`Organization "${name}" already exists`);
+      throw new ValidationError(`Organization "${normalizedName}" already exists for your account`);
     }
 
     const organization = new Organization({
-      name,
+      name: normalizedName,
       industry,
       baseCurrency,
       fiscalYearStart,
@@ -70,7 +95,16 @@ export const create = asyncHandler(
     });
 
     attachUser(organization, req);
-    await organization.save();
+    try {
+      await organization.save();
+    } catch (error: any) {
+      if (isOrgNameDuplicateError(error)) {
+        throw new ValidationError(
+          `Organization "${normalizedName}" already exists for your account`,
+        );
+      }
+      throw error;
+    }
 
     // Seed standard chart of accounts for every new organization.
     await ensureDefaultChartOfAccounts({
@@ -89,7 +123,7 @@ export const create = asyncHandler(
 
     res.status(201).json({
       success: true,
-      message: `Organization "${name}" created successfully`,
+      message: `Organization "${normalizedName}" created successfully`,
       data: organization,
     });
   },
@@ -126,8 +160,32 @@ export const update = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const organization = await requireMembership(String(req.params.id), req);
 
+    if (req.body.name !== undefined) {
+      const nextName = normalizeOrgName(req.body.name);
+      if (!nextName) {
+        throw new ValidationError("Organization name is required");
+      }
+
+      const ownerId = (organization as any).owner || req.user?._id;
+      if (ownerId) {
+        const duplicate = await Organization.findOne({
+          _id: { $ne: (organization as any)._id },
+          owner: ownerId,
+          name: nextName,
+          isDeleted: { $ne: true },
+        }).collation({ locale: "en", strength: 2 });
+
+        if (duplicate) {
+          throw new ValidationError(
+            `Organization "${nextName}" already exists for your account`,
+          );
+        }
+      }
+
+      (organization as any).name = nextName;
+    }
+
     const allowedFields = [
-      "name",
       "industry",
       "baseCurrency",
       "fiscalYearStart",
@@ -152,7 +210,16 @@ export const update = asyncHandler(
     }
 
     attachUser(organization, req);
-    await organization.save();
+    try {
+      await organization.save();
+    } catch (error: any) {
+      if (isOrgNameDuplicateError(error)) {
+        throw new ValidationError(
+          `Organization "${organization.name}" already exists for your account`,
+        );
+      }
+      throw error;
+    }
 
     res.json({
       success: true,
