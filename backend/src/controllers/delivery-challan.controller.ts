@@ -71,7 +71,7 @@ function summarizeTotals(
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const total = subTotal - discountAmount + taxAmount + adjustmentAmount;
   return { subTotal, discountAmount, total };
 }
 
@@ -171,7 +171,14 @@ export const create = asyncHandler(
     const items = await normalizeItems(oid, req.body.customerId, req.body.items || []);
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
-    const taxAmount = Number(req.body.taxAmount) || 0;
+    const derivedTaxAmount = items.reduce(
+      (sum: number, item: any) => sum + (Number(item.taxAmount) || 0),
+      0,
+    );
+    const taxAmount =
+      req.body.taxAmount !== undefined && req.body.taxAmount !== null ?
+        Number(req.body.taxAmount) || 0
+      : derivedTaxAmount;
     const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
     const { subTotal, discountAmount, total } = summarizeTotals(
       items,
@@ -265,9 +272,19 @@ export const update = asyncHandler(
       challan.discountType === "percent" ?
         (challan.subTotal * challan.discountValue) / 100
       : challan.discountValue;
+    if (req.body.items || req.body.customerId !== undefined || req.body.taxAmount !== undefined) {
+      const derivedTaxAmount = (challan.items as any[]).reduce(
+        (sum: number, item: any) => sum + (Number(item.taxAmount) || 0),
+        0,
+      );
+      challan.taxAmount =
+        req.body.taxAmount !== undefined && req.body.taxAmount !== null ?
+          Number(req.body.taxAmount) || 0
+        : derivedTaxAmount;
+    }
     challan.total =
       challan.subTotal -
-      challan.discountAmount -
+      challan.discountAmount +
       (challan.taxAmount || 0) +
       (challan.adjustmentAmount || 0);
 

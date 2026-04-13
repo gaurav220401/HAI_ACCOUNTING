@@ -1,5 +1,6 @@
 import { Response } from "express";
 import SalesOrder, { SalesOrderStatus } from "../models/sales-order.model";
+import Invoice from "../models/invoice.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -26,6 +27,20 @@ function normalizeLineItems(items: any[] = []) {
       taxId: rest.taxId || null,
     };
   });
+}
+
+async function nextInvoiceNumber(organizationId: any): Promise<string> {
+  const last = await Invoice.findOne({ organizationId })
+    .sort({ invoiceNumber: -1 })
+    .select("invoiceNumber")
+    .lean();
+
+  if (!last) return "INV-000001";
+
+  const match = String(last.invoiceNumber || "").match(/INV-(\d+)/);
+  if (!match) return "INV-000001";
+  const next = parseInt(match[1], 10) + 1;
+  return `INV-${String(next).padStart(6, "0")}`;
 }
 
 /** GET /api/sales-orders?search=...&status=...&page=1&limit=25 */
@@ -190,4 +205,157 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   await order.save();
 
   res.json({ success: true, message: "Sales Order deleted" });
+});
+
+/** POST /api/sales-orders/:id/convert-to-invoice */
+export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = orgId(req);
+  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any)
+    .populate("lineItems.itemId", "name hsnSacCode")
+    .populate("lineItems.taxId", "rate")
+    .populate("customerId", "displayName")
+    .populate("paymentTermsId", "name netDays")
+    .populate("salesPersonId", "name");
+
+  if (!order) throw new NotFoundError("Sales Order");
+
+  const existingInvoice = await Invoice.findOne({
+    organizationId: oid,
+    orderNumber: (order as any).salesOrderNumber,
+    isDeleted: false,
+  })
+    .select("_id invoiceNumber")
+    .lean();
+
+  if (existingInvoice) {
+    if ((order as any).status !== "INVOICED") {
+      (order as any).status = "INVOICED";
+      attachUser(order as any, req);
+      await order.save();
+    }
+    const invoiceId = String(existingInvoice._id);
+    res.json({
+      success: true,
+      data: {
+        invoiceId,
+        _id: invoiceId,
+        invoiceNumber: existingInvoice.invoiceNumber,
+      },
+      message: "Sales order is already linked to an invoice",
+    });
+    return;
+  }
+
+  if (["INVOICED", "PARTIALLY_INVOICED"].includes(String((order as any).status || ""))) {
+    throw new ValidationError("Sales order is already invoiced");
+  }
+
+  const invoiceNumber = await nextInvoiceNumber(oid);
+  const invoiceItems = ((order as any).lineItems || []).map((line: any) => {
+    const quantity = Number(line.quantity) || 0;
+    const rate = Number(line.rate) || 0;
+    const lineTotal = quantity * rate;
+    const lineDiscountAmount = Math.max(0, Number(line.discount) || 0);
+    const discountPercent = lineTotal > 0 ? (lineDiscountAmount / lineTotal) * 100 : 0;
+    const afterDiscount = Math.max(0, lineTotal - lineDiscountAmount);
+
+    const taxRef = line.taxId as any;
+    const taxPercent = Number(taxRef?.rate) || 0;
+    const itemTaxAmount = (afterDiscount * taxPercent) / 100;
+
+    const itemRef = line.itemId as any;
+    const itemId = itemRef?._id || line.itemId || null;
+
+    return {
+      itemId,
+      name: itemRef?.name || line.description || "Item",
+      description: line.description || "",
+      hsnSacCode: itemRef?.hsnSacCode || "",
+      quantity,
+      rate,
+      discountPercent,
+      discountAmount: lineDiscountAmount,
+      taxId: taxRef?._id || line.taxId || null,
+      taxPercent,
+      taxAmount: itemTaxAmount,
+      amount: afterDiscount + itemTaxAmount,
+      accountId: null,
+      projectId: null,
+      costRate: 0,
+      costAmount: 0,
+    };
+  });
+
+  if (invoiceItems.length === 0) {
+    throw new ValidationError("Sales order has no line items to convert");
+  }
+
+  const subTotal = invoiceItems.reduce(
+    (sum: number, line: any) => sum + (Number(line.quantity) || 0) * (Number(line.rate) || 0),
+    0,
+  );
+  const discountValue = ((order as any).lineItems || []).reduce(
+    (sum: number, line: any) => sum + (Number(line.discount) || 0),
+    0,
+  );
+  const discountType: "amount" = "amount";
+  const discountAmount = discountValue;
+  const adjustmentAmount = (Number((order as any).shippingCharges) || 0) + (Number((order as any).adjustment) || 0);
+  const total = subTotal - discountAmount + adjustmentAmount;
+
+  const dueDateInput = req.body?.dueDate;
+  const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;
+  const dueDate = dueDateCandidate && !Number.isNaN(dueDateCandidate.getTime()) ? dueDateCandidate : null;
+
+  const invoice = new Invoice({
+    organizationId: oid,
+    invoiceNumber,
+    referenceNumber: (order as any).reference || "",
+    orderNumber: (order as any).salesOrderNumber || "",
+    customerId: (order as any).customerId?._id || (order as any).customerId,
+    invoiceDate: new Date(),
+    dueDate,
+    paymentTermsId: (order as any).paymentTermsId?._id || (order as any).paymentTermsId || null,
+    salesPersonId: (order as any).salesPersonId?._id || (order as any).salesPersonId || null,
+    subject: `Converted from Sales Order ${(order as any).salesOrderNumber}`,
+    items: invoiceItems,
+    subTotal,
+    discountType,
+    discountValue,
+    discountAmount,
+    taxType: "none",
+    taxId: null,
+    taxAmount: 0,
+    adjustmentLabel: "Shipping & Adjustment",
+    adjustmentAmount,
+    total,
+    balanceDue: total,
+    customerNotes: (order as any).notes || "",
+    termsAndConditions: (order as any).terms || "",
+    status: "Draft",
+    emailContacts: [],
+    attachments: [],
+    paymentReceived: false,
+    isRecurring: false,
+    journalEntries: [],
+    pdfTemplateId: null,
+    sentAt: null,
+    paidAt: null,
+  });
+
+  attachUser(invoice as any, req);
+  await invoice.save();
+
+  (order as any).status = "INVOICED";
+  attachUser(order as any, req);
+  await order.save();
+
+  res.status(201).json({
+    success: true,
+    data: {
+      invoiceId: String((invoice as any)._id),
+      _id: String((invoice as any)._id),
+      invoiceNumber: (invoice as any).invoiceNumber,
+    },
+  });
 });

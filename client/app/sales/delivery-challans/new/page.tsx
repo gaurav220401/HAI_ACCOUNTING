@@ -565,8 +565,11 @@ export default function NewDeliveryChallanPage() {
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
-  const totalBeforeAdj = subTotal - discountAmount;
-  const total = totalBeforeAdj + adjustmentAmount;
+  const lineTaxAmount = lines.reduce(
+    (sum, line) => sum + calcLineAmount(line).taxAmt,
+    0,
+  );
+  const total = subTotal - discountAmount + lineTaxAmount + adjustmentAmount;
 
   // ─── Save handler ─────────────────────────────────────────────────
 
@@ -606,6 +609,8 @@ export default function NewDeliveryChallanPage() {
         })),
         discountType,
         discountValue,
+        taxId: null,
+        taxAmount: lineTaxAmount,
         adjustmentLabel,
         adjustmentAmount,
         customerNotes,
@@ -939,6 +944,12 @@ export default function NewDeliveryChallanPage() {
                         {discountAmount.toFixed(2)}
                       </span>
                     </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm gap-2">
+                    <span>Tax</span>
+                    <span className="font-medium tabular-nums w-20 text-right">
+                      +{lineTaxAmount.toFixed(2)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-sm gap-2">
                     <Input

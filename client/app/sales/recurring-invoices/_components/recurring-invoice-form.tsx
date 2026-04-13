@@ -427,7 +427,11 @@ export function RecurringInvoiceForm({
   const selectedTax = taxes.find((tax) => tax._id === totalTaxId);
   const taxAmount =
     selectedTax ? (subTotal * (selectedTax.rate || 0)) / 100 : 0;
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const taxSignedAmount =
+    taxType === "TCS" ? taxAmount
+    : taxType === "TDS" ? -taxAmount
+    : 0;
+  const total = subTotal - discountAmount + taxSignedAmount + adjustmentAmount;
   const nextRunPreview = getNextRunPreview(startDate, frequency);
 
   async function handleSave() {
@@ -1026,8 +1030,10 @@ export function RecurringInvoiceForm({
                 <span>{formatCurrency(discountAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Tax</span>
-                <span>{formatCurrency(taxAmount)}</span>
+                <span className="text-muted-foreground">
+                  {taxType === "none" ? "Tax" : taxType}
+                </span>
+                <span>{formatCurrency(taxSignedAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Adjustment</span>

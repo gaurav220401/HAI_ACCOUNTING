@@ -1098,7 +1098,11 @@ export default function NewInvoicePage() {
   const selectedTax = taxes.find((t) => t._id === totalTaxId);
   const taxAmount =
     selectedTax ? (subTotal * (selectedTax.rate || 0)) / 100 : 0;
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const taxSignedAmount =
+    taxType === "TCS" ? taxAmount
+    : taxType === "TDS" ? -taxAmount
+    : 0;
+  const total = subTotal - discountAmount + taxSignedAmount + adjustmentAmount;
 
   // ─── Submit ──────────────────────────────────────────────────────
 
@@ -1791,7 +1795,8 @@ export default function NewInvoicePage() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm tabular-nums w-20 text-right">
-                    - {taxAmount.toFixed(2)}
+                    {taxType === "TCS" ? "+" : taxType === "TDS" ? "-" : ""}{" "}
+                    {taxAmount.toFixed(2)}
                   </span>
                 </div>
               </div>

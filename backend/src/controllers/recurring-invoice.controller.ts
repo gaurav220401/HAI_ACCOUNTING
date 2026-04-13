@@ -118,6 +118,7 @@ async function applyRecurringMutation(profile: any, body: any) {
     profile.items,
     profile.discountType,
     discountValue,
+    profile.taxType || "none",
     taxAmount,
     adjustmentAmount,
   );
@@ -268,12 +269,14 @@ export const create = asyncHandler(
     );
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
+    const taxType = req.body.taxType || "none";
     const taxAmount = Number(req.body.taxAmount) || 0;
     const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
     const { subTotal, discountAmount, total } = summarizeInvoiceTotals(
       items,
       discountType,
       discountValue,
+      taxType,
       taxAmount,
       adjustmentAmount,
     );
@@ -304,7 +307,7 @@ export const create = asyncHandler(
       discountType,
       discountValue,
       discountAmount,
-      taxType: req.body.taxType || "none",
+      taxType,
       taxId: req.body.taxId || null,
       taxAmount,
       adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
