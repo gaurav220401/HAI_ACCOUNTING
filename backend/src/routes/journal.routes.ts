@@ -7,6 +7,11 @@ const router = Router();
 router.use(authenticate);
 
 router.get("/", journalController.list);
+router.get("/numbering-preferences", journalController.getNumberingPreferences);
+router.put(
+  "/numbering-preferences",
+  journalController.updateNumberingPreferences,
+);
 router.get("/:id", journalController.getOne);
 router.post("/", journalController.create);
 router.patch("/:id", journalController.update);

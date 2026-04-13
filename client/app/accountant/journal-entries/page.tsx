@@ -9,7 +9,6 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,10 +30,12 @@ import {
   Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { journalApi, type Journal as ApiJournal } from "@/lib/api/journals";
 
-// ─── Types & Mock Data ──────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-type JournalStatus = "Published" | "Draft";
+type JournalStatus = "Published" | "Draft" | "Voided";
 
 type JournalLine = {
   account: string;
@@ -56,66 +57,45 @@ type Journal = {
   lines: JournalLine[];
 };
 
-const SEED_JOURNALS: Journal[] = [
-  {
-    id: "1",
-    journalNumber: "90759",
-    date: "2025-08-15",
-    displayDate: "15 Aug 2025",
-    reference: "62951",
-    status: "Published",
-    notes: "Asset value Depreciation",
-    amount: 81775,
-    currency: "INR",
-    lines: [
-      { account: "Depreciation Expense", contact: "", debit: 81775, credit: 0 },
-      { account: "Furniture and Equipment", contact: "", debit: 0, credit: 81775 },
-    ],
-  },
-  {
-    id: "2",
-    journalNumber: "90758",
-    date: "2025-08-15",
-    displayDate: "15 Aug 2025",
-    reference: "62950",
-    status: "Published",
-    notes: "Monthly accruals",
-    amount: 81775,
-    currency: "INR",
-    lines: [
-      { account: "Accrued Expenses", contact: "", debit: 81775, credit: 0 },
-      { account: "Accounts Payable", contact: "", debit: 0, credit: 81775 },
-    ],
-  },
-  {
-    id: "3",
-    journalNumber: "90757",
-    date: "2025-08-15",
-    displayDate: "15 Aug 2025",
-    reference: "62949",
-    status: "Published",
-    notes: "Office supplies adjustment",
-    amount: 81775,
-    currency: "INR",
-    lines: [
-      { account: "Office Supplies", contact: "", debit: 81775, credit: 0 },
-      { account: "Cash Account", contact: "", debit: 0, credit: 81775 },
-    ],
-  },
-];
+function mapJournal(apiJournal: ApiJournal): Journal {
+  const vendorName =
+    apiJournal.vendorId && typeof apiJournal.vendorId !== "string" ?
+      apiJournal.vendorId.displayName || apiJournal.vendorId.companyName || ""
+    : "";
 
-const STORAGE_KEY = "hai_journals";
+  const lines: JournalLine[] = (apiJournal.lineItems || []).map((line) => {
+    const accountName =
+      typeof line.accountId === "string" ?
+        line.accountId
+      : line.accountId?.name || String(line.accountId?._id || "");
 
-function loadJournals(): Journal[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Journal[];
-  } catch {
-    // ignore
-  }
-  // First run — seed with demo data
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_JOURNALS));
-  return SEED_JOURNALS;
+    return {
+      account: accountName,
+      contact: vendorName,
+      debit: Number(line.debit || 0),
+      credit: Number(line.credit || 0),
+    };
+  });
+
+  const mappedStatus: JournalStatus =
+    apiJournal.status === "Posted" ? "Published" : apiJournal.status;
+
+  return {
+    id: apiJournal._id,
+    journalNumber: apiJournal.journalNumber,
+    date: apiJournal.date,
+    displayDate: new Date(apiJournal.date).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }),
+    reference: apiJournal.referenceNumber || "",
+    status: mappedStatus,
+    notes: apiJournal.notes || apiJournal.description || "",
+    amount: Number(apiJournal.totalDebit || 0),
+    currency: "INR",
+    lines,
+  };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -135,10 +115,12 @@ function JournalDetailPanel({
   journal,
   onClose,
   onEdit,
+  onDelete,
 }: {
   journal: Journal;
   onClose: () => void;
   onEdit: (j: Journal) => void;
+  onDelete: (j: Journal) => void;
 }) {
   const totalDebits = journal.lines.reduce((s, l) => s + l.debit, 0);
   const totalCredits = journal.lines.reduce((s, l) => s + l.credit, 0);
@@ -214,7 +196,7 @@ function JournalDetailPanel({
         <td>${l.contact || ""}</td>
         <td class="right">${l.debit ? l.debit.toFixed(2) : ""}</td>
         <td class="right">${l.credit ? l.credit.toFixed(2) : ""}</td>
-      </tr>`
+      </tr>`,
         )
         .join("")}
     </tbody>
@@ -288,7 +270,10 @@ function JournalDetailPanel({
                 <Edit className="h-3.5 w-3.5" /> Edit
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 text-sm text-destructive focus:text-destructive">
+              <DropdownMenuItem
+                className="gap-2 text-sm text-destructive focus:text-destructive"
+                onClick={() => onDelete(journal)}
+              >
                 Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -297,7 +282,11 @@ function JournalDetailPanel({
 
         {/* Right: Comments & close */}
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-8 text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs h-8 text-muted-foreground"
+          >
             <History className="h-3.5 w-3.5" />
             Comments &amp; History
           </Button>
@@ -313,7 +302,6 @@ function JournalDetailPanel({
       {/* ── Journal document preview ── */}
       <div className="flex-1 overflow-auto bg-muted/10 p-6">
         <div className="bg-white shadow-md rounded-lg max-w-3xl mx-auto relative overflow-hidden">
-
           {/* Status ribbon */}
           <div
             className="absolute left-0 top-0 w-20 h-20 overflow-hidden pointer-events-none"
@@ -322,9 +310,11 @@ function JournalDetailPanel({
             <div
               className={cn(
                 "absolute text-white text-[9px] font-bold uppercase tracking-widest px-5 py-1 shadow-md",
-                "left-[-28px] top-[16px]",
+                "-left-7 top-4",
                 "-rotate-45",
-                journal.status === "Published" ? "bg-emerald-500" : "bg-amber-500"
+                journal.status === "Published" ?
+                  "bg-emerald-500"
+                : "bg-amber-500",
               )}
               style={{ width: "100px" }}
             >
@@ -353,7 +343,9 @@ function JournalDetailPanel({
             <div className="grid grid-cols-2 gap-8 mb-8">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                <p className="text-sm font-medium text-primary">{journal.notes}</p>
+                <p className="text-sm font-medium text-primary">
+                  {journal.notes}
+                </p>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
@@ -367,7 +359,9 @@ function JournalDetailPanel({
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Reference Number:</span>
+                  <span className="text-muted-foreground">
+                    Reference Number:
+                  </span>
                   <span className="font-medium">{journal.reference}</span>
                 </div>
               </div>
@@ -393,7 +387,10 @@ function JournalDetailPanel({
               </thead>
               <tbody>
                 {journal.lines.map((line, i) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr
+                    key={i}
+                    className="border-b border-gray-100 hover:bg-gray-50"
+                  >
                     <td className="px-4 py-3 text-sm text-primary font-medium">
                       {line.account}
                     </td>
@@ -449,7 +446,7 @@ function JournalDetailPanel({
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
-type StatusFilter = "All Journals" | "Draft" | "Published";
+type StatusFilter = "All Journals" | "Draft" | "Published" | "Voided";
 
 export default function JournalEntriesPage() {
   const router = useRouter();
@@ -457,19 +454,54 @@ export default function JournalEntriesPage() {
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All Journals");
+  const [statusFilter, setStatusFilter] =
+    useState<StatusFilter>("All Journals");
   const [selected, setSelected] = useState<Journal | null>(null);
   const [journals, setJournals] = useState<Journal[]>([]);
+  const [loadingJournals, setLoadingJournals] = useState(true);
 
-  const refreshJournals = useCallback(() => {
-    setJournals(loadJournals());
+  const refreshJournals = useCallback(async () => {
+    setLoadingJournals(true);
+    try {
+      const res = await journalApi.list({ limit: 200 });
+      const mapped = (res.data || []).map(mapJournal);
+      setJournals(mapped);
+      setSelected((prev) => {
+        if (!prev) return null;
+        return mapped.find((j) => j.id === prev.id) || null;
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to load journals";
+      toast.error(message);
+    } finally {
+      setLoadingJournals(false);
+    }
   }, []);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      try {
+        await journalApi.remove(id);
+        if (selected?.id === id) setSelected(null);
+        await refreshJournals();
+        toast.success("Journal deleted");
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Failed to delete journal";
+        toast.error(message);
+      }
+    },
+    [refreshJournals, selected?.id],
+  );
 
   useEffect(() => {
     // Load on mount
-    refreshJournals();
+    void refreshJournals();
     // Also refresh whenever we navigate back to this tab
-    const handleFocus = () => refreshJournals();
+    const handleFocus = () => {
+      void refreshJournals();
+    };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
   }, [refreshJournals]);
@@ -497,8 +529,8 @@ export default function JournalEntriesPage() {
     const matchSearch =
       !search ||
       j.journalNumber.includes(search) ||
-      j.reference.toLowerCase().includes(search.toLowerCase()) ||
-      j.notes.toLowerCase().includes(search.toLowerCase());
+      (j.reference || "").toLowerCase().includes(search.toLowerCase()) ||
+      (j.notes || "").toLowerCase().includes(search.toLowerCase());
     const matchStatus =
       statusFilter === "All Journals" || j.status === statusFilter;
     return matchSearch && matchStatus;
@@ -512,13 +544,14 @@ export default function JournalEntriesPage() {
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
-              Accountant{" "}
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Journal Entries</span>
+              Accountant <span className="mx-1">/</span>
+              <span className="font-medium text-foreground">
+                Journal Entries
+              </span>
             </span>
           }
           actions={
-            !panelOpen ? (
+            !panelOpen ?
               <>
                 <div className="relative w-52">
                   <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
@@ -529,7 +562,13 @@ export default function JournalEntriesPage() {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <Button variant="outline" size="sm" className="px-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="px-2"
+                  onClick={() => void refreshJournals()}
+                  disabled={loadingJournals}
+                >
                   <RefreshCw className="h-4 w-4" />
                 </Button>
                 <Button
@@ -540,7 +579,7 @@ export default function JournalEntriesPage() {
                   <Plus className="h-4 w-4" /> New Journal
                 </Button>
               </>
-            ) : null
+            : null
           }
         />
 
@@ -549,24 +588,26 @@ export default function JournalEntriesPage() {
           <div
             className={cn(
               "flex flex-col border-r transition-all duration-200 overflow-hidden",
-              panelOpen ? "w-[300px] shrink-0" : "flex-1"
+              panelOpen ? "w-75 shrink-0" : "flex-1",
             )}
           >
             {/* List header / tabs */}
             <div
               className={cn(
                 "flex items-center shrink-0 border-b",
-                panelOpen ? "px-3 py-2 justify-between" : "px-4 pt-1"
+                panelOpen ? "px-3 py-2 justify-between" : "px-4 pt-1",
               )}
             >
-              {panelOpen ? (
+              {panelOpen ?
                 <>
                   <span className="text-sm font-semibold">Journals</span>
                   <div className="flex items-center gap-1">
                     <Button
                       size="icon"
                       className="h-6 w-6"
-                      onClick={() => router.push("/accountant/journal-entries/new")}
+                      onClick={() =>
+                        router.push("/accountant/journal-entries/new")
+                      }
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
@@ -575,26 +616,30 @@ export default function JournalEntriesPage() {
                     </Button>
                   </div>
                 </>
-              ) : (
-                <div className="flex items-center gap-0">
-                  {(["All Journals", "Draft", "Published"] as StatusFilter[]).map(
-                    (tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setStatusFilter(tab)}
-                        className={cn(
-                          "text-sm pb-2 mr-5 border-b-2 -mb-px transition-colors",
-                          statusFilter === tab
-                            ? "border-primary text-primary font-medium"
-                            : "border-transparent text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        {tab}
-                      </button>
-                    )
-                  )}
+              : <div className="flex items-center gap-0">
+                  {(
+                    [
+                      "All Journals",
+                      "Draft",
+                      "Published",
+                      "Voided",
+                    ] as StatusFilter[]
+                  ).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setStatusFilter(tab)}
+                      className={cn(
+                        "text-sm pb-2 mr-5 border-b-2 -mb-px transition-colors",
+                        statusFilter === tab ?
+                          "border-primary text-primary font-medium"
+                        : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {tab}
+                    </button>
+                  ))}
                 </div>
-              )}
+              }
             </div>
 
             {/* Search when narrow */}
@@ -613,7 +658,7 @@ export default function JournalEntriesPage() {
             )}
 
             {/* Content */}
-            {panelOpen ? (
+            {panelOpen ?
               /* Narrow rows when detail open */
               <div className="flex-1 overflow-y-auto divide-y">
                 {filtered.map((j) => {
@@ -624,7 +669,7 @@ export default function JournalEntriesPage() {
                       onClick={() => setSelected(j)}
                       className={cn(
                         "flex items-start gap-2 px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors",
-                        isSel && "bg-blue-50 border-l-2 border-l-primary"
+                        isSel && "bg-blue-50 border-l-2 border-l-primary",
                       )}
                     >
                       <div className="flex-1 min-w-0">
@@ -632,7 +677,7 @@ export default function JournalEntriesPage() {
                           <p
                             className={cn(
                               "text-xs font-medium truncate",
-                              isSel ? "text-primary" : ""
+                              isSel ? "text-primary" : "",
                             )}
                           >
                             {j.displayDate}
@@ -648,9 +693,11 @@ export default function JournalEntriesPage() {
                           <span>·</span>
                           <span
                             className={
-                              j.status === "Published"
-                                ? "text-emerald-600 font-semibold"
-                                : "text-amber-500 font-semibold"
+                              j.status === "Published" ?
+                                "text-emerald-600 font-semibold"
+                              : j.status === "Draft" ?
+                                "text-amber-500 font-semibold"
+                              : "text-slate-500 font-semibold"
                             }
                           >
                             {j.status.toUpperCase()}
@@ -661,8 +708,7 @@ export default function JournalEntriesPage() {
                   );
                 })}
               </div>
-            ) : (
-              /* Full table when no detail open */
+            : /* Full table when no detail open */
               <div className="flex-1 overflow-auto">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-background z-10">
@@ -691,7 +737,16 @@ export default function JournalEntriesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {filtered.length === 0 ? (
+                    {loadingJournals ?
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="text-center py-16 text-muted-foreground text-sm"
+                        >
+                          Loading journals...
+                        </td>
+                      </tr>
+                    : filtered.length === 0 ?
                       <tr>
                         <td
                           colSpan={8}
@@ -700,8 +755,7 @@ export default function JournalEntriesPage() {
                           No journal entries found.
                         </td>
                       </tr>
-                    ) : (
-                      filtered.map((j) => (
+                    : filtered.map((j) => (
                         <tr
                           key={j.id}
                           onClick={() => setSelected(j)}
@@ -726,15 +780,15 @@ export default function JournalEntriesPage() {
                             <span
                               className={cn(
                                 "text-[11px] font-semibold tracking-wide uppercase",
-                                j.status === "Published"
-                                  ? "text-emerald-600"
-                                  : "text-amber-500"
+                                j.status === "Published" ? "text-emerald-600"
+                                : j.status === "Draft" ? "text-amber-500"
+                                : "text-slate-500",
                               )}
                             >
                               {j.status}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-muted-foreground max-w-[200px] truncate">
+                          <td className="max-w-50 truncate px-3 py-2.5 text-sm text-muted-foreground">
                             {j.notes}
                           </td>
                           <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
@@ -759,14 +813,17 @@ export default function JournalEntriesPage() {
                                   className="gap-2 text-sm"
                                   onClick={() =>
                                     router.push(
-                                      `/accountant/journal-entries/${j.id}/edit`
+                                      `/accountant/journal-entries/${j.id}/edit`,
                                     )
                                   }
                                 >
                                   <Edit className="h-3.5 w-3.5" /> Edit
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem className="gap-2 text-sm text-destructive focus:text-destructive">
+                                <DropdownMenuItem
+                                  className="gap-2 text-sm text-destructive focus:text-destructive"
+                                  onClick={() => void handleDelete(j.id)}
+                                >
                                   Delete
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -774,11 +831,11 @@ export default function JournalEntriesPage() {
                           </td>
                         </tr>
                       ))
-                    )}
+                    }
                   </tbody>
                 </table>
               </div>
-            )}
+            }
           </div>
 
           {/* ── RIGHT: detail panel ── */}
@@ -790,6 +847,7 @@ export default function JournalEntriesPage() {
                 onEdit={(j) =>
                   router.push(`/accountant/journal-entries/${j.id}/edit`)
                 }
+                onDelete={(j) => void handleDelete(j.id)}
               />
             </div>
           )}

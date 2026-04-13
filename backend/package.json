@@ -9,7 +9,9 @@
     "start": "node dist/server.js",
     "test": "npm run test:integration",
     "test:integration": "node --import tsx --test src/tests/integration/accounting-voucher.integration.test.ts",
-    "backfill:gl": "tsx src/scripts/backfill-gl-history.ts"
+    "backfill:gl": "tsx src/scripts/backfill-gl-history.ts",
+    "migrate:journal-number-index": "tsx src/scripts/migrate-journal-number-index.ts",
+    "migrate:journal-number-index:dry-run": "tsx src/scripts/migrate-journal-number-index.ts --dry-run"
   },
   "keywords": [],
   "author": "",
