@@ -168,20 +168,72 @@ export async function ensureDefaultChartOfAccounts(params: {
 }): Promise<{ created: number; totalTemplateAccounts: number }> {
   const template = getIndianCoATemplate();
 
+  const templateCountByTypeSignature = new Map<string, number>();
+  for (const node of template) {
+    const typeSignature = `${node.rootType}|${node.accountType}`;
+    templateCountByTypeSignature.set(
+      typeSignature,
+      (templateCountByTypeSignature.get(typeSignature) || 0) + 1,
+    );
+  }
+
   const existingAccounts = await Account.find({ organizationId: params.organizationId })
-    .select("name code")
+    .select("name code rootType accountType parentId isSystemAccount")
     .lean();
 
-  const existingNames = new Set(
-    (existingAccounts as Array<{ name: string }>).map((a) => normalizeAccountName(a.name)),
+  const rootAccounts = (existingAccounts as Array<{
+    name: string;
+    rootType: AccountRootType;
+    accountType: AccountType;
+    parentId?: Types.ObjectId | null;
+    isSystemAccount?: boolean;
+  }>).filter((account) => !account.parentId);
+
+  const existingRootNames = new Set(
+    rootAccounts.map((account) => normalizeAccountName(account.name)),
   );
+
+  const existingTemplateSignatures = new Set(
+    rootAccounts.map((account) =>
+      `${normalizeAccountName(account.name)}|${account.rootType}|${account.accountType}`,
+    ),
+  );
+
+  const existingSystemCountByTypeSignature = new Map<string, number>();
+  for (const account of rootAccounts) {
+    const isSystem = Boolean(account.isSystemAccount);
+    if (!isSystem) continue;
+    const typeSignature = `${account.rootType}|${account.accountType}`;
+    existingSystemCountByTypeSignature.set(
+      typeSignature,
+      (existingSystemCountByTypeSignature.get(typeSignature) || 0) + 1,
+    );
+  }
+
+  const createdCountByTypeSignature = new Map<string, number>();
+
   const usedCodes = collectUsedCodesFromRows(existingAccounts as Array<{ code?: string }>);
 
   let created = 0;
 
   for (const node of template) {
-    const key = normalizeAccountName(node.name);
-    if (existingNames.has(key)) continue;
+    const nameKey = normalizeAccountName(node.name);
+    const signature = `${nameKey}|${node.rootType}|${node.accountType}`;
+    const typeSignature = `${node.rootType}|${node.accountType}`;
+
+    // Exact template account already exists.
+    if (existingTemplateSignatures.has(signature)) continue;
+
+    // A root account with the same name already exists (possibly user-created or customized).
+    // Skip to avoid duplicate-name conflicts on (organizationId, name, parentId:null).
+    if (existingRootNames.has(nameKey)) continue;
+
+    // Respect renamed predefined accounts: if the org already has enough system accounts
+    // for this rootType/accountType bucket, don't recreate this template name.
+    const existingSystemCount = existingSystemCountByTypeSignature.get(typeSignature) || 0;
+    const createdInThisRun = createdCountByTypeSignature.get(typeSignature) || 0;
+    const requiredCount = templateCountByTypeSignature.get(typeSignature) || 0;
+    if (existingSystemCount + createdInThisRun >= requiredCount) continue;
 
     const range = getAccountCodeRange(node.rootType, node.accountType);
     const code = pickNextAvailableCode(usedCodes, range);
@@ -199,10 +251,26 @@ export async function ensureDefaultChartOfAccounts(params: {
       description: node.description || "",
     });
 
-    if (params.actor) attachUser(account, params.actor);
-    await account.save();
+    try {
+      if (params.actor) attachUser(account, params.actor);
+      await account.save();
+    } catch (error: any) {
+      // Parallel requests can race while inserting the same template account.
+      // Ignore duplicate-key conflict and continue syncing the rest.
+      if (error?.code === 11000) {
+        existingRootNames.add(nameKey);
+        existingTemplateSignatures.add(signature);
+        continue;
+      }
+      throw error;
+    }
 
-    existingNames.add(key);
+    existingRootNames.add(nameKey);
+    existingTemplateSignatures.add(signature);
+    createdCountByTypeSignature.set(
+      typeSignature,
+      (createdCountByTypeSignature.get(typeSignature) || 0) + 1,
+    );
     created += 1;
   }
 

@@ -127,6 +127,7 @@ export function summarizeInvoiceTotals(
   items: Array<{ quantity: number; rate: number }>,
   discountType: string,
   discountValue: number,
+  taxType: string,
   taxAmount: number,
   adjustmentAmount: number,
 ) {
@@ -138,7 +139,12 @@ export function summarizeInvoiceTotals(
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const normalizedTaxAmount = Number(taxAmount) || 0;
+  const taxImpact =
+    taxType === "TCS" ? normalizedTaxAmount
+    : taxType === "TDS" ? -normalizedTaxAmount
+    : 0;
+  const total = subTotal - discountAmount + taxImpact + adjustmentAmount;
 
   return {
     subTotal,
@@ -387,6 +393,7 @@ export async function generateInvoiceFromRecurringProfile(
     items,
     profile.discountType,
     discountValue,
+    profile.taxType || "none",
     taxAmount,
     adjustmentAmount,
   );

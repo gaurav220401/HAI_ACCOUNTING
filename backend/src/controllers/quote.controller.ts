@@ -65,6 +65,13 @@ async function nextQuoteNumber(organizationId: any): Promise<string> {
   return `QT-${String(next).padStart(6, "0")}`;
 }
 
+function resolveTaxImpact(taxType: string, taxAmount: number): number {
+  const normalizedTaxAmount = Number(taxAmount) || 0;
+  if (taxType === "TCS") return normalizedTaxAmount;
+  if (taxType === "TDS") return -normalizedTaxAmount;
+  return 0;
+}
+
 // ─── List Quotes ───────────────────────────────────────────────────────
 
 /** GET /api/quotes?status=Draft&search=...&page=1&limit=25 */
@@ -170,12 +177,17 @@ export const create = asyncHandler(
       : discountValue;
 
     // Tax on total
+    const taxType = req.body.taxType || "none";
     const taxAmount = Number(req.body.taxAmount) || 0;
 
     // Adjustment
     const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
 
-    const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+    const total =
+      subTotal -
+      discountAmount +
+      resolveTaxImpact(taxType, taxAmount) +
+      adjustmentAmount;
 
     const quote = new Quote({
       organizationId: oid,
@@ -191,7 +203,7 @@ export const create = asyncHandler(
       discountType,
       discountValue,
       discountAmount,
-      taxType: req.body.taxType || "none",
+      taxType,
       taxId: req.body.taxId || null,
       taxAmount,
       adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
@@ -278,10 +290,14 @@ export const update = asyncHandler(
       quote.discountType === "percent" ?
         (quote.subTotal * quote.discountValue) / 100
       : quote.discountValue;
+    const taxImpact = resolveTaxImpact(
+      String(quote.taxType || "none"),
+      Number(quote.taxAmount) || 0,
+    );
     quote.total =
       quote.subTotal -
-      quote.discountAmount -
-      quote.taxAmount +
+      quote.discountAmount +
+      taxImpact +
       quote.adjustmentAmount;
 
     attachUser(quote, req);

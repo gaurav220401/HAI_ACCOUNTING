@@ -482,6 +482,14 @@ export default function DeliveryChallanDetailPage() {
                       </span>
                     </div>
                   )}
+                  {challan.taxAmount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Tax</span>
+                      <span className="tabular-nums">
+                        +{challan.taxAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   {challan.adjustmentAmount !== 0 && (
                     <div className="flex justify-between text-sm">
                       <span>{challan.adjustmentLabel || "Adjustment"}</span>

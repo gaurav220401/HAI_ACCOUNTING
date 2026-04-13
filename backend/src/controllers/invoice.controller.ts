@@ -93,6 +93,7 @@ function summarizeTotals(
   items: any[],
   discountType: string,
   discountValue: number,
+  taxType: string,
   taxAmount: number,
   adjustmentAmount: number,
 ) {
@@ -104,7 +105,12 @@ function summarizeTotals(
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
-  const total = subTotal - discountAmount - taxAmount + adjustmentAmount;
+  const normalizedTaxAmount = Number(taxAmount) || 0;
+  const taxImpact =
+    taxType === "TCS" ? normalizedTaxAmount
+    : taxType === "TDS" ? -normalizedTaxAmount
+    : 0;
+  const total = subTotal - discountAmount + taxImpact + adjustmentAmount;
   return { subTotal, discountAmount, total };
 }
 
@@ -483,12 +489,14 @@ export const create = asyncHandler(
     const items = await normalizeItems(oid, req.body.customerId, req.body.items || []);
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
+    const taxType = req.body.taxType || "none";
     const taxAmount = Number(req.body.taxAmount) || 0;
     const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
     const { subTotal, discountAmount, total } = summarizeTotals(
       items,
       discountType,
       discountValue,
+      taxType,
       taxAmount,
       adjustmentAmount,
     );
@@ -515,7 +523,7 @@ export const create = asyncHandler(
       discountType,
       discountValue,
       discountAmount,
-      taxType: req.body.taxType || "none",
+      taxType,
       taxId: req.body.taxId || null,
       taxAmount,
       adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
@@ -639,10 +647,15 @@ export const update = asyncHandler(
       invoice.discountType === "percent" ?
         (invoice.subTotal * invoice.discountValue) / 100
       : invoice.discountValue;
+    const normalizedTaxAmount = Number(invoice.taxAmount) || 0;
+    const taxImpact =
+      invoice.taxType === "TCS" ? normalizedTaxAmount
+      : invoice.taxType === "TDS" ? -normalizedTaxAmount
+      : 0;
     invoice.total =
       invoice.subTotal -
-      invoice.discountAmount -
-      (invoice.taxAmount || 0) +
+      invoice.discountAmount +
+      taxImpact +
       (invoice.adjustmentAmount || 0);
 
     if (req.body.balanceDue !== undefined) {
@@ -650,6 +663,7 @@ export const update = asyncHandler(
     } else if (
       req.body.items ||
       req.body.taxAmount !== undefined ||
+      req.body.taxType !== undefined ||
       req.body.adjustmentAmount !== undefined ||
       req.body.discountValue !== undefined ||
       req.body.discountType !== undefined
