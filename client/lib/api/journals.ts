@@ -15,7 +15,10 @@ export interface Journal {
   organizationId: string;
   journalNumber: string;
   date: string;
-  vendorId?: string | { _id: string; displayName?: string; companyName?: string } | null;
+  vendorId?:
+    | string
+    | { _id: string; displayName?: string; companyName?: string }
+    | null;
   description?: string;
   referenceNumber?: string;
   lineItems: JournalLine[];
@@ -37,22 +40,59 @@ export interface JournalListParams extends ListParams {
 
 export interface CreateJournalInput {
   date: string;
+  journalNumber?: string;
   vendorId?: string | null;
   description?: string;
   referenceNumber?: string;
-  lineItems: Array<{ accountId: string; debit: number; credit: number; narration?: string }>;
+  lineItems: Array<{
+    accountId: string;
+    debit: number;
+    credit: number;
+    narration?: string;
+  }>;
   notes?: string;
   status?: JournalStatus;
 }
 
 export type UpdateJournalInput = Partial<CreateJournalInput>;
 
+export type JournalNumberingMode = "auto" | "manual";
+
+export interface JournalNumberingPreferences {
+  mode: JournalNumberingMode;
+  prefix: string;
+  nextNumber: number;
+  previewJournalNumber: string;
+}
+
+export interface UpdateJournalNumberingPreferencesInput {
+  mode?: JournalNumberingMode;
+  prefix?: string;
+  nextNumber?: number;
+}
+
 export const journalApi = {
   list: (params?: JournalListParams) =>
-    apiFetch<PaginatedResponse<Journal>>(`/journals${buildQuery(params || {})}`),
+    apiFetch<PaginatedResponse<Journal>>(
+      `/journals${buildQuery(params || {})}`,
+    ),
 
-  getOne: (id: string) =>
-    apiFetch<{ data: Journal }>(`/journals/${id}`),
+  getNumberingPreferences: () =>
+    apiFetch<{ data: JournalNumberingPreferences }>(
+      "/journals/numbering-preferences",
+    ),
+
+  updateNumberingPreferences: (data: UpdateJournalNumberingPreferencesInput) =>
+    apiFetch<{ data: JournalNumberingPreferences }>(
+      "/journals/numbering-preferences",
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      },
+    ),
+
+  getOne: (id: string) => apiFetch<{ data: Journal }>(`/journals/${id}`),
 
   create: (data: CreateJournalInput) =>
     apiFetch<{ data: Journal }>("/journals", {
@@ -75,5 +115,7 @@ export const journalApi = {
     apiFetch<{ data: Journal }>(`/journals/${id}/void`, { method: "POST" }),
 
   remove: (id: string) =>
-    apiFetch<{ success: boolean; message: string }>(`/journals/${id}`, { method: "DELETE" }),
+    apiFetch<{ success: boolean; message: string }>(`/journals/${id}`, {
+      method: "DELETE",
+    }),
 };
