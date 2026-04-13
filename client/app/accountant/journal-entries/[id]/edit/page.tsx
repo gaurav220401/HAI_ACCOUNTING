@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -34,17 +34,15 @@ import {
   Plus,
   MoreHorizontal,
   Settings,
-  Info,
   Upload,
   ChevronDown,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { accountApi, type Account } from "@/lib/api/accounts";
+import { journalApi } from "@/lib/api/journals";
 
-const STORAGE_KEY = "hai_journals";
 const toInputDate = (d: Date) => d.toISOString().split("T")[0];
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type JournalRow = {
   id: string;
@@ -55,20 +53,7 @@ type JournalRow = {
   credits: number | "";
 };
 
-type StoredJournal = {
-  id: string;
-  journalNumber: string;
-  date: string;
-  displayDate: string;
-  reference: string;
-  status: "Published" | "Draft";
-  notes: string;
-  amount: number;
-  currency: string;
-  lines: { account: string; contact: string; debit: number; credit: number }[];
-};
-
-// ─── Row helpers ──────────────────────────────────────────────────────────────
+type ReportingMethod = "accrual_and_cash" | "accrual_only" | "cash_only";
 
 let rowKey = 100;
 function makeRow(): JournalRow {
@@ -82,8 +67,6 @@ function makeRow(): JournalRow {
   };
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export default function EditJournalPage() {
   const router = useRouter();
   const params = useParams();
@@ -94,13 +77,14 @@ export default function EditJournalPage() {
 
   const [notFound, setNotFound] = useState(false);
 
-  // ── Form state ─────────────────────────────────────────────────────────
   const [date, setDate] = useState(toInputDate(new Date()));
   const [journalNumber, setJournalNumber] = useState("");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
-  const [isCashBased, setIsCashBased] = useState(false);
+  const [reportingMethod, setReportingMethod] =
+    useState<ReportingMethod>("accrual_and_cash");
   const [currency, setCurrency] = useState("INR");
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [rows, setRows] = useState<JournalRow[]>([makeRow(), makeRow()]);
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
@@ -114,76 +98,93 @@ export default function EditJournalPage() {
       router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
-  // ── Load journal from localStorage ─────────────────────────────────────
   useEffect(() => {
     if (!journalId) return;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const all: StoredJournal[] = raw ? JSON.parse(raw) : [];
-      const found = all.find((j) => j.id === journalId);
-      if (!found) {
+
+    const loadData = async () => {
+      try {
+        const [accountsRes, journalRes] = await Promise.all([
+          accountApi.list({ excludeGroups: true }),
+          journalApi.getOne(journalId),
+        ]);
+
+        setAccounts((accountsRes.data || []).filter((acc) => acc.isActive));
+
+        const journal = journalRes.data;
+        setDate(toInputDate(new Date(journal.date)));
+        setJournalNumber(journal.journalNumber || "");
+        setReference(journal.referenceNumber || "");
+        setNotes(journal.notes || journal.description || "");
+
+        const mappedRows = (journal.lineItems || []).map((line) => ({
+          id: String(rowKey++),
+          accountId:
+            typeof line.accountId === "string" ?
+              line.accountId
+            : line.accountId?._id || "",
+          description: line.narration || "",
+          contactId: "",
+          debits: Number(line.debit || 0) || "",
+          credits: Number(line.credit || 0) || "",
+        }));
+
+        if (mappedRows.length === 0) {
+          setRows([makeRow(), makeRow()]);
+        } else if (mappedRows.length === 1) {
+          setRows([mappedRows[0], makeRow()]);
+        } else {
+          setRows(mappedRows);
+        }
+
+        setReady(true);
+      } catch {
         setNotFound(true);
-        return;
       }
-      setDate(found.date);
-      setJournalNumber(found.journalNumber);
-      setReference(found.reference ?? "");
-      setNotes(found.notes ?? "");
-      setCurrency(found.currency ?? "INR");
-      setRows(
-        found.lines && found.lines.length > 0
-          ? found.lines.map((l, i) => ({
-              id: String(rowKey + i),
-              accountId: l.account ?? "",
-              description: "",
-              contactId: l.contact ?? "",
-              debits: l.debit || "",
-              credits: l.credit || "",
-            }))
-          : [makeRow(), makeRow()]
-      );
-      setReady(true);
-    } catch {
-      setNotFound(true);
-    }
+    };
+
+    void loadData();
   }, [journalId]);
 
-  // ── Row actions ────────────────────────────────────────────────────────
   const addRow = () => setRows((prev) => [...prev, makeRow()]);
 
   const removeRow = (id: string) =>
     setRows((prev) =>
-      prev.length > 2
-        ? prev.filter((r) => r.id !== id)
-        : prev.map((r) =>
-            r.id === id
-              ? { ...r, accountId: "", description: "", contactId: "", debits: "", credits: "" }
-              : r
-          )
+      prev.length > 2 ?
+        prev.filter((r) => r.id !== id)
+      : prev.map((r) =>
+          r.id === id ?
+            {
+              ...r,
+              accountId: "",
+              description: "",
+              contactId: "",
+              debits: "",
+              credits: "",
+            }
+          : r,
+        ),
     );
 
   const updateRow = (
     id: string,
     field: keyof JournalRow,
-    value: JournalRow[keyof JournalRow]
+    value: JournalRow[keyof JournalRow],
   ) =>
     setRows((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
     );
 
-  // ── Totals ─────────────────────────────────────────────────────────────
   const totalDebits = useMemo(
     () => rows.reduce((sum, r) => sum + (Number(r.debits) || 0), 0),
-    [rows]
+    [rows],
   );
   const totalCredits = useMemo(
     () => rows.reduce((sum, r) => sum + (Number(r.credits) || 0), 0),
-    [rows]
+    [rows],
   );
   const difference = Math.abs(totalDebits - totalCredits);
   const isBalanced = difference === 0;
 
-  // ── Submit ─────────────────────────────────────────────────────────────
   const handleSubmit = async (publish: boolean) => {
     if (!notes.trim()) {
       toast.error("Notes are required");
@@ -193,55 +194,45 @@ export default function EditJournalPage() {
       toast.error("Debits and Credits must be equal before saving");
       return;
     }
+
+    const payloadLines = rows
+      .filter(
+        (r) => r.accountId && (Number(r.debits) > 0 || Number(r.credits) > 0),
+      )
+      .map((r) => ({
+        accountId: r.accountId,
+        debit: Number(r.debits) || 0,
+        credit: Number(r.credits) || 0,
+        narration: r.description || undefined,
+      }));
+
+    if (payloadLines.length < 2) {
+      toast.error("Journal requires at least two line items");
+      return;
+    }
+
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
-
-      const displayDate = new Date(date).toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-
-      const updated: StoredJournal = {
-        id: journalId,
-        journalNumber,
+      await journalApi.update(journalId, {
         date,
-        displayDate,
-        reference,
-        status: publish ? "Published" : "Draft",
+        referenceNumber: reference,
+        status: publish ? "Posted" : "Draft",
+        description: notes,
         notes,
-        amount: totalDebits,
-        currency,
-        lines: rows.map((r) => ({
-          account: r.accountId,
-          contact: r.contactId,
-          debit: Number(r.debits) || 0,
-          credit: Number(r.credits) || 0,
-        })),
-      };
-
-      // Update the entry in localStorage
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const all: StoredJournal[] = raw ? JSON.parse(raw) : [];
-      const idx = all.findIndex((j) => j.id === journalId);
-      if (idx !== -1) {
-        all[idx] = updated;
-      } else {
-        all.unshift(updated);
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+        lineItems: payloadLines,
+      });
 
       toast.success(`Journal ${publish ? "published" : "saved as draft"}!`);
       router.push("/accountant/journal-entries");
-    } catch {
-      toast.error("Failed to save journal");
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to save journal";
+      toast.error(message);
     } finally {
       setSaving(false);
     }
   };
 
-  // ── Guards ─────────────────────────────────────────────────────────────
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
@@ -273,8 +264,12 @@ export default function EditJournalPage() {
           <div className="flex-1 flex items-center justify-center text-muted-foreground">
             <div className="text-center space-y-3">
               <p className="text-lg font-medium">Journal not found</p>
-              <p className="text-sm">The journal entry you&apos;re trying to edit doesn&apos;t exist.</p>
-              <Button onClick={() => router.push("/accountant/journal-entries")}>
+              <p className="text-sm">
+                The journal entry you&apos;re trying to edit doesn&apos;t exist.
+              </p>
+              <Button
+                onClick={() => router.push("/accountant/journal-entries")}
+              >
                 Back to Journal Entries
               </Button>
             </div>
@@ -292,12 +287,10 @@ export default function EditJournalPage() {
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col h-svh overflow-hidden">
-        {/* ── Header ── */}
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
@@ -309,21 +302,20 @@ export default function EditJournalPage() {
                 Journal Entries
               </span>
               <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Edit #{journalNumber}</span>
+              <span className="font-medium text-foreground">
+                Edit #{journalNumber}
+              </span>
             </span>
           }
         />
 
-        {/* ── Scrollable body ── */}
         <div className="flex-1 overflow-auto bg-muted/5 px-8 py-6">
           <div className="max-w-5xl mx-auto space-y-8">
-
-            {/* ── Main fields ── */}
             <div className="bg-white border rounded-lg shadow-sm p-6 space-y-5">
-
-              {/* Date */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
-                <Label className="text-red-500 text-sm font-medium text-right">Date *</Label>
+                <Label className="text-red-500 text-sm font-medium text-right">
+                  Date *
+                </Label>
                 <Input
                   type="date"
                   value={date}
@@ -332,22 +324,20 @@ export default function EditJournalPage() {
                 />
               </div>
 
-              {/* Journal # */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
-                <Label className="text-red-500 text-sm font-medium text-right">Journal# *</Label>
+                <Label className="text-red-500 text-sm font-medium text-right">
+                  Journal# *
+                </Label>
                 <div className="relative max-w-xs">
-                  <Input
-                    value={journalNumber}
-                    onChange={(e) => setJournalNumber(e.target.value)}
-                    className="pr-9"
-                  />
+                  <Input value={journalNumber} readOnly className="pr-9" />
                   <Settings className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground cursor-pointer" />
                 </div>
               </div>
 
-              {/* Reference */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
-                <Label className="text-sm font-medium text-right">Reference#</Label>
+                <Label className="text-sm font-medium text-right">
+                  Reference#
+                </Label>
                 <Input
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
@@ -355,37 +345,73 @@ export default function EditJournalPage() {
                 />
               </div>
 
-              {/* Notes */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-start">
-                <Label className="text-red-500 text-sm font-medium text-right pt-2">Notes *</Label>
+                <Label className="text-red-500 text-sm font-medium text-right pt-2">
+                  Notes *
+                </Label>
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Max. 500 characters"
                   maxLength={500}
-                  className="min-h-[90px] resize-y max-w-md"
+                  className="min-h-22.5 max-w-md resize-y"
                 />
               </div>
 
-              {/* Journal Type */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
-                <Label className="text-sm font-medium text-right">Journal Type</Label>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="cash-based"
-                    checked={isCashBased}
-                    onCheckedChange={(c) => setIsCashBased(!!c)}
-                  />
-                  <Label htmlFor="cash-based" className="text-sm font-normal cursor-pointer flex items-center gap-1">
-                    Cash based journal
-                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Label>
-                </div>
+                <Label className="text-sm font-medium text-right">
+                  Reporting Method
+                </Label>
+                <RadioGroup
+                  value={reportingMethod}
+                  onValueChange={(value) =>
+                    setReportingMethod(value as ReportingMethod)
+                  }
+                  className="flex flex-wrap items-center gap-5"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem
+                      value="accrual_and_cash"
+                      id="reporting-accrual-and-cash"
+                    />
+                    <Label
+                      htmlFor="reporting-accrual-and-cash"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Accrual and Cash
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem
+                      value="accrual_only"
+                      id="reporting-accrual-only"
+                    />
+                    <Label
+                      htmlFor="reporting-accrual-only"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Accrual Only
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem
+                      value="cash_only"
+                      id="reporting-cash-only"
+                    />
+                    <Label
+                      htmlFor="reporting-cash-only"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Cash Only
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
 
-              {/* Currency */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
-                <Label className="text-sm font-medium text-right">Currency</Label>
+                <Label className="text-sm font-medium text-right">
+                  Currency
+                </Label>
                 <Select value={currency} onValueChange={setCurrency}>
                   <SelectTrigger className="max-w-xs">
                     <SelectValue />
@@ -399,17 +425,26 @@ export default function EditJournalPage() {
               </div>
             </div>
 
-            {/* ── Journal lines table ── */}
             <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
               <Table>
                 <TableHeader className="bg-muted/20">
                   <TableRow>
                     <TableHead className="w-8" />
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground w-72">Account</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground">Description</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground w-48">Contact ({currency})</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground text-right w-32">Debits</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground text-right w-32">Credits</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground w-72">
+                      Account
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground">
+                      Description
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground w-48">
+                      Contact ({currency})
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground text-right w-32">
+                      Debits
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground text-right w-32">
+                      Credits
+                    </TableHead>
                     <TableHead className="w-12" />
                   </TableRow>
                 </TableHeader>
@@ -420,44 +455,44 @@ export default function EditJournalPage() {
                         <GripVertical className="h-4 w-4 text-muted-foreground/40 cursor-grab" />
                       </TableCell>
 
-                      {/* Account */}
                       <TableCell className="p-1 border-r">
                         <Select
                           value={row.accountId}
-                          onValueChange={(val) => updateRow(row.id, "accountId", val)}
+                          onValueChange={(val) =>
+                            updateRow(row.id, "accountId", val)
+                          }
                         >
                           <SelectTrigger className="border-0 shadow-none focus:ring-0 h-8 text-sm text-muted-foreground">
                             <SelectValue placeholder="Select an account" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="cash">Cash Account</SelectItem>
-                            <SelectItem value="bank">Bank Account</SelectItem>
-                            <SelectItem value="sales">Sales Account</SelectItem>
-                            <SelectItem value="expense">Expense Account</SelectItem>
-                            <SelectItem value="Depreciation Expense">Depreciation Expense</SelectItem>
-                            <SelectItem value="Furniture and Equipment">Furniture and Equipment</SelectItem>
-                            <SelectItem value="Accrued Expenses">Accrued Expenses</SelectItem>
-                            <SelectItem value="Accounts Payable">Accounts Payable</SelectItem>
-                            <SelectItem value="Office Supplies">Office Supplies</SelectItem>
+                            {accounts.map((account) => (
+                              <SelectItem key={account._id} value={account._id}>
+                                {account.code ? `[${account.code}] ` : ""}
+                                {account.name}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </TableCell>
 
-                      {/* Description */}
                       <TableCell className="p-1 border-r">
                         <Input
                           value={row.description}
-                          onChange={(e) => updateRow(row.id, "description", e.target.value)}
+                          onChange={(e) =>
+                            updateRow(row.id, "description", e.target.value)
+                          }
                           placeholder="Description"
                           className="border-0 shadow-none focus-visible:ring-0 h-8 text-sm"
                         />
                       </TableCell>
 
-                      {/* Contact */}
                       <TableCell className="p-1 border-r">
                         <Select
                           value={row.contactId}
-                          onValueChange={(val) => updateRow(row.id, "contactId", val)}
+                          onValueChange={(val) =>
+                            updateRow(row.id, "contactId", val)
+                          }
                         >
                           <SelectTrigger className="border-0 shadow-none focus:ring-0 h-8 text-sm text-muted-foreground">
                             <SelectValue placeholder="Select Contact" />
@@ -469,7 +504,6 @@ export default function EditJournalPage() {
                         </Select>
                       </TableCell>
 
-                      {/* Debits */}
                       <TableCell className="p-1 border-r">
                         <Input
                           type="number"
@@ -478,7 +512,9 @@ export default function EditJournalPage() {
                             updateRow(
                               row.id,
                               "debits",
-                              e.target.value === "" ? "" : parseFloat(e.target.value)
+                              e.target.value === "" ?
+                                ""
+                              : parseFloat(e.target.value),
                             )
                           }
                           placeholder="0.00"
@@ -486,7 +522,6 @@ export default function EditJournalPage() {
                         />
                       </TableCell>
 
-                      {/* Credits */}
                       <TableCell className="p-1 border-r">
                         <Input
                           type="number"
@@ -495,7 +530,9 @@ export default function EditJournalPage() {
                             updateRow(
                               row.id,
                               "credits",
-                              e.target.value === "" ? "" : parseFloat(e.target.value)
+                              e.target.value === "" ?
+                                ""
+                              : parseFloat(e.target.value),
                             )
                           }
                           placeholder="0.00"
@@ -503,7 +540,6 @@ export default function EditJournalPage() {
                         />
                       </TableCell>
 
-                      {/* Actions */}
                       <TableCell className="p-1 text-center">
                         <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <MoreHorizontal className="h-4 w-4 text-muted-foreground cursor-pointer" />
@@ -519,7 +555,6 @@ export default function EditJournalPage() {
                 </TableBody>
               </Table>
 
-              {/* Footer: Add Row + Totals */}
               <div className="flex justify-between items-start px-4 py-3 border-t bg-muted/5">
                 <Button
                   variant="ghost"
@@ -531,29 +566,44 @@ export default function EditJournalPage() {
                   Add New Row
                 </Button>
 
-                {/* Totals panel */}
                 <div className="text-sm w-80 space-y-2 border rounded-md p-4 bg-white shadow-sm">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Sub Total</span>
                     <div className="flex gap-6">
-                      <span className="w-20 text-right tabular-nums">{totalDebits.toFixed(2)}</span>
-                      <span className="w-20 text-right tabular-nums">{totalCredits.toFixed(2)}</span>
+                      <span className="w-20 text-right tabular-nums">
+                        {totalDebits.toFixed(2)}
+                      </span>
+                      <span className="w-20 text-right tabular-nums">
+                        {totalCredits.toFixed(2)}
+                      </span>
                     </div>
                   </div>
                   <Separator />
                   <div className="flex justify-between font-bold">
                     <span>Total (Rs.)</span>
                     <div className="flex gap-6">
-                      <span className="w-20 text-right tabular-nums">{totalDebits.toFixed(2)}</span>
-                      <span className="w-20 text-right tabular-nums">{totalCredits.toFixed(2)}</span>
+                      <span className="w-20 text-right tabular-nums">
+                        {totalDebits.toFixed(2)}
+                      </span>
+                      <span className="w-20 text-right tabular-nums">
+                        {totalCredits.toFixed(2)}
+                      </span>
                     </div>
                   </div>
                   <Separator />
                   <div className="flex justify-between text-sm">
-                    <span className={isBalanced ? "text-muted-foreground" : "text-destructive font-medium"}>
+                    <span
+                      className={
+                        isBalanced ?
+                          "text-muted-foreground"
+                        : "text-destructive font-medium"
+                      }
+                    >
                       Difference
                     </span>
-                    <span className={`w-20 text-right tabular-nums ${isBalanced ? "text-muted-foreground" : "text-destructive font-semibold"}`}>
+                    <span
+                      className={`w-20 text-right tabular-nums ${isBalanced ? "text-muted-foreground" : "text-destructive font-semibold"}`}
+                    >
                       {difference.toFixed(2)}
                     </span>
                   </div>
@@ -561,15 +611,21 @@ export default function EditJournalPage() {
               </div>
             </div>
 
-            {/* ── Attachments ── */}
             <div className="bg-white border rounded-lg shadow-sm p-6">
               <p className="text-sm font-medium mb-3">Attachments</p>
               <div className="flex gap-0">
-                <Button variant="outline" className="rounded-r-none gap-2 text-sm">
+                <Button
+                  variant="outline"
+                  className="rounded-r-none gap-2 text-sm"
+                >
                   <Upload className="h-4 w-4 text-muted-foreground" />
                   Upload File
                 </Button>
-                <Button variant="outline" size="icon" className="rounded-l-none border-l-0 px-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-l-none border-l-0 px-2"
+                >
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </div>
@@ -577,11 +633,9 @@ export default function EditJournalPage() {
                 You can upload a maximum of 5 files, 10MB each
               </p>
             </div>
-
           </div>
         </div>
 
-        {/* ── Sticky footer ── */}
         <div className="border-t bg-background px-8 py-4 flex items-center gap-3 shrink-0">
           <Button
             size="sm"
