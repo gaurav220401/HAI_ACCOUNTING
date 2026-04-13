@@ -90,6 +90,17 @@ export type {
   UpdateVendorCreditInput,
 } from "./vendor-credits";
 
+export { creditNoteApi } from "./credit-notes";
+export type {
+  CreditNote,
+  CreditNoteLineItem,
+  CreditNoteStatus,
+  CreditNoteApplication,
+  CreateCreditNoteInput,
+  UpdateCreditNoteInput,
+  CreditNoteListParams,
+} from "./credit-notes";
+
 export { paymentMadeApi } from "./payments-made";
 export type {
   PaymentMade,
