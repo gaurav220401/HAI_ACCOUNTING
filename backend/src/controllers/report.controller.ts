@@ -25,6 +25,24 @@ type AccountRow = {
   openingBalance?: number;
 };
 
+type DashboardBasis = "accrual" | "cash";
+
+type DashboardAccountRow = {
+  _id: Types.ObjectId;
+  name: string;
+  accountType: string;
+  rootType: "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+  openingBalance?: number;
+};
+
+type AgingBuckets = {
+  current: number;
+  "1-15": number;
+  "16-30": number;
+  "31-45": number;
+  "above-45": number;
+};
+
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
@@ -71,6 +89,86 @@ function defaultFrom(): Date {
 
 function defaultTo(): Date {
   return endOfDay(new Date());
+}
+
+function toBoundedInt(value: unknown, fallback: number, min = 1, max = 100): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  const parsed = Math.trunc(n);
+  if (parsed < min) return min;
+  if (parsed > max) return max;
+  return parsed;
+}
+
+function parseDashboardBasis(value: unknown, label: string, fallback: DashboardBasis = "accrual"): DashboardBasis {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (raw === "accrual" || raw === "cash") return raw;
+  throw new ValidationError(`${label} must be either accrual or cash`);
+}
+
+function monthKeyFromDate(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabelFromKey(key: string): string {
+  const [year, month] = key.split("-").map((v) => Number(v));
+  const d = new Date(year, Math.max(0, month - 1), 1);
+  return d.toLocaleDateString("en-IN", { month: "short" });
+}
+
+function enumerateMonthKeys(from: Date, to: Date): string[] {
+  const keys: string[] = [];
+  let cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+  const end = new Date(to.getFullYear(), to.getMonth(), 1);
+
+  while (cursor <= end) {
+    keys.push(monthKeyFromDate(cursor));
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+
+  return keys;
+}
+
+function addToNumberMap(map: Map<string, number>, key: string, amount: number): void {
+  const current = map.get(key) || 0;
+  map.set(key, round2(current + amount));
+}
+
+function isWithinDateRange(value: Date, from: Date, to: Date): boolean {
+  const time = value.getTime();
+  return time >= startOfDay(from).getTime() && time <= endOfDay(to).getTime();
+}
+
+function createAgingBuckets(): AgingBuckets {
+  return {
+    current: 0,
+    "1-15": 0,
+    "16-30": 0,
+    "31-45": 0,
+    "above-45": 0,
+  };
+}
+
+function sumAgingBuckets(buckets: AgingBuckets): number {
+  return round2(
+    buckets.current +
+    buckets["1-15"] +
+    buckets["16-30"] +
+    buckets["31-45"] +
+    buckets["above-45"],
+  );
+}
+
+function closingBalanceForAccount(
+  account: DashboardAccountRow,
+  movement: { debit: number; credit: number },
+): number {
+  const signed = round2(Number(account.openingBalance || 0) + movement.debit - movement.credit);
+  if (account.rootType === "Liability" || account.rootType === "Equity" || account.rootType === "Income") {
+    return round2(-signed);
+  }
+  return signed;
 }
 
 async function loadAccounts(organizationId: Types.ObjectId): Promise<Map<string, AccountRow>> {
@@ -1065,4 +1163,562 @@ export const paymentsReceivedReport = asyncHandler(async (req: AuthenticatedRequ
   };
 
   res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+// ─── DASHBOARD SUMMARY ───────────────────────────────────────────────
+
+export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+
+  const asOf = parseDate(req.query.asOf, "asOf") || new Date();
+  const cashFrom = parseDate(req.query.cashFrom, "cashFrom") || defaultFrom();
+  const cashTo = parseDate(req.query.cashTo, "cashTo") || defaultTo();
+  const incomeFrom = parseDate(req.query.incomeFrom, "incomeFrom") || defaultFrom();
+  const incomeTo = parseDate(req.query.incomeTo, "incomeTo") || defaultTo();
+
+  if (startOfDay(cashFrom) > endOfDay(cashTo)) {
+    throw new ValidationError("cashFrom must be before or equal to cashTo");
+  }
+  if (startOfDay(incomeFrom) > endOfDay(incomeTo)) {
+    throw new ValidationError("incomeFrom must be before or equal to incomeTo");
+  }
+
+  const incomeBasis = parseDashboardBasis(req.query.incomeBasis, "incomeBasis", "accrual");
+  const watchlistBasis = parseDashboardBasis(req.query.watchlistBasis, "watchlistBasis", "accrual");
+  const topExpensesLimit = toBoundedInt(req.query.topExpensesLimit, 5, 1, 12);
+
+  const asOfEnd = endOfDay(asOf);
+  const cashFromStart = startOfDay(cashFrom);
+  const cashToEnd = endOfDay(cashTo);
+  const incomeFromStart = startOfDay(incomeFrom);
+  const incomeToEnd = endOfDay(incomeTo);
+
+  const minRangeFrom = cashFromStart < incomeFromStart ? cashFromStart : incomeFromStart;
+  const maxRangeTo = cashToEnd > incomeToEnd ? cashToEnd : incomeToEnd;
+  const hasValue = (n: number): boolean => Math.abs(n) >= 0.01;
+  const sumMapValues = (map: Map<string, number>): number =>
+    round2(Array.from(map.values()).reduce((sum, value) => sum + value, 0));
+
+  const [receivableDocs, payableDocs, paymentInDocs, paymentOutDocs, invoiceIncomeDocs, expenseDocs, allAccountDocs] = await Promise.all([
+    Invoice.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      invoiceDate: { $lte: asOfEnd },
+      balanceDue: { $gt: 0 },
+    })
+      .select("dueDate balanceDue")
+      .lean(),
+
+    Bill.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      billDate: { $lte: asOfEnd },
+      balanceDue: { $gt: 0 },
+    })
+      .select("dueDate balanceDue")
+      .lean(),
+
+    PaymentReceived.find({
+      organization_id: organizationId,
+      is_deleted: false,
+      status: { $ne: "VOID" },
+      payment_date: { $gte: minRangeFrom, $lte: maxRangeTo },
+    })
+      .select("payment_date total_amount_received")
+      .lean(),
+
+    PaymentMade.find({
+      organization_id: organizationId,
+      is_deleted: false,
+      status: { $ne: "VOID" },
+      payment_date: { $gte: minRangeFrom, $lte: maxRangeTo },
+    })
+      .select("payment_date total_amount_paid")
+      .lean(),
+
+    Invoice.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      invoiceDate: { $gte: incomeFromStart, $lte: incomeToEnd },
+    })
+      .select("invoiceDate total")
+      .lean(),
+
+    Expense.find({
+      organizationId,
+      isDeleted: false,
+      date: { $gte: incomeFromStart, $lte: incomeToEnd },
+    })
+      .select("date amount expenseAccountId isItemized lineItems")
+      .lean(),
+
+    Account.find({
+      organizationId,
+      isDeleted: false,
+      isGroup: false,
+    })
+      .select("name accountType rootType openingBalance")
+      .lean(),
+  ]);
+
+  const allAccounts = allAccountDocs as DashboardAccountRow[];
+  const accountNameMap = new Map(allAccounts.map((account) => [String(account._id), account.name]));
+
+  const receivableBuckets = createAgingBuckets();
+  for (const invoice of receivableDocs as Array<{ dueDate?: Date | null; balanceDue?: number }>) {
+    const amount = round2(toNum(invoice.balanceDue));
+    if (amount <= 0) continue;
+
+    const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+    if (!dueDate || dueDate >= asOfEnd) {
+      receivableBuckets.current = round2(receivableBuckets.current + amount);
+      continue;
+    }
+
+    const daysOverdue = Math.floor((asOfEnd.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysOverdue <= 15) receivableBuckets["1-15"] = round2(receivableBuckets["1-15"] + amount);
+    else if (daysOverdue <= 30) receivableBuckets["16-30"] = round2(receivableBuckets["16-30"] + amount);
+    else if (daysOverdue <= 45) receivableBuckets["31-45"] = round2(receivableBuckets["31-45"] + amount);
+    else receivableBuckets["above-45"] = round2(receivableBuckets["above-45"] + amount);
+  }
+
+  const payableBuckets = createAgingBuckets();
+  for (const bill of payableDocs as Array<{ dueDate?: Date | null; balanceDue?: number }>) {
+    const amount = round2(toNum(bill.balanceDue));
+    if (amount <= 0) continue;
+
+    const dueDate = bill.dueDate ? new Date(bill.dueDate) : null;
+    if (!dueDate || dueDate >= asOfEnd) {
+      payableBuckets.current = round2(payableBuckets.current + amount);
+      continue;
+    }
+
+    const daysOverdue = Math.floor((asOfEnd.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysOverdue <= 15) payableBuckets["1-15"] = round2(payableBuckets["1-15"] + amount);
+    else if (daysOverdue <= 30) payableBuckets["16-30"] = round2(payableBuckets["16-30"] + amount);
+    else if (daysOverdue <= 45) payableBuckets["31-45"] = round2(payableBuckets["31-45"] + amount);
+    else payableBuckets["above-45"] = round2(payableBuckets["above-45"] + amount);
+  }
+
+  const subledgerReceivableTotal = sumAgingBuckets(receivableBuckets);
+  const subledgerPayableTotal = sumAgingBuckets(payableBuckets);
+
+  const cashIncomingMap = new Map<string, number>();
+  const cashOutgoingMap = new Map<string, number>();
+  const incomeCashInMap = new Map<string, number>();
+  const incomeCashOutMap = new Map<string, number>();
+
+  for (const payment of paymentInDocs as Array<{ payment_date?: Date; total_amount_received?: number }>) {
+    const date = payment.payment_date ? new Date(payment.payment_date) : null;
+    if (!date || Number.isNaN(date.getTime())) continue;
+
+    const amount = round2(toNum(payment.total_amount_received));
+    const monthKey = monthKeyFromDate(date);
+
+    if (isWithinDateRange(date, cashFrom, cashTo)) {
+      addToNumberMap(cashIncomingMap, monthKey, amount);
+    }
+    if (isWithinDateRange(date, incomeFrom, incomeTo)) {
+      addToNumberMap(incomeCashInMap, monthKey, amount);
+    }
+  }
+
+  for (const payment of paymentOutDocs as Array<{ payment_date?: Date; total_amount_paid?: number }>) {
+    const date = payment.payment_date ? new Date(payment.payment_date) : null;
+    if (!date || Number.isNaN(date.getTime())) continue;
+
+    const amount = round2(toNum(payment.total_amount_paid));
+    const monthKey = monthKeyFromDate(date);
+
+    if (isWithinDateRange(date, cashFrom, cashTo)) {
+      addToNumberMap(cashOutgoingMap, monthKey, amount);
+    }
+    if (isWithinDateRange(date, incomeFrom, incomeTo)) {
+      addToNumberMap(incomeCashOutMap, monthKey, amount);
+    }
+  }
+
+  const docIncomeAccrualMap = new Map<string, number>();
+  for (const invoice of invoiceIncomeDocs as Array<{ invoiceDate?: Date; total?: number }>) {
+    const date = invoice.invoiceDate ? new Date(invoice.invoiceDate) : null;
+    if (!date || Number.isNaN(date.getTime())) continue;
+    addToNumberMap(docIncomeAccrualMap, monthKeyFromDate(date), round2(toNum(invoice.total)));
+  }
+
+  const docExpenseAccrualMap = new Map<string, number>();
+  const docExpenseCategoryMap = new Map<string, number>();
+
+  for (const expense of expenseDocs as Array<{
+    date?: Date;
+    amount?: number;
+    expenseAccountId?: Types.ObjectId | null;
+    isItemized?: boolean;
+    lineItems?: Array<{ expenseAccountId?: Types.ObjectId | null; amount?: number }>;
+  }>) {
+    const date = expense.date ? new Date(expense.date) : null;
+    if (!date || Number.isNaN(date.getTime())) continue;
+
+    let expenseTotal = 0;
+    const hasItemizedLines = Boolean(expense.isItemized && Array.isArray(expense.lineItems) && expense.lineItems.length > 0);
+
+    if (hasItemizedLines) {
+      for (const line of expense.lineItems || []) {
+        const lineAmount = round2(toNum(line?.amount));
+        if (lineAmount === 0) continue;
+        expenseTotal = round2(expenseTotal + lineAmount);
+        const accountId = line?.expenseAccountId ? String(line.expenseAccountId) : "__uncategorized__";
+        addToNumberMap(docExpenseCategoryMap, accountId, lineAmount);
+      }
+    } else {
+      expenseTotal = round2(toNum(expense.amount));
+      if (expenseTotal !== 0) {
+        const accountId = expense.expenseAccountId ? String(expense.expenseAccountId) : "__uncategorized__";
+        addToNumberMap(docExpenseCategoryMap, accountId, expenseTotal);
+      }
+    }
+
+    addToNumberMap(docExpenseAccrualMap, monthKeyFromDate(date), expenseTotal);
+  }
+
+  const cashBankAccounts = allAccounts.filter((row) => row.accountType === "Cash" || row.accountType === "Bank");
+  const bankCardAccounts = allAccounts.filter((row) => row.accountType === "Bank" || row.accountType === "Credit Card");
+  const receivableAccounts = allAccounts.filter((row) => row.accountType === "Accounts Receivable");
+  const payableAccounts = allAccounts.filter((row) => row.accountType === "Accounts Payable");
+  const incomeExpenseAccounts = allAccounts.filter((row) => row.rootType === "Income" || row.rootType === "Expense");
+
+  const dayBeforeCashFrom = new Date(cashFromStart);
+  dayBeforeCashFrom.setDate(dayBeforeCashFrom.getDate() - 1);
+
+  const [
+    bankCardMovementMap,
+    startMovementMap,
+    receivableMovementMap,
+    payableMovementMap,
+    cashFlowGlRows,
+    incomeCashGlRows,
+    incomeExpenseGlRows,
+  ] = await Promise.all([
+    bankCardAccounts.length
+      ? loadMovementMap({ organizationId, asOf, accountIds: bankCardAccounts.map((row) => row._id) })
+      : Promise.resolve(new Map<string, { debit: number; credit: number }>()),
+
+    cashBankAccounts.length
+      ? loadMovementMap({ organizationId, asOf: dayBeforeCashFrom, accountIds: cashBankAccounts.map((row) => row._id) })
+      : Promise.resolve(new Map<string, { debit: number; credit: number }>()),
+
+    receivableAccounts.length
+      ? loadMovementMap({ organizationId, asOf, accountIds: receivableAccounts.map((row) => row._id) })
+      : Promise.resolve(new Map<string, { debit: number; credit: number }>()),
+
+    payableAccounts.length
+      ? loadMovementMap({ organizationId, asOf, accountIds: payableAccounts.map((row) => row._id) })
+      : Promise.resolve(new Map<string, { debit: number; credit: number }>()),
+
+    cashBankAccounts.length
+      ? GlEntry.aggregate([
+        {
+          $match: {
+            organizationId,
+            accountId: { $in: cashBankAccounts.map((row) => row._id) },
+            postingDate: { $gte: cashFromStart, $lte: cashToEnd },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m", date: "$postingDate" } },
+            incoming: { $sum: { $ifNull: ["$debit", 0] } },
+            outgoing: { $sum: { $ifNull: ["$credit", 0] } },
+          },
+        },
+      ])
+      : Promise.resolve([]),
+
+    cashBankAccounts.length
+      ? GlEntry.aggregate([
+        {
+          $match: {
+            organizationId,
+            accountId: { $in: cashBankAccounts.map((row) => row._id) },
+            postingDate: { $gte: incomeFromStart, $lte: incomeToEnd },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m", date: "$postingDate" } },
+            incoming: { $sum: { $ifNull: ["$debit", 0] } },
+            outgoing: { $sum: { $ifNull: ["$credit", 0] } },
+          },
+        },
+      ])
+      : Promise.resolve([]),
+
+    incomeExpenseAccounts.length
+      ? GlEntry.aggregate([
+        {
+          $match: {
+            organizationId,
+            accountId: { $in: incomeExpenseAccounts.map((row) => row._id) },
+            postingDate: { $gte: incomeFromStart, $lte: incomeToEnd },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              month: { $dateToString: { format: "%Y-%m", date: "$postingDate" } },
+              accountId: "$accountId",
+            },
+            debit: { $sum: { $ifNull: ["$debit", 0] } },
+            credit: { $sum: { $ifNull: ["$credit", 0] } },
+          },
+        },
+      ])
+      : Promise.resolve([]),
+  ]);
+
+  const cashGlIncomingMap = new Map<string, number>();
+  const cashGlOutgoingMap = new Map<string, number>();
+  for (const row of cashFlowGlRows as Array<{ _id: string; incoming: number; outgoing: number }>) {
+    addToNumberMap(cashGlIncomingMap, String(row._id), round2(toNum(row.incoming)));
+    addToNumberMap(cashGlOutgoingMap, String(row._id), round2(toNum(row.outgoing)));
+  }
+
+  const incomeCashGlInMap = new Map<string, number>();
+  const incomeCashGlOutMap = new Map<string, number>();
+  for (const row of incomeCashGlRows as Array<{ _id: string; incoming: number; outgoing: number }>) {
+    addToNumberMap(incomeCashGlInMap, String(row._id), round2(toNum(row.incoming)));
+    addToNumberMap(incomeCashGlOutMap, String(row._id), round2(toNum(row.outgoing)));
+  }
+
+  const glIncomeAccrualMap = new Map<string, number>();
+  const glExpenseAccrualMap = new Map<string, number>();
+  const glExpenseCategoryMap = new Map<string, number>();
+  const accountById = new Map(allAccounts.map((row) => [String(row._id), row]));
+
+  for (const row of incomeExpenseGlRows as Array<{
+    _id: { month: string; accountId: Types.ObjectId };
+    debit: number;
+    credit: number;
+  }>) {
+    const account = accountById.get(String(row._id.accountId));
+    if (!account) continue;
+
+    if (account.rootType === "Income") {
+      addToNumberMap(
+        glIncomeAccrualMap,
+        String(row._id.month),
+        round2(toNum(row.credit) - toNum(row.debit)),
+      );
+    } else if (account.rootType === "Expense") {
+      const expenseAmount = round2(toNum(row.debit) - toNum(row.credit));
+      addToNumberMap(glExpenseAccrualMap, String(row._id.month), expenseAmount);
+      addToNumberMap(glExpenseCategoryMap, String(account._id), expenseAmount);
+    }
+  }
+
+  const glReceivableTotal = round2(
+    receivableAccounts.reduce((sum, account) => {
+      const movement = receivableMovementMap.get(String(account._id)) || { debit: 0, credit: 0 };
+      return sum + Math.max(0, closingBalanceForAccount(account, movement));
+    }, 0),
+  );
+
+  const glPayableTotal = round2(
+    payableAccounts.reduce((sum, account) => {
+      const movement = payableMovementMap.get(String(account._id)) || { debit: 0, credit: 0 };
+      return sum + Math.max(0, closingBalanceForAccount(account, movement));
+    }, 0),
+  );
+
+  let receivableTotal = subledgerReceivableTotal;
+  let receivableCurrent = receivableBuckets.current;
+  let receivableOverdue = round2(subledgerReceivableTotal - receivableBuckets.current);
+  let effectiveReceivableBuckets = receivableBuckets;
+
+  if (!hasValue(receivableTotal) && hasValue(glReceivableTotal)) {
+    receivableTotal = glReceivableTotal;
+    receivableCurrent = glReceivableTotal;
+    receivableOverdue = 0;
+    effectiveReceivableBuckets = {
+      current: glReceivableTotal,
+      "1-15": 0,
+      "16-30": 0,
+      "31-45": 0,
+      "above-45": 0,
+    };
+  }
+
+  let payableTotal = subledgerPayableTotal;
+  let payableCurrent = payableBuckets.current;
+  let payableOverdue = round2(subledgerPayableTotal - payableBuckets.current);
+  let effectivePayableBuckets = payableBuckets;
+
+  if (!hasValue(payableTotal) && hasValue(glPayableTotal)) {
+    payableTotal = glPayableTotal;
+    payableCurrent = glPayableTotal;
+    payableOverdue = 0;
+    effectivePayableBuckets = {
+      current: glPayableTotal,
+      "1-15": 0,
+      "16-30": 0,
+      "31-45": 0,
+      "above-45": 0,
+    };
+  }
+
+  const paymentCashActivity = round2(sumMapValues(cashIncomingMap) + sumMapValues(cashOutgoingMap));
+  const effectiveCashIncomingMap = hasValue(paymentCashActivity) ? cashIncomingMap : cashGlIncomingMap;
+  const effectiveCashOutgoingMap = hasValue(paymentCashActivity) ? cashOutgoingMap : cashGlOutgoingMap;
+
+  const paymentIncomeCashActivity = round2(sumMapValues(incomeCashInMap) + sumMapValues(incomeCashOutMap));
+  const effectiveIncomeCashInMap = hasValue(paymentIncomeCashActivity) ? incomeCashInMap : incomeCashGlInMap;
+  const effectiveIncomeCashOutMap = hasValue(paymentIncomeCashActivity) ? incomeCashOutMap : incomeCashGlOutMap;
+
+  const glAccrualActivity = round2(sumMapValues(glIncomeAccrualMap) + sumMapValues(glExpenseAccrualMap));
+  const effectiveIncomeAccrualMap = hasValue(glAccrualActivity) ? glIncomeAccrualMap : docIncomeAccrualMap;
+  const effectiveExpenseAccrualMap = hasValue(glAccrualActivity) ? glExpenseAccrualMap : docExpenseAccrualMap;
+
+  const glTopExpenseActivity = sumMapValues(glExpenseCategoryMap);
+  const effectiveTopExpenseMap = hasValue(glTopExpenseActivity) ? glExpenseCategoryMap : docExpenseCategoryMap;
+
+  const topExpenseRows = Array.from(effectiveTopExpenseMap.entries())
+    .map(([accountId, totalAmount]) => ({
+      accountId: accountId === "__uncategorized__" ? "" : accountId,
+      categoryName:
+        accountId === "__uncategorized__"
+          ? "Uncategorized"
+          : accountNameMap.get(accountId) || "Uncategorized",
+      totalAmount: round2(totalAmount),
+    }))
+    .filter((row) => row.totalAmount >= 0.01)
+    .sort((a, b) => b.totalAmount - a.totalAmount)
+    .slice(0, topExpensesLimit);
+
+  const bankRows = bankCardAccounts
+    .map((account) => {
+      const movement = bankCardMovementMap.get(String(account._id)) || { debit: 0, credit: 0 };
+      return {
+        accountId: String(account._id),
+        name: account.name,
+        accountType: account.accountType,
+        balance: closingBalanceForAccount(account, movement),
+      };
+    })
+    .sort((a, b) => b.balance - a.balance);
+
+  const bankCardsTotal = round2(bankRows.reduce((sum, row) => sum + row.balance, 0));
+  const cashAsOnStart = round2(
+    cashBankAccounts.reduce((sum, account) => {
+      const movement = startMovementMap.get(String(account._id)) || { debit: 0, credit: 0 };
+      return sum + closingBalanceForAccount(account, movement);
+    }, 0),
+  );
+
+  const cashMonthKeys = enumerateMonthKeys(cashFrom, cashTo);
+  let runningCash = cashAsOnStart;
+
+  const cashFlowMonths = cashMonthKeys.map((key) => {
+    const incoming = round2(effectiveCashIncomingMap.get(key) || 0);
+    const outgoing = round2(effectiveCashOutgoingMap.get(key) || 0);
+    runningCash = round2(runningCash + incoming - outgoing);
+
+    return {
+      key,
+      month: monthLabelFromKey(key),
+      incoming,
+      outgoing,
+      closing: runningCash,
+    };
+  });
+
+  const cashIncomingTotal = round2(cashFlowMonths.reduce((sum, row) => sum + row.incoming, 0));
+  const cashOutgoingTotal = round2(cashFlowMonths.reduce((sum, row) => sum + row.outgoing, 0));
+  const cashClosingBalance = cashFlowMonths.length > 0
+    ? cashFlowMonths[cashFlowMonths.length - 1].closing
+    : cashAsOnStart;
+
+  const incomeMonthKeys = enumerateMonthKeys(incomeFrom, incomeTo);
+
+  const accrualIncomeTotal = round2(incomeMonthKeys.reduce((sum, key) => sum + (effectiveIncomeAccrualMap.get(key) || 0), 0));
+  const accrualExpenseTotal = round2(incomeMonthKeys.reduce((sum, key) => sum + (effectiveExpenseAccrualMap.get(key) || 0), 0));
+  const cashIncomeTotal = round2(incomeMonthKeys.reduce((sum, key) => sum + (effectiveIncomeCashInMap.get(key) || 0), 0));
+  const cashExpenseTotal = round2(incomeMonthKeys.reduce((sum, key) => sum + (effectiveIncomeCashOutMap.get(key) || 0), 0));
+
+  const selectedIncomeMap = incomeBasis === "cash" ? effectiveIncomeCashInMap : effectiveIncomeAccrualMap;
+  const selectedExpenseMap = incomeBasis === "cash" ? effectiveIncomeCashOutMap : effectiveExpenseAccrualMap;
+
+  const incomeExpenseMonths = incomeMonthKeys.map((key) => ({
+    key,
+    month: monthLabelFromKey(key),
+    income: round2(selectedIncomeMap.get(key) || 0),
+    expense: round2(selectedExpenseMap.get(key) || 0),
+  }));
+
+  const incomeTotal = round2(incomeExpenseMonths.reduce((sum, row) => sum + row.income, 0));
+  const expenseTotal = round2(incomeExpenseMonths.reduce((sum, row) => sum + row.expense, 0));
+
+  const watchlistRows = watchlistBasis === "cash"
+    ? [
+      { key: "cash-in", label: "Cash In", value: cashIncomeTotal },
+      { key: "cash-out", label: "Cash Out", value: cashExpenseTotal },
+      { key: "net-cash", label: "Net Cash", value: round2(cashIncomeTotal - cashExpenseTotal) },
+      { key: "bank-cards", label: "Bank & Cards", value: bankCardsTotal },
+    ]
+    : [
+      { key: "receivables", label: "Receivables", value: receivableTotal },
+      { key: "payables", label: "Payables", value: payableTotal },
+      { key: "income", label: "Income", value: accrualIncomeTotal },
+      { key: "net-income", label: "Net Income", value: round2(accrualIncomeTotal - accrualExpenseTotal) },
+    ];
+
+  res.json({
+    success: true,
+    data: {
+      asOf,
+      periods: {
+        cashFlow: { from: cashFrom, to: cashTo },
+        incomeExpense: { from: incomeFrom, to: incomeTo },
+      },
+      receivables: {
+        total: receivableTotal,
+        current: receivableCurrent,
+        overdue: receivableOverdue,
+        buckets: effectiveReceivableBuckets,
+      },
+      payables: {
+        total: payableTotal,
+        current: payableCurrent,
+        overdue: payableOverdue,
+        buckets: effectivePayableBuckets,
+      },
+      cashFlow: {
+        startBalance: cashAsOnStart,
+        incomingTotal: cashIncomingTotal,
+        outgoingTotal: cashOutgoingTotal,
+        closingBalance: cashClosingBalance,
+        months: cashFlowMonths,
+      },
+      incomeExpense: {
+        basis: incomeBasis,
+        totalIncome: incomeTotal,
+        totalExpense: expenseTotal,
+        netAmount: round2(incomeTotal - expenseTotal),
+        months: incomeExpenseMonths,
+      },
+      topExpenses: {
+        totalAmount: round2(topExpenseRows.reduce((sum, row) => sum + row.totalAmount, 0)),
+        rows: topExpenseRows,
+      },
+      bankCreditCards: {
+        totalBalance: bankCardsTotal,
+        rows: bankRows,
+      },
+      accountWatchlist: {
+        basis: watchlistBasis,
+        rows: watchlistRows,
+      },
+    },
+  });
 });

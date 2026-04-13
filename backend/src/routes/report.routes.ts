@@ -21,6 +21,7 @@ import {
   salesByCustomer,
   salesByItem,
   paymentsReceivedReport,
+  dashboardSummary,
 } from "../controllers/report.controller";
 
 const router = Router();
@@ -59,5 +60,8 @@ router.get("/sales-by-item", salesByItem);
 
 // Payments Received
 router.get("/payments-received", paymentsReceivedReport);
+
+// Dashboard
+router.get("/dashboard-summary", dashboardSummary);
 
 export default router;
