@@ -116,7 +116,7 @@ export default function EditJournalPage() {
         setReference(journal.referenceNumber || "");
         setNotes(journal.notes || journal.description || "");
 
-        const mappedRows = (journal.lineItems || []).map((line) => ({
+        const mappedRows = (journal.lineItems || []).map((line): JournalRow => ({
           id: String(rowKey++),
           accountId:
             typeof line.accountId === "string" ?
