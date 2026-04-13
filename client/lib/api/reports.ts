@@ -82,6 +82,76 @@ export interface GenericReportResponse {
   count?: number;
 }
 
+export interface DashboardSummaryResponse {
+  asOf: string;
+  periods: {
+    cashFlow: { from: string; to: string };
+    incomeExpense: { from: string; to: string };
+  };
+  receivables: {
+    total: number;
+    current: number;
+    overdue: number;
+    buckets: Record<string, number>;
+  };
+  payables: {
+    total: number;
+    current: number;
+    overdue: number;
+    buckets: Record<string, number>;
+  };
+  cashFlow: {
+    startBalance: number;
+    incomingTotal: number;
+    outgoingTotal: number;
+    closingBalance: number;
+    months: Array<{
+      key: string;
+      month: string;
+      incoming: number;
+      outgoing: number;
+      closing: number;
+    }>;
+  };
+  incomeExpense: {
+    basis: "accrual" | "cash";
+    totalIncome: number;
+    totalExpense: number;
+    netAmount: number;
+    months: Array<{
+      key: string;
+      month: string;
+      income: number;
+      expense: number;
+    }>;
+  };
+  topExpenses: {
+    totalAmount: number;
+    rows: Array<{
+      accountId: string;
+      categoryName: string;
+      totalAmount: number;
+    }>;
+  };
+  bankCreditCards: {
+    totalBalance: number;
+    rows: Array<{
+      accountId: string;
+      name: string;
+      accountType: string;
+      balance: number;
+    }>;
+  };
+  accountWatchlist: {
+    basis: "accrual" | "cash";
+    rows: Array<{
+      key: string;
+      label: string;
+      value: number;
+    }>;
+  };
+}
+
 // ─── Date helpers ───────────────────────────────────────────────────────
 
 export function dateRangeFromPreset(preset: string): { from: string; to: string } {
@@ -195,4 +265,17 @@ export const reportApi = {
   // Payments Received
   paymentsReceived: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payments-received${buildQuery(params || {})}`),
+
+  // Dashboard
+  dashboardSummary: (params?: {
+    asOf?: string;
+    cashFrom?: string;
+    cashTo?: string;
+    incomeFrom?: string;
+    incomeTo?: string;
+    incomeBasis?: "accrual" | "cash";
+    watchlistBasis?: "accrual" | "cash";
+    topExpensesLimit?: number;
+  }) =>
+    apiFetch<{ success: boolean; data: DashboardSummaryResponse }>(`/reports/dashboard-summary${buildQuery(params || {})}`),
 };
