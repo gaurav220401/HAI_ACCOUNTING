@@ -117,7 +117,6 @@ const organizationSchema = new Schema<IOrganization>(
     name: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
     industry: {
@@ -231,6 +230,16 @@ const organizationSchema = new Schema<IOrganization>(
 // ─── Plugins ─────────────────────────────────────────────────────────────
 organizationSchema.plugin(auditTrailPlugin);
 organizationSchema.plugin(softDeletePlugin);
+
+// Organization names must be unique per owner (case-insensitive), not globally.
+organizationSchema.index(
+  { owner: 1, name: 1 },
+  {
+    unique: true,
+    collation: { locale: "en", strength: 2 },
+    partialFilterExpression: { owner: { $type: "objectId" }, isDeleted: false },
+  },
+);
 
 const Organization: Model<IOrganization> = model<IOrganization>(
   "Organization",
