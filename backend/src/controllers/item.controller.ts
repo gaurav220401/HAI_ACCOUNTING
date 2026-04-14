@@ -2,6 +2,9 @@ import { Response } from "express";
 import { Types } from "mongoose";
 import Item from "../models/item.model";
 import ItemGroup from "../models/item-group.model";
+import SalesOrder from "../models/sales-order.model";
+import PurchaseOrder from "../models/purchase-order.model";
+import Invoice from "../models/invoice.model";
 import UnitOfMeasurement from "../models/unit.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
@@ -29,11 +32,96 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function toFiniteNumber(value: unknown): number {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return n;
+}
+
+type QuantityAggregateRow = {
+  _id: null;
+  totalQty?: number;
+};
+
+type SalesSeriesAggregateRow = {
+  _id: string;
+  totalAmount?: number;
+};
+
+function getAggregateQuantity(rows: QuantityAggregateRow[]): number {
+  if (rows.length === 0) return 0;
+  return round2(Math.max(0, toFiniteNumber(rows[0].totalQty)));
+}
+
+function formatDateKey(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentMonthRange(referenceDate: Date = new Date()): { start: Date; end: Date } {
+  const start = new Date(Date.UTC(
+    referenceDate.getUTCFullYear(),
+    referenceDate.getUTCMonth(),
+    1,
+    0,
+    0,
+    0,
+    0,
+  ));
+
+  const end = new Date(Date.UTC(
+    referenceDate.getUTCFullYear(),
+    referenceDate.getUTCMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  ));
+
+  return { start, end };
+}
+
+function buildDateSeries(start: Date, end: Date): string[] {
+  const keys: string[] = [];
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const endTime = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+
+  while (cursor.getTime() <= endTime) {
+    keys.push(formatDateKey(cursor));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return keys;
+}
+
+const SALES_ORDER_COMMITTED_STATUSES: ReadonlyArray<string> = [
+  "APPROVED",
+  "PARTIALLY_INVOICED",
+  "OVERDUE",
+];
+
+const SALES_ORDER_TO_INVOICE_STATUSES: ReadonlyArray<string> = [
+  "DRAFT",
+  "APPROVED",
+  "PARTIALLY_INVOICED",
+  "OVERDUE",
+];
+
+const PURCHASE_ORDER_PENDING_STATUSES: ReadonlyArray<string> = [
+  "Draft",
+  "Open",
+];
+
 type InventoryAccountSnapshot = {
   inventoryTracked: boolean;
   inventoryAccountId?: unknown;
   inventoryValue?: unknown;
 };
+
+type ItemBulkAction = "activate" | "deactivate" | "delete";
 
 const INVENTORY_ASSET_ACCOUNT_NAMES = [
   "Inventory Asset (Stock)",
@@ -57,6 +145,17 @@ function toInventoryValue(value: unknown): number {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return 0;
   return round2(n);
+}
+
+function uniqueValidObjectIdStrings(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const unique = new Set<string>();
+  for (const value of input) {
+    const raw = String(value || "").trim();
+    if (!Types.ObjectId.isValid(raw)) continue;
+    unique.add(raw);
+  }
+  return Array.from(unique);
 }
 
 function computeInventoryAccountDelta(
@@ -186,6 +285,169 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     .populate("unit itemGroupId taxId intraStateTaxId interStateTaxId salesAccountId purchaseAccountId inventoryAccountId preferredVendorId warehouseId");
   if (!item) throw new NotFoundError("Item");
   res.json({ success: true, data: item });
+});
+
+/** GET /api/items/:id/inventory-metrics */
+export const getInventoryMetrics = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const rawItemId = String(req.params.id || "").trim();
+  if (!Types.ObjectId.isValid(rawItemId)) {
+    throw new ValidationError("Invalid item id");
+  }
+  const itemId = new Types.ObjectId(rawItemId);
+
+  const item = await Item.findOne({
+    _id: itemId,
+    organizationId,
+    isDeleted: false,
+  })
+    .select("inventoryTracked stockOnHand")
+    .lean();
+
+  if (!item) throw new NotFoundError("Item");
+
+  const { start: monthStart, end: monthEnd } = getCurrentMonthRange();
+
+  const [
+    committedQtyRows,
+    toBeInvoicedQtyRows,
+    purchasePendingQtyRows,
+    salesSeriesRows,
+  ] = await Promise.all([
+    SalesOrder.aggregate<QuantityAggregateRow>([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+        },
+      },
+      { $unwind: "$lineItems" },
+      { $match: { "lineItems.itemId": itemId } },
+      {
+        $group: {
+          _id: null,
+          totalQty: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+    SalesOrder.aggregate<QuantityAggregateRow>([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: SALES_ORDER_TO_INVOICE_STATUSES },
+        },
+      },
+      { $unwind: "$lineItems" },
+      { $match: { "lineItems.itemId": itemId } },
+      {
+        $group: {
+          _id: null,
+          totalQty: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+    PurchaseOrder.aggregate<QuantityAggregateRow>([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: PURCHASE_ORDER_PENDING_STATUSES },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $match: {
+          "lineItems.isHeader": { $ne: true },
+          "lineItems.itemId": itemId,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalQty: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+    Invoice.aggregate<SalesSeriesAggregateRow>([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $ne: "Void" },
+          invoiceDate: {
+            $gte: monthStart,
+            $lte: monthEnd,
+          },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.itemId": itemId } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$invoiceDate",
+              timezone: "UTC",
+            },
+          },
+          totalAmount: { $sum: { $ifNull: ["$items.amount", 0] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+  ]);
+
+  const stockOnHand = round2(toFiniteNumber((item as { stockOnHand?: unknown }).stockOnHand));
+  const committedStock = getAggregateQuantity(committedQtyRows);
+  const availableForSale = round2(Math.max(stockOnHand - committedStock, 0));
+  const toBeInvoiced = getAggregateQuantity(toBeInvoicedQtyRows);
+  const purchasePending = getAggregateQuantity(purchasePendingQtyRows);
+
+  const salesByDate = new Map<string, number>();
+  for (const row of salesSeriesRows) {
+    salesByDate.set(String(row._id), round2(toFiniteNumber(row.totalAmount)));
+  }
+
+  const salesPoints = buildDateSeries(monthStart, monthEnd).map((date) => ({
+    date,
+    amount: round2(salesByDate.get(date) || 0),
+  }));
+  const totalSalesAmount = round2(salesPoints.reduce((sum, row) => sum + row.amount, 0));
+
+  res.json({
+    success: true,
+    data: {
+      inventoryTracked: Boolean((item as { inventoryTracked?: unknown }).inventoryTracked),
+      openingStock: stockOnHand,
+      accountingStock: {
+        stockOnHand,
+        committedStock,
+        availableForSale,
+      },
+      physicalStock: {
+        stockOnHand,
+        committedStock,
+        availableForSale,
+      },
+      fulfillment: {
+        toBeShipped: committedStock,
+        toBeReceived: purchasePending,
+        toBeInvoiced,
+        toBeBilled: purchasePending,
+      },
+      salesSummary: {
+        period: "THIS_MONTH",
+        startDate: formatDateKey(monthStart),
+        endDate: formatDateKey(monthEnd),
+        totalAmount: totalSalesAmount,
+        points: salesPoints,
+      },
+      syncedAt: new Date().toISOString(),
+    },
+  });
 });
 
 /** POST /api/items */
@@ -323,6 +585,122 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   });
 
   res.json({ success: true, data: item });
+});
+
+/** POST /api/items/bulk-actions */
+export const bulkAction = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const action = String(req.body.action || "").trim().toLowerCase() as ItemBulkAction;
+  if (!["activate", "deactivate", "delete"].includes(action)) {
+    throw new ValidationError("action must be one of: activate, deactivate, delete");
+  }
+
+  const itemIds = uniqueValidObjectIdStrings(req.body.itemIds);
+  if (itemIds.length === 0) {
+    throw new ValidationError("At least one valid item id is required");
+  }
+
+  const objectIds = itemIds.map((id) => new Types.ObjectId(id));
+  const baseFilter = {
+    organizationId,
+    isDeleted: false,
+    _id: { $in: objectIds },
+  };
+
+  const actorUpdate = req.user?._id ? { updatedBy: req.user._id } : {};
+
+  if (action === "delete") {
+    const rows = await Item.find(baseFilter)
+      .select("_id inventoryTracked inventoryAccountId inventoryValue")
+      .lean();
+
+    if (rows.length === 0) {
+      res.json({
+        success: true,
+        data: {
+          action,
+          matchedCount: 0,
+          modifiedCount: 0,
+          itemIds: [],
+        },
+      });
+      return;
+    }
+
+    const needsFallbackAccount = rows.some((row: any) => (
+      Boolean(row?.inventoryTracked) && !toObjectIdString(row?.inventoryAccountId)
+    ));
+    const fallbackInventoryAccountId = needsFallbackAccount
+      ? await resolveDefaultInventoryAccountId(organizationId)
+      : "";
+
+    const deltasByAccount = new Map<string, number>();
+    for (const row of rows as any[]) {
+      if (!row?.inventoryTracked) continue;
+      const accountId = toObjectIdString(row?.inventoryAccountId) || fallbackInventoryAccountId;
+      const inventoryValue = toInventoryValue(row?.inventoryValue);
+      if (!accountId || Math.abs(inventoryValue) < 0.0001) continue;
+      const nextDelta = round2((deltasByAccount.get(accountId) || 0) - inventoryValue);
+      deltasByAccount.set(accountId, nextDelta);
+    }
+
+    const deleteUpdate = {
+      ...actorUpdate,
+      isDeleted: true,
+      deletedAt: new Date(),
+    };
+
+    const updateResult = await Item.updateMany(
+      {
+        ...baseFilter,
+        _id: { $in: rows.map((row: any) => row._id) },
+      },
+      { $set: deleteUpdate },
+    );
+
+    if (deltasByAccount.size > 0) {
+      const deltasPayload: Record<string, number> = {};
+      for (const [accountId, delta] of deltasByAccount.entries()) {
+        if (Math.abs(delta) < 0.0001) continue;
+        deltasPayload[accountId] = round2(delta);
+      }
+      if (Object.keys(deltasPayload).length > 0) {
+        await applyInventoryOpeningDeltas({
+          organizationId,
+          deltas: deltasPayload,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        action,
+        matchedCount: updateResult.matchedCount,
+        modifiedCount: updateResult.modifiedCount,
+        itemIds: rows.map((row: any) => String(row._id)),
+      },
+    });
+    return;
+  }
+
+  const setIsActive = action === "activate";
+  const updateResult = await Item.updateMany(baseFilter, {
+    $set: {
+      ...actorUpdate,
+      isActive: setIsActive,
+    },
+  });
+
+  res.json({
+    success: true,
+    data: {
+      action,
+      matchedCount: updateResult.matchedCount,
+      modifiedCount: updateResult.modifiedCount,
+      itemIds,
+    },
+  });
 });
 
 /** DELETE /api/items/:id */

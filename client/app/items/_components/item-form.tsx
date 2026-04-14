@@ -1308,17 +1308,32 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         payload.reorderPoint = Math.max(0, parseFloat(form.reorderPoint) || 0);
       } else {
         payload.inventoryTracked = false;
+        payload.inventoryAccountId = null;
+        payload.warehouseId = null;
+        payload.stockOnHand = 0;
+        payload.averageCost = 0;
+        payload.inventoryValue = 0;
+        payload.reorderPoint = 0;
       }
       if (form.hasSalesInfo) {
         payload.sellingPrice = parseFloat(form.sellingPrice) || 0;
         payload.salesAccountId = form.salesAccountId || undefined;
         payload.sellingDescription = form.salesDescription || undefined;
+      } else {
+        payload.sellingPrice = 0;
+        payload.salesAccountId = null;
+        payload.sellingDescription = "";
       }
       if (form.hasPurchaseInfo) {
         payload.costPrice = parseFloat(form.costPrice) || 0;
         payload.purchaseAccountId = form.purchaseAccountId || undefined;
         payload.purchaseDescription = form.purchaseDescription || undefined;
         payload.preferredVendorId = form.preferredVendorId && form.preferredVendorId !== "__none" ? form.preferredVendorId : undefined;
+      } else {
+        payload.costPrice = 0;
+        payload.purchaseAccountId = null;
+        payload.purchaseDescription = "";
+        payload.preferredVendorId = null;
       }
 
       if (isEdit && initialData?._id) {
