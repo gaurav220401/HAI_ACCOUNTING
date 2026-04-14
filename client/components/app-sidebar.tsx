@@ -81,6 +81,7 @@ const navItems: NavItem[] = [
       { title: "Quotes", url: "/sales/quotes" },
       { title: "Sales Orders", url: "/sales/orders" },
       { title: "Invoices", url: "/sales/invoices" },
+      { title: "Retainer Invoices", url: "/sales/retainer-invoices" },
       { title: "Recurring Invoices", url: "/sales/recurring-invoices" },
       { title: "Delivery Challans", url: "/sales/delivery-challans" },
       { title: "Payments Received", url: "/sales/payments-received" },

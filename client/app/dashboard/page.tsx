@@ -73,8 +73,8 @@ function formatAxisAmount(value: number): string {
 function getChartDomain(values: number[]): [number, number] {
   if (!values.length) return [0, 5_000];
 
-  let min = Math.min(...values, 0);
-  let max = Math.max(...values, 0);
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 0);
 
   if (min === max) {
     if (min === 0) return [0, 5_000];
@@ -174,7 +174,7 @@ export default function DashboardPage() {
 
         if (cancelled) return;
         setDashboard(response.data);
-      } catch (error) {
+      } catch {
         if (cancelled) return;
         setDashboardError("Unable to load dashboard data. Please refresh and try again.");
       } finally {
@@ -276,6 +276,10 @@ export default function DashboardPage() {
                     <DropdownMenuItem onSelect={() => onNavigateFromMenu("/sales/recurring-invoices/new")}>
                       <PlusCircle className="h-4 w-4 text-blue-500" />
                       New Recurring Invoice
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigateFromMenu("/sales/retainer-invoices/new")}> 
+                      <PlusCircle className="h-4 w-4 text-blue-500" />
+                      New Retainer Invoice
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onNavigateFromMenu("/sales/payments-received/new")}>
                       <PlusCircle className="h-4 w-4 text-blue-500" />

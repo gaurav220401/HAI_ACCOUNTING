@@ -20,6 +20,7 @@ import PurchaseOrder from "../models/purchase-order.model";
 import RecurringBill from "../models/recurring-bill.model";
 import RecurringExpense from "../models/recurring-expense.model";
 import RecurringInvoice from "../models/recurring-invoice.model";
+import RetainerInvoice from "../models/retainer-invoice.model";
 import TcsTax from "../models/tcs-tax.model";
 import TdsTax from "../models/tds-tax.model";
 import VendorCredit from "../models/vendor-credit.model";
@@ -206,6 +207,14 @@ async function findAccountUsageArea(accountId: Types.ObjectId, organizationId: T
     {
       area: "Recurring Invoices",
       exists: () => RecurringInvoice.exists({ organizationId, "items.accountId": accountId }),
+    },
+    {
+      area: "Retainer Invoices",
+      exists: () =>
+        RetainerInvoice.exists({
+          organization_id: organizationId,
+          $or: [{ deposited_to_account: accountId }],
+        }),
     },
     {
       area: "Recurring Expenses",
