@@ -1,4 +1,4 @@
-import { Response } from "express";
+﻿import { Response } from "express";
 import { Types } from "mongoose";
 import Account from "../models/account.model";
 import Bill from "../models/bill.model";
@@ -6,10 +6,13 @@ import Contact from "../models/contact.model";
 import Expense from "../models/expense.model";
 import GlEntry from "../models/gl-entry.model";
 import Invoice from "../models/invoice.model";
+import InventoryAdjustment from "../models/inventory-adjustment.model";
 import Item from "../models/item.model";
 import PaymentMade from "../models/payment-made.model";
 import PaymentReceived from "../models/payment-received.model";
 import PurchaseOrder from "../models/purchase-order.model";
+import SalesOrder from "../models/sales-order.model";
+import DeliveryChallan from "../models/delivery-challan.model";
 import VendorCredit from "../models/vendor-credit.model";
 import { reconcileInventoryOpeningBalances } from "../services/inventory-opening.service";
 import { AuthenticatedRequest } from "../types";
@@ -42,6 +45,34 @@ type AgingBuckets = {
   "31-45": number;
   "above-45": number;
 };
+
+const SALES_ORDER_COMMITTED_STATUSES: ReadonlyArray<string> = [
+  "APPROVED",
+  "PARTIALLY_INVOICED",
+  "OVERDUE",
+];
+
+const PURCHASE_ORDER_PENDING_STATUSES: ReadonlyArray<string> = [
+  "Draft",
+  "Open",
+];
+
+const INVENTORY_RELATED_INVOICE_STATUSES: ReadonlyArray<string> = [
+  "Sent",
+  "Viewed",
+  "Overdue",
+  "Partially Paid",
+  "Paid",
+];
+
+const INVENTORY_RELATED_BILL_STATUSES: ReadonlyArray<string> = [
+  "Open",
+  "Overdue",
+  "Partially Paid",
+  "Paid",
+];
+
+const MILLIS_IN_DAY = 1000 * 60 * 60 * 24;
 
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -91,6 +122,12 @@ function defaultTo(): Date {
   return endOfDay(new Date());
 }
 
+function ensureFromBeforeTo(from: Date, to: Date, fromLabel = "from", toLabel = "to"): void {
+  if (startOfDay(from).getTime() > endOfDay(to).getTime()) {
+    throw new ValidationError(`${fromLabel} must be before or equal to ${toLabel}`);
+  }
+}
+
 function toBoundedInt(value: unknown, fallback: number, min = 1, max = 100): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -138,6 +175,45 @@ function addToNumberMap(map: Map<string, number>, key: string, amount: number): 
 function isWithinDateRange(value: Date, from: Date, to: Date): boolean {
   const time = value.getTime();
   return time >= startOfDay(from).getTime() && time <= endOfDay(to).getTime();
+}
+
+function normalizeObjectId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return Types.ObjectId.isValid(value) ? value : "";
+  if (typeof value === "object" && value !== null && "_id" in (value as Record<string, unknown>)) {
+    const nested = String((value as { _id?: unknown })._id || "");
+    return Types.ObjectId.isValid(nested) ? nested : "";
+  }
+  const raw = String(value);
+  return Types.ObjectId.isValid(raw) ? raw : "";
+}
+
+function ageInDays(from: Date, to: Date): number {
+  const diff = endOfDay(to).getTime() - startOfDay(from).getTime();
+  return Math.max(0, Math.floor(diff / MILLIS_IN_DAY));
+}
+
+function inventoryAgeBucket(days: number): "0-30 Days" | "31-60 Days" | "61-90 Days" | "Above 90 Days" {
+  if (days <= 30) return "0-30 Days";
+  if (days <= 60) return "31-60 Days";
+  if (days <= 90) return "61-90 Days";
+  return "Above 90 Days";
+}
+
+function computeStockStatus(params: {
+  stockOnHand: number;
+  reorderPoint: number;
+  availableForSale: number;
+}): "Out of Stock" | "Low Stock" | "Fully Committed" | "In Stock" {
+  if (params.stockOnHand <= 0) return "Out of Stock";
+  if (params.reorderPoint > 0 && params.stockOnHand <= params.reorderPoint) return "Low Stock";
+  if (params.availableForSale <= 0) return "Fully Committed";
+  return "In Stock";
+}
+
+function percent(part: number, total: number): number {
+  if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return 0;
+  return round2((part / total) * 100);
 }
 
 function createAgingBuckets(): AgingBuckets {
@@ -234,7 +310,7 @@ async function reconcileInventoryOpeningsSafely(organizationId: Types.ObjectId):
   }
 }
 
-// ─── FINANCIAL STATEMENT REPORTS ─────────────────────────────────────
+// --- FINANCIAL STATEMENT REPORTS ---
 
 export const trialBalance = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -455,7 +531,7 @@ export const controlReconciliation = asyncHandler(async (req: AuthenticatedReque
   });
 });
 
-// ─── ACCOUNTING ACTIVITY REPORTS ─────────────────────────────────────
+// --- ACCOUNTING ACTIVITY REPORTS ---
 
 export const accountTransactionsReport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -551,7 +627,7 @@ export const accountTransactionsReport = asyncHandler(async (req: AuthenticatedR
   });
 });
 
-// ─── PAYABLE REPORTS ─────────────────────────────────────────────────
+// --- PAYABLE REPORTS ---
 
 export const vendorBalanceSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -785,7 +861,7 @@ export const payableSummary = asyncHandler(async (req: AuthenticatedRequest, res
   });
 });
 
-// ─── RECEIVABLE REPORTS ──────────────────────────────────────────────
+// --- RECEIVABLE REPORTS ---
 
 export const customerBalanceSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -912,7 +988,7 @@ export const receivableSummary = asyncHandler(async (req: AuthenticatedRequest, 
   });
 });
 
-// ─── PURCHASES & EXPENSES REPORTS ────────────────────────────────────
+// --- PURCHASES & EXPENSES REPORTS ---
 
 export const expenseDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -1033,7 +1109,1313 @@ export const purchasesByItem = asyncHandler(async (req: AuthenticatedRequest, re
   res.json({ success: true, data: { from, to, rows, totals } });
 });
 
-// ─── SALES REPORTS ───────────────────────────────────────────────────
+// --- INVENTORY REPORTS ---
+
+export const inventorySummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, "asOf") || new Date();
+  const asOfEnd = endOfDay(asOf);
+
+  await reconcileInventoryOpeningsSafely(organizationId);
+
+  const [items, committedRows, orderedRows, outgoingRows] = await Promise.all([
+    Item.find({
+      organizationId,
+      isDeleted: false,
+      inventoryTracked: true,
+    })
+      .select("name sku stockOnHand inventoryValue averageCost reorderPoint valuationMethod isActive unit")
+      .populate("unit", "abbreviation name")
+      .lean(),
+
+    SalesOrder.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+          orderDate: { $lte: asOfEnd },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $group: {
+          _id: "$lineItems.itemId",
+          totalQuantity: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+
+    PurchaseOrder.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: PURCHASE_ORDER_PENDING_STATUSES },
+          purchaseOrderDate: { $lte: asOfEnd },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $match: {
+          "lineItems.isHeader": { $ne: true },
+          "lineItems.itemId": { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: "$lineItems.itemId",
+          totalQuantity: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+
+    Invoice.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $nin: ["Draft", "Void"] },
+          invoiceDate: { $lte: asOfEnd },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.itemId": { $ne: null } } },
+      {
+        $group: {
+          _id: "$items.itemId",
+          totalQuantity: { $sum: { $ifNull: ["$items.quantity", 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const committedByItem = new Map<string, number>();
+  for (const row of committedRows as Array<{ _id?: unknown; totalQuantity?: number }>) {
+    const key = normalizeObjectId(row._id);
+    if (!key) continue;
+    committedByItem.set(key, round2(toNum(row.totalQuantity)));
+  }
+
+  const orderedByItem = new Map<string, number>();
+  for (const row of orderedRows as Array<{ _id?: unknown; totalQuantity?: number }>) {
+    const key = normalizeObjectId(row._id);
+    if (!key) continue;
+    orderedByItem.set(key, round2(toNum(row.totalQuantity)));
+  }
+
+  const outgoingByItem = new Map<string, number>();
+  for (const row of outgoingRows as Array<{ _id?: unknown; totalQuantity?: number }>) {
+    const key = normalizeObjectId(row._id);
+    if (!key) continue;
+    outgoingByItem.set(key, round2(toNum(row.totalQuantity)));
+  }
+
+  const rows = (items as any[])
+    .map((item) => {
+      const itemId = String(item._id);
+      const stockOnHand = round2(toNum(item.stockOnHand));
+      const committedStock = round2(committedByItem.get(itemId) || 0);
+      const quantityOrdered = round2(orderedByItem.get(itemId) || 0);
+      const quantityOut = round2(outgoingByItem.get(itemId) || 0);
+      const quantityIn = round2(stockOnHand + quantityOut);
+      const availableForSale = round2(Math.max(stockOnHand - committedStock, 0));
+      const inventoryValue = round2(toNum(item.inventoryValue));
+      const averageCost = stockOnHand > 0
+        ? round2(inventoryValue / stockOnHand)
+        : round2(toNum(item.averageCost));
+      const reorderPoint = round2(toNum(item.reorderPoint));
+      const usageUnit = item.unit?.abbreviation || item.unit?.name || "";
+
+      return {
+        itemId,
+        itemName: String(item.name || "Unnamed Item"),
+        sku: String(item.sku || ""),
+        reorderLevel: reorderPoint,
+        quantityOrdered,
+        quantityIn,
+        quantityOut,
+        stockOnHand,
+        committedStock,
+        availableForSale,
+        incomingStock: quantityOrdered,
+        usageUnit,
+        reorderPoint,
+        averageCost,
+        inventoryValue,
+        valuationMethod: String(item.valuationMethod || "MovingAverage"),
+        stockStatus: computeStockStatus({ stockOnHand, reorderPoint, availableForSale }),
+        isActive: Boolean(item.isActive),
+      };
+    })
+    .sort((a, b) => b.inventoryValue - a.inventoryValue);
+
+  const totals = {
+    totalItems: rows.length,
+    totalReorderLevel: round2(rows.reduce((sum, row) => sum + row.reorderLevel, 0)),
+    totalQuantityOrdered: round2(rows.reduce((sum, row) => sum + row.quantityOrdered, 0)),
+    totalQuantityIn: round2(rows.reduce((sum, row) => sum + row.quantityIn, 0)),
+    totalQuantityOut: round2(rows.reduce((sum, row) => sum + row.quantityOut, 0)),
+    totalStockOnHand: round2(rows.reduce((sum, row) => sum + row.stockOnHand, 0)),
+    totalCommittedStock: round2(rows.reduce((sum, row) => sum + row.committedStock, 0)),
+    totalAvailableStock: round2(rows.reduce((sum, row) => sum + row.availableForSale, 0)),
+    totalIncomingStock: round2(rows.reduce((sum, row) => sum + row.quantityOrdered, 0)),
+    totalInventoryValue: round2(rows.reduce((sum, row) => sum + row.inventoryValue, 0)),
+  };
+
+  res.json({ success: true, data: { asOf, rows, totals, count: rows.length } });
+});
+
+export const committedStockDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const orders = await (SalesOrder as any).find({
+    organizationId,
+    isDeleted: false,
+    status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+    orderDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  })
+    .populate("customerId", "displayName companyName")
+    .sort({ orderDate: -1 })
+    .lean();
+
+  const itemIds = new Set<string>();
+  for (const order of orders as any[]) {
+    const lines = (order.lineItems || []) as any[];
+    for (const line of lines) {
+      const itemId = normalizeObjectId(line.itemId);
+      if (itemId) itemIds.add(itemId);
+    }
+  }
+
+  const itemRows = await Item.find({ _id: { $in: Array.from(itemIds) } })
+    .select("name sku")
+    .lean();
+
+  const itemNameById = new Map(
+    itemRows.map((item: any) => [String(item._id), item.name || "Unknown Item"]),
+  );
+  const itemSkuById = new Map(
+    itemRows.map((item: any) => [String(item._id), item.sku || ""]),
+  );
+
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const order of orders as Array<Record<string, any>>) {
+    const customerName = order.customerId?.displayName || order.customerId?.companyName || "Unknown";
+    const lineItems = (order.lineItems || []) as any[];
+
+    for (const line of lineItems) {
+      const itemId = normalizeObjectId(line.itemId);
+      if (!itemId) continue;
+
+      const quantityCommitted = round2(toNum(line.quantity));
+      if (quantityCommitted <= 0) continue;
+
+      const rate = round2(toNum(line.rate));
+      const committedAmount = round2(toNum(line.amount, quantityCommitted * rate));
+
+      rows.push({
+        salesOrderId: String(order._id),
+        salesOrderNumber: String(order.salesOrderNumber || ""),
+        orderDate: order.orderDate,
+        expectedShipmentDate: order.expectedShipmentDate || null,
+        customerName,
+        itemId,
+        itemName: itemNameById.get(itemId) || "Unknown Item",
+        sku: itemSkuById.get(itemId) || "",
+        quantityCommitted,
+        rate,
+        committedAmount,
+        status: String(order.status || ""),
+      });
+    }
+  }
+
+  rows.sort((a, b) => {
+    const aDate = new Date(String(a.orderDate || "")).getTime();
+    const bDate = new Date(String(b.orderDate || "")).getTime();
+    return bDate - aDate;
+  });
+
+  const totals = {
+    totalLines: rows.length,
+    totalCommittedQuantity: round2(rows.reduce((sum, row) => sum + toNum(row.quantityCommitted), 0)),
+    totalCommittedAmount: round2(rows.reduce((sum, row) => sum + toNum(row.committedAmount), 0)),
+    distinctOrders: new Set(rows.map((row) => String(row.salesOrderId || ""))).size,
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const inventoryAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, "asOf") || new Date();
+  const asOfEnd = endOfDay(asOf);
+
+  const [items, invoiceMovements, billMovements, adjustmentMovements] = await Promise.all([
+    Item.find({
+      organizationId,
+      isDeleted: false,
+      inventoryTracked: true,
+      stockOnHand: { $gt: 0 },
+    })
+      .select("name sku stockOnHand inventoryValue createdAt updatedAt")
+      .lean(),
+
+    Invoice.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: INVENTORY_RELATED_INVOICE_STATUSES },
+          invoiceDate: { $lte: asOfEnd },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.itemId": { $ne: null } } },
+      { $group: { _id: "$items.itemId", lastDate: { $max: "$invoiceDate" } } },
+    ]),
+
+    Bill.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: INVENTORY_RELATED_BILL_STATUSES },
+          billDate: { $lte: asOfEnd },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $match: {
+          "lineItems.isHeader": { $ne: true },
+          "lineItems.itemId": { $ne: null },
+        },
+      },
+      { $group: { _id: "$lineItems.itemId", lastDate: { $max: "$billDate" } } },
+    ]),
+
+    InventoryAdjustment.aggregate([
+      {
+        $match: {
+          organizationId,
+          adjustedAt: { $lte: asOfEnd },
+        },
+      },
+      { $group: { _id: "$itemId", lastDate: { $max: "$adjustedAt" } } },
+    ]),
+  ]);
+
+  const lastMovementByItem = new Map<string, Date>();
+
+  const absorbLastDates = (rows: Array<{ _id?: unknown; lastDate?: unknown }>) => {
+    for (const row of rows) {
+      const itemId = normalizeObjectId(row._id);
+      if (!itemId) continue;
+      const movementDate = row.lastDate ? new Date(String(row.lastDate)) : null;
+      if (!movementDate || Number.isNaN(movementDate.getTime())) continue;
+
+      const existing = lastMovementByItem.get(itemId);
+      if (!existing || movementDate.getTime() > existing.getTime()) {
+        lastMovementByItem.set(itemId, movementDate);
+      }
+    }
+  };
+
+  absorbLastDates(invoiceMovements as Array<{ _id?: unknown; lastDate?: unknown }>);
+  absorbLastDates(billMovements as Array<{ _id?: unknown; lastDate?: unknown }>);
+  absorbLastDates(adjustmentMovements as Array<{ _id?: unknown; lastDate?: unknown }>);
+
+  const bucketOrder: Array<"0-30 Days" | "31-60 Days" | "61-90 Days" | "Above 90 Days"> = [
+    "0-30 Days",
+    "31-60 Days",
+    "61-90 Days",
+    "Above 90 Days",
+  ];
+
+  const bucketTotals = new Map<string, {
+    bucket: string;
+    itemCount: number;
+    totalQuantity: number;
+    totalValue: number;
+    oldestAgeDays: number;
+  }>();
+
+  for (const bucket of bucketOrder) {
+    bucketTotals.set(bucket, {
+      bucket,
+      itemCount: 0,
+      totalQuantity: 0,
+      totalValue: 0,
+      oldestAgeDays: 0,
+    });
+  }
+
+  for (const item of items as any[]) {
+    const itemId = String(item._id);
+    const stockOnHand = round2(toNum(item.stockOnHand));
+    const inventoryValue = round2(toNum(item.inventoryValue));
+
+    const fallbackDate = item.updatedAt || item.createdAt || asOfEnd;
+    const movementDate = lastMovementByItem.get(itemId) || new Date(String(fallbackDate));
+    const effectiveDate = movementDate.getTime() > asOfEnd.getTime() ? asOfEnd : movementDate;
+    const ageDays = ageInDays(effectiveDate, asOfEnd);
+    const bucket = inventoryAgeBucket(ageDays);
+
+    const aggregate = bucketTotals.get(bucket);
+    if (!aggregate) continue;
+
+    aggregate.itemCount += 1;
+    aggregate.totalQuantity = round2(aggregate.totalQuantity + stockOnHand);
+    aggregate.totalValue = round2(aggregate.totalValue + inventoryValue);
+    aggregate.oldestAgeDays = Math.max(aggregate.oldestAgeDays, ageDays);
+  }
+
+  const rows = bucketOrder.map((bucket) => {
+    const row = bucketTotals.get(bucket)!;
+    return {
+      bucket: row.bucket,
+      itemCount: row.itemCount,
+      totalQuantity: row.totalQuantity,
+      totalValue: row.totalValue,
+      oldestAgeDays: row.oldestAgeDays,
+    };
+  });
+
+  const totals = {
+    totalItems: rows.reduce((sum, row) => sum + row.itemCount, 0),
+    totalQuantity: round2(rows.reduce((sum, row) => sum + row.totalQuantity, 0)),
+    totalValue: round2(rows.reduce((sum, row) => sum + row.totalValue, 0)),
+  };
+
+  res.json({ success: true, data: { asOf, rows, totals, count: rows.length } });
+});
+
+export const stockSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, "asOf") || new Date();
+  const asOfEnd = endOfDay(asOf);
+
+  const [items, committedRows] = await Promise.all([
+    Item.find({
+      organizationId,
+      isDeleted: false,
+      inventoryTracked: true,
+    })
+      .select("stockOnHand inventoryValue reorderPoint")
+      .lean(),
+
+    SalesOrder.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+          orderDate: { $lte: asOfEnd },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $group: {
+          _id: "$lineItems.itemId",
+          totalQuantity: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const committedByItem = new Map<string, number>();
+  for (const row of committedRows as Array<{ _id?: unknown; totalQuantity?: number }>) {
+    const itemId = normalizeObjectId(row._id);
+    if (!itemId) continue;
+    committedByItem.set(itemId, round2(toNum(row.totalQuantity)));
+  }
+
+  const statusOrder: Array<"Out of Stock" | "Low Stock" | "Fully Committed" | "In Stock"> = [
+    "Out of Stock",
+    "Low Stock",
+    "Fully Committed",
+    "In Stock",
+  ];
+
+  const statusMap = new Map<string, {
+    stockStatus: string;
+    itemCount: number;
+    totalQuantity: number;
+    totalCommittedStock: number;
+    totalAvailableStock: number;
+    totalValue: number;
+  }>();
+
+  for (const status of statusOrder) {
+    statusMap.set(status, {
+      stockStatus: status,
+      itemCount: 0,
+      totalQuantity: 0,
+      totalCommittedStock: 0,
+      totalAvailableStock: 0,
+      totalValue: 0,
+    });
+  }
+
+  for (const item of items as any[]) {
+    const itemId = String(item._id);
+    const stockOnHand = round2(toNum(item.stockOnHand));
+    const inventoryValue = round2(toNum(item.inventoryValue));
+    const reorderPoint = round2(toNum(item.reorderPoint));
+    const committedStock = round2(committedByItem.get(itemId) || 0);
+    const availableForSale = round2(Math.max(stockOnHand - committedStock, 0));
+    const stockStatus = computeStockStatus({ stockOnHand, reorderPoint, availableForSale });
+
+    const aggregate = statusMap.get(stockStatus);
+    if (!aggregate) continue;
+
+    aggregate.itemCount += 1;
+    aggregate.totalQuantity = round2(aggregate.totalQuantity + stockOnHand);
+    aggregate.totalCommittedStock = round2(aggregate.totalCommittedStock + committedStock);
+    aggregate.totalAvailableStock = round2(aggregate.totalAvailableStock + availableForSale);
+    aggregate.totalValue = round2(aggregate.totalValue + inventoryValue);
+  }
+
+  const rows = statusOrder
+    .map((status) => statusMap.get(status)!)
+    .filter((row) => row.itemCount > 0);
+
+  const totals = {
+    totalItems: rows.reduce((sum, row) => sum + row.itemCount, 0),
+    totalQuantity: round2(rows.reduce((sum, row) => sum + row.totalQuantity, 0)),
+    totalCommittedStock: round2(rows.reduce((sum, row) => sum + row.totalCommittedStock, 0)),
+    totalAvailableStock: round2(rows.reduce((sum, row) => sum + row.totalAvailableStock, 0)),
+    totalValue: round2(rows.reduce((sum, row) => sum + row.totalValue, 0)),
+  };
+
+  res.json({ success: true, data: { asOf, rows, totals, count: rows.length } });
+});
+
+export const inventoryAdjustmentSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const summaryRows = await InventoryAdjustment.aggregate([
+    {
+      $match: {
+        organizationId,
+        adjustedAt: { $gte: startOfDay(from), $lte: endOfDay(to) },
+      },
+    },
+    {
+      $project: {
+        reason: { $ifNull: ["$reason", "Manual"] },
+        increaseQty: {
+          $cond: [
+            { $eq: ["$direction", "Increase"] },
+            { $abs: { $ifNull: ["$quantityDelta", 0] } },
+            0,
+          ],
+        },
+        decreaseQty: {
+          $cond: [
+            { $eq: ["$direction", "Decrease"] },
+            { $abs: { $ifNull: ["$quantityDelta", 0] } },
+            0,
+          ],
+        },
+        increaseValue: {
+          $cond: [
+            { $eq: ["$direction", "Increase"] },
+            { $abs: { $ifNull: ["$valueDelta", 0] } },
+            0,
+          ],
+        },
+        decreaseValue: {
+          $cond: [
+            { $eq: ["$direction", "Decrease"] },
+            { $abs: { $ifNull: ["$valueDelta", 0] } },
+            0,
+          ],
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$reason",
+        adjustmentCount: { $sum: 1 },
+        increaseQty: { $sum: "$increaseQty" },
+        decreaseQty: { $sum: "$decreaseQty" },
+        increaseValue: { $sum: "$increaseValue" },
+        decreaseValue: { $sum: "$decreaseValue" },
+      },
+    },
+    { $sort: { adjustmentCount: -1, _id: 1 } },
+  ]);
+
+  const rows = (summaryRows as any[]).map((row) => {
+    const increaseQty = round2(toNum(row.increaseQty));
+    const decreaseQty = round2(toNum(row.decreaseQty));
+    const increaseValue = round2(toNum(row.increaseValue));
+    const decreaseValue = round2(toNum(row.decreaseValue));
+
+    return {
+      reason: String(row._id || "Manual"),
+      adjustmentCount: toNum(row.adjustmentCount),
+      increaseQty,
+      decreaseQty,
+      netQty: round2(increaseQty - decreaseQty),
+      increaseValue,
+      decreaseValue,
+      netValue: round2(increaseValue - decreaseValue),
+    };
+  });
+
+  const totals = {
+    totalAdjustments: rows.reduce((sum, row) => sum + toNum(row.adjustmentCount), 0),
+    totalIncreaseQty: round2(rows.reduce((sum, row) => sum + toNum(row.increaseQty), 0)),
+    totalDecreaseQty: round2(rows.reduce((sum, row) => sum + toNum(row.decreaseQty), 0)),
+    netQty: round2(rows.reduce((sum, row) => sum + toNum(row.netQty), 0)),
+    totalIncreaseValue: round2(rows.reduce((sum, row) => sum + toNum(row.increaseValue), 0)),
+    totalDecreaseValue: round2(rows.reduce((sum, row) => sum + toNum(row.decreaseValue), 0)),
+    netValue: round2(rows.reduce((sum, row) => sum + toNum(row.netValue), 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const inventoryAdjustmentDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const adjustments = await InventoryAdjustment.find({
+    organizationId,
+    adjustedAt: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  })
+    .populate("itemId", "name sku")
+    .populate("warehouseId", "name")
+    .sort({ adjustedAt: -1 })
+    .lean();
+
+  const rows = (adjustments as Array<Record<string, any>>).map((adjustment) => ({
+    adjustmentId: String(adjustment._id),
+    adjustedAt: adjustment.adjustedAt,
+    itemId: normalizeObjectId(adjustment.itemId),
+    itemName: adjustment.itemId?.name || "Unknown Item",
+    sku: adjustment.itemId?.sku || "",
+    warehouseName: adjustment.warehouseId?.name || "Main",
+    direction: String(adjustment.direction || ""),
+    reason: String(adjustment.reason || "Manual"),
+    quantityDelta: round2(toNum(adjustment.quantityDelta)),
+    valueDelta: round2(toNum(adjustment.valueDelta)),
+    resultingStockOnHand: round2(toNum(adjustment.resultingStockOnHand)),
+    resultingInventoryValue: round2(toNum(adjustment.resultingInventoryValue)),
+    referenceNumber: String(adjustment.referenceNumber || ""),
+    notes: String(adjustment.notes || ""),
+  }));
+
+  const totals = {
+    totalAdjustments: rows.length,
+    totalQuantityDelta: round2(rows.reduce((sum, row) => sum + toNum(row.quantityDelta), 0)),
+    totalValueDelta: round2(rows.reduce((sum, row) => sum + toNum(row.valueDelta), 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const packingHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const challans = await (DeliveryChallan as any).find({
+    organizationId,
+    isDeleted: false,
+    challanDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  })
+    .populate("customerId", "displayName companyName")
+    .sort({ challanDate: -1 })
+    .lean();
+
+  const rows = (challans as Array<Record<string, any>>).map((challan) => {
+    const items = (challan.items || []) as any[];
+    const totalQuantity = round2(items.reduce((sum, item) => sum + toNum(item.quantity), 0));
+    const itemCount = items.length;
+
+    return {
+      challanId: String(challan._id),
+      challanNumber: String(challan.challanNumber || ""),
+      challanDate: challan.challanDate,
+      salesOrderNumber: String(challan.salesOrderNumber || ""),
+      customerName: challan.customerId?.displayName || challan.customerId?.companyName || "Unknown",
+      itemCount,
+      totalQuantity,
+      totalAmount: round2(toNum(challan.total)),
+      status: String(challan.status || ""),
+      invoiceStatus: String(challan.invoiceStatus || ""),
+    };
+  });
+
+  const totals = {
+    totalChallans: rows.length,
+    totalPackedQuantity: round2(rows.reduce((sum, row) => sum + toNum(row.totalQuantity), 0)),
+    totalAmount: round2(rows.reduce((sum, row) => sum + toNum(row.totalAmount), 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const shipmentDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const challans = await (DeliveryChallan as any).find({
+    organizationId,
+    isDeleted: false,
+    challanDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  })
+    .populate("customerId", "displayName companyName")
+    .sort({ challanDate: -1 })
+    .lean();
+
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const challan of challans as Array<Record<string, any>>) {
+    const customerName = challan.customerId?.displayName || challan.customerId?.companyName || "Unknown";
+    const status = String(challan.status || "");
+    const invoiceStatus = String(challan.invoiceStatus || "");
+
+    const shipmentStatus = status === "Delivered"
+      ? "Delivered"
+      : status === "Returned"
+        ? "Returned"
+        : status === "Open"
+          ? "In Transit"
+          : invoiceStatus === "INVOICED"
+            ? "Invoiced"
+            : "Pending";
+
+    for (const line of (challan.items || []) as any[]) {
+      rows.push({
+        challanId: String(challan._id),
+        challanNumber: String(challan.challanNumber || ""),
+        challanDate: challan.challanDate,
+        customerName,
+        itemId: normalizeObjectId(line.itemId),
+        itemName: String(line.name || "Unknown Item"),
+        quantity: round2(toNum(line.quantity)),
+        rate: round2(toNum(line.rate)),
+        amount: round2(toNum(line.amount)),
+        challanStatus: status,
+        invoiceStatus,
+        shipmentStatus,
+      });
+    }
+  }
+
+  const totals = {
+    totalLines: rows.length,
+    totalQuantity: round2(rows.reduce((sum, row) => sum + toNum(row.quantity), 0)),
+    totalAmount: round2(rows.reduce((sum, row) => sum + toNum(row.amount), 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const inventoryTurnoverByQuantity = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const [items, soldRows, purchasedRows, adjustmentRows] = await Promise.all([
+    Item.find({
+      organizationId,
+      isDeleted: false,
+      inventoryTracked: true,
+    })
+      .select("name sku stockOnHand")
+      .lean(),
+
+    Invoice.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $nin: ["Draft", "Void"] },
+          invoiceDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.itemId": { $ne: null } } },
+      {
+        $group: {
+          _id: "$items.itemId",
+          soldQuantity: { $sum: { $ifNull: ["$items.quantity", 0] } },
+        },
+      },
+    ]),
+
+    Bill.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $nin: ["Draft", "Void"] },
+          billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $match: {
+          "lineItems.isHeader": { $ne: true },
+          "lineItems.itemId": { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: "$lineItems.itemId",
+          purchasedQuantity: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+
+    InventoryAdjustment.aggregate([
+      {
+        $match: {
+          organizationId,
+          adjustedAt: { $gte: startOfDay(from), $lte: endOfDay(to) },
+        },
+      },
+      {
+        $group: {
+          _id: "$itemId",
+          increasedQty: {
+            $sum: {
+              $cond: [
+                { $eq: ["$direction", "Increase"] },
+                { $abs: { $ifNull: ["$quantityDelta", 0] } },
+                0,
+              ],
+            },
+          },
+          decreasedQty: {
+            $sum: {
+              $cond: [
+                { $eq: ["$direction", "Decrease"] },
+                { $abs: { $ifNull: ["$quantityDelta", 0] } },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  const soldByItem = new Map<string, number>();
+  for (const row of soldRows as Array<{ _id?: unknown; soldQuantity?: number }>) {
+    const itemId = normalizeObjectId(row._id);
+    if (!itemId) continue;
+    soldByItem.set(itemId, round2(toNum(row.soldQuantity)));
+  }
+
+  const purchasedByItem = new Map<string, number>();
+  for (const row of purchasedRows as Array<{ _id?: unknown; purchasedQuantity?: number }>) {
+    const itemId = normalizeObjectId(row._id);
+    if (!itemId) continue;
+    purchasedByItem.set(itemId, round2(toNum(row.purchasedQuantity)));
+  }
+
+  const netAdjustmentByItem = new Map<string, number>();
+  for (const row of adjustmentRows as Array<{ _id?: unknown; increasedQty?: number; decreasedQty?: number }>) {
+    const itemId = normalizeObjectId(row._id);
+    if (!itemId) continue;
+    const net = round2(toNum(row.increasedQty) - toNum(row.decreasedQty));
+    netAdjustmentByItem.set(itemId, net);
+  }
+
+  const daysInRange = Math.max(1, ageInDays(from, to) + 1);
+
+  const rows = (items as any[])
+    .map((item) => {
+      const itemId = String(item._id);
+      const closingStockQty = round2(toNum(item.stockOnHand));
+      const soldQuantity = round2(soldByItem.get(itemId) || 0);
+      const purchasedQuantity = round2(purchasedByItem.get(itemId) || 0);
+      const netAdjustmentQty = round2(netAdjustmentByItem.get(itemId) || 0);
+
+      const openingStockQty = round2(
+        Math.max(0, closingStockQty - purchasedQuantity - netAdjustmentQty + soldQuantity),
+      );
+      const averageInventoryQty = round2((openingStockQty + closingStockQty) / 2);
+      const turnoverRatio = averageInventoryQty > 0
+        ? round2(soldQuantity / averageInventoryQty)
+        : 0;
+
+      return {
+        itemId,
+        itemName: String(item.name || "Unnamed Item"),
+        sku: String(item.sku || ""),
+        openingStockQty,
+        purchasedQuantity,
+        soldQuantity,
+        netAdjustmentQty,
+        closingStockQty,
+        averageInventoryQty,
+        turnoverRatio,
+        dailyIssueQty: round2(soldQuantity / daysInRange),
+      };
+    })
+    .filter((row) => row.soldQuantity > 0 || row.purchasedQuantity > 0 || row.closingStockQty > 0)
+    .sort((a, b) => {
+      if (b.turnoverRatio !== a.turnoverRatio) return b.turnoverRatio - a.turnoverRatio;
+      return b.soldQuantity - a.soldQuantity;
+    });
+
+  const totals = {
+    totalItems: rows.length,
+    totalSoldQuantity: round2(rows.reduce((sum, row) => sum + row.soldQuantity, 0)),
+    totalPurchasedQuantity: round2(rows.reduce((sum, row) => sum + row.purchasedQuantity, 0)),
+    totalClosingStockQty: round2(rows.reduce((sum, row) => sum + row.closingStockQty, 0)),
+    weightedTurnoverRatio: round2(
+      rows.reduce((sum, row) => sum + row.turnoverRatio * row.soldQuantity, 0)
+        / Math.max(1, rows.reduce((sum, row) => sum + row.soldQuantity, 0)),
+    ),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+// --- INVENTORY VALUATION REPORTS ---
+
+export const inventoryValuationSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, "asOf") || new Date();
+
+  await reconcileInventoryOpeningsSafely(organizationId);
+
+  const items = await Item.find({
+    organizationId,
+    isDeleted: false,
+    inventoryTracked: true,
+  })
+    .select("name sku stockOnHand averageCost inventoryValue valuationMethod reorderPoint isActive")
+    .lean();
+
+  const totalValue = round2(
+    (items as any[]).reduce((sum, item) => sum + toNum(item.inventoryValue), 0),
+  );
+
+  const rows = (items as any[])
+    .map((item) => {
+      const stockOnHand = round2(toNum(item.stockOnHand));
+      const inventoryValue = round2(toNum(item.inventoryValue));
+      const averageCost = stockOnHand > 0
+        ? round2(inventoryValue / stockOnHand)
+        : round2(toNum(item.averageCost));
+
+      return {
+        itemId: String(item._id),
+        itemName: String(item.name || "Unnamed Item"),
+        sku: String(item.sku || ""),
+        valuationMethod: String(item.valuationMethod || "MovingAverage"),
+        stockOnHand,
+        reorderPoint: round2(toNum(item.reorderPoint)),
+        averageCost,
+        inventoryValue,
+        valueSharePercent: percent(inventoryValue, totalValue),
+        isActive: Boolean(item.isActive),
+      };
+    })
+    .sort((a, b) => b.inventoryValue - a.inventoryValue);
+
+  const totals = {
+    totalItems: rows.length,
+    totalStockOnHand: round2(rows.reduce((sum, row) => sum + row.stockOnHand, 0)),
+    totalInventoryValue: round2(rows.reduce((sum, row) => sum + row.inventoryValue, 0)),
+  };
+
+  res.json({ success: true, data: { asOf, rows, totals, count: rows.length } });
+});
+
+export const fifoCostLotTracking = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const bills = await Bill.find({
+    organizationId,
+    isDeleted: false,
+    status: { $nin: ["Draft", "Void"] },
+    billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  })
+    .populate("vendorId", "displayName companyName")
+    .sort({ billDate: 1 })
+    .lean();
+
+  const itemIds = new Set<string>();
+  for (const bill of bills as any[]) {
+    for (const line of (bill.lineItems || []) as any[]) {
+      if (Boolean(line.isHeader)) continue;
+      const itemId = normalizeObjectId(line.itemId);
+      if (itemId) itemIds.add(itemId);
+    }
+  }
+
+  const itemRows = await Item.find({ _id: { $in: Array.from(itemIds) } })
+    .select("name sku valuationMethod")
+    .lean();
+
+  const itemMeta = new Map(
+    itemRows.map((item: any) => [
+      String(item._id),
+      {
+        name: item.name || "Unknown Item",
+        sku: item.sku || "",
+        valuationMethod: item.valuationMethod || "MovingAverage",
+      },
+    ]),
+  );
+
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const bill of bills as Array<Record<string, any>>) {
+    const vendorName = bill.vendorId?.displayName || bill.vendorId?.companyName || "Unknown";
+
+    for (const line of (bill.lineItems || []) as any[]) {
+      if (Boolean(line.isHeader)) continue;
+
+      const itemId = normalizeObjectId(line.itemId);
+      if (!itemId) continue;
+
+      const meta = itemMeta.get(itemId);
+      const billDate = bill.billDate ? new Date(String(bill.billDate)) : null;
+      const lotAgeDays = billDate && !Number.isNaN(billDate.getTime()) ? ageInDays(billDate, to) : 0;
+
+      rows.push({
+        billId: String(bill._id),
+        billNumber: String(bill.billNumber || ""),
+        billDate: bill.billDate,
+        vendorName,
+        itemId,
+        itemName: meta?.name || String(line.name || "Unknown Item"),
+        sku: meta?.sku || "",
+        lotQuantity: round2(toNum(line.quantity)),
+        unitCost: round2(toNum(line.rate)),
+        lotValue: round2(toNum(line.amount)),
+        valuationMethod: String(meta?.valuationMethod || "MovingAverage"),
+        lotAgeDays,
+      });
+    }
+  }
+
+  const totals = {
+    totalLots: rows.length,
+    totalQuantity: round2(rows.reduce((sum, row) => sum + toNum(row.lotQuantity), 0)),
+    totalValue: round2(rows.reduce((sum, row) => sum + toNum(row.lotValue), 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const abcClassification = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const [salesRows, itemSnapshots] = await Promise.all([
+    Invoice.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $nin: ["Draft", "Void"] },
+          invoiceDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.itemId": { $ne: null } } },
+      {
+        $group: {
+          _id: "$items.itemId",
+          itemName: { $first: "$items.name" },
+          salesAmount: { $sum: { $ifNull: ["$items.amount", 0] } },
+          salesQuantity: { $sum: { $ifNull: ["$items.quantity", 0] } },
+        },
+      },
+      { $sort: { salesAmount: -1 } },
+    ]),
+
+    Item.find({
+      organizationId,
+      isDeleted: false,
+    })
+      .select("name sku stockOnHand inventoryValue")
+      .lean(),
+  ]);
+
+  const itemMeta = new Map(
+    (itemSnapshots as any[]).map((item) => [
+      String(item._id),
+      {
+        name: String(item.name || "Unnamed Item"),
+        sku: String(item.sku || ""),
+        stockOnHand: round2(toNum(item.stockOnHand)),
+        inventoryValue: round2(toNum(item.inventoryValue)),
+      },
+    ]),
+  );
+
+  const normalizedRows = (salesRows as any[]).map((row) => {
+    const itemId = normalizeObjectId(row._id);
+    const meta = itemMeta.get(itemId);
+    return {
+      itemId,
+      itemName: meta?.name || String(row.itemName || "Unknown Item"),
+      sku: meta?.sku || "",
+      salesAmount: round2(toNum(row.salesAmount)),
+      salesQuantity: round2(toNum(row.salesQuantity)),
+      currentStockOnHand: meta?.stockOnHand || 0,
+      currentInventoryValue: meta?.inventoryValue || 0,
+    };
+  });
+
+  const totalSalesAmount = round2(normalizedRows.reduce((sum, row) => sum + row.salesAmount, 0));
+  let runningPercent = 0;
+
+  const classStats = {
+    A: { itemCount: 0, salesAmount: 0 },
+    B: { itemCount: 0, salesAmount: 0 },
+    C: { itemCount: 0, salesAmount: 0 },
+  };
+
+  const rows = normalizedRows.map((row) => {
+    const sharePercent = percent(row.salesAmount, totalSalesAmount);
+    runningPercent = round2(runningPercent + sharePercent);
+
+    const classification = runningPercent <= 80
+      ? "A"
+      : runningPercent <= 95
+        ? "B"
+        : "C";
+
+    classStats[classification].itemCount += 1;
+    classStats[classification].salesAmount = round2(classStats[classification].salesAmount + row.salesAmount);
+
+    return {
+      ...row,
+      salesSharePercent: sharePercent,
+      cumulativeSharePercent: runningPercent,
+      classification,
+    };
+  });
+
+  const totals = {
+    totalItems: rows.length,
+    totalSalesAmount,
+    classAItems: classStats.A.itemCount,
+    classASalesAmount: classStats.A.salesAmount,
+    classBItems: classStats.B.itemCount,
+    classBSalesAmount: classStats.B.salesAmount,
+    classCItems: classStats.C.itemCount,
+    classCSalesAmount: classStats.C.salesAmount,
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const inventoryTurnoverByAmount = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const [items, salesRows, purchaseRows, adjustmentRows] = await Promise.all([
+    Item.find({
+      organizationId,
+      isDeleted: false,
+      inventoryTracked: true,
+    })
+      .select("name sku stockOnHand inventoryValue")
+      .lean(),
+
+    Invoice.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $nin: ["Draft", "Void"] },
+          invoiceDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.itemId": { $ne: null } } },
+      {
+        $group: {
+          _id: "$items.itemId",
+          soldQuantity: { $sum: { $ifNull: ["$items.quantity", 0] } },
+          salesAmount: { $sum: { $ifNull: ["$items.amount", 0] } },
+          cogsAmount: {
+            $sum: {
+              $cond: [
+                { $gt: [{ $ifNull: ["$items.costAmount", 0] }, 0] },
+                { $ifNull: ["$items.costAmount", 0] },
+                { $ifNull: ["$items.amount", 0] },
+              ],
+            },
+          },
+        },
+      },
+    ]),
+
+    Bill.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $nin: ["Draft", "Void"] },
+          billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $match: {
+          "lineItems.isHeader": { $ne: true },
+          "lineItems.itemId": { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: "$lineItems.itemId",
+          purchaseAmount: { $sum: { $ifNull: ["$lineItems.amount", 0] } },
+        },
+      },
+    ]),
+
+    InventoryAdjustment.aggregate([
+      {
+        $match: {
+          organizationId,
+          adjustedAt: { $gte: startOfDay(from), $lte: endOfDay(to) },
+        },
+      },
+      {
+        $group: {
+          _id: "$itemId",
+          increasedValue: {
+            $sum: {
+              $cond: [
+                { $eq: ["$direction", "Increase"] },
+                { $abs: { $ifNull: ["$valueDelta", 0] } },
+                0,
+              ],
+            },
+          },
+          decreasedValue: {
+            $sum: {
+              $cond: [
+                { $eq: ["$direction", "Decrease"] },
+                { $abs: { $ifNull: ["$valueDelta", 0] } },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  const soldByItem = new Map<string, { soldQuantity: number; salesAmount: number; cogsAmount: number }>();
+  for (const row of salesRows as any[]) {
+    const itemId = normalizeObjectId(row._id);
+    if (!itemId) continue;
+    soldByItem.set(itemId, {
+      soldQuantity: round2(toNum(row.soldQuantity)),
+      salesAmount: round2(toNum(row.salesAmount)),
+      cogsAmount: round2(toNum(row.cogsAmount)),
+    });
+  }
+
+  const purchaseByItem = new Map<string, number>();
+  for (const row of purchaseRows as any[]) {
+    const itemId = normalizeObjectId(row._id);
+    if (!itemId) continue;
+    purchaseByItem.set(itemId, round2(toNum(row.purchaseAmount)));
+  }
+
+  const netAdjustmentByItem = new Map<string, number>();
+  for (const row of adjustmentRows as any[]) {
+    const itemId = normalizeObjectId(row._id);
+    if (!itemId) continue;
+    netAdjustmentByItem.set(itemId, round2(toNum(row.increasedValue) - toNum(row.decreasedValue)));
+  }
+
+  const rows = (items as any[])
+    .map((item) => {
+      const itemId = String(item._id);
+      const salesMeta = soldByItem.get(itemId) || { soldQuantity: 0, salesAmount: 0, cogsAmount: 0 };
+      const purchaseAmount = round2(purchaseByItem.get(itemId) || 0);
+      const netAdjustmentValue = round2(netAdjustmentByItem.get(itemId) || 0);
+      const closingInventoryValue = round2(toNum(item.inventoryValue));
+
+      const openingInventoryValue = round2(
+        Math.max(0, closingInventoryValue - purchaseAmount - netAdjustmentValue + salesMeta.cogsAmount),
+      );
+      const averageInventoryValue = round2((openingInventoryValue + closingInventoryValue) / 2);
+      const turnoverRatio = averageInventoryValue > 0
+        ? round2(salesMeta.cogsAmount / averageInventoryValue)
+        : 0;
+      const grossMarginAmount = round2(salesMeta.salesAmount - salesMeta.cogsAmount);
+
+      return {
+        itemId,
+        itemName: String(item.name || "Unnamed Item"),
+        sku: String(item.sku || ""),
+        soldQuantity: salesMeta.soldQuantity,
+        salesAmount: salesMeta.salesAmount,
+        cogsAmount: salesMeta.cogsAmount,
+        grossMarginAmount,
+        grossMarginPercent: percent(grossMarginAmount, salesMeta.salesAmount),
+        openingInventoryValue,
+        purchaseAmount,
+        netAdjustmentValue,
+        closingInventoryValue,
+        averageInventoryValue,
+        turnoverRatio,
+      };
+    })
+    .filter((row) => row.salesAmount > 0 || row.purchaseAmount > 0 || row.closingInventoryValue > 0)
+    .sort((a, b) => {
+      if (b.turnoverRatio !== a.turnoverRatio) return b.turnoverRatio - a.turnoverRatio;
+      return b.salesAmount - a.salesAmount;
+    });
+
+  const totals = {
+    totalItems: rows.length,
+    totalSalesAmount: round2(rows.reduce((sum, row) => sum + row.salesAmount, 0)),
+    totalCogsAmount: round2(rows.reduce((sum, row) => sum + row.cogsAmount, 0)),
+    totalGrossMarginAmount: round2(rows.reduce((sum, row) => sum + row.grossMarginAmount, 0)),
+    totalClosingInventoryValue: round2(rows.reduce((sum, row) => sum + row.closingInventoryValue, 0)),
+    weightedTurnoverRatio: round2(
+      rows.reduce((sum, row) => sum + row.turnoverRatio * row.cogsAmount, 0)
+        / Math.max(1, rows.reduce((sum, row) => sum + row.cogsAmount, 0)),
+    ),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+// --- SALES REPORTS ---
 
 export const salesByCustomer = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -1127,7 +2509,7 @@ export const salesByItem = asyncHandler(async (req: AuthenticatedRequest, res: R
   res.json({ success: true, data: { from, to, rows, totals } });
 });
 
-// ─── PAYMENTS RECEIVED REPORT ────────────────────────────────────────
+// --- PAYMENTS RECEIVED REPORT ---
 
 export const paymentsReceivedReport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -1165,7 +2547,7 @@ export const paymentsReceivedReport = asyncHandler(async (req: AuthenticatedRequ
   res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
 });
 
-// ─── DASHBOARD SUMMARY ───────────────────────────────────────────────
+// --- DASHBOARD SUMMARY ---
 
 export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -1722,3 +3104,4 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
     },
   });
 });
+

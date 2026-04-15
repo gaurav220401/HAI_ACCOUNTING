@@ -83,7 +83,7 @@ export default function InventoryOverviewPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Tracked Items</CardDescription>
@@ -106,6 +106,24 @@ export default function InventoryOverviewPage() {
               <CardHeader className="pb-2">
                 <CardDescription>Total Quantity</CardDescription>
                 <CardTitle className="text-2xl">{Number(summary?.totalQuantity || 0).toLocaleString("en-IN")}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Committed (Sales Orders)</CardDescription>
+                <CardTitle className="text-2xl">{Number(summary?.committedQuantity || 0).toLocaleString("en-IN")}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Available to Sell</CardDescription>
+                <CardTitle className="text-2xl">{Number(summary?.availableQuantity || 0).toLocaleString("en-IN")}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Open Sales Orders</CardDescription>
+                <CardTitle className="text-2xl">{summary?.openSalesOrders ?? 0}</CardTitle>
               </CardHeader>
             </Card>
             <Card>

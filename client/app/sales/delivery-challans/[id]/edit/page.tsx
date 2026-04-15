@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Loader2, Plus, Trash2, Search, X } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -106,6 +106,7 @@ export default function EditDeliveryChallanPage() {
   // Form state
   const [customerId, setCustomerId] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
+  const [salesOrderNumber, setSalesOrderNumber] = useState("");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [challanDate, setChallanDate] = useState("");
   const [challanType, setChallanType] = useState<ChallanType | "">("");
@@ -120,6 +121,11 @@ export default function EditDeliveryChallanPage() {
   const [termsAndConditions, setTermsAndConditions] = useState("");
 
   const [saving, setSaving] = useState(false);
+
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item._id, item])),
+    [items],
+  );
 
   // Auth redirects
   useEffect(() => {
@@ -160,6 +166,7 @@ export default function EditDeliveryChallanPage() {
             : dc.customerId._id,
           );
           setChallanNumber(dc.challanNumber);
+          setSalesOrderNumber(dc.salesOrderNumber || "");
           setReferenceNumber(dc.referenceNumber || "");
           setChallanDate(dc.challanDate.slice(0, 10));
           setChallanType(dc.challanType);
@@ -312,6 +319,7 @@ export default function EditDeliveryChallanPage() {
     try {
       const payload: UpdateDeliveryChallanInput = {
         challanNumber,
+        salesOrderNumber: salesOrderNumber.trim() || undefined,
         referenceNumber,
         customerId,
         challanDate,
@@ -424,6 +432,15 @@ export default function EditDeliveryChallanPage() {
                 </div>
 
                 <div className="space-y-1.5">
+                  <Label>Sales Order#</Label>
+                  <Input
+                    value={salesOrderNumber}
+                    onChange={(e) => setSalesOrderNumber(e.target.value)}
+                    placeholder="SO-00001"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
                   <Label>Reference#</Label>
                   <Input
                     value={referenceNumber}
@@ -482,6 +499,7 @@ export default function EditDeliveryChallanPage() {
                         <TableHead className="w-24 text-right">
                           QUANTITY
                         </TableHead>
+                        <TableHead className="w-24 text-right">STOCK</TableHead>
                         <TableHead className="w-28 text-right">RATE</TableHead>
                         <TableHead className="w-28 text-right">
                           DISCOUNT %
@@ -495,6 +513,14 @@ export default function EditDeliveryChallanPage() {
                     <TableBody>
                       {lines.map((line) => {
                         const { amount } = calcLineAmount(line);
+                        const selectedItem = itemsById.get(line.itemId);
+                        const stockOnHand =
+                          selectedItem?.inventoryTracked ?
+                            Number(selectedItem.stockOnHand || 0)
+                          : null;
+                        const exceedsStock =
+                          stockOnHand !== null && Number(line.quantity || 0) > stockOnHand;
+
                         return (
                           <TableRow key={line.key}>
                             <TableCell>
@@ -510,11 +536,26 @@ export default function EditDeliveryChallanPage() {
                                 <SelectContent>
                                   {items.map((item) => (
                                     <SelectItem key={item._id} value={item._id}>
-                                      {item.name}
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span>{item.name}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {item.inventoryTracked ?
+                                            `Stock ${Number(item.stockOnHand || 0).toLocaleString("en-IN")}`
+                                          : "Non-stock"}
+                                        </span>
+                                      </div>
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
+                              {selectedItem ?
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                  {selectedItem.inventoryTracked ?
+                                    `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
+                                  : "Inventory not tracked"}
+                                </p>
+                              : null}
                             </TableCell>
                             <TableCell>
                               <Input
@@ -530,6 +571,15 @@ export default function EditDeliveryChallanPage() {
                                   )
                                 }
                               />
+                            </TableCell>
+                            <TableCell
+                              className={`text-right text-sm tabular-nums ${
+                                exceedsStock ? "text-destructive font-medium" : ""
+                              }`}
+                            >
+                              {stockOnHand === null ?
+                                "N/A"
+                              : Number(stockOnHand).toLocaleString("en-IN")}
                             </TableCell>
                             <TableCell>
                               <Input

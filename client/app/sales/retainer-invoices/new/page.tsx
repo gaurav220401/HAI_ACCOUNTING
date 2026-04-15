@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
@@ -33,6 +34,20 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 export default function NewRetainerInvoicePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <NewRetainerInvoicePageContent />
+    </Suspense>
+  );
+}
+
+function NewRetainerInvoicePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();

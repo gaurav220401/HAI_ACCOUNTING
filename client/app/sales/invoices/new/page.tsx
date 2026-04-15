@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -865,6 +865,11 @@ export default function NewInvoicePage() {
   const [saving, setSaving] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item._id, item])),
+    [items],
+  );
+
   // Load master data
   useEffect(() => {
     if (!firebaseUser || loading || orgLoading || !activeOrganization) return;
@@ -1344,10 +1349,11 @@ export default function NewInvoicePage() {
 
             {/* Order Number */}
             <div className="space-y-1.5">
-              <Label>Order Number</Label>
+              <Label>Order / Challan Number</Label>
               <Input
                 value={orderNumber}
                 onChange={(e) => setOrderNumber(e.target.value)}
+                placeholder="SO-00001 or DC-00001"
               />
             </div>
 
@@ -1487,6 +1493,7 @@ export default function NewInvoicePage() {
                     <TableHead className="w-[100px] text-right">
                       QUANTITY
                     </TableHead>
+                    <TableHead className="w-[110px] text-right">STOCK</TableHead>
                     <TableHead className="w-[120px] text-right">RATE</TableHead>
                     <TableHead className="w-[100px] text-right">
                       DISCOUNT %
@@ -1500,6 +1507,14 @@ export default function NewInvoicePage() {
                 <TableBody>
                   {lines.map((line) => {
                     const { amount } = calcLineAmount(line);
+                    const selectedItem = itemsById.get(line.itemId);
+                    const stockOnHand =
+                      selectedItem?.inventoryTracked ?
+                        Number(selectedItem.stockOnHand || 0)
+                      : null;
+                    const exceedsStock =
+                      stockOnHand !== null && Number(line.quantity || 0) > stockOnHand;
+
                     return (
                       <TableRow key={line.key}>
                         <TableCell>
@@ -1529,8 +1544,17 @@ export default function NewInvoicePage() {
                               )}
                               {items.map((it) => (
                                 <SelectItem key={it._id} value={it._id}>
-                                  {it.name}
-                                  {it.sku ? ` (${it.sku})` : ""}
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span>
+                                      {it.name}
+                                      {it.sku ? ` (${it.sku})` : ""}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {it.inventoryTracked ?
+                                        `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
+                                      : "Non-stock"}
+                                    </span>
+                                  </div>
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1546,18 +1570,28 @@ export default function NewInvoicePage() {
                             />
                           )}
                           {line.itemId && (
-                            <Input
-                              className="mt-1 h-7 text-xs"
-                              placeholder="Add a description to your item"
-                              value={line.description}
-                              onChange={(e) =>
-                                updateLine(
-                                  line.key,
-                                  "description",
-                                  e.target.value,
-                                )
-                              }
-                            />
+                            <>
+                              <Input
+                                className="mt-1 h-7 text-xs"
+                                placeholder="Add a description to your item"
+                                value={line.description}
+                                onChange={(e) =>
+                                  updateLine(
+                                    line.key,
+                                    "description",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                              {selectedItem ?
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                  {selectedItem.inventoryTracked ?
+                                    `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
+                                  : "Inventory not tracked"}
+                                </p>
+                              : null}
+                            </>
                           )}
                         </TableCell>
                         <TableCell>
@@ -1574,6 +1608,15 @@ export default function NewInvoicePage() {
                               )
                             }
                           />
+                        </TableCell>
+                        <TableCell
+                          className={`text-right text-sm tabular-nums ${
+                            exceedsStock ? "text-destructive font-medium" : ""
+                          }`}
+                        >
+                          {stockOnHand === null ?
+                            "N/A"
+                          : Number(stockOnHand).toLocaleString("en-IN")}
                         </TableCell>
                         <TableCell>
                           <Input

@@ -68,6 +68,12 @@ function customerName(c: DeliveryChallan["customerId"]) {
   return c?.displayName || "—";
 }
 
+function getConvertedInvoiceId(
+  value: { _id?: string; invoiceId?: string } | undefined,
+) {
+  return value?.invoiceId || value?._id || "";
+}
+
 function numberToWords(num: number): string {
   const ones = [
     "",
@@ -192,6 +198,25 @@ export default function DeliveryChallanDetailPage() {
     }
   }
 
+  async function handleConvertToInvoice() {
+    if (!challan) return;
+    setActionLoading(true);
+    try {
+      const result = await deliveryChallanApi.convertToInvoice(challan._id);
+      const invoiceId = getConvertedInvoiceId(result.data);
+      toast.success("Delivery Challan converted to invoice");
+      if (invoiceId) {
+        router.push(`/sales/invoices/${invoiceId}`);
+      } else {
+        await fetchChallan();
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to convert delivery challan");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
@@ -266,6 +291,16 @@ export default function DeliveryChallanDetailPage() {
               >
                 <Pencil className="h-4 w-4 mr-1" />
                 Edit
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConvertToInvoice}
+                disabled={actionLoading || challan.invoiceStatus === "INVOICED"}
+              >
+                {actionLoading && (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                )}
+                Convert to Invoice
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -348,6 +383,25 @@ export default function DeliveryChallanDetailPage() {
               }
             >
               {challan.invoiceStatus}
+            </span>
+            {challan.invoiceStatus === "INVOICED" && challan.invoiceId ?
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto px-2"
+                onClick={() =>
+                  router.push(`/sales/invoices/${String(challan.invoiceId)}`)
+                }
+              >
+                View Linked Invoice
+              </Button>
+            : null}
+          </div>
+
+          <div className="text-sm">
+            <span className="text-muted-foreground">Sales Order#: </span>
+            <span className="font-medium text-foreground">
+              {challan.salesOrderNumber || "-"}
             </span>
           </div>
 

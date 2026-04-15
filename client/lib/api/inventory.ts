@@ -47,6 +47,9 @@ export interface InventoryOverviewResponse {
     outOfStockItems: number;
     lowStockItems: number;
     totalQuantity: number;
+    committedQuantity: number;
+    availableQuantity: number;
+    openSalesOrders: number;
     totalValue: number;
   };
   lowStock: InventoryLowStockRow[];

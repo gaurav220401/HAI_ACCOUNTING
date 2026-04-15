@@ -31,6 +31,7 @@ export interface DeliveryChallan {
   _id: string;
   organizationId: string;
   challanNumber: string;
+  salesOrderNumber?: string;
   referenceNumber?: string;
   customerId:
     | string
@@ -63,6 +64,7 @@ export interface DeliveryChallan {
 
 export interface CreateDeliveryChallanInput {
   challanNumber?: string;
+  salesOrderNumber?: string;
   referenceNumber?: string;
   customerId: string;
   challanDate: string;
@@ -83,6 +85,12 @@ export interface CreateDeliveryChallanInput {
 }
 
 export type UpdateDeliveryChallanInput = Partial<CreateDeliveryChallanInput>;
+
+export interface DeliveryChallanConvertToInvoiceResponse {
+  _id?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+}
 
 export interface DeliveryChallanListParams extends ListParams {
   status?: DeliveryChallanStatus | "All";
@@ -138,5 +146,14 @@ export const deliveryChallanApi = {
     apiFetch<{ data: DeliveryChallan }>(
       `/delivery-challans/${id}/mark-returned`,
       { method: "POST" },
+    ),
+
+  convertToInvoice: (id: string, dueDate?: string) =>
+    apiFetch<{ data: DeliveryChallanConvertToInvoiceResponse }>(
+      `/delivery-challans/${id}/convert-to-invoice`,
+      {
+        method: "POST",
+        body: JSON.stringify(dueDate ? { dueDate } : {}),
+      },
     ),
 };

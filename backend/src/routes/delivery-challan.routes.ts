@@ -10,6 +10,7 @@ import {
   convertToOpen,
   markAsDelivered,
   markAsReturned,
+  convertToInvoice,
 } from "../controllers/delivery-challan.controller";
 
 const router = Router();
@@ -23,6 +24,7 @@ router.patch("/:id", update);
 router.delete("/:id", remove);
 
 router.post("/:id/convert-to-open", convertToOpen);
+router.post("/:id/convert-to-invoice", convertToInvoice);
 router.post("/:id/mark-delivered", markAsDelivered);
 router.post("/:id/mark-returned", markAsReturned);
 

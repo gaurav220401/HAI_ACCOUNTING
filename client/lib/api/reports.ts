@@ -255,6 +255,47 @@ export const reportApi = {
   purchasesByItem: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/purchases-by-item${buildQuery(params || {})}`),
 
+  // Inventory
+  inventorySummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-summary${buildQuery(params || {})}`),
+
+  committedStockDetails: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/committed-stock-details${buildQuery(params || {})}`),
+
+  inventoryAgingSummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-aging-summary${buildQuery(params || {})}`),
+
+  stockSummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/stock-summary${buildQuery(params || {})}`),
+
+  inventoryAdjustmentSummary: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-adjustment-summary${buildQuery(params || {})}`),
+
+  inventoryAdjustmentDetails: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-adjustment-details${buildQuery(params || {})}`),
+
+  packingHistory: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/packing-history${buildQuery(params || {})}`),
+
+  shipmentDetails: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/shipment-details${buildQuery(params || {})}`),
+
+  inventoryTurnoverByQuantity: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-turnover-by-quantity${buildQuery(params || {})}`),
+
+  // Inventory Valuation
+  inventoryValuationSummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-valuation-summary${buildQuery(params || {})}`),
+
+  fifoCostLotTracking: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/fifo-cost-lot-tracking${buildQuery(params || {})}`),
+
+  abcClassification: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/abc-classification${buildQuery(params || {})}`),
+
+  inventoryTurnoverByAmount: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-turnover-by-amount${buildQuery(params || {})}`),
+
   // Sales
   salesByCustomer: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/sales-by-customer${buildQuery(params || {})}`),

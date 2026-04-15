@@ -51,7 +51,17 @@ import {
   salesOrderApi,
   type CreateSalesOrderInput,
   type SalesOrder,
+  type SalesOrderStatus,
 } from "@/lib/api/sales-orders";
+
+const EDITABLE_ORDER_STATUSES: SalesOrderStatus[] = [
+  "DRAFT",
+  "APPROVED",
+  "OVERDUE",
+  "CLOSED",
+  "PARTIALLY_INVOICED",
+  "INVOICED",
+];
 
 type LineItemUi = {
   id: string;
@@ -113,6 +123,7 @@ export default function EditSalesOrderPage() {
     paymentTermsId: "",
     deliveryMethod: "",
     salesPersonId: "",
+    status: "DRAFT" as SalesOrderStatus,
     shippingCharges: "0",
     adjustment: "0",
     notes: "",
@@ -130,6 +141,11 @@ export default function EditSalesOrderPage() {
       amount: 0,
     },
   ]);
+
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item._id, item])),
+    [items],
+  );
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -173,6 +189,7 @@ export default function EditSalesOrderPage() {
           paymentTermsId: getRefId(orderData.paymentTermsId),
           deliveryMethod: orderData.deliveryMethod || "",
           salesPersonId: getRefId(orderData.salesPersonId),
+          status: (orderData.status || "DRAFT") as SalesOrderStatus,
           shippingCharges: String(orderData.shippingCharges || 0),
           adjustment: String(orderData.adjustment || 0),
           notes: orderData.notes || "",
@@ -213,24 +230,21 @@ export default function EditSalesOrderPage() {
     }
   }
 
-  function updateLineItem(id: string, field: keyof LineItemUi, value: string) {
+  function recalcLineItem(line: LineItemUi): LineItemUi {
+    const qty = Number(line.quantity) || 0;
+    const rate = Number(line.rate) || 0;
+    const discount = Number(line.discount) || 0;
+    return {
+      ...line,
+      amount: Math.max(0, qty * rate - discount),
+    };
+  }
+
+  function updateLineItem(id: string, patch: Partial<LineItemUi>) {
     setLineItems((prev) =>
       prev.map((li) => {
-        if (li.id === id) {
-          const updated = { ...li, [field]: value };
-          if (
-            field === "quantity" ||
-            field === "rate" ||
-            field === "discount"
-          ) {
-            const qty = Number(updated.quantity) || 0;
-            const rate = Number(updated.rate) || 0;
-            const discount = Number(updated.discount) || 0;
-            updated.amount = qty * rate * (1 - discount / 100);
-          }
-          return updated;
-        }
-        return li;
+        if (li.id !== id) return li;
+        return recalcLineItem({ ...li, ...patch });
       }),
     );
   }
@@ -280,6 +294,7 @@ export default function EditSalesOrderPage() {
         paymentTermsId: formData.paymentTermsId || undefined,
         deliveryMethod: formData.deliveryMethod || undefined,
         salesPersonId: formData.salesPersonId || undefined,
+        status: formData.status,
         lineItems: lineItems
           .filter((li) => li.itemId && li.quantity && li.rate)
           .map((li) => ({
@@ -408,7 +423,7 @@ export default function EditSalesOrderPage() {
         />
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <Label htmlFor="customerId">Customer *</Label>
               <Select
@@ -549,6 +564,30 @@ export default function EditSalesOrderPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div>
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(v) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    status: v as SalesOrderStatus,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {EDITABLE_ORDER_STATUSES.map((st) => (
+                    <SelectItem key={st} value={st}>
+                      {st}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div>
@@ -572,93 +611,138 @@ export default function EditSalesOrderPage() {
                     <TableHead>Item</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead className="w-24">Quantity</TableHead>
+                    <TableHead className="w-24 text-right">Stock</TableHead>
                     <TableHead className="w-24">Rate</TableHead>
-                    <TableHead className="w-24">Discount %</TableHead>
+                    <TableHead className="w-24">Discount (Amt)</TableHead>
                     <TableHead className="w-24 text-right">Amount</TableHead>
                     <TableHead className="w-16"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lineItems.map((li) => (
-                    <TableRow key={li.id}>
-                      <TableCell>
-                        <Select
-                          value={li.itemId}
-                          onValueChange={(v) =>
-                            updateLineItem(li.id, "itemId", v)
-                          }
+                  {lineItems.map((li) => {
+                    const selectedItem = itemsById.get(li.itemId);
+                    const quantity = Number(li.quantity) || 0;
+                    const stockOnHand =
+                      selectedItem?.inventoryTracked ?
+                        Number(selectedItem.stockOnHand || 0)
+                      : null;
+                    const exceedsStock =
+                      stockOnHand !== null && quantity > stockOnHand;
+
+                    return (
+                      <TableRow key={li.id}>
+                        <TableCell>
+                          <div className="space-y-2">
+                            <Select
+                              value={li.itemId}
+                              onValueChange={(v) => {
+                                const selected = itemsById.get(v);
+                                updateLineItem(li.id, {
+                                  itemId: v,
+                                  description: selected?.description || li.description,
+                                  rate:
+                                    selected?.sellingPrice != null ?
+                                      String(selected.sellingPrice)
+                                    : li.rate,
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select item" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {items.map((item) => (
+                                  <SelectItem key={item._id} value={item._id}>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>{item.name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {item.inventoryTracked ?
+                                          `Stock ${Number(item.stockOnHand || 0).toLocaleString("en-IN")}`
+                                        : "Non-stock"}
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {selectedItem ?
+                              <p className="text-xs text-muted-foreground">
+                                {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                {selectedItem.inventoryTracked ?
+                                  `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
+                                : "Inventory not tracked"}
+                              </p>
+                            : null}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={li.description}
+                            onChange={(e) =>
+                              updateLineItem(li.id, { description: e.target.value })
+                            }
+                            placeholder="Description"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={li.quantity}
+                            onChange={(e) =>
+                              updateLineItem(li.id, { quantity: e.target.value })
+                            }
+                            min="0"
+                            step="0.01"
+                          />
+                        </TableCell>
+                        <TableCell
+                          className={`text-right text-sm tabular-nums ${
+                            exceedsStock ? "text-destructive font-medium" : ""
+                          }`}
                         >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select item" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {items.map((item) => (
-                              <SelectItem key={item._id} value={item._id}>
-                                {item.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={li.description}
-                          onChange={(e) =>
-                            updateLineItem(li.id, "description", e.target.value)
-                          }
-                          placeholder="Description"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          value={li.quantity}
-                          onChange={(e) =>
-                            updateLineItem(li.id, "quantity", e.target.value)
-                          }
-                          min="0"
-                          step="0.01"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          value={li.rate}
-                          onChange={(e) =>
-                            updateLineItem(li.id, "rate", e.target.value)
-                          }
-                          min="0"
-                          step="0.01"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          value={li.discount}
-                          onChange={(e) =>
-                            updateLineItem(li.id, "discount", e.target.value)
-                          }
-                          min="0"
-                          max="100"
-                          step="0.01"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        ₹{li.amount.toLocaleString("en-IN")}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-sm"
-                          onClick={() => removeLineItem(li.id)}
-                          disabled={lineItems.length === 1}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          {stockOnHand === null ?
+                            "N/A"
+                          : Number(stockOnHand).toLocaleString("en-IN")}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={li.rate}
+                            onChange={(e) =>
+                              updateLineItem(li.id, { rate: e.target.value })
+                            }
+                            min="0"
+                            step="0.01"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={li.discount}
+                            onChange={(e) =>
+                              updateLineItem(li.id, { discount: e.target.value })
+                            }
+                            min="0"
+                            step="0.01"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ₹{li.amount.toLocaleString("en-IN")}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-sm"
+                            onClick={() => removeLineItem(li.id)}
+                            disabled={lineItems.length === 1}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

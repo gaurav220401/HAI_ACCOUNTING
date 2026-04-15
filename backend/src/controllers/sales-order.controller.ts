@@ -7,26 +7,151 @@ import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 
+const VALID_SALES_ORDER_STATUSES = new Set<SalesOrderStatus>([
+  "DRAFT",
+  "APPROVED",
+  "INVOICED",
+  "PARTIALLY_INVOICED",
+  "CLOSED",
+  "OVERDUE",
+]);
+
+const INVOICE_LINKED_STATUSES = new Set<SalesOrderStatus>([
+  "INVOICED",
+  "PARTIALLY_INVOICED",
+]);
+
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
   return id;
 }
 
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function toNum(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeSalesOrderStatus(
+  value: unknown,
+  fallback: SalesOrderStatus = "DRAFT",
+): SalesOrderStatus {
+  const normalized =
+    value === undefined || value === null || value === "" ?
+      fallback
+    : (String(value).toUpperCase() as SalesOrderStatus);
+
+  if (!VALID_SALES_ORDER_STATUSES.has(normalized)) {
+    throw new ValidationError("Invalid sales order status");
+  }
+
+  return normalized;
+}
+
+function normalizeSalesOrderNumber(value: unknown): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    throw new ValidationError("salesOrderNumber is required");
+  }
+  return normalized;
+}
+
+function normalizeExpectedShipmentDate(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === "" || value === null) return null;
+  return value;
+}
+
+async function hasLinkedInvoice(
+  organizationId: any,
+  salesOrderNumber: string,
+): Promise<boolean> {
+  if (!salesOrderNumber) return false;
+
+  const linked = await Invoice.exists({
+    organizationId,
+    orderNumber: salesOrderNumber,
+    isDeleted: false,
+    status: { $ne: "Void" },
+  });
+  return Boolean(linked);
+}
+
+async function ensureStatusLinkage(params: {
+  organizationId: any;
+  salesOrderNumber: string;
+  status: SalesOrderStatus;
+}) {
+  if (!INVOICE_LINKED_STATUSES.has(params.status)) return;
+
+  const linked = await hasLinkedInvoice(
+    params.organizationId,
+    params.salesOrderNumber,
+  );
+  if (!linked) {
+    throw new ValidationError(
+      "Cannot set status to INVOICED or PARTIALLY_INVOICED before an invoice is linked",
+    );
+  }
+}
+
+async function ensureSalesOrderNumberCanChange(params: {
+  organizationId: any;
+  previousNumber: string;
+  nextNumber: string;
+}) {
+  if (!params.previousNumber || params.previousNumber === params.nextNumber) {
+    return;
+  }
+
+  const linked = await hasLinkedInvoice(
+    params.organizationId,
+    params.previousNumber,
+  );
+
+  if (linked) {
+    throw new ValidationError(
+      "Cannot change Sales Order number after invoice linkage",
+    );
+  }
+}
+
 function computeTotals(lineItems: any[], shippingCharges: number, adjustment: number) {
-  const subTotal = (lineItems || []).reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
-  const total = subTotal + (Number(shippingCharges) || 0) + (Number(adjustment) || 0);
+  const subTotal = round2((lineItems || []).reduce((sum, li) => sum + toNum(li?.amount), 0));
+  const total = round2(subTotal + toNum(shippingCharges) + toNum(adjustment));
   return { subTotal, total };
 }
 
 function normalizeLineItems(items: any[] = []) {
-  return (items || []).map((line) => {
-    const { taxPercent, ...rest } = line || {};
-    return {
-      ...rest,
-      taxId: rest.taxId || null,
-    };
-  });
+  return (items || [])
+    .map((line) => {
+      const { taxPercent, ...rest } = line || {};
+      const quantity = Math.max(0, toNum(rest.quantity));
+      const rate = Math.max(0, toNum(rest.rate));
+      const lineTotal = round2(quantity * rate);
+      const rawDiscount = Math.max(0, toNum(rest.discount));
+      const discount = round2(Math.min(rawDiscount, lineTotal));
+      const amount = round2(Math.max(0, lineTotal - discount));
+
+      return {
+        ...rest,
+        description: String(rest.description || "").trim(),
+        quantity,
+        rate,
+        discount,
+        amount,
+        taxId: rest.taxId || null,
+      };
+    })
+    .filter((line) => {
+      const itemId = String(line?.itemId || "").trim();
+      return Boolean(itemId) && line.quantity > 0;
+    });
 }
 
 async function nextInvoiceNumber(organizationId: any): Promise<string> {
@@ -55,7 +180,9 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
   } = req.query as Record<string, string>;
 
   const filter: any = { organizationId: orgId(req), isDeleted: false };
-  if (status) filter.status = status;
+  if (status && status.toUpperCase() !== "ALL") {
+    filter.status = normalizeSalesOrderStatus(status);
+  }
   const customerFilterId = customerId || customer_id;
   if (customerFilterId) filter.customerId = customerFilterId;
   if (search) {
@@ -91,37 +218,52 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 /** POST /api/sales-orders */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const oid = orgId(req);
-  const {
-    customerId,
-    salesOrderNumber,
-    orderDate,
-    lineItems,
-    shippingCharges = 0,
-    adjustment = 0,
-    status = "DRAFT" as SalesOrderStatus,
-  } = req.body;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const customerId = body.customerId;
+  const salesOrderNumber = normalizeSalesOrderNumber(body.salesOrderNumber);
+  const orderDate = body.orderDate;
+  const status = normalizeSalesOrderStatus(body.status, "DRAFT");
 
   if (!customerId) throw new ValidationError("customerId is required");
-  if (!salesOrderNumber) throw new ValidationError("salesOrderNumber is required");
   if (!orderDate) throw new ValidationError("orderDate is required");
-  if (!Array.isArray(lineItems) || lineItems.length === 0) {
+  if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
     throw new ValidationError("At least one line item is required");
   }
+
+  await ensureStatusLinkage({
+    organizationId: oid,
+    salesOrderNumber,
+    status,
+  });
 
   const linkedLineItems = normalizeLineItems(
     await applyItemTaxLinkageToItems({
       organizationId: oid,
       contactId: customerId,
-      items: lineItems,
+      items: body.lineItems,
     }),
   );
 
-  const { subTotal, total } = computeTotals(linkedLineItems, shippingCharges, adjustment);
+  if (linkedLineItems.length === 0) {
+    throw new ValidationError("At least one valid line item is required");
+  }
+
+  const shippingCharges = round2(toNum(body.shippingCharges));
+  const adjustment = round2(toNum(body.adjustment));
+  const { subTotal, total } = computeTotals(
+    linkedLineItems,
+    shippingCharges,
+    adjustment,
+  );
 
   const order = new SalesOrder({
     organizationId: oid,
-    ...req.body,
+    ...body,
+    salesOrderNumber,
+    expectedShipmentDate: normalizeExpectedShipmentDate(body.expectedShipmentDate),
     lineItems: linkedLineItems,
+    shippingCharges,
+    adjustment,
     subTotal,
     total,
     status,
@@ -138,31 +280,79 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
   if (!order) throw new NotFoundError("Sales Order");
 
+  const body = (req.body || {}) as Record<string, unknown>;
+
+  if (body.lineItems !== undefined && !Array.isArray(body.lineItems)) {
+    throw new ValidationError("lineItems must be an array");
+  }
+
+  const currentOrderNumber = String((order as any).salesOrderNumber || "").trim();
+  const nextOrderNumber =
+    body.salesOrderNumber !== undefined ?
+      normalizeSalesOrderNumber(body.salesOrderNumber)
+    : currentOrderNumber;
+
+  await ensureSalesOrderNumberCanChange({
+    organizationId: oid,
+    previousNumber: currentOrderNumber,
+    nextNumber: nextOrderNumber,
+  });
+
+  if (body.status !== undefined) {
+    const nextStatus = normalizeSalesOrderStatus(body.status);
+    await ensureStatusLinkage({
+      organizationId: oid,
+      salesOrderNumber: nextOrderNumber,
+      status: nextStatus,
+    });
+  }
+
   const allowed = [
     "customerId",
-    "salesOrderNumber",
     "reference",
     "orderDate",
-    "expectedShipmentDate",
     "paymentTermsId",
     "deliveryMethod",
     "salesPersonId",
-    "lineItems",
-    "shippingCharges",
-    "adjustment",
     "notes",
     "terms",
-    "status",
     "isActive",
   ];
 
   allowed.forEach((f) => {
-    if (req.body[f] !== undefined) (order as any)[f] = req.body[f];
+    if (body[f] !== undefined) (order as any)[f] = body[f];
   });
 
-  if (req.body.lineItems || req.body.customerId !== undefined) {
-    const customerId = req.body.customerId ?? (order as any).customerId;
-    const sourceLineItems = req.body.lineItems || (order as any).lineItems || [];
+  if (body.salesOrderNumber !== undefined) {
+    (order as any).salesOrderNumber = nextOrderNumber;
+  }
+
+  if (body.expectedShipmentDate !== undefined) {
+    (order as any).expectedShipmentDate = normalizeExpectedShipmentDate(
+      body.expectedShipmentDate,
+    );
+  }
+
+  if (body.shippingCharges !== undefined) {
+    (order as any).shippingCharges = round2(toNum(body.shippingCharges));
+  }
+
+  if (body.adjustment !== undefined) {
+    (order as any).adjustment = round2(toNum(body.adjustment));
+  }
+
+  if (body.status !== undefined) {
+    (order as any).status = normalizeSalesOrderStatus(body.status);
+  }
+
+  let lineItemsChanged = false;
+  if (body.lineItems !== undefined || body.customerId !== undefined) {
+    const customerId = body.customerId ?? (order as any).customerId;
+    const sourceLineItems =
+      body.lineItems !== undefined ?
+        (body.lineItems as any[])
+      : ((order as any).lineItems || []);
+
     const linkedLineItems = normalizeLineItems(
       await applyItemTaxLinkageToItems({
         organizationId: oid,
@@ -170,17 +360,23 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
         items: sourceLineItems,
       }),
     );
+
+    if (linkedLineItems.length === 0) {
+      throw new ValidationError("At least one valid line item is required");
+    }
+
     (order as any).lineItems = linkedLineItems;
+    lineItemsChanged = true;
   }
 
   if (
-    req.body.lineItems ||
-    req.body.customerId !== undefined ||
-    req.body.shippingCharges !== undefined ||
-    req.body.adjustment !== undefined
+    lineItemsChanged ||
+    body.customerId !== undefined ||
+    body.shippingCharges !== undefined ||
+    body.adjustment !== undefined
   ) {
     const { subTotal, total } = computeTotals(
-      (order as any).lineItems,
+      (order as any).lineItems || [],
       (order as any).shippingCharges,
       (order as any).adjustment,
     );

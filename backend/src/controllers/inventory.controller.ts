@@ -4,6 +4,7 @@ import Item from "../models/item.model";
 import InventoryAdjustment, {
   type InventoryAdjustmentReason,
 } from "../models/inventory-adjustment.model";
+import SalesOrder from "../models/sales-order.model";
 import { attachUser } from "../plugins";
 import {
   applyInventoryValueDeltas,
@@ -26,6 +27,19 @@ const ADJUSTMENT_REASONS: InventoryAdjustmentReason[] = [
   "Return",
   "Manual",
   "Other",
+];
+
+const SALES_ORDER_COMMITTED_STATUSES = [
+  "APPROVED",
+  "PARTIALLY_INVOICED",
+  "OVERDUE",
+];
+
+const SALES_ORDER_OPEN_STATUSES = [
+  "DRAFT",
+  "APPROVED",
+  "PARTIALLY_INVOICED",
+  "OVERDUE",
 ];
 
 function getOrgId(req: AuthenticatedRequest): Types.ObjectId {
@@ -84,7 +98,16 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
     $expr: { $lte: ["$stockOnHand", "$reorderPoint"] },
   };
 
-  const [trackedItems, outOfStockItems, lowStockItemsCount, stockTotals, lowStockItems, recentAdjustments] = await Promise.all([
+  const [
+    trackedItems,
+    outOfStockItems,
+    lowStockItemsCount,
+    stockTotals,
+    committedStockTotals,
+    openSalesOrders,
+    lowStockItems,
+    recentAdjustments,
+  ] = await Promise.all([
     Item.countDocuments(baseFilter),
     Item.countDocuments({ ...baseFilter, stockOnHand: { $lte: 0 } }),
     Item.countDocuments(lowStockFilter),
@@ -98,6 +121,50 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
         },
       },
     ]),
+    SalesOrder.aggregate([
+      {
+        $match: {
+          organizationId,
+          isDeleted: false,
+          status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+        },
+      },
+      { $unwind: "$lineItems" },
+      {
+        $lookup: {
+          from: "items",
+          let: { itemId: "$lineItems.itemId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$_id", "$$itemId"] },
+                    { $eq: ["$organizationId", organizationId] },
+                    { $eq: ["$isDeleted", false] },
+                    { $eq: ["$inventoryTracked", true] },
+                  ],
+                },
+              },
+            },
+            { $project: { _id: 1 } },
+          ],
+          as: "inventoryItem",
+        },
+      },
+      { $match: { "inventoryItem.0": { $exists: true } } },
+      {
+        $group: {
+          _id: null,
+          committedQuantity: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        },
+      },
+    ]),
+    SalesOrder.countDocuments({
+      organizationId,
+      isDeleted: false,
+      status: { $in: SALES_ORDER_OPEN_STATUSES },
+    } as any),
     Item.find(lowStockFilter)
       .select("name sku stockOnHand reorderPoint averageCost inventoryValue")
       .sort({ stockOnHand: 1, name: 1 })
@@ -112,6 +179,10 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
   ]);
 
   const totalsRow = stockTotals[0] || { totalQuantity: 0, totalValue: 0 };
+  const committedRow = committedStockTotals[0] || { committedQuantity: 0 };
+  const totalQuantity = round2(Number(totalsRow.totalQuantity || 0));
+  const committedQuantity = round2(Number(committedRow.committedQuantity || 0));
+  const availableQuantity = round2(Math.max(totalQuantity - committedQuantity, 0));
 
   res.json({
     success: true,
@@ -120,7 +191,10 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
         trackedItems,
         outOfStockItems,
         lowStockItems: lowStockItemsCount,
-        totalQuantity: round2(Number(totalsRow.totalQuantity || 0)),
+        totalQuantity,
+        committedQuantity,
+        availableQuantity,
+        openSalesOrders,
         totalValue: round2(Number(totalsRow.totalValue || 0)),
       },
       lowStock: lowStockItems,

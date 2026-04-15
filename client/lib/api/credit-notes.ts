@@ -46,6 +46,7 @@ export interface CreditNote {
   reason?: string;
   creditNoteDate: string;
   referenceInvoiceId?: any;
+  referenceOrderNumber?: string;
   accountsReceivableId?: any;
   salesPersonId?: any;
   subject?: string;
@@ -92,6 +93,7 @@ export interface CreateCreditNoteInput {
   reason?: string;
   creditNoteDate: string;
   referenceInvoiceId?: string | null;
+  referenceOrderNumber?: string;
   accountsReceivableId?: string | null;
   salesPersonId?: string | null;
   subject?: string;

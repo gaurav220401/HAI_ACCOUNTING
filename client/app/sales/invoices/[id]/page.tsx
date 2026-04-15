@@ -959,6 +959,16 @@ export default function InvoiceDetailPage() {
                         <span className="text-muted-foreground">Terms</span>
                         <span className="font-medium">: Due on Receipt</span>
                       </div>
+                      {invoice.orderNumber ?
+                        <div className="flex gap-4">
+                          <span className="text-muted-foreground">
+                            Order / Challan
+                          </span>
+                          <span className="font-medium">
+                            : {invoice.orderNumber}
+                          </span>
+                        </div>
+                      : null}
                       <div className="flex gap-6">
                         <span className="text-muted-foreground">Due Date</span>
                         <span className="font-medium">

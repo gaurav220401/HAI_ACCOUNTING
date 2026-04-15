@@ -130,6 +130,7 @@ export default function DeliveryChallansPage() {
     (dc) =>
       !search ||
       dc.challanNumber.toLowerCase().includes(search.toLowerCase()) ||
+      (dc.salesOrderNumber || "").toLowerCase().includes(search.toLowerCase()) ||
       dc.referenceNumber?.toLowerCase().includes(search.toLowerCase()) ||
       getCustomerName(dc.customerId)
         .toLowerCase()
@@ -262,6 +263,7 @@ export default function DeliveryChallansPage() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Delivery Challan#</TableHead>
+                    <TableHead>Sales Order#</TableHead>
                     <TableHead>Reference Number</TableHead>
                     <TableHead>Customer Name</TableHead>
                     <TableHead>Status</TableHead>
@@ -284,6 +286,9 @@ export default function DeliveryChallansPage() {
                       </TableCell>
                       <TableCell className="text-sm font-medium text-blue-600">
                         {dc.challanNumber}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {dc.salesOrderNumber || "-"}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {dc.referenceNumber || "—"}

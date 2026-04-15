@@ -29,10 +29,17 @@ import { uploadApi } from "@/lib/api/upload";
 // --- Helpers ---
 const TODAY = () => new Date().toISOString().slice(0, 10);
 const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+const fmtQty = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
 function getName(v: any): string {
   if (!v) return "";
   if (typeof v === "object") return v.displayName || v.companyName || v.name || "";
   return String(v);
+}
+
+function itemUnitLabel(item?: Item | null): string {
+   if (!item?.unit) return "";
+   if (typeof item.unit === "string") return item.unit;
+   return (item.unit as any)?.abbreviation || "";
 }
 
 const NEW_VENDOR_OPTION = "__new_vendor__";
@@ -515,7 +522,13 @@ function ItemSelectorPopup({
    onCreateItem?: (name: string) => void | Promise<void>;
 }) {
    const [q, setQ] = useState("");
-   const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
+   const query = q.trim().toLowerCase();
+   const filtered = items.filter((i) => {
+      const unit = itemUnitLabel(i).toLowerCase();
+      return i.name.toLowerCase().includes(query)
+         || (i.sku || "").toLowerCase().includes(query)
+         || unit.includes(query);
+   });
    const normalizedQuery = q.trim().toLowerCase();
    const exactExists = normalizedQuery.length > 0
       && items.some((i) => i.name.trim().toLowerCase() === normalizedQuery);
@@ -526,18 +539,26 @@ function ItemSelectorPopup({
          <div className="p-2 border-b">
             <Input className="h-7 text-xs" placeholder="Search items…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
          </div>
-         <div className="max-h-52 overflow-y-auto">
+         <div className="max-h-64 overflow-y-auto">
             {filtered.length === 0 ? (
                <p className="text-xs text-muted-foreground text-center py-4">No items found</p>
             ) : filtered.map((item) => (
                <button
                   key={item._id}
                   type="button"
-                  className="w-full text-left px-3 py-2 hover:bg-muted/50 flex justify-between"
+                  className="w-full text-left px-3 py-2 hover:bg-muted/50 flex items-start justify-between gap-3"
                   onClick={() => onSelect(item)}
                >
-                  <span className="text-sm">{item.name}</span>
-                  <span className="text-xs text-muted-foreground">{fmt(item.costPrice || 0)}</span>
+                  <div className="min-w-0">
+                     <div className="text-sm font-medium truncate">{item.name}</div>
+                     <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        {item.sku ? `SKU: ${item.sku} | ` : ""}
+                        {item.inventoryTracked
+                           ? `Stock: ${fmtQty(item.stockOnHand)}${itemUnitLabel(item) ? ` ${itemUnitLabel(item)}` : ""}`
+                           : "Non-tracked item"}
+                     </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">{fmt(item.costPrice || 0)}</span>
                </button>
             ))}
          </div>
@@ -1020,6 +1041,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
   const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
+   const [openPurchaseOrders, setOpenPurchaseOrders] = useState<BillSourcePurchaseOrder[]>([]);
+   const [loadingOpenPurchaseOrders, setLoadingOpenPurchaseOrders] = useState(false);
+   const [linkedPurchaseOrderId, setLinkedPurchaseOrderId] = useState("");
 
   useEffect(() => {
      const loadData = async () => {
@@ -1147,6 +1171,16 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
       [lineTaxes, gstGroupTaxes],
    );
 
+   const linkedPurchaseOrder = useMemo(() => {
+      if (linkedPurchaseOrderId) {
+         return openPurchaseOrders.find((po) => po._id === linkedPurchaseOrderId) || null;
+      }
+      if (orderNumber) {
+         return openPurchaseOrders.find((po) => po.purchaseOrderNumber === orderNumber) || null;
+      }
+      return null;
+   }, [linkedPurchaseOrderId, openPurchaseOrders, orderNumber]);
+
    function lineTaxSelectValue(row: LineRow): string {
       if (row.taxId) return `tax:${row.taxId}`;
       if (row.taxName) {
@@ -1178,12 +1212,88 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
    }
 
    function handleSelectItem(rowId: string, item: Item) {
+      const row = rows.find((entry) => entry.id === rowId);
+      const purchaseAccountId = typeof item.purchaseAccountId === "object"
+         ? (item.purchaseAccountId as any)?._id || ""
+         : item.purchaseAccountId || "";
+      const purchaseAccountName = purchaseAccountId
+         ? accounts.find((account) => account._id === purchaseAccountId)?.name || ""
+         : "";
+
       updateRow(rowId, {
          itemId: item._id,
          itemName: item.name,
+         accountId: purchaseAccountId || row?.accountId || "",
+         accountName: purchaseAccountName || row?.accountName || "",
+         description: row?.description || item.purchaseDescription || "",
          rate: item.costPrice || 0,
-         quantity: 1,
+         quantity: row?.quantity && row.quantity > 0 ? row.quantity : 1,
+         unit: itemUnitLabel(item),
       });
+   }
+
+   function handleLinkPurchaseOrder(poId: string) {
+      setLinkedPurchaseOrderId(poId);
+      const po = openPurchaseOrders.find((entry) => entry._id === poId);
+      if (!po) return;
+      setOrderNumber(po.purchaseOrderNumber);
+      if (!referenceNumber.trim()) {
+         setReferenceNumber(po.purchaseOrderNumber);
+      }
+   }
+
+   function handleImportLinkedPurchaseOrder() {
+      if (!linkedPurchaseOrder) {
+         toast.error("Select an open purchase order to import");
+         return;
+      }
+
+      const importedRows: LineRow[] = (linkedPurchaseOrder.lineItems || []).map((line: any) => {
+         if (line?.isHeader) {
+            return {
+               ...newHeader(),
+               headerText: line.headerText || "Add New Header",
+            };
+         }
+
+         const itemId = typeof line?.itemId === "object" ? line.itemId?._id || "" : line?.itemId || "";
+         const itemName = typeof line?.itemId === "object"
+            ? line.itemId?.name || line.name || ""
+            : line?.name || "";
+         const accountId = typeof line?.accountId === "object" ? line.accountId?._id || "" : line?.accountId || "";
+         const accountName = typeof line?.accountId === "object"
+            ? line.accountId?.name || ""
+            : (accountId ? accounts.find((account) => account._id === accountId)?.name || "" : "");
+         const selectedItem = itemId ? items.find((entry) => entry._id === itemId) : null;
+
+         return calcRow(
+            {
+               ...newRow(),
+               itemId,
+               itemName,
+               accountId,
+               accountName,
+               description: line?.description || "",
+               quantity: Number(line?.quantity || 1),
+               rate: Number(line?.rate || 0),
+               discountPercent: Number(line?.discountPercent || 0),
+               discountAmount: Number(line?.discountAmount || 0),
+               amount: Number(line?.amount || 0),
+               unit: itemUnitLabel(selectedItem),
+            },
+            discountLevel,
+         );
+      });
+
+      const dataLineCount = importedRows.filter((row) => !row.isHeader).length;
+      if (importedRows.length > 0) {
+         setRows(importedRows);
+      }
+      setOrderNumber(linkedPurchaseOrder.purchaseOrderNumber);
+      if (!referenceNumber.trim()) {
+         setReferenceNumber(linkedPurchaseOrder.purchaseOrderNumber);
+      }
+      toast.success(`Imported ${dataLineCount} item(s) from ${linkedPurchaseOrder.purchaseOrderNumber}`);
    }
 
    function handleVendorCreated(vendor: Contact) {
@@ -1216,6 +1326,52 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          setAccountsPayableId(vendorPayable);
       }
    }, [vendorId, vendors]);
+
+   useEffect(() => {
+      let cancelled = false;
+
+      if (!vendorId) {
+         setOpenPurchaseOrders([]);
+         setLinkedPurchaseOrderId("");
+         setLoadingOpenPurchaseOrders(false);
+         return;
+      }
+
+      setLoadingOpenPurchaseOrders(true);
+      billApi
+         .getOpenPurchaseOrders(vendorId)
+         .then((res) => {
+            if (cancelled) return;
+            setOpenPurchaseOrders(res.data || []);
+         })
+         .catch(() => {
+            if (cancelled) return;
+            setOpenPurchaseOrders([]);
+         })
+         .finally(() => {
+            if (cancelled) return;
+            setLoadingOpenPurchaseOrders(false);
+         });
+
+      return () => {
+         cancelled = true;
+      };
+   }, [vendorId]);
+
+   useEffect(() => {
+      if (!orderNumber) {
+         if (linkedPurchaseOrderId) setLinkedPurchaseOrderId("");
+         return;
+      }
+
+      const match = openPurchaseOrders.find((po) => po.purchaseOrderNumber === orderNumber);
+      if (match && match._id !== linkedPurchaseOrderId) {
+         setLinkedPurchaseOrderId(match._id);
+      }
+      if (!match && linkedPurchaseOrderId) {
+         setLinkedPurchaseOrderId("");
+      }
+   }, [orderNumber, openPurchaseOrders, linkedPurchaseOrderId]);
 
    async function handleCreateItemForRow(rowId: string, providedName?: string) {
       const row = rows.find((r) => r.id === rowId);
@@ -1389,7 +1545,8 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
               discountAmount: r.discountAmount,
               amount: r.amount,
            })),
-           status
+           status,
+           purchaseOrderIds: linkedPurchaseOrderId ? [linkedPurchaseOrderId] : undefined,
         };
         
         let res;
@@ -1455,9 +1612,44 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                <Label className="text-sm font-medium w-24 shrink-0">Reference#</Label>
                <Input className="h-9 text-sm flex-1" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
             </div>
-            <div className="flex items-center gap-3">
-               <Label className="text-sm font-medium w-36 shrink-0">Order Number</Label>
-               <Input className="h-9 text-sm flex-1" value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} />
+            <div className="flex items-start gap-3">
+               <Label className="text-sm font-medium w-36 shrink-0 pt-2">Order Number</Label>
+               <div className="flex-1 space-y-2">
+                  <Input className="h-9 text-sm" value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} />
+                  <div className="flex flex-wrap items-center gap-2">
+                     <Select value={linkedPurchaseOrderId} onValueChange={handleLinkPurchaseOrder}>
+                        <SelectTrigger className="h-8 text-xs min-w-[220px]">
+                           <SelectValue placeholder={loadingOpenPurchaseOrders ? "Loading open purchase orders..." : "Link open purchase order"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                           {openPurchaseOrders.length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">No open purchase orders for this vendor</div>
+                           ) : (
+                              openPurchaseOrders.map((po) => (
+                                 <SelectItem key={po._id} value={po._id}>
+                                    {po.purchaseOrderNumber} | {po.purchaseOrderDate?.slice(0, 10)} | {fmt(po.total || 0)}
+                                 </SelectItem>
+                              ))
+                           )}
+                        </SelectContent>
+                     </Select>
+                     <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        disabled={!linkedPurchaseOrder || loadingOpenPurchaseOrders}
+                        onClick={handleImportLinkedPurchaseOrder}
+                     >
+                        Import PO Items
+                     </Button>
+                  </div>
+                  {linkedPurchaseOrder && (
+                     <p className="text-[11px] text-muted-foreground">
+                        Linked: {linkedPurchaseOrder.purchaseOrderNumber}
+                     </p>
+                  )}
+               </div>
             </div>
             <div className="flex items-center gap-3">
                <Label className="text-sm font-medium w-24 shrink-0">Bill Date</Label>
@@ -1590,7 +1782,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                              className="h-8 text-xs"
                                              value={row.itemName}
                                              placeholder="Type item name or pick from list"
-                                             onChange={(e) => updateRow(row.id, { itemName: e.target.value, itemId: "" })}
+                                             onChange={(e) => updateRow(row.id, { itemName: e.target.value, itemId: "", unit: "" })}
                                           />
                                           <DropdownMenu
                                              open={itemSelectorRow === row.id}
@@ -1601,7 +1793,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                                    <Search className="h-3.5 w-3.5" />
                                                 </Button>
                                              </DropdownMenuTrigger>
-                                             <DropdownMenuContent align="end" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
+                                             <DropdownMenuContent align="end" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
                                                 <ItemSelectorPopup
                                                    items={items}
                                                    onSelect={(item) => {
@@ -1623,6 +1815,17 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                           value={row.description}
                                           onChange={(e) => updateRow(row.id, { description: e.target.value })}
                                        />
+                                       {row.itemId && (() => {
+                                          const selectedItem = items.find((entry) => entry._id === row.itemId);
+                                          if (!selectedItem) return null;
+                                          return (
+                                             <p className="mt-1 text-[11px] text-muted-foreground">
+                                                {selectedItem.inventoryTracked
+                                                   ? `Stock on Hand: ${fmtQty(selectedItem.stockOnHand)}${itemUnitLabel(selectedItem) ? ` ${itemUnitLabel(selectedItem)}` : ""}`
+                                                   : "Non-tracked item"}
+                                             </p>
+                                          );
+                                       })()}
                                     </td>
                                     <td className="px-3 py-2 align-top">
                                        <AccountDropdown
@@ -1639,6 +1842,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                           min={0}
                                           onChange={(e) => updateRow(row.id, { quantity: Number(e.target.value) || 0 })}
                                        />
+                                       {row.unit && <div className="mt-0.5 text-[11px] text-muted-foreground">{row.unit}</div>}
                                     </td>
                                     <td className="px-3 py-2 align-top text-right">
                                        <Input

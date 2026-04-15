@@ -1,5 +1,7 @@
 import { Response } from "express";
 import DeliveryChallan from "../models/delivery-challan.model";
+import Invoice from "../models/invoice.model";
+import SalesOrder from "../models/sales-order.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -14,6 +16,19 @@ function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
   return id;
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function toNum(value: unknown): number {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeSalesOrderNumber(value: unknown): string {
+  return String(value || "").trim();
 }
 
 async function normalizeItems(
@@ -89,6 +104,42 @@ async function nextChallanNumber(organizationId: any): Promise<string> {
   return `DC-${String(next).padStart(5, "0")}`;
 }
 
+async function nextInvoiceNumber(organizationId: any): Promise<string> {
+  const last = await Invoice.findOne({ organizationId })
+    .sort({ invoiceNumber: -1 })
+    .select("invoiceNumber")
+    .lean();
+
+  if (!last) return "INV-000001";
+
+  const match = String(last.invoiceNumber || "").match(/INV-(\d+)/);
+  if (!match) return "INV-000001";
+  const next = parseInt(match[1], 10) + 1;
+  return `INV-${String(next).padStart(6, "0")}`;
+}
+
+async function syncLinkedSalesOrderStatus(params: {
+  organizationId: any;
+  salesOrderNumber: string;
+  status: "INVOICED" | "APPROVED";
+  req: AuthenticatedRequest;
+}) {
+  if (!params.salesOrderNumber) return;
+
+  const order = await SalesOrder.findOne({
+    organizationId: params.organizationId,
+    salesOrderNumber: params.salesOrderNumber,
+    isDeleted: false,
+  } as any);
+
+  if (!order) return;
+  if ((order as any).status === params.status) return;
+
+  (order as any).status = params.status;
+  attachUser(order as any, params.req);
+  await order.save();
+}
+
 // ─── List Delivery Challans ────────────────────────────────────────────
 export const list = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
@@ -110,6 +161,7 @@ export const list = asyncHandler(
     if (search) {
       filter.$or = [
         { challanNumber: { $regex: search, $options: "i" } },
+        { salesOrderNumber: { $regex: search, $options: "i" } },
         { referenceNumber: { $regex: search, $options: "i" } },
       ];
     }
@@ -191,6 +243,7 @@ export const create = asyncHandler(
     const challan = new DeliveryChallan({
       organizationId: oid,
       challanNumber,
+      salesOrderNumber: normalizeSalesOrderNumber(req.body.salesOrderNumber),
       referenceNumber: req.body.referenceNumber || "",
       customerId: req.body.customerId,
       challanDate: req.body.challanDate,
@@ -229,6 +282,7 @@ export const update = asyncHandler(
     const allowed = [
       "customerId",
       "challanNumber",
+      "salesOrderNumber",
       "referenceNumber",
       "challanDate",
       "challanType",
@@ -248,6 +302,12 @@ export const update = asyncHandler(
       if (req.body[field] !== undefined)
         (challan as any)[field] = req.body[field];
     });
+
+    if (req.body.salesOrderNumber !== undefined) {
+      (challan as any).salesOrderNumber = normalizeSalesOrderNumber(
+        req.body.salesOrderNumber,
+      );
+    }
 
     if (req.body.items) {
       const customerId = req.body.customerId ?? challan.customerId;
@@ -376,6 +436,180 @@ export const markAsReturned = asyncHandler(
       success: true,
       data: challan,
       message: "Challan marked as Returned",
+    });
+  },
+);
+
+export const convertToInvoice = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const challan = await DeliveryChallan.findOne({
+      _id: req.params.id as any,
+      organizationId: oid,
+      isDeleted: false,
+    } as any)
+      .populate("items.itemId", "name hsnSacCode")
+      .populate("items.taxId", "rate")
+      .populate("customerId", "displayName")
+      .populate("invoiceId", "invoiceNumber isDeleted");
+
+    if (!challan) throw new NotFoundError("Delivery Challan");
+
+    const existingInvoice = await Invoice.findOne({
+      organizationId: oid,
+      _id: (challan as any).invoiceId,
+      isDeleted: false,
+      status: { $ne: "Void" },
+    })
+      .select("_id invoiceNumber")
+      .lean();
+
+    if (existingInvoice) {
+      if ((challan as any).invoiceStatus !== "INVOICED") {
+        (challan as any).invoiceStatus = "INVOICED";
+        attachUser(challan as any, req);
+        await challan.save();
+      }
+
+      const invoiceId = String(existingInvoice._id);
+      res.json({
+        success: true,
+        data: {
+          invoiceId,
+          _id: invoiceId,
+          invoiceNumber: existingInvoice.invoiceNumber,
+        },
+        message: "Delivery challan is already linked to an invoice",
+      });
+      return;
+    }
+
+    const challanItems = (challan as any).items || [];
+    if (challanItems.length === 0) {
+      throw new ValidationError("Delivery challan has no items to convert");
+    }
+
+    const invoiceNumber = await nextInvoiceNumber(oid);
+    const invoiceItems = challanItems.map((line: any) => {
+      const quantity = toNum(line.quantity) || 0;
+      const rate = toNum(line.rate) || 0;
+      const lineTotal = quantity * rate;
+      const discountPercent = toNum(line.discountPercent) || 0;
+      const discountAmount =
+        line.discountAmount !== undefined && line.discountAmount !== null ?
+          toNum(line.discountAmount)
+        : round2((lineTotal * discountPercent) / 100);
+      const afterDiscount = round2(Math.max(0, lineTotal - discountAmount));
+
+      const taxRef = line.taxId as any;
+      const taxPercent = toNum(line.taxPercent) || toNum(taxRef?.rate);
+      const taxAmount =
+        line.taxAmount !== undefined && line.taxAmount !== null ?
+          toNum(line.taxAmount)
+        : round2((afterDiscount * taxPercent) / 100);
+
+      const itemRef = line.itemId as any;
+      const itemId = itemRef?._id || line.itemId || null;
+
+      return {
+        itemId,
+        name: line.name || itemRef?.name || "Item",
+        description: line.description || "",
+        hsnSacCode: line.hsnSacCode || itemRef?.hsnSacCode || "",
+        quantity,
+        rate,
+        discountPercent,
+        discountAmount,
+        taxId: taxRef?._id || line.taxId || null,
+        taxPercent,
+        taxAmount,
+        amount: round2(afterDiscount + taxAmount),
+        accountId: null,
+        projectId: null,
+        costRate: 0,
+        costAmount: 0,
+      };
+    });
+
+    const subTotal = round2(invoiceItems.reduce(
+      (sum: number, line: any) => sum + toNum(line.quantity) * toNum(line.rate),
+      0,
+    ));
+    const discountValue = round2(toNum((challan as any).discountValue));
+    const discountType: "percent" | "amount" =
+      (challan as any).discountType === "amount" ? "amount" : "percent";
+    const discountAmount =
+      discountType === "percent" ? round2((subTotal * discountValue) / 100) : discountValue;
+    const taxAmount = round2(toNum((challan as any).taxAmount));
+    const adjustmentAmount = round2(toNum((challan as any).adjustmentAmount));
+    const total = round2(subTotal - discountAmount + taxAmount + adjustmentAmount);
+
+    const dueDateInput = req.body?.dueDate;
+    const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;
+    const dueDate =
+      dueDateCandidate && !Number.isNaN(dueDateCandidate.getTime()) ? dueDateCandidate : null;
+
+    const salesOrderNumber = normalizeSalesOrderNumber((challan as any).salesOrderNumber);
+    const orderNumber = salesOrderNumber || String((challan as any).challanNumber || "").trim();
+
+    const invoice = new Invoice({
+      organizationId: oid,
+      invoiceNumber,
+      referenceNumber: (challan as any).referenceNumber || "",
+      orderNumber,
+      customerId: (challan as any).customerId?._id || (challan as any).customerId,
+      invoiceDate: (challan as any).challanDate || new Date(),
+      dueDate,
+      paymentTermsId: null,
+      salesPersonId: null,
+      subject: `Converted from Delivery Challan ${(challan as any).challanNumber}`,
+      items: invoiceItems,
+      subTotal,
+      discountType,
+      discountValue,
+      discountAmount,
+      taxType: "none",
+      taxId: null,
+      taxAmount,
+      adjustmentLabel: (challan as any).adjustmentLabel || "Adjustment",
+      adjustmentAmount,
+      total,
+      balanceDue: total,
+      customerNotes: (challan as any).customerNotes || "",
+      termsAndConditions: (challan as any).termsAndConditions || "",
+      status: "Draft",
+      emailContacts: [],
+      attachments: [],
+      paymentReceived: false,
+      isRecurring: false,
+      journalEntries: [],
+      pdfTemplateId: null,
+      sentAt: null,
+      paidAt: null,
+    });
+
+    attachUser(invoice as any, req);
+    await invoice.save();
+
+    (challan as any).invoiceStatus = "INVOICED";
+    (challan as any).invoiceId = (invoice as any)._id;
+    attachUser(challan as any, req);
+    await challan.save();
+
+    await syncLinkedSalesOrderStatus({
+      organizationId: oid,
+      salesOrderNumber,
+      status: "INVOICED",
+      req,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        invoiceId: String((invoice as any)._id),
+        _id: String((invoice as any)._id),
+        invoiceNumber: (invoice as any).invoiceNumber,
+      },
     });
   },
 );

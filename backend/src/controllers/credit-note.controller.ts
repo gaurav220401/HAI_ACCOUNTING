@@ -622,6 +622,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     referenceNumber: req.body.referenceNumber || "",
     reason: req.body.reason || "",
     referenceInvoiceId: req.body.referenceInvoiceId || null,
+    referenceOrderNumber: String(req.body.referenceOrderNumber || "").trim(),
     accountsReceivableId: req.body.accountsReceivableId || null,
     salesPersonId: req.body.salesPersonId || null,
     subject: req.body.subject || "",
