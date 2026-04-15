@@ -94,6 +94,86 @@ function toNum(val: unknown, fallback = 0): number {
   return isNaN(n) ? fallback : n;
 }
 
+const LINKED_BILL_STATUSES = ["Open", "Overdue", "Partially Paid", "Paid"];
+
+function normalizeOrderNumber(value: unknown): string {
+  return String(value || "").trim();
+}
+
+async function syncPurchaseOrderStatusFromBills(params: {
+  organizationId: any;
+  purchaseOrderNumber: string;
+  req: AuthenticatedRequest;
+  reason: string;
+}) {
+  const purchaseOrderNumber = normalizeOrderNumber(params.purchaseOrderNumber);
+  if (!purchaseOrderNumber) return;
+
+  const po = await PurchaseOrder.findOne({
+    organizationId: params.organizationId,
+    purchaseOrderNumber,
+    isDeleted: false,
+  });
+
+  if (!po) return;
+
+  if (po.status === "Canceled" || po.status === "Closed") {
+    return;
+  }
+
+  const billFilter: any = {
+    organizationId: params.organizationId,
+    isDeleted: false,
+    orderNumber: purchaseOrderNumber,
+    status: { $in: LINKED_BILL_STATUSES },
+  };
+
+  if (po.vendorId) {
+    billFilter.vendorId = po.vendorId;
+  }
+
+  const linkedBillCount = await Bill.countDocuments(billFilter);
+
+  let nextStatus: "Open" | "Billed" | null = null;
+  if (linkedBillCount > 0) {
+    nextStatus = "Billed";
+  } else if (po.status === "Billed") {
+    nextStatus = "Open";
+  }
+
+  if (!nextStatus || po.status === nextStatus) return;
+
+  po.status = nextStatus;
+  po.comments.push({
+    author: params.req.user?.name || params.req.user?.email || "System",
+    text: `Status synced to ${nextStatus} (${params.reason})`,
+    time: new Date(),
+    isSystem: true,
+  });
+  attachUser(po, params.req);
+  await po.save();
+}
+
+async function syncPurchaseOrdersFromBillOrderNumbers(params: {
+  organizationId: any;
+  orderNumbers: unknown[];
+  req: AuthenticatedRequest;
+  reason: string;
+}) {
+  const uniqueOrderNumbers = Array.from(
+    new Set(params.orderNumbers.map((value) => normalizeOrderNumber(value)).filter(Boolean)),
+  );
+
+  for (const purchaseOrderNumber of uniqueOrderNumbers) {
+    await syncPurchaseOrderStatusFromBills({
+      organizationId: params.organizationId,
+      purchaseOrderNumber,
+      req: params.req,
+      reason: params.reason,
+    });
+  }
+}
+
 function normalizeObjectId(value: unknown): string | null {
   if (!value) return null;
 
@@ -667,7 +747,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     vendorId: req.body.vendorId,
     billNumber,
     referenceNumber: req.body.referenceNumber || "",
-    orderNumber: req.body.orderNumber || "",
+    orderNumber: normalizeOrderNumber(req.body.orderNumber),
     billDate: req.body.billDate,
     dueDate: req.body.dueDate || null,
     paymentTermsId: req.body.paymentTermsId || null,
@@ -717,6 +797,12 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   }
 
   await syncBillCreationAccounting({ bill, req });
+  await syncPurchaseOrdersFromBillOrderNumbers({
+    organizationId: bill.organizationId,
+    orderNumbers: [bill.orderNumber],
+    req,
+    reason: `bill ${bill.billNumber} created`,
+  });
 
   res.status(201).json({ success: true, data: bill });
 });
@@ -760,6 +846,13 @@ export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Resp
     organizationId: bill.organizationId as any,
     contactId: bill.vendorId as any,
     req,
+  });
+
+  await syncPurchaseOrdersFromBillOrderNumbers({
+    organizationId: bill.organizationId,
+    orderNumbers: [bill.orderNumber],
+    req,
+    reason: `bill ${bill.billNumber} voided`,
   });
 
   res.json({ success: true, data: bill });
@@ -811,6 +904,12 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   }
 
   await syncBillCreationAccounting({ bill, req });
+  await syncPurchaseOrdersFromBillOrderNumbers({
+    organizationId: bill.organizationId,
+    orderNumbers: [bill.orderNumber],
+    req,
+    reason: `bill ${bill.billNumber} cloned`,
+  });
 
   res.status(201).json({ success: true, data: bill });
 });
@@ -821,6 +920,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!bill) throw new NotFoundError("Bill");
   if (bill.status === "Void") throw new ValidationError("Cannot edit a void bill");
 
+  const previousOrderNumber = normalizeOrderNumber(bill.orderNumber);
   const previousVendorId = String(bill.vendorId || "");
   const previousPosted = isPostedBillStatus(String(bill.status || ""));
   const previousStockDeltas = previousPosted
@@ -880,6 +980,9 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   Object.assign(bill, req.body, { 
     vendorId: nextVendorId,
+    orderNumber: req.body.orderNumber !== undefined
+      ? normalizeOrderNumber(req.body.orderNumber)
+      : bill.orderNumber,
     accountsPayableId: nextAccountsPayableId,
     lineItems, 
     subTotal: totals.subTotal,
@@ -970,6 +1073,13 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     });
   }
 
+  await syncPurchaseOrdersFromBillOrderNumbers({
+    organizationId: bill.organizationId,
+    orderNumbers: [previousOrderNumber, bill.orderNumber],
+    req,
+    reason: `bill ${bill.billNumber} updated`,
+  });
+
   res.json({ success: true, data: bill });
 });
 
@@ -1030,6 +1140,13 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     organizationId: bill.organizationId as any,
     contactId: vendorId as any,
     req,
+  });
+
+  await syncPurchaseOrdersFromBillOrderNumbers({
+    organizationId: bill.organizationId,
+    orderNumbers: [bill.orderNumber],
+    req,
+    reason: `bill ${bill.billNumber} deleted`,
   });
 
   res.json({ success: true, message: "Bill deleted successfully" });

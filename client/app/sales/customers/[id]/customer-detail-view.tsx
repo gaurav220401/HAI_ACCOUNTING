@@ -54,9 +54,9 @@ import {
   type DeliveryChallan,
 } from "@/lib/api/delivery-challans";
 import {
-  recurringInvoiceApi,
-  type RecurringInvoice,
-} from "@/lib/api/recurring-invoices";
+  retainerInvoiceApi,
+  type RetainerInvoice,
+} from "@/lib/api/retainer-invoices";
 import { smtpApi } from "@/lib/api/smtp";
 
 import { Button } from "@/components/ui/button";
@@ -516,7 +516,7 @@ export function CustomerDetailView({
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [deliveryChallans, setDeliveryChallans] = useState<DeliveryChallan[]>([]);
-  const [recurringInvoices, setRecurringInvoices] = useState<RecurringInvoice[]>([]);
+  const [retainerInvoices, setRetainerInvoices] = useState<RetainerInvoice[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>("6m");
@@ -613,13 +613,13 @@ export function CustomerDetailView({
   async function loadTransactionsData(customerId: string) {
     setTransactionsLoading(true);
     try {
-      const [invoiceRes, paymentRes, quoteRes, orderRes, challanRes, recurringRes] = await Promise.all([
+      const [invoiceRes, paymentRes, quoteRes, orderRes, challanRes, retainerRes] = await Promise.all([
         invoiceApi.list({ page: 1, limit: 200, status: "All", customerId }),
         paymentReceivedApi.list({ page: 1, limit: 200, status: "All", customerId }),
         quoteApi.list({ page: 1, limit: 200, status: "All", customerId }),
         salesOrderApi.list({ page: 1, limit: 200, customerId }),
         deliveryChallanApi.list({ page: 1, limit: 200, status: "All", customerId }),
-        recurringInvoiceApi.list({ page: 1, limit: 200, status: "All", customerId }),
+        retainerInvoiceApi.list({ page: 1, limit: 200, status: "All", customerId }),
       ]);
 
       const inv = (invoiceRes.data || []).filter((row) => asId(row.customerId) === customerId);
@@ -627,21 +627,21 @@ export function CustomerDetailView({
       const qts = (quoteRes.data || []).filter((row) => asId(row.customerId) === customerId);
       const ord = (orderRes.data || []).filter((row) => asId(row.customerId) === customerId);
       const chal = (challanRes.data || []).filter((row) => asId(row.customerId) === customerId);
-      const rec = (recurringRes.data || []).filter((row) => asId(row.customerId) === customerId);
+      const ret = (retainerRes.data || []).filter((row) => asId(row.customer_id) === customerId);
 
       setInvoices(inv);
       setPayments(pay);
       setQuotes(qts);
       setSalesOrders(ord);
       setDeliveryChallans(chal);
-      setRecurringInvoices(rec);
+      setRetainerInvoices(ret);
     } catch {
       setInvoices([]);
       setPayments([]);
       setQuotes([]);
       setSalesOrders([]);
       setDeliveryChallans([]);
-      setRecurringInvoices([]);
+      setRetainerInvoices([]);
     } finally {
       setTransactionsLoading(false);
     }
@@ -1176,7 +1176,7 @@ export function CustomerDetailView({
               <DropdownMenuItem onClick={() => openNewTransaction(`/sales/invoices/new?${newTransactionBase}`)}>Invoice</DropdownMenuItem>
               <DropdownMenuItem onClick={() => openNewTransaction(`/sales/payments-received/new?${newTransactionBase}`)}>Customer Payment</DropdownMenuItem>
               <DropdownMenuItem onClick={() => openNewTransaction(`/sales/quotes/new?${newTransactionBase}`)}>Quote</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openNewTransaction(`/sales/recurring-invoices/new?${newTransactionBase}`)}>Retainer Invoice</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openNewTransaction(`/sales/retainer-invoices/new?${newTransactionBase}`)}>Retainer Invoice</DropdownMenuItem>
               <DropdownMenuItem onClick={() => openNewTransaction(`/sales/orders/new?${newTransactionBase}`)}>Sales Order</DropdownMenuItem>
               <DropdownMenuItem onClick={() => openNewTransaction(`/sales/delivery-challans/new?${newTransactionBase}`)}>Delivery Challan</DropdownMenuItem>
               <DropdownMenuItem onClick={() => openNewTransaction(`/sales/recurring-invoices/new?${newTransactionBase}`)}>Recurring Invoice</DropdownMenuItem>
@@ -1668,29 +1668,33 @@ export function CustomerDetailView({
                 </div>
               </TxSection>
 
-              <TxSection title="Retainer Invoices" defaultOpen={false} onNew={() => openNewTransaction(`/sales/recurring-invoices/new?${newTransactionBase}`)}>
+              <TxSection title="Retainer Invoices" defaultOpen={false} onNew={() => openNewTransaction(`/sales/retainer-invoices/new?${newTransactionBase}`)}>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[620px] text-sm">
+                  <table className="w-full min-w-[760px] text-sm">
                     <thead>
                       <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="px-3 py-2 font-semibold">Profile Name</th>
-                        <th className="px-3 py-2 font-semibold">Next Run</th>
+                        <th className="px-3 py-2 font-semibold">Date</th>
+                        <th className="px-3 py-2 font-semibold">Retainer Number</th>
+                        <th className="px-3 py-2 font-semibold">Reference</th>
                         <th className="px-3 py-2 font-semibold">Amount</th>
+                        <th className="px-3 py-2 font-semibold">Unapplied</th>
                         <th className="px-3 py-2 font-semibold">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {recurringInvoices.length === 0 ? (
+                      {retainerInvoices.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="px-3 py-5 text-center text-sm text-muted-foreground">No retainer invoices yet.</td>
+                          <td colSpan={6} className="px-3 py-5 text-center text-sm text-muted-foreground">No retainer invoices yet.</td>
                         </tr>
                       ) : (
-                        recurringInvoices.map((profile) => (
-                          <tr key={profile._id} className="border-b last:border-0">
-                            <td className="px-3 py-2"><button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/recurring-invoices/${profile._id}`)}>{profile.profileName}</button></td>
-                            <td className="px-3 py-2">{fmtDate(profile.nextRunDate)}</td>
-                            <td className="px-3 py-2 tabular-nums">{fmtCurrency(profile.total, customer.currency || "INR")}</td>
-                            <td className="px-3 py-2">{profile.status}</td>
+                        retainerInvoices.map((retainer) => (
+                          <tr key={retainer._id} className="border-b last:border-0">
+                            <td className="px-3 py-2">{fmtDate(retainer.retainer_date)}</td>
+                            <td className="px-3 py-2"><button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/retainer-invoices/${retainer._id}`)}>{retainer.retainer_number}</button></td>
+                            <td className="px-3 py-2">{retainer.reference_number || "-"}</td>
+                            <td className="px-3 py-2 tabular-nums">{fmtCurrency(retainer.total_amount, customer.currency || "INR")}</td>
+                            <td className="px-3 py-2 tabular-nums">{fmtCurrency(retainer.amount_unapplied, customer.currency || "INR")}</td>
+                            <td className="px-3 py-2">{retainer.status}</td>
                           </tr>
                         ))
                       )}

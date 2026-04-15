@@ -107,6 +107,29 @@ function GenericTableView({ data, columns, title, from, to }: {
   to: string;
 }) {
   const rows = data.rows || [];
+  const totals = data.totals || {};
+
+  const totalForColumn = (columnKey: string): number | null => {
+    const key = String(columnKey || "");
+    if (!key) return null;
+    const pascal = key.charAt(0).toUpperCase() + key.slice(1);
+    const candidates = [
+      `total${pascal}`,
+      `grand${pascal}`,
+      key,
+    ];
+
+    for (const candidate of candidates) {
+      const value = totals[candidate];
+      if (typeof value === "number") return value;
+    }
+
+    return null;
+  };
+
+  const showTotalsRow = Object.keys(totals).length > 0
+    && columns.some((col) => totalForColumn(col.key) !== null);
+
   return (
     <div className="space-y-3">
       {data.totals && Object.keys(data.totals).length > 0 && (
@@ -116,7 +139,7 @@ function GenericTableView({ data, columns, title, from, to }: {
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                 {key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())}
               </div>
-              <div className="text-lg font-bold mt-0.5">{fmtCurrency(value)}</div>
+              <div className="text-lg font-bold mt-0.5">{formatTotalMetricValue(key, value)}</div>
             </div>
           ))}
         </div>
@@ -163,6 +186,29 @@ function GenericTableView({ data, columns, title, from, to }: {
                 </tr>
               )}
             </tbody>
+            {showTotalsRow && (
+              <tfoot className="bg-muted/20 border-t">
+                <tr className="font-semibold">
+                  {columns.map((col, idx) => {
+                    if (idx === 0) {
+                      return (
+                        <td key={col.key} className="px-3 py-2 text-xs">Total</td>
+                      );
+                    }
+
+                    const totalValue = totalForColumn(col.key);
+                    return (
+                      <td
+                        key={col.key}
+                        className={cn("px-3 py-2 text-xs", col.align === "right" ? "text-right font-mono" : "text-left")}
+                      >
+                        {totalValue === null ? "" : formatCell(totalValue, col.format)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
@@ -824,6 +870,7 @@ const REPORT_CATEGORIES = [
   { id: "payables", label: "Payables", icon: FileText },
   { id: "purchases-expenses", label: "Purchases & Expenses", icon: ShoppingCart },
   { id: "inventory", label: "Inventory", icon: Package },
+  { id: "inventory-valuation", label: "Inventory Valuation", icon: Package },
   { id: "activity", label: "Activity", icon: Activity },
 ];
 
@@ -1048,6 +1095,203 @@ const REPORTS: ReportDef[] = [
       { key: "billCount", label: "Bills", align: "right", format: "number" },
     ],
   },
+  // Inventory
+  {
+    id: "inventory-summary", name: "Inventory Summary", category: "inventory",
+    apiCall: "inventorySummary", useAsOf: true,
+    columns: [
+      { key: "itemName", label: "Item Name" },
+      { key: "sku", label: "SKU" },
+      { key: "reorderLevel", label: "Reorder Level", align: "right", format: "number" },
+      { key: "quantityOrdered", label: "Quantity Ordered", align: "right", format: "number" },
+      { key: "quantityIn", label: "Quantity In", align: "right", format: "number" },
+      { key: "quantityOut", label: "Quantity Out", align: "right", format: "number" },
+      { key: "stockOnHand", label: "Stock On Hand", align: "right", format: "number" },
+      { key: "committedStock", label: "Committed", align: "right", format: "number" },
+      { key: "availableForSale", label: "Available", align: "right", format: "number" },
+      { key: "usageUnit", label: "Usage Unit" },
+    ],
+  },
+  {
+    id: "committed-stock-details", name: "Committed Stock Details", category: "inventory",
+    apiCall: "committedStockDetails", useDateRange: true,
+    columns: [
+      { key: "salesOrderNumber", label: "SO #" },
+      { key: "orderDate", label: "Order Date", format: "date" },
+      { key: "expectedShipmentDate", label: "Expected Shipment", format: "date" },
+      { key: "customerName", label: "Customer" },
+      { key: "itemName", label: "Item" },
+      { key: "sku", label: "SKU" },
+      { key: "quantityCommitted", label: "Committed Qty", align: "right", format: "number" },
+      { key: "committedAmount", label: "Committed Amount", align: "right", format: "currency" },
+      { key: "status", label: "Status" },
+    ],
+  },
+  {
+    id: "inventory-aging-summary", name: "Inventory Aging Summary", category: "inventory",
+    apiCall: "inventoryAgingSummary", useAsOf: true,
+    columns: [
+      { key: "bucket", label: "Age Bucket" },
+      { key: "itemCount", label: "Item Count", align: "right", format: "number" },
+      { key: "totalQuantity", label: "Total Qty", align: "right", format: "number" },
+      { key: "totalValue", label: "Total Value", align: "right", format: "currency" },
+      { key: "oldestAgeDays", label: "Oldest Age (Days)", align: "right", format: "number" },
+    ],
+  },
+  {
+    id: "stock-summary", name: "Stock Summary", category: "inventory",
+    apiCall: "stockSummary", useAsOf: true,
+    columns: [
+      { key: "stockStatus", label: "Stock Status" },
+      { key: "itemCount", label: "Items", align: "right", format: "number" },
+      { key: "totalQuantity", label: "Stock Qty", align: "right", format: "number" },
+      { key: "totalCommittedStock", label: "Committed Qty", align: "right", format: "number" },
+      { key: "totalAvailableStock", label: "Available Qty", align: "right", format: "number" },
+      { key: "totalValue", label: "Stock Value", align: "right", format: "currency" },
+    ],
+  },
+  {
+    id: "inventory-adjustment-summary", name: "Inventory Adjustment Summary", category: "inventory",
+    apiCall: "inventoryAdjustmentSummary", useDateRange: true,
+    columns: [
+      { key: "reason", label: "Reason" },
+      { key: "adjustmentCount", label: "Adjustments", align: "right", format: "number" },
+      { key: "increaseQty", label: "Increase Qty", align: "right", format: "number" },
+      { key: "decreaseQty", label: "Decrease Qty", align: "right", format: "number" },
+      { key: "netQty", label: "Net Qty", align: "right", format: "number" },
+      { key: "increaseValue", label: "Increase Value", align: "right", format: "currency" },
+      { key: "decreaseValue", label: "Decrease Value", align: "right", format: "currency" },
+      { key: "netValue", label: "Net Value", align: "right", format: "currency" },
+    ],
+  },
+  {
+    id: "inventory-adjustment-details", name: "Inventory Adjustment Details", category: "inventory",
+    apiCall: "inventoryAdjustmentDetails", useDateRange: true,
+    columns: [
+      { key: "adjustedAt", label: "Adjusted At", format: "date" },
+      { key: "itemName", label: "Item" },
+      { key: "sku", label: "SKU" },
+      { key: "warehouseName", label: "Warehouse" },
+      { key: "direction", label: "Direction" },
+      { key: "reason", label: "Reason" },
+      { key: "quantityDelta", label: "Qty Delta", align: "right", format: "number" },
+      { key: "valueDelta", label: "Value Delta", align: "right", format: "currency" },
+      { key: "resultingStockOnHand", label: "Resulting Stock", align: "right", format: "number" },
+      { key: "resultingInventoryValue", label: "Resulting Value", align: "right", format: "currency" },
+      { key: "referenceNumber", label: "Reference #" },
+    ],
+  },
+  {
+    id: "packing-history", name: "Packing History", category: "inventory",
+    apiCall: "packingHistory", useDateRange: true,
+    columns: [
+      { key: "challanNumber", label: "Challan #" },
+      { key: "challanDate", label: "Date", format: "date" },
+      { key: "customerName", label: "Customer" },
+      { key: "salesOrderNumber", label: "SO #" },
+      { key: "itemCount", label: "Items", align: "right", format: "number" },
+      { key: "totalQuantity", label: "Packed Qty", align: "right", format: "number" },
+      { key: "totalAmount", label: "Amount", align: "right", format: "currency" },
+      { key: "status", label: "Status" },
+      { key: "invoiceStatus", label: "Invoice Status" },
+    ],
+  },
+  {
+    id: "shipment-details", name: "Shipment Details", category: "inventory",
+    apiCall: "shipmentDetails", useDateRange: true,
+    columns: [
+      { key: "challanNumber", label: "Challan #" },
+      { key: "challanDate", label: "Date", format: "date" },
+      { key: "customerName", label: "Customer" },
+      { key: "itemName", label: "Item" },
+      { key: "quantity", label: "Qty", align: "right", format: "number" },
+      { key: "rate", label: "Rate", align: "right", format: "currency" },
+      { key: "amount", label: "Amount", align: "right", format: "currency" },
+      { key: "shipmentStatus", label: "Shipment Status" },
+      { key: "challanStatus", label: "Challan Status" },
+      { key: "invoiceStatus", label: "Invoice Status" },
+    ],
+  },
+  {
+    id: "inventory-turnover-by-quantity", name: "Inventory Turnover By Quantity", category: "inventory",
+    apiCall: "inventoryTurnoverByQuantity", useDateRange: true,
+    columns: [
+      { key: "itemName", label: "Item" },
+      { key: "sku", label: "SKU" },
+      { key: "openingStockQty", label: "Opening Qty", align: "right", format: "number" },
+      { key: "purchasedQuantity", label: "Purchased Qty", align: "right", format: "number" },
+      { key: "soldQuantity", label: "Sold Qty", align: "right", format: "number" },
+      { key: "netAdjustmentQty", label: "Adj Qty", align: "right", format: "number" },
+      { key: "closingStockQty", label: "Closing Qty", align: "right", format: "number" },
+      { key: "averageInventoryQty", label: "Avg Qty", align: "right", format: "number" },
+      { key: "turnoverRatio", label: "Turnover Ratio", align: "right", format: "number" },
+      { key: "dailyIssueQty", label: "Daily Issue Qty", align: "right", format: "number" },
+    ],
+  },
+  // Inventory Valuation
+  {
+    id: "inventory-valuation-summary", name: "Inventory Valuation Summary", category: "inventory-valuation",
+    apiCall: "inventoryValuationSummary", useAsOf: true,
+    columns: [
+      { key: "itemName", label: "Item" },
+      { key: "sku", label: "SKU" },
+      { key: "valuationMethod", label: "Valuation Method" },
+      { key: "stockOnHand", label: "Stock On Hand", align: "right", format: "number" },
+      { key: "averageCost", label: "Average Cost", align: "right", format: "currency" },
+      { key: "inventoryValue", label: "Inventory Value", align: "right", format: "currency" },
+      { key: "valueSharePercent", label: "Value Share %", align: "right", format: "number" },
+    ],
+  },
+  {
+    id: "fifo-cost-lot-tracking", name: "FIFO Cost Lot Tracking", category: "inventory-valuation",
+    apiCall: "fifoCostLotTracking", useDateRange: true,
+    columns: [
+      { key: "billNumber", label: "Bill #" },
+      { key: "billDate", label: "Bill Date", format: "date" },
+      { key: "vendorName", label: "Vendor" },
+      { key: "itemName", label: "Item" },
+      { key: "sku", label: "SKU" },
+      { key: "lotQuantity", label: "Lot Qty", align: "right", format: "number" },
+      { key: "unitCost", label: "Unit Cost", align: "right", format: "currency" },
+      { key: "lotValue", label: "Lot Value", align: "right", format: "currency" },
+      { key: "lotAgeDays", label: "Lot Age (Days)", align: "right", format: "number" },
+      { key: "valuationMethod", label: "Method" },
+    ],
+  },
+  {
+    id: "abc-classification", name: "ABC Classification", category: "inventory-valuation",
+    apiCall: "abcClassification", useDateRange: true,
+    columns: [
+      { key: "itemName", label: "Item" },
+      { key: "sku", label: "SKU" },
+      { key: "salesQuantity", label: "Sales Qty", align: "right", format: "number" },
+      { key: "salesAmount", label: "Sales Amount", align: "right", format: "currency" },
+      { key: "salesSharePercent", label: "Sales Share %", align: "right", format: "number" },
+      { key: "cumulativeSharePercent", label: "Cumulative %", align: "right", format: "number" },
+      { key: "classification", label: "Class" },
+      { key: "currentStockOnHand", label: "Current Stock", align: "right", format: "number" },
+      { key: "currentInventoryValue", label: "Current Value", align: "right", format: "currency" },
+    ],
+  },
+  {
+    id: "inventory-turnover-by-amount", name: "Inventory Turnover By Amount", category: "inventory-valuation",
+    apiCall: "inventoryTurnoverByAmount", useDateRange: true,
+    columns: [
+      { key: "itemName", label: "Item" },
+      { key: "sku", label: "SKU" },
+      { key: "soldQuantity", label: "Sold Qty", align: "right", format: "number" },
+      { key: "salesAmount", label: "Sales", align: "right", format: "currency" },
+      { key: "cogsAmount", label: "COGS", align: "right", format: "currency" },
+      { key: "grossMarginAmount", label: "Gross Margin", align: "right", format: "currency" },
+      { key: "grossMarginPercent", label: "Margin %", align: "right", format: "number" },
+      { key: "openingInventoryValue", label: "Opening Value", align: "right", format: "currency" },
+      { key: "purchaseAmount", label: "Purchases", align: "right", format: "currency" },
+      { key: "netAdjustmentValue", label: "Adj Value", align: "right", format: "currency" },
+      { key: "closingInventoryValue", label: "Closing Value", align: "right", format: "currency" },
+      { key: "averageInventoryValue", label: "Average Value", align: "right", format: "currency" },
+      { key: "turnoverRatio", label: "Turnover Ratio", align: "right", format: "number" },
+    ],
+  },
 ];
 
 const DATE_PRESETS = [
@@ -1081,6 +1325,27 @@ function fmtDate(d?: string | null) {
 
 function fmtNumber(n?: number) {
   return new Intl.NumberFormat("en-IN").format(n || 0);
+}
+
+function formatTotalMetricValue(key: string, value: unknown): string {
+  const numericValue = Number(value || 0);
+  const metric = key.toLowerCase();
+  const ratioLike = metric.includes("ratio");
+  const percentLike = metric.includes("percent") || metric.includes("share");
+  const stockLike = metric.includes("stock") && !metric.includes("value");
+  const quantityLike =
+    metric.includes("count")
+    || metric.includes("qty")
+    || metric.includes("quantity")
+    || metric.includes("items")
+    || metric.includes("lines")
+    || metric.includes("days")
+    || stockLike;
+
+  if (percentLike) return `${numericValue.toFixed(2)}%`;
+  if (ratioLike) return numericValue.toFixed(2);
+  if (quantityLike) return fmtNumber(numericValue);
+  return fmtCurrency(numericValue);
 }
 
 function formatCell(value: unknown, format?: string): string {

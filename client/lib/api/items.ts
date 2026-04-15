@@ -8,6 +8,7 @@ export type TaxPreference = "Taxable" | "NonTaxable" | "Exempt";
 export type ItemMode = "SingleItem" | "Variants";
 export type DimensionUnit = "cm" | "m" | "in" | "ft";
 export type WeightUnit = "kg" | "g" | "lb" | "oz";
+export type ItemBulkAction = "activate" | "deactivate" | "delete";
 
 export interface Tax {
   _id: string;
@@ -91,9 +92,9 @@ export interface CreateItemInput {
   sellingDescription?: string;
   costPrice?: number;
   purchaseDescription?: string;
-  salesAccountId?: string;
-  purchaseAccountId?: string;
-  inventoryAccountId?: string;
+  salesAccountId?: string | null;
+  purchaseAccountId?: string | null;
+  inventoryAccountId?: string | null;
   taxPreference?: TaxPreference;
   taxId?: string | null;
   intraStateTaxId?: string | null;
@@ -108,8 +109,8 @@ export interface CreateItemInput {
   returnableItem?: boolean;
   dimensions?: ItemDimensions;
   weight?: ItemWeight;
-  preferredVendorId?: string;
-  warehouseId?: string;
+  preferredVendorId?: string | null;
+  warehouseId?: string | null;
   image?: string;
   rearImage?: string;
   otherImages?: string[];
@@ -137,6 +138,52 @@ export interface UnitOfMeasurement {
   createdAt: string;
 }
 
+export interface ItemSalesSummaryPoint {
+  date: string;
+  amount: number;
+}
+
+export interface ItemInventoryMetrics {
+  inventoryTracked: boolean;
+  openingStock: number;
+  accountingStock: {
+    stockOnHand: number;
+    committedStock: number;
+    availableForSale: number;
+  };
+  physicalStock: {
+    stockOnHand: number;
+    committedStock: number;
+    availableForSale: number;
+  };
+  fulfillment: {
+    toBeShipped: number;
+    toBeReceived: number;
+    toBeInvoiced: number;
+    toBeBilled: number;
+  };
+  salesSummary: {
+    period: "THIS_MONTH";
+    startDate: string;
+    endDate: string;
+    totalAmount: number;
+    points: ItemSalesSummaryPoint[];
+  };
+  syncedAt: string;
+}
+
+export interface ItemBulkActionInput {
+  action: ItemBulkAction;
+  itemIds: string[];
+}
+
+export interface ItemBulkActionResult {
+  action: ItemBulkAction;
+  matchedCount: number;
+  modifiedCount: number;
+  itemIds: string[];
+}
+
 // ─── API ────────────────────────────────────────────────────────────────
 
 export const itemApi = {
@@ -146,6 +193,15 @@ export const itemApi = {
 
   getById: (id: string) =>
     apiFetch<{ data: Item }>(`/items/${id}`),
+
+  getInventoryMetrics: (id: string) =>
+    apiFetch<{ data: ItemInventoryMetrics }>(`/items/${id}/inventory-metrics`),
+
+  bulkAction: (data: ItemBulkActionInput) =>
+    apiFetch<{ data: ItemBulkActionResult }>("/items/bulk-actions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   create: (data: CreateItemInput) =>
     apiFetch<{ data: Item }>("/items", {

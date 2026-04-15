@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -388,6 +388,7 @@ export default function NewDeliveryChallanPage() {
   // Form state
   const [customerId, setCustomerId] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
+  const [salesOrderNumber, setSalesOrderNumber] = useState("");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [challanDate, setChallanDate] = useState(todayISO());
   const [challanType, setChallanType] = useState<ChallanType | "">("");
@@ -410,6 +411,11 @@ export default function NewDeliveryChallanPage() {
   const [showBulkItemsModal, setShowBulkItemsModal] = useState(false);
 
   const [saving, setSaving] = useState(false);
+
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item._id, item])),
+    [items],
+  );
 
   // Load master data
   useEffect(() => {
@@ -592,6 +598,7 @@ export default function NewDeliveryChallanPage() {
     try {
       const payload: CreateDeliveryChallanInput = {
         challanNumber,
+        salesOrderNumber: salesOrderNumber.trim() || undefined,
         referenceNumber,
         customerId,
         challanDate,
@@ -710,6 +717,16 @@ export default function NewDeliveryChallanPage() {
 
                 {/* Reference Number */}
                 <div className="space-y-1.5">
+                  <Label>Sales Order#</Label>
+                  <Input
+                    value={salesOrderNumber}
+                    onChange={(e) => setSalesOrderNumber(e.target.value)}
+                    placeholder="SO-00001"
+                  />
+                </div>
+
+                {/* Reference Number */}
+                <div className="space-y-1.5">
                   <Label>Reference#</Label>
                   <Input
                     value={referenceNumber}
@@ -770,6 +787,7 @@ export default function NewDeliveryChallanPage() {
                         <TableHead className="w-24 text-right">
                           QUANTITY
                         </TableHead>
+                        <TableHead className="w-24 text-right">STOCK</TableHead>
                         <TableHead className="w-28 text-right">RATE</TableHead>
                         <TableHead className="w-28 text-right">
                           DISCOUNT %
@@ -783,6 +801,14 @@ export default function NewDeliveryChallanPage() {
                     <TableBody>
                       {lines.map((line) => {
                         const { amount } = calcLineAmount(line);
+                        const selectedItem = itemsById.get(line.itemId);
+                        const stockOnHand =
+                          selectedItem?.inventoryTracked ?
+                            Number(selectedItem.stockOnHand || 0)
+                          : null;
+                        const exceedsStock =
+                          stockOnHand !== null && Number(line.quantity || 0) > stockOnHand;
+
                         return (
                           <TableRow key={line.key}>
                             <TableCell>
@@ -798,11 +824,26 @@ export default function NewDeliveryChallanPage() {
                                 <SelectContent>
                                   {items.map((item) => (
                                     <SelectItem key={item._id} value={item._id}>
-                                      {item.name}
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span>{item.name}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {item.inventoryTracked ?
+                                            `Stock ${Number(item.stockOnHand || 0).toLocaleString("en-IN")}`
+                                          : "Non-stock"}
+                                        </span>
+                                      </div>
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
+                              {selectedItem ?
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                  {selectedItem.inventoryTracked ?
+                                    `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
+                                  : "Inventory not tracked"}
+                                </p>
+                              : null}
                             </TableCell>
                             <TableCell>
                               <Input
@@ -818,6 +859,15 @@ export default function NewDeliveryChallanPage() {
                                   )
                                 }
                               />
+                            </TableCell>
+                            <TableCell
+                              className={`text-right text-sm tabular-nums ${
+                                exceedsStock ? "text-destructive font-medium" : ""
+                              }`}
+                            >
+                              {stockOnHand === null ?
+                                "N/A"
+                              : Number(stockOnHand).toLocaleString("en-IN")}
                             </TableCell>
                             <TableCell>
                               <Input

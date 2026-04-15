@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   Plus, Search, Package, RefreshCw, Pencil, X, MoreHorizontal, Copy,
   EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag,
@@ -33,10 +34,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { itemApi, type Item } from "@/lib/api/items";
+import { itemApi, type Item, type ItemBulkAction, type ItemInventoryMetrics } from "@/lib/api/items";
 import { inventoryApi, type InventoryAdjustment } from "@/lib/api/inventory";
 
 // ─── Item detail type with populated fields ────────────────────────────────
@@ -93,11 +95,16 @@ export default function ItemsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [inventoryMetrics, setInventoryMetrics] = useState<ItemInventoryMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "history">("overview");
 
   // Action states
   const [toDelete, setToDelete] = useState<Item | null>(null);
   const [actioning, setActioning] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [bulkActioning, setBulkActioning] = useState(false);
 
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
   const [openingStockSaving, setOpeningStockSaving] = useState(false);
@@ -165,24 +172,39 @@ export default function ItemsPage() {
     }
   }, []);
 
+  const fetchInventoryMetrics = useCallback(async (id: string) => {
+    setMetricsLoading(true);
+    try {
+      const res = await itemApi.getInventoryMetrics(id);
+      setInventoryMetrics(res.data ?? null);
+    } catch {
+      setInventoryMetrics(null);
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, []);
+
   const refreshSelectedItem = useCallback(async (id: string) => {
     await Promise.all([
       fetchDetail(id),
       fetchItems(),
       loadItemAdjustments(id),
+      fetchInventoryMetrics(id),
     ]);
-  }, [fetchDetail, fetchItems, loadItemAdjustments]);
+  }, [fetchDetail, fetchItems, loadItemAdjustments, fetchInventoryMetrics]);
 
   function selectItem(id: string) {
     setSelectedId(id);
     setActiveTab("overview");
     void fetchDetail(id);
     void loadItemAdjustments(id);
+    void fetchInventoryMetrics(id);
   }
 
   function closeDetail() {
     setSelectedId(null);
     setDetail(null);
+    setInventoryMetrics(null);
     setStockAdjustments([]);
     setOpeningStockDialogOpen(false);
     setAdjustStockDialogOpen(false);
@@ -191,7 +213,7 @@ export default function ItemsPage() {
   function openOpeningStockDialog() {
     if (!detail?.inventoryTracked) return;
     setOpeningStockForm({
-      openingStock: String(Number(detail.stockOnHand || 0)),
+      openingStock: String(Number(inventoryMetrics?.openingStock ?? detail.stockOnHand ?? 0)),
       ratePerUnit: "0",
     });
     setOpeningStockDialogOpen(true);
@@ -405,6 +427,77 @@ export default function ItemsPage() {
     finally { setActioning(false); }
   }
 
+  async function handleBulkAction(action: ItemBulkAction) {
+    if (selectedItemIds.length === 0) {
+      toast.error("Select at least one item");
+      return;
+    }
+
+    setBulkActioning(true);
+    try {
+      const res = await itemApi.bulkAction({ action, itemIds: selectedItemIds });
+      const changedIds = new Set(res.data?.itemIds || selectedItemIds);
+
+      if (selectedId && changedIds.has(selectedId) && action === "delete") {
+        closeDetail();
+      }
+
+      setSelectedItemIds([]);
+      setBulkDeleteDialogOpen(false);
+      await fetchItems();
+
+      if (action === "activate") {
+        toast.success(`${res.data.modifiedCount} item(s) marked as active`);
+      } else if (action === "deactivate") {
+        toast.success(`${res.data.modifiedCount} item(s) marked as inactive`);
+      } else {
+        toast.success(`${res.data.modifiedCount} item(s) deleted`);
+      }
+    } catch (e) {
+      toast.error((e as Error).message ?? "Bulk action failed");
+    } finally {
+      setBulkActioning(false);
+    }
+  }
+
+  function toggleItemSelection(itemId: string, checked: boolean) {
+    setSelectedItemIds((prev) => {
+      if (checked) {
+        if (prev.includes(itemId)) return prev;
+        return [...prev, itemId];
+      }
+      return prev.filter((id) => id !== itemId);
+    });
+  }
+
+  function toggleSelectAllFiltered(checked: boolean, filteredIds: string[]) {
+    setSelectedItemIds((prev) => {
+      const filteredSet = new Set(filteredIds);
+      if (checked) {
+        const merged = new Set([...prev, ...filteredIds]);
+        return Array.from(merged);
+      }
+      return prev.filter((id) => !filteredSet.has(id));
+    });
+  }
+
+  function handleNewTransaction(type: "quote" | "salesOrder" | "invoice" | "purchaseOrder" | "bill") {
+    if (selectedItemIds.length === 0) {
+      toast.error("Select at least one item");
+      return;
+    }
+
+    const itemIdsParam = encodeURIComponent(selectedItemIds.join(","));
+    const routes: Record<typeof type, string> = {
+      quote: "/sales/quotes/new",
+      salesOrder: "/sales/orders/new",
+      invoice: "/sales/invoices/new",
+      purchaseOrder: "/purchases/orders/new",
+      bill: "/purchases/bills/new",
+    };
+    router.push(`${routes[type]}?itemIds=${itemIdsParam}`);
+  }
+
   // ─── Derived ─────────────────────────────────────────────────────────────
   const filtered = items.filter((i) => {
     const matchesType = typeFilter === "All" || i.itemType === typeFilter;
@@ -414,12 +507,46 @@ export default function ItemsPage() {
     return matchesType && matchesSearch;
   });
 
-  const openingStockValue = Number(detail?.stockOnHand || 0);
-  const stockOnHandValue = Number(detail?.stockOnHand || 0);
-  const committedStockValue = 0;
-  const availableForSaleValue = Math.max(stockOnHandValue - committedStockValue, 0);
-  const toBeInvoicedValue = 0;
-  const toBeBilledValue = 0;
+  useEffect(() => {
+    const visibleSet = new Set(filtered.map((item) => item._id));
+    setSelectedItemIds((prev) => {
+      const next = prev.filter((id) => visibleSet.has(id));
+      if (next.length === prev.length && next.every((id, idx) => id === prev[idx])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [filtered]);
+
+  const filteredIds = useMemo(() => filtered.map((item) => item._id), [filtered]);
+  const selectedFilteredCount = useMemo(
+    () => filteredIds.reduce((count, id) => count + (selectedItemIds.includes(id) ? 1 : 0), 0),
+    [filteredIds, selectedItemIds],
+  );
+  const allFilteredSelected = filteredIds.length > 0 && selectedFilteredCount === filteredIds.length;
+  const selectAllState: boolean | "indeterminate" = allFilteredSelected
+    ? true
+    : selectedFilteredCount > 0
+      ? "indeterminate"
+      : false;
+
+  const openingStockValue = Number(inventoryMetrics?.openingStock ?? detail?.stockOnHand ?? 0);
+  const stockOnHandValue = Number(inventoryMetrics?.accountingStock.stockOnHand ?? detail?.stockOnHand ?? 0);
+  const committedStockValue = Number(inventoryMetrics?.accountingStock.committedStock ?? 0);
+  const availableForSaleValue = Number(
+    inventoryMetrics?.accountingStock.availableForSale ?? Math.max(stockOnHandValue - committedStockValue, 0),
+  );
+  const physicalStockOnHandValue = Number(inventoryMetrics?.physicalStock.stockOnHand ?? stockOnHandValue);
+  const physicalCommittedStockValue = Number(inventoryMetrics?.physicalStock.committedStock ?? committedStockValue);
+  const physicalAvailableForSaleValue = Number(
+    inventoryMetrics?.physicalStock.availableForSale ?? availableForSaleValue,
+  );
+  const toBeShippedValue = Number(inventoryMetrics?.fulfillment.toBeShipped ?? 0);
+  const toBeReceivedValue = Number(inventoryMetrics?.fulfillment.toBeReceived ?? 0);
+  const toBeInvoicedValue = Number(inventoryMetrics?.fulfillment.toBeInvoiced ?? 0);
+  const toBeBilledValue = Number(inventoryMetrics?.fulfillment.toBeBilled ?? 0);
+  const salesSummaryPoints = inventoryMetrics?.salesSummary.points ?? [];
+  const totalSalesAmount = Number(inventoryMetrics?.salesSummary.totalAmount ?? 0);
 
   const quantityAdjustedPreview = Number(adjustStockForm.quantityAdjusted || 0);
   const newQuantityOnHandPreview = useMemo(() => {
@@ -544,53 +671,143 @@ export default function ItemsPage() {
                 )}
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="w-[220px] font-semibold text-xs uppercase tracking-wide">Name</TableHead>
-                    <TableHead className="font-semibold text-xs uppercase tracking-wide">Purchase Description</TableHead>
-                    <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Purchase Rate</TableHead>
-                    <TableHead className="font-semibold text-xs uppercase tracking-wide">Description</TableHead>
-                    <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Rate</TableHead>
-                    <TableHead className="font-semibold text-xs uppercase tracking-wide">Usage Unit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((item) => (
-                    <TableRow
-                      key={item._id}
-                      className="cursor-pointer hover:bg-muted/30"
-                      onClick={() => selectItem(item._id)}
-                    >
-                      <TableCell>
-                        <span className="text-sm font-medium text-primary hover:underline">
-                          {item.name}
-                        </span>
-                        {!item.isActive && (
-                          <Badge variant="secondary" className="ml-2 text-[10px] h-4 px-1">Inactive</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                        {item.purchaseDescription || "—"}
-                      </TableCell>
-                      <TableCell className="text-sm text-right tabular-nums">
-                        {item.costPrice != null ? `₹${Number(item.costPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                        {item.sellingDescription || "—"}
-                      </TableCell>
-                      <TableCell className="text-sm text-right tabular-nums">
-                        {item.sellingPrice != null ? `₹${Number(item.sellingPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {typeof item.unit === "object" && item.unit
-                          ? (item.unit as { abbreviation: string }).abbreviation
-                          : item.unit || "—"}
-                      </TableCell>
+              <div className="space-y-0">
+                <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8" disabled={selectedItemIds.length === 0 || bulkActioning}>
+                        Bulk Update
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-44">
+                      <DropdownMenuItem disabled={bulkActioning} onClick={() => handleBulkAction("activate")}>Mark as Active</DropdownMenuItem>
+                      <DropdownMenuItem disabled={bulkActioning} onClick={() => handleBulkAction("deactivate")}>Mark as Inactive</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        disabled={bulkActioning}
+                        onClick={() => setBulkDeleteDialogOpen(true)}
+                      >
+                        Delete Selected
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8" disabled={selectedItemIds.length === 0 || bulkActioning}>
+                        New Transaction
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-48">
+                      <DropdownMenuItem onClick={() => handleNewTransaction("quote")}>Quote</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleNewTransaction("salesOrder")}>Sales Order</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleNewTransaction("invoice")}>Invoice</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleNewTransaction("purchaseOrder")}>Purchase Order</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleNewTransaction("bill")}>Bill</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    disabled={selectedItemIds.length === 0 || bulkActioning}
+                    onClick={() => handleBulkAction("activate")}
+                  >
+                    Mark as Active
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    disabled={selectedItemIds.length === 0 || bulkActioning}
+                    onClick={() => handleBulkAction("deactivate")}
+                  >
+                    Mark as Inactive
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-8"
+                    disabled={selectedItemIds.length === 0 || bulkActioning}
+                    onClick={() => setBulkDeleteDialogOpen(true)}
+                  >
+                    Delete
+                  </Button>
+
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {selectedItemIds.length} selected
+                  </span>
+                </div>
+
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={selectAllState}
+                          onCheckedChange={(checked) => toggleSelectAllFiltered(!!checked, filteredIds)}
+                          aria-label="Select all filtered items"
+                        />
+                      </TableHead>
+                      <TableHead className="w-[220px] font-semibold text-xs uppercase tracking-wide">Name</TableHead>
+                      <TableHead className="font-semibold text-xs uppercase tracking-wide">Purchase Description</TableHead>
+                      <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Purchase Rate</TableHead>
+                      <TableHead className="font-semibold text-xs uppercase tracking-wide">Description</TableHead>
+                      <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Rate</TableHead>
+                      <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Stock On Hand</TableHead>
+                      <TableHead className="font-semibold text-xs uppercase tracking-wide">HSN/SAC</TableHead>
+                      <TableHead className="font-semibold text-xs uppercase tracking-wide">Usage Unit</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((item) => (
+                      <TableRow
+                        key={item._id}
+                        className="cursor-pointer hover:bg-muted/30"
+                        onClick={() => selectItem(item._id)}
+                      >
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedItemIds.includes(item._id)}
+                            onCheckedChange={(checked) => toggleItemSelection(item._id, !!checked)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Select ${item.name}`}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm font-medium text-primary hover:underline">
+                            {item.name}
+                          </span>
+                          {!item.isActive && (
+                            <Badge variant="secondary" className="ml-2 text-[10px] h-4 px-1">Inactive</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                          {item.purchaseDescription || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {item.costPrice != null ? `₹${Number(item.costPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                          {item.sellingDescription || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {item.sellingPrice != null ? `₹${Number(item.sellingPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">{formatQuantity(item.stockOnHand)}</TableCell>
+                        <TableCell className="text-sm">{item.hsnSacCode || "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          {typeof item.unit === "object" && item.unit
+                            ? (item.unit as { abbreviation: string }).abbreviation
+                            : item.unit || "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </div>
         ) : (
@@ -704,8 +921,9 @@ export default function ItemsPage() {
                   {/* Tab content */}
                   <div className="flex-1 overflow-y-auto px-6 py-5">
                     {activeTab === "overview" && (
-                      <div className={`grid grid-cols-1 gap-8 ${detail.inventoryTracked ? "xl:grid-cols-[minmax(0,1fr)_320px]" : ""}`}>
-                        <div className="space-y-5">
+                      <div className="space-y-6">
+                        <div className={`grid grid-cols-1 gap-8 ${detail.inventoryTracked ? "xl:grid-cols-[minmax(0,1fr)_320px]" : ""}`}>
+                          <div className="space-y-5">
                           <div className="space-y-3">
                             <DetailRow label="Item Type" value={detail.itemType} />
                             <DetailRow label="Item Mode" value={detail.itemMode === "Variants" ? "Contains Variants" : "Single Item"} />
@@ -757,7 +975,7 @@ export default function ItemsPage() {
                               <Separator />
                               <div className="space-y-1">
                                 <p className="text-sm font-semibold mb-3">Inventory Information</p>
-                                <DetailRow label="Stock On Hand" value={formatQuantity(detail.stockOnHand)} />
+                                <DetailRow label="Stock On Hand" value={formatQuantity(stockOnHandValue)} />
                                 <DetailRow label="Average Cost" value={formatCurrency(detail.averageCost)} />
                                 <DetailRow label="Inventory Value" value={formatCurrency(detail.inventoryValue)} />
                                 <DetailRow label="Reorder Point" value={detail.reorderPoint != null ? formatQuantity(detail.reorderPoint) : "—"} />
@@ -794,8 +1012,8 @@ export default function ItemsPage() {
                           )}
                         </div>
 
-                        {detail.inventoryTracked ? (
-                          <div className="space-y-3">
+                          {detail.inventoryTracked ? (
+                            <div className="space-y-3">
                             <div className="rounded-lg border p-4">
                               <div className="flex items-start justify-between pb-3">
                                 <StockMetric
@@ -803,9 +1021,13 @@ export default function ItemsPage() {
                                   value={formatQuantity(openingStockValue)}
                                   unit={unitDisplay(detail.unit as PopulatedUnit | string | null)}
                                 />
-                                <Button variant="link" size="sm" className="h-auto p-0" onClick={openOpeningStockDialog}>Edit</Button>
+                                <div className="flex items-center gap-3">
+                                  {metricsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                                  <Button variant="link" size="sm" className="h-auto p-0" onClick={openOpeningStockDialog}>Edit</Button>
+                                </div>
                               </div>
                               <div className="space-y-3 border-t pt-3">
+                                <p className="text-sm font-medium">Accounting Stock</p>
                                 <StockMetric
                                   label="Stock on Hand"
                                   value={formatQuantity(stockOnHandValue)}
@@ -822,9 +1044,37 @@ export default function ItemsPage() {
                                   unit={unitDisplay(detail.unit as PopulatedUnit | string | null)}
                                 />
                               </div>
+                              <div className="mt-3 space-y-3 border-t pt-3">
+                                <p className="text-sm font-medium">Physical Stock</p>
+                                <StockMetric
+                                  label="Stock on Hand"
+                                  value={formatQuantity(physicalStockOnHandValue)}
+                                  unit={unitDisplay(detail.unit as PopulatedUnit | string | null)}
+                                />
+                                <StockMetric
+                                  label="Committed Stock"
+                                  value={formatQuantity(physicalCommittedStockValue)}
+                                  unit={unitDisplay(detail.unit as PopulatedUnit | string | null)}
+                                />
+                                <StockMetric
+                                  label="Available for Sale"
+                                  value={formatQuantity(physicalAvailableForSaleValue)}
+                                  unit={unitDisplay(detail.unit as PopulatedUnit | string | null)}
+                                />
+                              </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-lg border p-3">
+                                <p className="text-2xl font-semibold leading-none">{formatQuantity(toBeShippedValue)}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">Qty</p>
+                                <p className="mt-2 text-sm">To be Shipped</p>
+                              </div>
+                              <div className="rounded-lg border p-3">
+                                <p className="text-2xl font-semibold leading-none">{formatQuantity(toBeReceivedValue)}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">Qty</p>
+                                <p className="mt-2 text-sm">To be Received</p>
+                              </div>
                               <div className="rounded-lg border p-3">
                                 <p className="text-2xl font-semibold leading-none">{formatQuantity(toBeInvoicedValue)}</p>
                                 <p className="mt-1 text-xs text-muted-foreground">Qty</p>
@@ -850,7 +1100,61 @@ export default function ItemsPage() {
                               )}
                             </div>
 
-                            <Button variant="outline" className="w-full" onClick={() => router.push("/inventory/adjustments")}>View Inventory Adjustments</Button>
+                              <Button variant="outline" className="w-full" onClick={() => router.push("/inventory/adjustments")}>View Inventory Adjustments</Button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {detail.inventoryTracked ? (
+                          <div className="rounded-lg border p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-semibold">Sales Summary (This Month)</p>
+                              <p className="text-sm font-medium tabular-nums">Total Sales: {formatCurrency(totalSalesAmount)}</p>
+                            </div>
+                            <div className="mt-4 h-64">
+                              {salesSummaryPoints.some((row) => Number(row.amount || 0) > 0) ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <AreaChart data={salesSummaryPoints}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis
+                                      dataKey="date"
+                                      tickLine={false}
+                                      axisLine={false}
+                                      tickMargin={8}
+                                      minTickGap={24}
+                                      tickFormatter={(value: string) =>
+                                        new Date(`${value}T00:00:00Z`).toLocaleDateString("en-IN", {
+                                          day: "2-digit",
+                                          month: "short",
+                                        })
+                                      }
+                                    />
+                                    <Tooltip
+                                      formatter={(value: number | string) => formatCurrency(value)}
+                                      labelFormatter={(value: string) =>
+                                        new Date(`${value}T00:00:00Z`).toLocaleDateString("en-IN", {
+                                          day: "2-digit",
+                                          month: "short",
+                                          year: "numeric",
+                                        })
+                                      }
+                                    />
+                                    <Area
+                                      type="monotone"
+                                      dataKey="amount"
+                                      stroke="hsl(var(--primary))"
+                                      fill="hsl(var(--primary))"
+                                      fillOpacity={0.2}
+                                      strokeWidth={2}
+                                    />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              ) : (
+                                <div className="flex h-full items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+                                  No sales data found for this month.
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -1126,6 +1430,30 @@ export default function ItemsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedItemIds.length} selected item(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete selected items. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkActioning}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={bulkActioning || selectedItemIds.length === 0}
+              onClick={() => {
+                void handleBulkAction("delete");
+              }}
+            >
+              {bulkActioning ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Delete Selected
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Delete confirmation ── */}
       <AlertDialog open={!!toDelete} onOpenChange={(open) => { if (!open) setToDelete(null); }}>

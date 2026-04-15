@@ -59,6 +59,14 @@ const statusColor: Record<PurchaseOrderStatus, string> = {
   Canceled: "text-red-600",
 };
 
+const statusBadge: Record<PurchaseOrderStatus, string> = {
+  Draft: "bg-slate-100 text-slate-700 border-slate-200",
+  Open: "bg-blue-50 text-blue-700 border-blue-200",
+  Billed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Closed: "bg-zinc-100 text-zinc-700 border-zinc-200",
+  Canceled: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
 function getName(v: any): string {
   if (!v) return "";
   if (typeof v === "object") return v.displayName || v.companyName || v.name || "";
@@ -185,6 +193,7 @@ function SendEmailView({
     try {
       const data = await apiFetch<{ success: boolean; message: string }>(`/purchase-orders/${order?._id}/send-email`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: [vendorEmail],
           subject,
@@ -792,7 +801,7 @@ function POPdfView({ order, orgName, orgAddress, orgPhone, orgEmail }: {
 
 // â”€â”€ Detail Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function OrderDetailPanel({
-  order, onClose, onStatusChange, onDelete, onEdit, onSendEmail, onPrint, onDownloadPdf, orgName, orgAddress, orgPhone, orgEmail, orgCurrency,
+  order, onClose, onStatusChange, onDelete, onEdit, onSendEmail, onPrint, onDownloadPdf, onConvertToBill, onReceiveOrder, orgName, orgAddress, orgPhone, orgEmail, orgCurrency,
 }: {
   order: PurchaseOrder;
   onClose: () => void;
@@ -802,6 +811,8 @@ function OrderDetailPanel({
   onSendEmail: (id: string) => void;
   onPrint: (id: string) => void;
   onDownloadPdf: (id: string) => Promise<void>;
+  onConvertToBill: (order: PurchaseOrder) => void;
+  onReceiveOrder: (order: PurchaseOrder) => void;
   orgName: string;
   orgAddress: string;
   orgPhone: string;
@@ -821,6 +832,35 @@ function OrderDetailPanel({
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState<any[]>([]);
+  const nonHeaderItems = order.lineItems.filter((li) => !li.isHeader);
+
+  const statusNoticeByState: Record<PurchaseOrderStatus, { label: string; message: string; tone: string }> = {
+    Draft: {
+      label: "Draft",
+      message: "Send this purchase order to your vendor or mark it as issued when the details are finalized.",
+      tone: "bg-amber-50 border-amber-200 text-amber-900",
+    },
+    Open: {
+      label: "Issued",
+      message: "This purchase order is active. Convert it to a bill once goods or services are received.",
+      tone: "bg-blue-50 border-blue-200 text-blue-900",
+    },
+    Billed: {
+      label: "Billed",
+      message: "This purchase order has already been converted to a bill and is now linked to payables.",
+      tone: "bg-emerald-50 border-emerald-200 text-emerald-900",
+    },
+    Closed: {
+      label: "Closed",
+      message: "This purchase order is completed and marked as received.",
+      tone: "bg-zinc-100 border-zinc-200 text-zinc-800",
+    },
+    Canceled: {
+      label: "Canceled",
+      message: "This purchase order has been canceled. You can clone it to create a fresh one.",
+      tone: "bg-rose-50 border-rose-200 text-rose-900",
+    },
+  };
 
   useEffect(() => {
     if (order.comments) {
@@ -915,13 +955,8 @@ function OrderDetailPanel({
     } catch { toast.error("Failed to update status"); } finally { setUpdatingStatus(false); }
   }
 
-  async function handleConvertToBill() {
-    setUpdatingStatus(true);
-    try {
-      await purchaseOrderApi.convertToBill(order._id);
-      onStatusChange(order._id, "Billed");
-      toast.success("Purchase order converted to bill");
-    } catch { toast.error("Failed to convert to bill"); } finally { setUpdatingStatus(false); }
+  function handleConvertToBill() {
+    onConvertToBill(order);
   }
 
   async function handleClone() {
@@ -933,13 +968,8 @@ function OrderDetailPanel({
     } catch { toast.error("Failed to clone purchase order"); } finally { setUpdatingStatus(false); }
   }
 
-  async function handleMarkReceived() {
-    setUpdatingStatus(true);
-    try {
-      await purchaseOrderApi.update(order._id, { status: "Closed" });
-      onStatusChange(order._id, "Closed");
-      toast.success("Marked as Received");
-    } catch { toast.error("Failed"); } finally { setUpdatingStatus(false); }
+  function handleMarkReceived() {
+    onReceiveOrder(order);
   }
 
   async function handleMarkCanceled() {
@@ -1030,7 +1060,7 @@ function OrderDetailPanel({
               <PackageCheck className="h-3.5 w-3.5" /> Convert to Bill
             </button>
           ) : (
-            <div className="px-3 py-1.5 text-xs text-blue-600 font-bold uppercase tracking-wider bg-blue-50 mx-1 rounded">
+            <div className={cn("px-3 py-1.5 text-xs font-bold uppercase tracking-wider border mx-1 rounded", statusBadge[order.status])}>
               {order.status}
             </div>
           )}
@@ -1323,26 +1353,22 @@ function OrderDetailPanel({
         </Sheet>
       </div>
 
-      {/* What's next banner */}
-      {order.status === "Draft" && (
-        <div className="flex items-center gap-3 px-5 py-3 border-b bg-white shrink-0">
-          <Sparkles className="h-4 w-4 text-primary shrink-0" />
-          <span className="text-sm text-muted-foreground">
-            <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Send this purchase order to your vendor or mark it as issued.
-          </span>
-          <Button size="sm" className="ml-auto shrink-0" onClick={() => onSendEmail(order._id)}>Send Purchase Order</Button>
-          <Button size="sm" variant="outline" className="shrink-0" onClick={handleMarkAsIssued} disabled={updatingStatus}>Mark as Issued</Button>
-        </div>
-      )}
-      {order.status === "Open" && (
-        <div className="flex items-center gap-3 px-5 py-3 border-b bg-white shrink-0">
-          <PackageCheck className="h-4 w-4 text-blue-600 shrink-0" />
-          <span className="text-sm text-muted-foreground">
-            <strong className="text-foreground uppercase tracking-tight font-bold mr-1">WHAT&apos;S NEXT?</strong> Convert this to a bill to...
-          </span>
+      <div className={cn("flex items-center gap-3 px-5 py-3 border-b shrink-0", statusNoticeByState[order.status].tone)}>
+        <Sparkles className="h-4 w-4 shrink-0" />
+        <span className="text-sm">
+          <strong className="mr-1 uppercase tracking-tight">{statusNoticeByState[order.status].label}:</strong>
+          {statusNoticeByState[order.status].message}
+        </span>
+        {order.status === "Draft" && (
+          <>
+            <Button size="sm" className="ml-auto shrink-0" onClick={() => onSendEmail(order._id)}>Send Purchase Order</Button>
+            <Button size="sm" variant="outline" className="shrink-0" onClick={handleMarkAsIssued} disabled={updatingStatus}>Mark as Issued</Button>
+          </>
+        )}
+        {order.status === "Open" && (
           <Button size="sm" className="ml-auto shrink-0 bg-blue-500 hover:bg-blue-600" onClick={handleConvertToBill}>Convert to Bill</Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <ExpectedDeliveryDialog 
         open={showDeliveryDialog} 
@@ -1378,11 +1404,16 @@ function OrderDetailPanel({
                     Loading PDF preview...
                   </div>
                 ) : pdfPreviewUrl ? (
-                  <embed
-                    src={pdfPreviewUrl}
-                    type="application/pdf"
-                    className="w-full h-[1100px]"
-                  />
+                  <div>
+                    <div className="flex items-center justify-end gap-2 px-3 py-2 border-b bg-muted/20">
+                      <a href={pdfPreviewUrl} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">Open full preview</a>
+                    </div>
+                    <embed
+                      src={pdfPreviewUrl}
+                      type="application/pdf"
+                      className="w-full h-[1100px]"
+                    />
+                  </div>
                 ) : (
                   <div className="h-[420px] flex items-center justify-center text-sm text-muted-foreground">
                     Unable to load PDF preview.
@@ -1392,13 +1423,52 @@ function OrderDetailPanel({
             </div>
           ) : (
             <div className="px-6 py-4 space-y-4">
-              {/* Simple text view */}
-              <div className="bg-white rounded border p-5 text-sm space-y-2">
-                <div className="grid grid-cols-2 gap-4">
-                  <div><span className="text-muted-foreground">PO#</span> <span className="font-medium ml-2">{order.purchaseOrderNumber}</span></div>
-                  <div><span className="text-muted-foreground">Date</span> <span className="ml-2">{new Date(order.purchaseOrderDate).toLocaleDateString("en-IN")}</span></div>
-                  <div><span className="text-muted-foreground">Vendor</span> <span className="ml-2">{getName(order.vendorId)}</span></div>
-                  <div><span className="text-muted-foreground">Status</span> <span className={cn("ml-2 font-medium", statusColor[order.status])}>{order.status}</span></div>
+              <div className="bg-white rounded border p-5 text-sm space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="text-lg font-semibold">Purchase Order {order.purchaseOrderNumber}</div>
+                    <div className="text-xs text-muted-foreground">Vendor: {getName(order.vendorId) || "-"}</div>
+                  </div>
+                  <div className={cn("px-2.5 py-1 rounded border text-xs font-semibold uppercase", statusBadge[order.status])}>
+                    {order.status}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div className="rounded border p-2.5"><div className="text-muted-foreground">PO Date</div><div className="font-medium mt-1">{new Date(order.purchaseOrderDate).toLocaleDateString("en-IN")}</div></div>
+                  <div className="rounded border p-2.5"><div className="text-muted-foreground">Delivery Date</div><div className="font-medium mt-1">{order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString("en-IN") : "-"}</div></div>
+                  <div className="rounded border p-2.5"><div className="text-muted-foreground">Reference</div><div className="font-medium mt-1">{order.referenceNumber || "-"}</div></div>
+                  <div className="rounded border p-2.5"><div className="text-muted-foreground">Total</div><div className="font-semibold mt-1">{orgCurrency === "INR" ? "₹" : orgCurrency}{fmtCur(order.total)}</div></div>
+                </div>
+
+                <div className="border rounded overflow-hidden">
+                  <div className="grid text-[11px] uppercase tracking-wide text-muted-foreground font-medium bg-muted/20" style={{ gridTemplateColumns: "1fr 100px 120px 120px" }}>
+                    <div className="px-3 py-2">Item</div>
+                    <div className="px-3 py-2 text-right">Qty</div>
+                    <div className="px-3 py-2 text-right">Rate</div>
+                    <div className="px-3 py-2 text-right">Amount</div>
+                  </div>
+                  {nonHeaderItems.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-muted-foreground">No line items added.</div>
+                  ) : nonHeaderItems.map((li, idx) => (
+                    <div key={`${li._id || idx}`} className="grid border-t text-sm" style={{ gridTemplateColumns: "1fr 100px 120px 120px" }}>
+                      <div className="px-3 py-2.5">
+                        <div className="font-medium">{li.name}</div>
+                        {li.description && <div className="text-xs text-muted-foreground mt-0.5">{li.description}</div>}
+                      </div>
+                      <div className="px-3 py-2.5 text-right">{li.quantity}</div>
+                      <div className="px-3 py-2.5 text-right">{fmtCur(li.rate)}</div>
+                      <div className="px-3 py-2.5 text-right font-medium">{fmtCur(li.amount)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="ml-auto w-full max-w-[320px] text-sm space-y-1.5">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Sub Total</span><span>{fmtCur(order.subTotal)}</span></div>
+                  {order.discountAmount > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>-{fmtCur(order.discountAmount)}</span></div>}
+                  {order.taxAmount > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{order.taxType}</span><span>-{fmtCur(order.taxAmount)}</span></div>}
+                  {order.adjustmentAmount !== 0 && <div className="flex justify-between"><span className="text-muted-foreground">{order.adjustmentLabel || "Adjustment"}</span><span>{fmtCur(order.adjustmentAmount)}</span></div>}
+                  <div className="flex justify-between border-t pt-2 font-semibold text-base"><span>Total</span><span>{orgCurrency === "INR" ? "₹" : orgCurrency}{fmtCur(order.total)}</span></div>
                 </div>
               </div>
             </div>
@@ -1518,6 +1588,13 @@ export default function PurchaseOrdersPage() {
 
   function handleStatusChange(id: string, status: PurchaseOrderStatus) {
     setOrders((prev) => prev.map((o) => o._id === id ? { ...o, status } : o));
+    purchaseOrderApi.getOne(id)
+      .then((res) => {
+        setOrders((prev) => prev.map((o) => (o._id === id ? res.data : o)));
+      })
+      .catch(() => {
+        // no-op: optimistic status update is already applied
+      });
   }
 
   function handleSendEmail(id: string) {
@@ -1846,6 +1923,14 @@ export default function PurchaseOrdersPage() {
                   onSendEmail={handleSendEmail}
                   onPrint={handlePrint}
                   onDownloadPdf={handleDownloadPdf}
+                  onConvertToBill={(order) => {
+                    const vendor = typeof order.vendorId === "object" ? (order.vendorId as any)?._id : order.vendorId;
+                    const nextUrl = `/purchases/bills/new?vendorId=${encodeURIComponent(vendor || "")}&purchaseOrderId=${encodeURIComponent(order._id)}&autoImport=1`;
+                    router.push(nextUrl);
+                  }}
+                  onReceiveOrder={(order) => {
+                    router.push(`/purchases/receives/new?purchaseOrderId=${encodeURIComponent(order._id)}`);
+                  }}
                   orgName={orgName}
                   orgAddress={orgAddress}
                   orgPhone={orgPhone}

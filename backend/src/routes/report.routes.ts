@@ -18,6 +18,19 @@ import {
   expenseDetails,
   expensesByCategory,
   purchasesByItem,
+  inventorySummary,
+  committedStockDetails,
+  inventoryAgingSummary,
+  stockSummary,
+  inventoryAdjustmentSummary,
+  inventoryAdjustmentDetails,
+  packingHistory,
+  shipmentDetails,
+  inventoryTurnoverByQuantity,
+  inventoryValuationSummary,
+  fifoCostLotTracking,
+  abcClassification,
+  inventoryTurnoverByAmount,
   salesByCustomer,
   salesByItem,
   paymentsReceivedReport,
@@ -53,6 +66,23 @@ router.get("/receivable-summary", receivableSummary);
 router.get("/expense-details", expenseDetails);
 router.get("/expenses-by-category", expensesByCategory);
 router.get("/purchases-by-item", purchasesByItem);
+
+// Inventory
+router.get("/inventory-summary", inventorySummary);
+router.get("/committed-stock-details", committedStockDetails);
+router.get("/inventory-aging-summary", inventoryAgingSummary);
+router.get("/stock-summary", stockSummary);
+router.get("/inventory-adjustment-summary", inventoryAdjustmentSummary);
+router.get("/inventory-adjustment-details", inventoryAdjustmentDetails);
+router.get("/packing-history", packingHistory);
+router.get("/shipment-details", shipmentDetails);
+router.get("/inventory-turnover-by-quantity", inventoryTurnoverByQuantity);
+
+// Inventory Valuation
+router.get("/inventory-valuation-summary", inventoryValuationSummary);
+router.get("/fifo-cost-lot-tracking", fifoCostLotTracking);
+router.get("/abc-classification", abcClassification);
+router.get("/inventory-turnover-by-amount", inventoryTurnoverByAmount);
 
 // Sales
 router.get("/sales-by-customer", salesByCustomer);

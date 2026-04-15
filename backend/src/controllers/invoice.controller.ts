@@ -1,6 +1,8 @@
 import { Response } from "express";
 import Invoice from "../models/invoice.model";
 import Contact from "../models/contact.model";
+import SalesOrder from "../models/sales-order.model";
+import DeliveryChallan from "../models/delivery-challan.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -47,6 +49,98 @@ function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
   return id;
+}
+
+function normalizeOrderNumber(value: unknown): string {
+  return String(value || "").trim();
+}
+
+async function syncSalesOrderStatusByOrderNumber(params: {
+  organizationId: any;
+  orderNumber: string;
+  req: AuthenticatedRequest;
+}) {
+  const orderNumber = normalizeOrderNumber(params.orderNumber);
+  if (!orderNumber) return;
+
+  const order = await SalesOrder.findOne({
+    organizationId: params.organizationId,
+    salesOrderNumber: orderNumber,
+    isDeleted: false,
+  } as any);
+
+  if (!order) return;
+
+  const activeInvoiceCount = await Invoice.countDocuments({
+    organizationId: params.organizationId,
+    orderNumber,
+    isDeleted: false,
+    status: { $ne: "Void" },
+  } as any);
+
+  const current = String((order as any).status || "");
+  let target: "APPROVED" | "INVOICED" | "PARTIALLY_INVOICED" | null = null;
+
+  if (activeInvoiceCount <= 0) {
+    if (["INVOICED", "PARTIALLY_INVOICED"].includes(current)) {
+      target = "APPROVED";
+    }
+  } else if (activeInvoiceCount === 1) {
+    target = "INVOICED";
+  } else {
+    target = "PARTIALLY_INVOICED";
+  }
+
+  if (!target || current === target) return;
+
+  (order as any).status = target;
+  attachUser(order as any, params.req);
+  await order.save();
+}
+
+async function syncDeliveryChallanLinkForInvoice(params: {
+  invoice: any;
+  req: AuthenticatedRequest;
+}) {
+  const invoiceId = String(params.invoice?._id || "").trim();
+  if (!invoiceId) return;
+
+  const linkedChallans = await DeliveryChallan.find({
+    organizationId: params.invoice.organizationId,
+    invoiceId: params.invoice._id,
+    isDeleted: false,
+  } as any);
+
+  for (const linked of linkedChallans) {
+    (linked as any).invoiceStatus = "NOT INVOICED";
+    (linked as any).invoiceId = null;
+    attachUser(linked as any, params.req);
+    await linked.save();
+  }
+
+  if (params.invoice.isDeleted || String(params.invoice.status || "") === "Void") {
+    return;
+  }
+
+  const orderNumber = normalizeOrderNumber(params.invoice.orderNumber);
+  if (!orderNumber) return;
+
+  const challan = await DeliveryChallan.findOne({
+    organizationId: params.invoice.organizationId,
+    isDeleted: false,
+    invoiceStatus: "NOT INVOICED",
+    $or: [
+      { challanNumber: orderNumber },
+      { salesOrderNumber: orderNumber },
+    ],
+  } as any).sort({ challanDate: -1, createdAt: -1 });
+
+  if (!challan) return;
+
+  (challan as any).invoiceStatus = "INVOICED";
+  (challan as any).invoiceId = params.invoice._id;
+  attachUser(challan as any, params.req);
+  await challan.save();
 }
 
 async function normalizeItems(
@@ -562,6 +656,17 @@ export const create = asyncHandler(
       req,
     });
 
+    await syncSalesOrderStatusByOrderNumber({
+      organizationId: oid,
+      orderNumber: String((invoice as any).orderNumber || ""),
+      req,
+    });
+
+    await syncDeliveryChallanLinkForInvoice({
+      invoice,
+      req,
+    });
+
     res.status(201).json({ success: true, data: invoice });
   },
 );
@@ -576,6 +681,7 @@ export const update = asyncHandler(
     if (!invoice) throw new NotFoundError("Invoice");
 
     const previousCustomerId = String(invoice.customerId || "");
+    const previousOrderNumber = String((invoice as any).orderNumber || "");
     const previousPosted = isPostedInvoiceStatus(String(invoice.status || ""));
     const previousStockDeltas = previousPosted
       ? collectInvoiceStockDeltas(invoice.items as any[])
@@ -713,6 +819,26 @@ export const update = asyncHandler(
       });
     }
 
+    const currentOrderNumber = String((invoice as any).orderNumber || "");
+    if (previousOrderNumber && previousOrderNumber !== currentOrderNumber) {
+      await syncSalesOrderStatusByOrderNumber({
+        organizationId: invoice.organizationId as any,
+        orderNumber: previousOrderNumber,
+        req,
+      });
+    }
+
+    await syncSalesOrderStatusByOrderNumber({
+      organizationId: invoice.organizationId as any,
+      orderNumber: currentOrderNumber,
+      req,
+    });
+
+    await syncDeliveryChallanLinkForInvoice({
+      invoice,
+      req,
+    });
+
     res.json({ success: true, data: invoice });
   },
 );
@@ -751,6 +877,17 @@ export const remove = asyncHandler(
     await recomputeContactOutstanding({
       organizationId: invoice.organizationId as any,
       contactId: invoice.customerId as any,
+      req,
+    });
+
+    await syncSalesOrderStatusByOrderNumber({
+      organizationId: invoice.organizationId as any,
+      orderNumber: String((invoice as any).orderNumber || ""),
+      req,
+    });
+
+    await syncDeliveryChallanLinkForInvoice({
+      invoice,
       req,
     });
 
@@ -1070,6 +1207,17 @@ export const voidInvoice = asyncHandler(
     await recomputeContactOutstanding({
       organizationId: invoice.organizationId as any,
       contactId: invoice.customerId as any,
+      req,
+    });
+
+    await syncSalesOrderStatusByOrderNumber({
+      organizationId: invoice.organizationId as any,
+      orderNumber: String((invoice as any).orderNumber || ""),
+      req,
+    });
+
+    await syncDeliveryChallanLinkForInvoice({
+      invoice,
       req,
     });
 

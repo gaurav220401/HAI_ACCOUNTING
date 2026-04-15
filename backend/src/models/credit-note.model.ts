@@ -33,6 +33,7 @@ export interface ICreditNote extends Document {
   referenceNumber?: string;
   reason?: string;
   referenceInvoiceId?: Types.ObjectId | null;
+  referenceOrderNumber?: string;
   accountsReceivableId?: Types.ObjectId | null;
   salesPersonId?: Types.ObjectId | null;
   subject?: string;
@@ -98,6 +99,7 @@ const creditNoteSchema = new Schema<ICreditNote>(
     referenceNumber: { type: String, default: "" },
     reason: { type: String, default: "" },
     referenceInvoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", default: null },
+    referenceOrderNumber: { type: String, default: "" },
     accountsReceivableId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
     salesPersonId: { type: Schema.Types.ObjectId, ref: "SalesPerson", default: null },
     subject: { type: String, default: "" },

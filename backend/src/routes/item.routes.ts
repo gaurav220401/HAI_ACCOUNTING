@@ -2,6 +2,8 @@ import { Router } from "express";
 import { authenticate } from "../middlewares/auth";
 import {
   list, getOne, create, update, remove,
+  bulkAction,
+  getInventoryMetrics,
   listItemGroups, createItemGroup, updateItemGroup, deleteItemGroup,
   listUnits, createUnit, deleteUnit, seedUnits,
 } from "../controllers/item.controller";
@@ -24,6 +26,8 @@ router.delete("/units/:id", deleteUnit);
 // Items
 router.get("/", list);
 router.post("/", create);
+router.post("/bulk-actions", bulkAction);
+router.get("/:id/inventory-metrics", getInventoryMetrics);
 router.get("/:id", getOne);
 router.patch("/:id", update);
 router.delete("/:id", remove);

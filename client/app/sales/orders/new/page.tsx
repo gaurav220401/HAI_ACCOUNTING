@@ -32,7 +32,18 @@ import {
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
-import { salesOrderApi, type CreateSalesOrderInput } from "@/lib/api/sales-orders";
+import {
+  salesOrderApi,
+  type CreateSalesOrderInput,
+  type SalesOrderStatus,
+} from "@/lib/api/sales-orders";
+
+const EDITABLE_ORDER_STATUSES: SalesOrderStatus[] = [
+  "DRAFT",
+  "APPROVED",
+  "OVERDUE",
+  "CLOSED",
+];
 
 type LineItemUi = {
   id: string;
@@ -73,6 +84,7 @@ export default function NewSalesOrderPage() {
   const [expectedShipmentDate, setExpectedShipmentDate] = useState("");
   const [paymentTermsId, setPaymentTermsId] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
+  const [status, setStatus] = useState<SalesOrderStatus>("DRAFT");
 
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
@@ -94,6 +106,11 @@ export default function NewSalesOrderPage() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>("");
+
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item._id, item])),
+    [items],
+  );
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -209,7 +226,7 @@ export default function NewSalesOrderPage() {
       adjustment: totals.adj,
       notes: notes.trim() || undefined,
       terms: terms.trim() || undefined,
-      status: "DRAFT",
+      status,
     };
 
     setSaving(true);
@@ -366,6 +383,24 @@ export default function NewSalesOrderPage() {
                   <Input value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="(optional)" />
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                <Label className="md:col-span-4">Status</Label>
+                <div className="md:col-span-8">
+                  <Select value={status} onValueChange={(v) => setStatus(v as SalesOrderStatus)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EDITABLE_ORDER_STATUSES.map((st) => (
+                        <SelectItem key={st} value={st}>
+                          {st}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
             <div className="mt-8">
@@ -383,77 +418,115 @@ export default function NewSalesOrderPage() {
                     <TableRow>
                       <TableHead>Item Details</TableHead>
                       <TableHead className="w-24 text-right">Quantity</TableHead>
+                      <TableHead className="w-28 text-right">Stock</TableHead>
                       <TableHead className="w-28 text-right">Rate</TableHead>
-                      <TableHead className="w-28 text-right">Discount</TableHead>
+                      <TableHead className="w-28 text-right">Discount (Amt)</TableHead>
                       <TableHead className="w-28 text-right">Amount</TableHead>
                       <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {lineItems.map((li) => (
-                      <TableRow key={li.id}>
-                        <TableCell>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <Select
-                              value={li.itemId}
-                              onValueChange={(v) => {
-                                const selected = items.find((it) => it._id === v);
-                                updateLine(li.id, {
-                                  itemId: v,
-                                  description: selected?.description || "",
-                                  rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
-                                });
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Type or click to select an item" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {items.map((it) => (
-                                  <SelectItem key={it._id} value={it._id}>
-                                    {it.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                    {lineItems.map((li) => {
+                      const selectedItem = itemsById.get(li.itemId);
+                      const quantity = Number(li.quantity) || 0;
+                      const stockOnHand =
+                        selectedItem?.inventoryTracked ?
+                          Number(selectedItem.stockOnHand || 0)
+                        : null;
+                      const exceedsStock =
+                        stockOnHand !== null && quantity > stockOnHand;
+
+                      return (
+                        <TableRow key={li.id}>
+                          <TableCell>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              <div className="space-y-2">
+                                <Select
+                                  value={li.itemId}
+                                  onValueChange={(v) => {
+                                    const selected = itemsById.get(v);
+                                    updateLine(li.id, {
+                                      itemId: v,
+                                      description: selected?.description || "",
+                                      rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
+                                    });
+                                  }}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Type or click to select an item" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {items.map((it) => (
+                                      <SelectItem key={it._id} value={it._id}>
+                                        <div className="flex items-center justify-between gap-3">
+                                          <span>{it.name}</span>
+                                          <span className="text-xs text-muted-foreground">
+                                            {it.inventoryTracked ?
+                                              `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
+                                            : "Non-stock"}
+                                          </span>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {selectedItem ?
+                                  <p className="text-xs text-muted-foreground">
+                                    {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                    {selectedItem.inventoryTracked ?
+                                      `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
+                                    : "Inventory not tracked"}
+                                  </p>
+                                : null}
+                              </div>
+                              <Input
+                                placeholder="Description"
+                                value={li.description}
+                                onChange={(e) => updateLine(li.id, { description: e.target.value })}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
                             <Input
-                              placeholder="Description"
-                              value={li.description}
-                              onChange={(e) => updateLine(li.id, { description: e.target.value })}
+                              value={li.quantity}
+                              onChange={(e) => updateLine(li.id, { quantity: e.target.value })}
+                              className="text-right"
                             />
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            value={li.quantity}
-                            onChange={(e) => updateLine(li.id, { quantity: e.target.value })}
-                            className="text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            value={li.rate}
-                            onChange={(e) => updateLine(li.id, { rate: e.target.value })}
-                            className="text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            value={li.discount}
-                            onChange={(e) => updateLine(li.id, { discount: e.target.value })}
-                            className="text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">
-                          {li.amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button type="button" variant="ghost" size="icon" onClick={() => removeLine(li.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right text-sm tabular-nums ${
+                              exceedsStock ? "text-destructive font-medium" : ""
+                            }`}
+                          >
+                            {stockOnHand === null ?
+                              "N/A"
+                            : Number(stockOnHand).toLocaleString("en-IN")}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              value={li.rate}
+                              onChange={(e) => updateLine(li.id, { rate: e.target.value })}
+                              className="text-right"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              value={li.discount}
+                              onChange={(e) => updateLine(li.id, { discount: e.target.value })}
+                              className="text-right"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right text-sm tabular-nums">
+                            {li.amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button type="button" variant="ghost" size="icon" onClick={() => removeLine(li.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

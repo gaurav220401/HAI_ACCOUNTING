@@ -75,6 +75,14 @@ const DEFAULT_TDS_TAXES: TdsTax[] = [
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (v: number) =>
   new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+const fmtQty = (v: number) =>
+  new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
+
+function itemUnitLabel(item?: Item | null): string {
+  if (!item?.unit) return "";
+  if (typeof item.unit === "string") return item.unit;
+  return (item.unit as any)?.abbreviation || "";
+}
 
 function getNameStr(v: any): string {
   if (!v) return "";
@@ -399,20 +407,34 @@ function BulkAddItemsDialog({ open, onClose, items, onAdd }: {
 // ─── Item selector popup ─────────────────────────────────────────────────────
 function ItemSelectorPopup({ items, onSelect }: { items: Item[]; onSelect: (item: Item) => void }) {
   const [q, setQ] = useState("");
-  const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
+  const query = q.trim().toLowerCase();
+  const filtered = items.filter((i) => {
+    const unit = itemUnitLabel(i).toLowerCase();
+    return i.name.toLowerCase().includes(query)
+      || (i.sku || "").toLowerCase().includes(query)
+      || unit.includes(query);
+  });
   return (
     <div className="w-full overflow-hidden">
       <div className="p-2 border-b">
         <Input className="h-7 text-xs" placeholder="Search items…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
       </div>
-      <div className="max-h-52 overflow-y-auto">
+      <div className="max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">No items found</p>
         ) : filtered.map((item) => (
-          <button key={item._id} type="button" className="w-full text-left px-3 py-2 hover:bg-muted/50 flex justify-between"
+          <button key={item._id} type="button" className="w-full text-left px-3 py-2 hover:bg-muted/50 flex items-start justify-between gap-3"
             onClick={() => onSelect(item)}>
-            <span className="text-sm">{item.name}</span>
-            <span className="text-xs text-muted-foreground">₹{new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.costPrice || 0)}</span>
+            <div className="min-w-0">
+              <div className="text-sm font-medium truncate">{item.name}</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">
+                {item.sku ? `SKU: ${item.sku} | ` : ""}
+                {item.inventoryTracked
+                  ? `Stock: ${fmtQty(item.stockOnHand)}${itemUnitLabel(item) ? ` ${itemUnitLabel(item)}` : ""}`
+                  : "Non-tracked item"}
+              </div>
+            </div>
+            <span className="text-xs text-muted-foreground shrink-0">₹{new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.costPrice || 0)}</span>
           </button>
         ))}
       </div>
@@ -1038,13 +1060,24 @@ export default function EditPurchaseOrderPage() {
                                       {row.itemName || "Type or click to select an item."}
                                     </button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
+                                  <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
                                     <ItemSelectorPopup items={items} onSelect={(item) => { handleSelectItem(row.id, item); setItemSelectorRow(null); }} />
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                                 <Textarea className="mt-1 text-xs text-muted-foreground resize-none border-0 shadow-none p-0 focus-visible:ring-0 min-h-0 h-auto bg-transparent"
                                   rows={1} placeholder="Add a description" value={row.description}
                                   onChange={(e) => updateRow(row.id, { description: e.target.value })} />
+                                {row.itemId && (() => {
+                                  const selectedItem = items.find((entry) => entry._id === row.itemId);
+                                  if (!selectedItem) return null;
+                                  return (
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                      {selectedItem.inventoryTracked
+                                        ? `Stock on Hand: ${fmtQty(selectedItem.stockOnHand)}${itemUnitLabel(selectedItem) ? ` ${itemUnitLabel(selectedItem)}` : ""}`
+                                        : "Non-tracked item"}
+                                    </p>
+                                  );
+                                })()}
                               </td>
                               <td className="px-3 py-2 align-top">
                                 <AccountDropdown value={row.accountId} onChange={(id, name) => updateRow(row.id, { accountId: id, accountName: name })}

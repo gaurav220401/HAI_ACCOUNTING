@@ -27,6 +27,7 @@ export interface IDeliveryChallanItem {
 export interface IDeliveryChallan extends Document {
   organizationId: Schema.Types.ObjectId;
   challanNumber: string;
+  salesOrderNumber?: string;
   referenceNumber?: string;
   customerId: Schema.Types.ObjectId;
   challanDate: Date;
@@ -77,6 +78,7 @@ const deliveryChallanSchema = new Schema<IDeliveryChallan>(
       index: true,
     },
     challanNumber: { type: String, required: true },
+    salesOrderNumber: { type: String, default: "" },
     referenceNumber: { type: String, default: "" },
     customerId: {
       type: Schema.Types.ObjectId,
@@ -137,6 +139,7 @@ deliveryChallanSchema.index(
   { organizationId: 1, challanNumber: 1 },
   { unique: true },
 );
+deliveryChallanSchema.index({ organizationId: 1, salesOrderNumber: 1 });
 deliveryChallanSchema.index({ organizationId: 1, customerId: 1 });
 deliveryChallanSchema.index({ organizationId: 1, status: 1 });
 
