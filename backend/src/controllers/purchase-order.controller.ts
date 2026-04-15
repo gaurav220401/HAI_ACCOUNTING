@@ -79,6 +79,19 @@ function parseStringArray(input: unknown): string[] {
   return [];
 }
 
+function parseUploadedAttachments(input: unknown): { filename: string; path: string }[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((att) => {
+      const filename = String((att as any)?.filename || "").trim();
+      const path = String((att as any)?.path || "").trim();
+      if (!filename || !path) return null;
+      return { filename, path };
+    })
+    .filter((att): att is { filename: string; path: string } => Boolean(att));
+}
+
 const fmtCur = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function toNum(val: unknown, fallback = 0): number {
@@ -408,6 +421,7 @@ export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequ
   const attachPurchaseOrderPdf: boolean =
     req.body.attachPurchaseOrderPdf === true ||
     req.body.attachPurchaseOrderPdf === "true";
+  const uploadedAttachments = parseUploadedAttachments(req.body.attachments);
 
   const vendor = po.vendorId as any;
   const vendorName =
@@ -484,13 +498,9 @@ export const sendPurchaseOrderEmail = asyncHandler(async (req: AuthenticatedRequ
     });
   }
 
-  // Add custom attachments from request
-  if (Array.isArray(req.body.attachments)) {
-    for (const att of req.body.attachments) {
-      attachments.push({
-        filename: att.filename,
-        path: att.path,
-      } as any);
+  if (uploadedAttachments.length > 0) {
+    for (const att of uploadedAttachments) {
+      attachments.push(att as any);
     }
   }
 

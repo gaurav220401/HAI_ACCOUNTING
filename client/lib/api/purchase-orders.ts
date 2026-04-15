@@ -95,6 +95,10 @@ export interface SendPurchaseOrderEmailInput {
   subject?: string;
   body?: string;
   attachPurchaseOrderPdf?: boolean;
+  attachments?: {
+    filename: string;
+    path: string;
+  }[];
 }
 
 export const purchaseOrderApi = {
