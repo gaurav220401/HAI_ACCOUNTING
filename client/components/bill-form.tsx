@@ -938,6 +938,8 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   const searchParams = useSearchParams();
   const cloneId = searchParams.get("clone");
   const defaultVendorId = searchParams.get("vendorId");
+  const defaultPurchaseOrderId = searchParams.get("purchaseOrderId");
+  const shouldAutoImportFromPurchaseOrder = searchParams.get("autoImport") === "1";
   const [saving, setSaving] = useState(false);
   const [loadingClone, setLoadingClone] = useState(!!cloneId);
   
@@ -1372,6 +1374,80 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          setLinkedPurchaseOrderId("");
       }
    }, [orderNumber, openPurchaseOrders, linkedPurchaseOrderId]);
+
+   useEffect(() => {
+      if (mode !== "create") return;
+      if (!defaultPurchaseOrderId) return;
+      if (openPurchaseOrders.length === 0) return;
+
+      const matchedPo = openPurchaseOrders.find((po) => po._id === defaultPurchaseOrderId);
+      if (!matchedPo) return;
+
+      setLinkedPurchaseOrderId(matchedPo._id);
+      setOrderNumber(matchedPo.purchaseOrderNumber);
+      if (!referenceNumber.trim()) {
+         setReferenceNumber(matchedPo.purchaseOrderNumber);
+      }
+   }, [mode, defaultPurchaseOrderId, openPurchaseOrders, referenceNumber]);
+
+   useEffect(() => {
+      if (mode !== "create") return;
+      if (!defaultPurchaseOrderId || !shouldAutoImportFromPurchaseOrder) return;
+      if (!linkedPurchaseOrder || linkedPurchaseOrder._id !== defaultPurchaseOrderId) return;
+
+      const hasOnlyBlankRow = rows.length === 1 && !rows[0].isHeader && !rows[0].itemName && !rows[0].accountId && Number(rows[0].quantity) === 1 && Number(rows[0].rate) === 0;
+      if (!hasOnlyBlankRow) return;
+
+      const importedRows: LineRow[] = (linkedPurchaseOrder.lineItems || []).map((line: any) => {
+         if (line?.isHeader) {
+            return {
+               ...newHeader(),
+               headerText: line.headerText || "Add New Header",
+            };
+         }
+
+         const itemId = typeof line?.itemId === "object" ? line.itemId?._id || "" : line?.itemId || "";
+         const itemName = typeof line?.itemId === "object"
+            ? line.itemId?.name || line.name || ""
+            : line?.name || "";
+         const accountId = typeof line?.accountId === "object" ? line.accountId?._id || "" : line?.accountId || "";
+         const accountName = typeof line?.accountId === "object"
+            ? line.accountId?.name || ""
+            : (accountId ? accounts.find((account) => account._id === accountId)?.name || "" : "");
+         const selectedItem = itemId ? items.find((entry) => entry._id === itemId) : null;
+
+         return calcRow(
+            {
+               ...newRow(),
+               itemId,
+               itemName,
+               accountId,
+               accountName,
+               description: line?.description || "",
+               quantity: Number(line?.quantity || 1),
+               rate: Number(line?.rate || 0),
+               discountPercent: Number(line?.discountPercent || 0),
+               discountAmount: Number(line?.discountAmount || 0),
+               amount: Number(line?.amount || 0),
+               unit: itemUnitLabel(selectedItem),
+            },
+            discountLevel,
+         );
+      });
+
+      if (importedRows.length > 0) {
+         setRows(importedRows);
+      }
+   }, [
+      mode,
+      defaultPurchaseOrderId,
+      shouldAutoImportFromPurchaseOrder,
+      linkedPurchaseOrder,
+      rows,
+      accounts,
+      items,
+      discountLevel,
+   ]);
 
    async function handleCreateItemForRow(rowId: string, providedName?: string) {
       const row = rows.find((r) => r.id === rowId);

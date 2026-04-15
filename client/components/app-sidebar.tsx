@@ -97,6 +97,7 @@ const navItems: NavItem[] = [
       { title: "Expenses", url: "/purchases/expenses" },
       { title: "Recurring Expenses", url: "/purchases/recurring-expenses" },
       { title: "Purchase Orders", url: "/purchases/orders" },
+      { title: "Purchase Receives", url: "/purchases/receives" },
       { title: "Bills", url: "/purchases/bills" },
       { title: "Recurring Bills", url: "/purchases/recurring-bills" },
       { title: "Payments Made", url: "/purchases/payments-made" },

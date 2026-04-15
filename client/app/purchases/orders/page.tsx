@@ -801,7 +801,7 @@ function POPdfView({ order, orgName, orgAddress, orgPhone, orgEmail }: {
 
 // â”€â”€ Detail Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function OrderDetailPanel({
-  order, onClose, onStatusChange, onDelete, onEdit, onSendEmail, onPrint, onDownloadPdf, orgName, orgAddress, orgPhone, orgEmail, orgCurrency,
+  order, onClose, onStatusChange, onDelete, onEdit, onSendEmail, onPrint, onDownloadPdf, onConvertToBill, onReceiveOrder, orgName, orgAddress, orgPhone, orgEmail, orgCurrency,
 }: {
   order: PurchaseOrder;
   onClose: () => void;
@@ -811,6 +811,8 @@ function OrderDetailPanel({
   onSendEmail: (id: string) => void;
   onPrint: (id: string) => void;
   onDownloadPdf: (id: string) => Promise<void>;
+  onConvertToBill: (order: PurchaseOrder) => void;
+  onReceiveOrder: (order: PurchaseOrder) => void;
   orgName: string;
   orgAddress: string;
   orgPhone: string;
@@ -953,13 +955,8 @@ function OrderDetailPanel({
     } catch { toast.error("Failed to update status"); } finally { setUpdatingStatus(false); }
   }
 
-  async function handleConvertToBill() {
-    setUpdatingStatus(true);
-    try {
-      await purchaseOrderApi.convertToBill(order._id);
-      onStatusChange(order._id, "Billed");
-      toast.success("Purchase order converted to bill");
-    } catch { toast.error("Failed to convert to bill"); } finally { setUpdatingStatus(false); }
+  function handleConvertToBill() {
+    onConvertToBill(order);
   }
 
   async function handleClone() {
@@ -971,13 +968,8 @@ function OrderDetailPanel({
     } catch { toast.error("Failed to clone purchase order"); } finally { setUpdatingStatus(false); }
   }
 
-  async function handleMarkReceived() {
-    setUpdatingStatus(true);
-    try {
-      await purchaseOrderApi.update(order._id, { status: "Closed" });
-      onStatusChange(order._id, "Closed");
-      toast.success("Marked as Received");
-    } catch { toast.error("Failed"); } finally { setUpdatingStatus(false); }
+  function handleMarkReceived() {
+    onReceiveOrder(order);
   }
 
   async function handleMarkCanceled() {
@@ -1931,6 +1923,14 @@ export default function PurchaseOrdersPage() {
                   onSendEmail={handleSendEmail}
                   onPrint={handlePrint}
                   onDownloadPdf={handleDownloadPdf}
+                  onConvertToBill={(order) => {
+                    const vendor = typeof order.vendorId === "object" ? (order.vendorId as any)?._id : order.vendorId;
+                    const nextUrl = `/purchases/bills/new?vendorId=${encodeURIComponent(vendor || "")}&purchaseOrderId=${encodeURIComponent(order._id)}&autoImport=1`;
+                    router.push(nextUrl);
+                  }}
+                  onReceiveOrder={(order) => {
+                    router.push(`/purchases/receives/new?purchaseOrderId=${encodeURIComponent(order._id)}`);
+                  }}
                   orgName={orgName}
                   orgAddress={orgAddress}
                   orgPhone={orgPhone}
