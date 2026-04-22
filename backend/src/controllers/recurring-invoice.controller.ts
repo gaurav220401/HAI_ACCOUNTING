@@ -13,6 +13,7 @@ import {
   alignRecurringNextRunDate,
   calculateNextRunDate,
   generateInvoiceFromRecurringProfile,
+  hydrateMissingInvoiceItemNames,
   normalizeInvoiceItems,
   summarizeInvoiceTotals,
 } from "../services/recurring-invoice.service";
@@ -97,8 +98,12 @@ async function applyRecurringMutation(profile: any, body: any) {
       contactId: body.customerId ?? profile.customerId,
       items: body.items as any[],
     });
-    profile.items = normalizeInvoiceItems(
+    const hydratedItems = await hydrateMissingInvoiceItemNames(
+      profile.organizationId,
       linkedItems as Partial<IInvoiceItem>[],
+    );
+    profile.items = normalizeInvoiceItems(
+      hydratedItems as Partial<IInvoiceItem>[],
     );
   } else if (body.customerId !== undefined) {
     const linkedItems = await applyItemTaxLinkageToItems({
@@ -106,8 +111,12 @@ async function applyRecurringMutation(profile: any, body: any) {
       contactId: body.customerId,
       items: profile.items as any[],
     });
-    profile.items = normalizeInvoiceItems(
+    const hydratedItems = await hydrateMissingInvoiceItemNames(
+      profile.organizationId,
       linkedItems as Partial<IInvoiceItem>[],
+    );
+    profile.items = normalizeInvoiceItems(
+      hydratedItems as Partial<IInvoiceItem>[],
     );
   }
 
@@ -264,8 +273,12 @@ export const create = asyncHandler(
       contactId: req.body.customerId,
       items: req.body.items as any[],
     });
-    const items = normalizeInvoiceItems(
+    const hydratedItems = await hydrateMissingInvoiceItemNames(
+      oid,
       linkedItems as Partial<IInvoiceItem>[],
+    );
+    const items = normalizeInvoiceItems(
+      hydratedItems as Partial<IInvoiceItem>[],
     );
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;

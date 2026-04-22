@@ -160,9 +160,21 @@ async function nextInvoiceNumber(organizationId: mongoose.Types.ObjectId): Promi
 }
 
 function guessImapHost(smtpHost: string): string {
-  if (!smtpHost) return "";
-  if (smtpHost.startsWith("smtp.")) return smtpHost.replace(/^smtp\./, "imap.");
-  return smtpHost;
+  const overrideHost = String(process.env.DOCUMENTS_EMAIL_IMAP_HOST || "").trim().toLowerCase();
+  if (overrideHost) return overrideHost;
+
+  const host = String(smtpHost || "").trim().toLowerCase();
+  if (!host) return "";
+
+  if (host === "smtp.office365.com") return "outlook.office365.com";
+  if (host.includes("gmail.com")) return "imap.gmail.com";
+  if (host.includes("yahoo.")) return "imap.mail.yahoo.com";
+  if (host.includes("icloud.com") || host.includes("me.com") || host.includes("mac.com")) {
+    return "imap.mail.me.com";
+  }
+  if (host.startsWith("smtp.")) return host.replace(/^smtp\./, "imap.");
+
+  return host;
 }
 
 // Reusable multer middleware for this module.

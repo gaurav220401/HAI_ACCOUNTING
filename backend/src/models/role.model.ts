@@ -227,7 +227,7 @@ export async function seedDefaultRoles(): Promise<void> {
     );
   }
 
-  console.log("âœ… Default Zoho Books roles seeded: Admin, Accountant, Staff, Time Tracker");
+  console.log("Default Zoho Books roles seeded: Admin, Accountant, Staff, Time Tracker");
 }
 
 export default Role;
