@@ -1,5 +1,11 @@
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "./firebase";
+import {
+  isServerUnavailableError,
+  isServerUnavailableResponse,
+  markServerAvailable,
+  markServerUnavailable,
+} from "./server-status";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -48,11 +54,36 @@ export async function apiFetch(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  return fetch(`${API_URL}${path}`, {
-    credentials: "include",
-    ...options,
-    headers,
-  });
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      credentials: "include",
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      const message = await response
+        .clone()
+        .text()
+        .catch(() => "");
+
+      if (isServerUnavailableResponse(response.status, message)) {
+        markServerUnavailable(message || `Server responded with ${response.status}`);
+      } else if (response.status < 500) {
+        markServerAvailable();
+      }
+    } else {
+      markServerAvailable();
+    }
+
+    return response;
+  } catch (error) {
+    if (isServerUnavailableError(error)) {
+      markServerUnavailable(error);
+    }
+
+    throw error;
+  }
 }
 
 /**

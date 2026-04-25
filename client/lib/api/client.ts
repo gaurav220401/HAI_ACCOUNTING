@@ -1,5 +1,11 @@
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../firebase";
+import {
+  isServerUnavailableError,
+  isServerUnavailableResponse,
+  markServerAvailable,
+  markServerUnavailable,
+} from "../server-status";
 
 const API_URL =
   typeof window === "undefined"
@@ -72,6 +78,13 @@ export class ApiError extends Error {
   }
 }
 
+interface ApiPayload {
+  message?: string;
+  code?: string;
+  errors?: Array<{ field: string; message: string }>;
+  [key: string]: unknown;
+}
+
 /**
  * Authenticated fetch wrapper — automatically attaches Firebase ID token.
  * Throws ApiError on non-2xx responses.
@@ -84,20 +97,34 @@ export async function apiFetch<T = unknown>(
   const token = await getIdToken();
   const headers = buildAuthHeaders(token, options, true);
 
-  const res = await fetch(`${API_URL}${path}`, {
-    cache: "no-store",
-    credentials: "include",
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      cache: "no-store",
+      credentials: "include",
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    if (isServerUnavailableError(error)) {
+      markServerUnavailable(error);
+      throw new ApiError(
+        "Unable to reach the server. Please ensure backend service is running.",
+        503,
+        "SERVER_UNAVAILABLE",
+      );
+    }
 
-  let data;
+    throw error;
+  }
+
+  let data: ApiPayload = {};
   const contentType = res.headers.get("content-type");
 
   try {
     // Only parse as JSON if the content-type indicates JSON
     if (contentType && contentType.includes("application/json")) {
-      data = await res.json();
+      data = (await res.json()) as ApiPayload;
     } else {
       // For non-JSON responses, create a generic error object
       const text = await res.text();
@@ -107,7 +134,7 @@ export async function apiFetch<T = unknown>(
         status: res.status
       };
     }
-  } catch (error) {
+  } catch {
     // If JSON parsing fails, create a generic error object
     data = {
       message: "Failed to parse response",
@@ -124,14 +151,30 @@ export async function apiFetch<T = unknown>(
     return apiFetch<T>(path, options, retryCount + 1);
   }
 
+  const message =
+    (typeof data?.message === "string" && data.message.trim()) ||
+    "Request failed";
+  const errorCode =
+    (typeof data?.code === "string" && data.code.trim()) || "API_ERROR";
+  const diagnostics = `${message} ${errorCode}`;
+
   if (!res.ok) {
-    throw new ApiError(
-      data.message || "Request failed",
-      res.status,
-      data.code,
-      data.errors,
-    );
+    if (isServerUnavailableResponse(res.status, diagnostics)) {
+      markServerUnavailable(message);
+      throw new ApiError(
+        "Server is unavailable right now. Please try again in a moment.",
+        503,
+        "SERVER_UNAVAILABLE",
+      );
+    }
+
+    if (res.status < 500) {
+      markServerAvailable();
+    }
+    throw new ApiError(message, res.status, errorCode, data?.errors);
   }
+
+  markServerAvailable();
 
   return data as T;
 }
@@ -146,22 +189,57 @@ export async function apiFetchBlob(
   const token = await getIdToken();
   const headers = buildAuthHeaders(token, options, false);
 
-  const res = await fetch(`${API_URL}${path}`, {
-    credentials: "include",
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      credentials: "include",
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    if (isServerUnavailableError(error)) {
+      markServerUnavailable(error);
+      throw new ApiError(
+        "Unable to reach the server. Please ensure backend service is running.",
+        503,
+        "SERVER_UNAVAILABLE",
+      );
+    }
+
+    throw error;
+  }
 
   if (!res.ok) {
     let message = "Request failed";
     try {
-      const json = await res.json();
-      message = json.message || message;
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const json = await res.clone().json();
+        message = json.message || message;
+      } else {
+        const text = await res.clone().text();
+        message = text || message;
+      }
     } catch {
       // Ignore JSON parse error for non-JSON error responses.
     }
-    throw new ApiError(message, res.status);
+
+    if (isServerUnavailableResponse(res.status, message)) {
+      markServerUnavailable(message);
+      throw new ApiError(
+        "Server is unavailable right now. Please try again in a moment.",
+        503,
+        "SERVER_UNAVAILABLE",
+      );
+    }
+
+    if (res.status < 500) {
+      markServerAvailable();
+    }
+    throw new ApiError(message, res.status, "API_ERROR");
   }
+
+  markServerAvailable();
 
   return res.blob();
 }

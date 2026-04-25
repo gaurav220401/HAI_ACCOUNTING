@@ -10,6 +10,7 @@ import React, {
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./auth-context";
 import { organizationApi, type Organization } from "@/lib/api";
+import { ApiError } from "@/lib/api/client";
 import { useAppStore } from "@/stores/app-store";
 
 interface OrganizationContextType {
@@ -101,7 +102,11 @@ export function OrganizationProvider({
         setActiveOrganization(null);
       }
     } catch (error: any) {
-      console.error("Failed to fetch organizations:", error);
+      const isServerUnavailable =
+        error instanceof ApiError && error.code === "SERVER_UNAVAILABLE";
+      if (!isServerUnavailable) {
+        console.error("Failed to fetch organizations:", error);
+      }
       setLoadFailed(true);
       setOrganizations([]);
       setActiveOrg(null);

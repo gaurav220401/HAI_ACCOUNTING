@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppSidebar } from "@/components/app-sidebar";
-import { PageHeader } from "@/components/page-header";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TimeTrackingProvider } from "@/contexts/time-tracking-context";
 import { QueryProvider } from "@/contexts/query-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -10,6 +7,7 @@ import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
 import { OrganizationProvider } from "@/contexts/organization-context";
 import { OrganizationChangeBoundary } from "@/components/organization-change-boundary";
+import { ServerStatusGate } from "@/components/server-status-gate";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -95,12 +93,14 @@ export default function RootLayout({
       >
         <QueryProvider>
           <AuthProvider>
-            <OrganizationProvider>
-              <OrganizationChangeBoundary>
-                <TimeTrackingProvider>{children}</TimeTrackingProvider>
-              </OrganizationChangeBoundary>
-              <Toaster />
-            </OrganizationProvider>
+            <ServerStatusGate>
+              <OrganizationProvider>
+                <OrganizationChangeBoundary>
+                  <TimeTrackingProvider>{children}</TimeTrackingProvider>
+                </OrganizationChangeBoundary>
+              </OrganizationProvider>
+            </ServerStatusGate>
+            <Toaster />
           </AuthProvider>
         </QueryProvider>
       </body>
