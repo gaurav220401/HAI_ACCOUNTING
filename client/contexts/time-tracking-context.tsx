@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { projectApi, type TimeLog, type Project } from "@/lib/api";
+import { ApiError } from "@/lib/api/client";
 import { useAuth } from "@/contexts/auth-context";
 
 interface TimeTrackingContextType {
@@ -43,7 +44,11 @@ export function TimeTrackingProvider({ children }: { children: React.ReactNode }
       const response = await projectApi.getActiveTimeLogs();
       setActiveTimeLogs(response.data || []);
     } catch (error) {
-      console.error('Failed to fetch active time logs:', error);
+      const isServerUnavailable =
+        error instanceof ApiError && error.code === "SERVER_UNAVAILABLE";
+      if (!isServerUnavailable) {
+        console.error('Failed to fetch active time logs:', error);
+      }
     }
   }, [firebaseUser]);
 

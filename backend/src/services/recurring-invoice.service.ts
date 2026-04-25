@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import Invoice from "../models/invoice.model";
 import RecurringInvoice from "../models/recurring-invoice.model";
+import Item from "../models/item.model";
 import PaymentTerms from "../models/payment-terms.model";
 import Organization from "../models/organization.model";
 import Contact from "../models/contact.model";
@@ -18,6 +19,41 @@ const SCHEDULER_INTERVAL_MS = 60_000;
 
 let schedulerStarted = false;
 let processingDueProfiles = false;
+
+function textValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function refId(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (value instanceof Types.ObjectId) return value.toString();
+  if (typeof value === "object") {
+    const maybe = value as {
+      _id?: unknown;
+      id?: unknown;
+      toString?: () => string;
+    };
+    if (maybe._id) return refId(maybe._id);
+    if (maybe.id) return refId(maybe.id);
+    if (typeof maybe.toString === "function") {
+      const rendered = maybe.toString();
+      if (rendered && rendered !== "[object Object]") return rendered;
+    }
+  }
+  return "";
+}
+
+function resolveInvoiceItemName(item: Partial<IInvoiceItem> & Record<string, any>): string {
+  return (
+    textValue(item.name) ||
+    textValue(item.itemName) ||
+    textValue(item.label) ||
+    textValue(item.item?.name) ||
+    textValue((item.itemId as any)?.name) ||
+    ""
+  );
+}
 
 function startOfDay(value: Date | string): Date {
   const next = new Date(value);
@@ -88,7 +124,7 @@ export function alignRecurringNextRunDate(
 }
 
 export function normalizeInvoiceItems(items: Partial<IInvoiceItem>[] = []) {
-  return items.map((item) => {
+  return items.map((item, index) => {
     const quantity = Number(item.quantity) || 1;
     const rate = Number(item.rate) || 0;
     const lineTotal = quantity * rate;
@@ -106,7 +142,7 @@ export function normalizeInvoiceItems(items: Partial<IInvoiceItem>[] = []) {
 
     return {
       itemId: item.itemId || null,
-      name: item.name || "",
+      name: resolveInvoiceItemName(item as Partial<IInvoiceItem> & Record<string, any>) || `Line Item ${index + 1}`,
       description: item.description || "",
       hsnSacCode: item.hsnSacCode || "",
       quantity,
@@ -121,6 +157,63 @@ export function normalizeInvoiceItems(items: Partial<IInvoiceItem>[] = []) {
       projectId: item.projectId || null,
     };
   });
+}
+
+export async function hydrateMissingInvoiceItemNames(
+  organizationId: Types.ObjectId | string,
+  items: Partial<IInvoiceItem>[] = [],
+): Promise<Partial<IInvoiceItem>[]> {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const hydrated = items.map((item) => ({ ...(item as Record<string, unknown>) }));
+  const itemIdsToResolve = Array.from(
+    new Set(
+      hydrated
+        .filter(
+          (item) =>
+            !resolveInvoiceItemName(item as Partial<IInvoiceItem> & Record<string, any>),
+        )
+        .map((item) => refId((item as any).itemId))
+        .filter((id) => id && Types.ObjectId.isValid(id)),
+    ),
+  );
+
+  const nameByItemId = new Map<string, string>();
+  if (itemIdsToResolve.length > 0) {
+    const itemDocs = await Item.find({
+      organizationId,
+      _id: { $in: itemIdsToResolve },
+      isDeleted: { $ne: true },
+    })
+      .select("name")
+      .lean();
+
+    for (const itemDoc of itemDocs) {
+      const id = refId((itemDoc as any)._id);
+      const name = textValue((itemDoc as any).name);
+      if (id && name) {
+        nameByItemId.set(id, name);
+      }
+    }
+  }
+
+  return hydrated.map((item, index) => {
+    const existingName = resolveInvoiceItemName(
+      item as Partial<IInvoiceItem> & Record<string, any>,
+    );
+    if (existingName) {
+      return {
+        ...item,
+        name: existingName,
+      };
+    }
+
+    const fallbackFromItem = nameByItemId.get(refId((item as any).itemId)) || "";
+    return {
+      ...item,
+      name: fallbackFromItem || `Line Item ${index + 1}`,
+    };
+  }) as Partial<IInvoiceItem>[];
 }
 
 export function summarizeInvoiceTotals(
@@ -385,7 +478,11 @@ export async function generateInvoiceFromRecurringProfile(
     contactId: profile.customerId,
     items: profile.items as any[],
   });
-  const items = normalizeInvoiceItems(linkedItems as Partial<IInvoiceItem>[]);
+  const hydratedItems = await hydrateMissingInvoiceItemNames(
+    profile.organizationId,
+    linkedItems as Partial<IInvoiceItem>[],
+  );
+  const items = normalizeInvoiceItems(hydratedItems as Partial<IInvoiceItem>[]);
   const taxAmount = Number(profile.taxAmount) || 0;
   const adjustmentAmount = Number(profile.adjustmentAmount) || 0;
   const discountValue = Number(profile.discountValue) || 0;

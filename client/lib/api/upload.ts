@@ -1,4 +1,10 @@
 import { auth } from "../firebase";
+import {
+  isServerUnavailableError,
+  isServerUnavailableResponse,
+  markServerAvailable,
+  markServerUnavailable,
+} from "../server-status";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -14,6 +20,22 @@ export interface UploadResult {
   bytes?: number;
 }
 
+async function readResponseError(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type") || "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const data = await response.clone().json();
+      return data?.message || "Request failed";
+    }
+
+    const text = await response.clone().text();
+    return text || "Request failed";
+  } catch {
+    return "Request failed";
+  }
+}
+
 // ─── API ────────────────────────────────────────────────────────────────
 
 export const uploadApi = {
@@ -27,14 +49,32 @@ export const uploadApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch(`${API_URL}/upload?folder=${encodeURIComponent(folder)}`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData, // do NOT set Content-Type — browser sets multipart boundary
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}/upload?folder=${encodeURIComponent(folder)}`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData, // do NOT set Content-Type — browser sets multipart boundary
+      });
+    } catch (error) {
+      if (isServerUnavailableError(error)) {
+        markServerUnavailable(error);
+      }
+      throw error;
+    }
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "Upload failed");
+    if (!res.ok) {
+      const message = data?.message || "Upload failed";
+      if (isServerUnavailableResponse(res.status, message)) {
+        markServerUnavailable(message);
+      } else if (res.status < 500) {
+        markServerAvailable();
+      }
+      throw new Error(message);
+    }
+
+    markServerAvailable();
     return data.data as UploadResult;
   },
 
@@ -44,19 +84,36 @@ export const uploadApi = {
    */
   async remove(publicId: string): Promise<void> {
     const token = await auth.currentUser?.getIdToken();
-    const res = await fetch(
-      `${API_URL}/upload?publicId=${encodeURIComponent(publicId)}`,
-      {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+
+    let res: Response;
+    try {
+      res = await fetch(
+        `${API_URL}/upload?publicId=${encodeURIComponent(publicId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
         },
-      },
-    );
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.message || "Delete failed");
+      );
+    } catch (error) {
+      if (isServerUnavailableError(error)) {
+        markServerUnavailable(error);
+      }
+      throw error;
     }
+
+    if (!res.ok) {
+      const message = await readResponseError(res);
+      if (isServerUnavailableResponse(res.status, message)) {
+        markServerUnavailable(message);
+      } else if (res.status < 500) {
+        markServerAvailable();
+      }
+      throw new Error(message || "Delete failed");
+    }
+
+    markServerAvailable();
   },
 };

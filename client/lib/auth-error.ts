@@ -1,4 +1,5 @@
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  "server_unavailable": "Unable to reach the server. Please start backend and try again.",
   "auth/email-already-in-use": "This email is already in use. Please sign in instead.",
   "auth/invalid-email": "Please enter a valid email address.",
   "auth/user-not-found": "Account not found. Please sign up first.",

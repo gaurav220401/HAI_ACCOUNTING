@@ -10,9 +10,86 @@ let timer: NodeJS.Timeout | null = null;
 const orgBackoff = new Map<string, { failures: number; retryAfter: number }>();
 
 function inferImapHost(smtpHost: string): string {
-  if (!smtpHost) return "";
-  if (smtpHost.startsWith("smtp.")) return smtpHost.replace(/^smtp\./, "imap.");
-  return smtpHost;
+  const host = String(smtpHost || "").trim().toLowerCase();
+  if (!host) return "";
+
+  if (host === "smtp.office365.com") return "outlook.office365.com";
+  if (host.includes("gmail.com")) return "imap.gmail.com";
+  if (host.includes("yahoo.")) return "imap.mail.yahoo.com";
+  if (host.includes("icloud.com") || host.includes("me.com") || host.includes("mac.com")) {
+    return "imap.mail.me.com";
+  }
+  if (host.startsWith("smtp.")) return host.replace(/^smtp\./, "imap.");
+
+  return host;
+}
+
+function parseOptionalBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return undefined;
+}
+
+function readOptionalPositiveNumber(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  return numeric;
+}
+
+function maskEmail(value: string): string {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const [localPart, domainPart] = trimmed.split("@");
+  if (!domainPart) return "***";
+  if (localPart.length <= 1) return `${localPart || "*"}***@${domainPart}`;
+  return `${localPart[0]}***@${domainPart}`;
+}
+
+type ImapConnectionConfig = {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+};
+
+function resolveImapConnectionConfig(smtpSettings: {
+  host?: string;
+  user?: string;
+  pass?: string;
+}): ImapConnectionConfig | null {
+  const envHost = String(process.env.DOCUMENTS_EMAIL_IMAP_HOST || "").trim();
+  const envPort = readOptionalPositiveNumber(process.env.DOCUMENTS_EMAIL_IMAP_PORT);
+  const envSecure = parseOptionalBoolean(process.env.DOCUMENTS_EMAIL_IMAP_SECURE);
+  const envUser = String(process.env.DOCUMENTS_EMAIL_IMAP_USER || "").trim();
+  const envPass = String(process.env.DOCUMENTS_EMAIL_IMAP_PASS || "").trim();
+
+  const host = envHost || inferImapHost(String(smtpSettings.host || ""));
+  const user = envUser || String(smtpSettings.user || "").trim();
+  const pass = envPass || String(smtpSettings.pass || "").trim();
+
+  if (!host || !user || !pass) return null;
+
+  const port = envPort || 993;
+  const secure = envSecure ?? port === 993;
+
+  return { host, port, secure, user, pass };
+}
+
+function isTransientImapFailure(rawMessage: string): boolean {
+  const lower = rawMessage.toLowerCase();
+  return (
+    lower.includes("timeout") ||
+    lower.includes("connection not available") ||
+    lower.includes("socket closed") ||
+    lower.includes("econnreset") ||
+    lower.includes("ecconnreset") ||
+    lower.includes("ehostunreach") ||
+    lower.includes("enotfound")
+  );
 }
 
 type ParsedAttachment = {
@@ -81,39 +158,31 @@ async function collectAttachments(parsed: any, depth = 0): Promise<ParsedAttachm
   return results;
 }
 
-async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
-  const [org, mailbox] = await Promise.all([
-    Organization.findById(orgId).select("smtpSettings").lean() as Promise<
-      | {
-          smtpSettings?: {
-            host?: string;
-            user?: string;
-            pass?: string;
-            secure?: boolean;
-          };
-        }
-      | null
-    >,
-    DocumentMailbox.findOne({ organizationId: orgId, isActive: true }).lean(),
-  ]);
-
-  if (!org?.smtpSettings?.host || !org?.smtpSettings?.user || !org?.smtpSettings?.pass) return;
-  if (!mailbox?.mailboxAddress) return;
-
-  const host = inferImapHost(org.smtpSettings.host);
-  if (!host) return;
-
-  const imapDebug = process.env.DOCUMENTS_EMAIL_IMAP_DEBUG === "true";
-  const socketTimeout = Number(process.env.DOCUMENTS_EMAIL_IMAP_TIMEOUT_MS || 120000);
-  const connectionTimeout = Number(process.env.DOCUMENTS_EMAIL_IMAP_CONNECT_TIMEOUT_MS || 30000);
-  const greetingTimeout = Number(process.env.DOCUMENTS_EMAIL_IMAP_GREETING_TIMEOUT_MS || 20000);
+async function runMailboxPollPass(args: {
+  orgId: string;
+  mailboxAddress: string;
+  connection: ImapConnectionConfig;
+  imapDebug: boolean;
+  socketTimeout: number;
+  connectionTimeout: number;
+  greetingTimeout: number;
+}): Promise<void> {
+  const {
+    orgId,
+    mailboxAddress,
+    connection,
+    imapDebug,
+    socketTimeout,
+    connectionTimeout,
+    greetingTimeout,
+  } = args;
 
   let latestClientError: string | null = null;
 
   const client = new ImapFlow({
-    host,
-    port: 993,
-    secure: true,
+    host: connection.host,
+    port: connection.port,
+    secure: connection.secure,
     logger: imapDebug ? undefined : false,
     logRaw: imapDebug,
     emitLogs: false,
@@ -121,8 +190,8 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
     connectionTimeout,
     greetingTimeout,
     auth: {
-      user: org.smtpSettings.user,
-      pass: org.smtpSettings.pass,
+      user: connection.user,
+      pass: connection.pass,
     },
   });
 
@@ -156,7 +225,7 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
 
           const uploaded = await uploadBuffer(
             attachment.content,
-            `documents/${mailbox.organizationId}`,
+            `documents/${orgId}`,
             undefined,
             "auto",
             "authenticated",
@@ -174,7 +243,7 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
         }
 
         await ingestEmailPayload({
-          mailbox: mailbox.mailboxAddress,
+          mailbox: mailboxAddress,
           sender: parsed.from?.text || "",
           subject: parsed.subject || "",
           messageId: parsed.messageId || String(message.uid),
@@ -183,20 +252,83 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
 
         await client.messageFlagsAdd(message.uid, ["\\Seen"]);
       }
-
-      // Successful pass resets transient failure backoff.
-      orgBackoff.delete(orgId);
     } finally {
       lock.release();
     }
   } catch (error: any) {
     const rawMessage = String(error?.message || error || latestClientError || "Unknown IMAP error");
-    const isTransient =
-      rawMessage.toLowerCase().includes("timeout") ||
-      rawMessage.toLowerCase().includes("connection not available") ||
-      rawMessage.toLowerCase().includes("socket closed") ||
-      rawMessage.toLowerCase().includes("ecconnreset") ||
-      rawMessage.toLowerCase().includes("econnreset");
+    const endpoint = `${connection.host}:${connection.port} secure=${connection.secure}`;
+    const user = maskEmail(connection.user);
+    throw new Error(`${rawMessage} (imap=${endpoint}, user=${user || "***"})`);
+  } finally {
+    await client.logout().catch(() => undefined);
+  }
+}
+
+async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
+  const [org, mailbox] = await Promise.all([
+    Organization.findById(orgId).select("smtpSettings").lean() as Promise<
+      | {
+          smtpSettings?: {
+            host?: string;
+            user?: string;
+            pass?: string;
+            secure?: boolean;
+          };
+        }
+      | null
+    >,
+    DocumentMailbox.findOne({ organizationId: orgId, isActive: true }).lean(),
+  ]);
+
+  if (!mailbox?.mailboxAddress) return;
+
+  const connection = resolveImapConnectionConfig(org?.smtpSettings || {});
+  if (!connection) return;
+
+  const imapDebug = process.env.DOCUMENTS_EMAIL_IMAP_DEBUG === "true";
+  const socketTimeout = Math.max(120000, Number(process.env.DOCUMENTS_EMAIL_IMAP_TIMEOUT_MS || 120000));
+  const connectionTimeout = Number(process.env.DOCUMENTS_EMAIL_IMAP_CONNECT_TIMEOUT_MS || 30000);
+  const greetingTimeout = Number(process.env.DOCUMENTS_EMAIL_IMAP_GREETING_TIMEOUT_MS || 20000);
+
+  try {
+    const maxAttempts = Math.max(1, Math.min(3, Number(process.env.DOCUMENTS_EMAIL_IMAP_RETRY_ATTEMPTS || 2)));
+    let attempt = 0;
+
+    while (attempt < maxAttempts) {
+      attempt += 1;
+      try {
+        await runMailboxPollPass({
+          orgId,
+          mailboxAddress: mailbox.mailboxAddress,
+          connection,
+          imapDebug,
+          socketTimeout,
+          connectionTimeout,
+          greetingTimeout,
+        });
+
+        // Successful pass resets transient failure backoff.
+        orgBackoff.delete(orgId);
+        return;
+      } catch (attemptError: any) {
+        const attemptMessage = String(attemptError?.message || attemptError || "Unknown IMAP error");
+        const transientAttemptError = isTransientImapFailure(attemptMessage);
+
+        if (!transientAttemptError || attempt >= maxAttempts) {
+          throw attemptError;
+        }
+
+        if (imapDebug) {
+          console.warn(
+            `IMAP transient attempt ${attempt}/${maxAttempts} failed for org ${orgId}: ${attemptMessage}`,
+          );
+        }
+      }
+    }
+  } catch (error: any) {
+    const rawMessage = String(error?.message || error || "Unknown IMAP error");
+    const isTransient = isTransientImapFailure(rawMessage);
 
     const state = orgBackoff.get(orgId) || { failures: 0, retryAfter: 0 };
     const nextFailures = state.failures + 1;
@@ -211,8 +343,6 @@ async function pollOneOrganizationMailbox(orgId: string): Promise<void> {
     } else {
       console.warn(`Document email polling failed for org ${orgId}:`, rawMessage);
     }
-  } finally {
-    await client.logout().catch(() => undefined);
   }
 }
 
