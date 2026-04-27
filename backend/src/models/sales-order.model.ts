@@ -7,15 +7,23 @@ export type SalesOrderStatus =
   | "INVOICED"
   | "PARTIALLY_INVOICED"
   | "CLOSED"
-  | "OVERDUE";
+  | "OVERDUE"
+  | "VOID";
+
+export type SalesOrderInvoiceStatus = "Not Invoiced" | "Invoiced";
+export type SalesOrderShipmentStatus = "Pending" | "Shipped" | "Delivered";
 
 export interface ISalesOrderLineItem {
   itemId: Schema.Types.ObjectId;
+  name?: string;
   description?: string;
+  hsnSacCode?: string;
   quantity: number;
   rate: number;
   discount?: number;
   taxId?: Schema.Types.ObjectId | null;
+  taxPercent?: number;
+  taxAmount?: number;
   amount: number;
 }
 
@@ -37,6 +45,9 @@ export interface ISalesOrder extends Document {
   notes?: string;
   terms?: string;
   status: SalesOrderStatus;
+  invoiceStatus: SalesOrderInvoiceStatus;
+  shipmentStatus: SalesOrderShipmentStatus;
+  invoiceId?: Schema.Types.ObjectId | null;
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date | null;
@@ -45,14 +56,18 @@ export interface ISalesOrder extends Document {
 const lineItemSchema = new Schema<ISalesOrderLineItem>(
   {
     itemId: { type: Schema.Types.ObjectId, ref: "Item", required: true },
+    name: { type: String, default: "" },
     description: { type: String, default: "" },
+    hsnSacCode: { type: String, default: "" },
     quantity: { type: Number, required: true, min: 0 },
     rate: { type: Number, required: true, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
     taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
+    taxPercent: { type: Number, default: 0 },
+    taxAmount: { type: Number, default: 0 },
     amount: { type: Number, required: true, min: 0 },
   },
-  { _id: false },
+  { _id: true },
 );
 
 const salesOrderSchema = new Schema<ISalesOrder>(
@@ -92,9 +107,21 @@ const salesOrderSchema = new Schema<ISalesOrder>(
         "PARTIALLY_INVOICED",
         "CLOSED",
         "OVERDUE",
+        "VOID",
       ],
       default: "DRAFT",
     },
+    invoiceStatus: {
+      type: String,
+      enum: ["Not Invoiced", "Invoiced"],
+      default: "Not Invoiced",
+    },
+    shipmentStatus: {
+      type: String,
+      enum: ["Pending", "Shipped", "Delivered"],
+      default: "Pending",
+    },
+    invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", default: null },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },

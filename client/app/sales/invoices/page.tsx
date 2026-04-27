@@ -379,7 +379,7 @@ export default function InvoicesPage() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       router.push(
-                                        `/sales/invoices/${inv._id}?action=payment`,
+                                        `/sales/payments-received/new?invoiceId=${inv._id}`,
                                       );
                                     }}
                                   >

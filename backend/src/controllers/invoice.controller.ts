@@ -29,6 +29,7 @@ import {
   reverseVoucher,
 } from "../services/gl-posting.service";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
+import { createPaymentReceivedEntry } from "./payment-received.controller";
 
 /** Parse a field that may arrive as a JS array (JSON body) or a JSON string (FormData). */
 function parseStringArray(val: unknown): string[] {
@@ -71,29 +72,67 @@ async function syncSalesOrderStatusByOrderNumber(params: {
 
   if (!order) return;
 
-  const activeInvoiceCount = await Invoice.countDocuments({
-    organizationId: params.organizationId,
-    orderNumber,
-    isDeleted: false,
-    status: { $ne: "Void" },
-  } as any);
+  const [activeInvoiceCount, latestActiveInvoice] = await Promise.all([
+    Invoice.countDocuments({
+      organizationId: params.organizationId,
+      orderNumber,
+      isDeleted: false,
+      status: { $ne: "Void" },
+    }),
+    Invoice.findOne({
+      organizationId: params.organizationId,
+      orderNumber,
+      isDeleted: false,
+      status: { $ne: "Void" },
+    })
+      .sort({ invoiceDate: -1, createdAt: -1, _id: -1 })
+      .select("_id")
+      .lean(),
+  ]);
 
   const current = String((order as any).status || "");
-  let target: "APPROVED" | "INVOICED" | "PARTIALLY_INVOICED" | null = null;
+  if (current === "VOID") return;
+  const shipmentStatus = String((order as any).shipmentStatus || "");
+  const invoiceStatus =
+    activeInvoiceCount > 0 ? "Invoiced" : "Not Invoiced";
+  const linkedInvoiceId = latestActiveInvoice?._id || null;
+
+  let target: "APPROVED" | "INVOICED" | "PARTIALLY_INVOICED" | "CLOSED" | null = null;
 
   if (activeInvoiceCount <= 0) {
-    if (["INVOICED", "PARTIALLY_INVOICED"].includes(current)) {
+    if (
+      ["INVOICED", "PARTIALLY_INVOICED", "CLOSED"].includes(current)
+    ) {
       target = "APPROVED";
     }
+  } else if (shipmentStatus === "Delivered") {
+    target = "CLOSED";
   } else if (activeInvoiceCount === 1) {
     target = "INVOICED";
   } else {
     target = "PARTIALLY_INVOICED";
   }
 
-  if (!target || current === target) return;
+  let changed = false;
+  if (target && current !== target) {
+    (order as any).status = target;
+    changed = true;
+  }
 
-  (order as any).status = target;
+  if (String((order as any).invoiceStatus || "") !== invoiceStatus) {
+    (order as any).invoiceStatus = invoiceStatus;
+    changed = true;
+  }
+
+  const currentInvoiceId = String((order as any).invoiceId || "");
+  const nextInvoiceId = String(linkedInvoiceId || "");
+  if (currentInvoiceId !== nextInvoiceId) {
+    (order as any).invoiceId = linkedInvoiceId;
+    changed = true;
+  }
+
+  if (!changed) return;
+
   attachUser(order as any, params.req);
   await order.save();
 }
@@ -1135,6 +1174,10 @@ export const sendInvoiceEmail = asyncHandler(
 export const recordPayment = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const invoice = await requireInvoice(req);
+    if (invoice.status === "Void") {
+      throw new ValidationError("Cannot record payment for a void invoice");
+    }
+
     const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
 
     const amount = Number(req.body.amount);
@@ -1142,39 +1185,72 @@ export const recordPayment = asyncHandler(
       throw new ValidationError("Payment amount must be greater than zero");
     }
 
-    const currentBalance = invoice.balanceDue ?? invoice.total;
-    invoice.balanceDue = Math.max(0, currentBalance - amount);
-    if (invoice.balanceDue === 0) {
-      invoice.paymentReceived = true;
-      invoice.status = "Paid";
-      invoice.paidAt =
-        req.body.paymentDate ? new Date(req.body.paymentDate) : new Date();
-    } else {
-      invoice.paymentReceived = false;
-      invoice.status = "Partially Paid";
+    const currentBalance = Number(invoice.balanceDue ?? invoice.total ?? 0);
+    if (amount > currentBalance + 0.0001) {
+      throw new ValidationError("Payment amount cannot exceed invoice balance due");
     }
 
-    attachUser(invoice, req);
-    await invoice.save();
+    const payment = await createPaymentReceivedEntry({
+      req,
+      organization_id: orgId(req) as any,
+      payload: {
+        customer_id: String(invoice.customerId),
+        status: "PAID",
+        total_amount_received: amount,
+        payment_date: req.body.paymentDate || req.body.payment_date || new Date(),
+        payment_mode:
+          req.body.paymentMode ||
+          req.body.payment_mode ||
+          req.body.paymentModeId ||
+          "Bank Transfer",
+        deposited_to_account:
+          req.body.depositedToAccount || req.body.deposited_to_account || null,
+        reference_number:
+          req.body.referenceNumber || req.body.reference_number || "",
+        notes: req.body.notes || "",
+        invoice_applications: [
+          {
+            invoice_id: String(invoice._id),
+            applied_amount: amount,
+          },
+        ],
+      },
+      idempotencyScope: `invoices:record-payment:${String(invoice._id)}`,
+    });
 
-    const nowPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    const refreshedInvoice = await Invoice.findOne({
+      _id: invoice._id,
+      organizationId: orgId(req),
+      isDeleted: false,
+    });
+    if (!refreshedInvoice) throw new NotFoundError("Invoice");
+
+    const nowPosted = isPostedInvoiceStatus(String(refreshedInvoice.status || ""));
     if (!wasPosted && nowPosted) {
       await applyStockDeltas({
-        organizationId: invoice.organizationId as any,
-        deltas: collectInvoiceStockDeltas(invoice.items as any[]),
+        organizationId: refreshedInvoice.organizationId as any,
+        deltas: collectInvoiceStockDeltas(refreshedInvoice.items as any[]),
         req,
       });
 
-      await postInvoiceLedger(invoice, req);
+      await postInvoiceLedger(refreshedInvoice, req);
     }
 
-    await recomputeContactOutstanding({
-      organizationId: invoice.organizationId as any,
-      contactId: invoice.customerId as any,
+    await syncSalesOrderStatusByOrderNumber({
+      organizationId: refreshedInvoice.organizationId as any,
+      orderNumber: String((refreshedInvoice as any).orderNumber || ""),
       req,
     });
 
-    res.json({ success: true, data: invoice, message: "Payment recorded" });
+    res.json({
+      success: true,
+      data: refreshedInvoice,
+      message: "Payment recorded",
+      meta: {
+        paymentReceivedId: (payment as any)._id,
+        paymentNumber: (payment as any).payment_number,
+      },
+    });
   },
 );
 

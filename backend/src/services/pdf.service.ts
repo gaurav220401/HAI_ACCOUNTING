@@ -1350,3 +1350,52 @@ export function generateCreditNotePdf(
     doc.end();
   });
 }
+
+/**
+ * Generate a Sales Order PDF and return it as a Buffer.
+ * Uses a simplified version of the invoice PDF layout.
+ */
+export function generateSalesOrderPdf(params: {
+  order: any;
+  organization: any;
+}): Promise<Buffer> {
+  const { order, organization } = params;
+
+  const data: InvoicePdfData = {
+    orgName: organization?.name || "HAI",
+    orgAddress: organization?.address || {},
+    orgEmail: organization?.email || "",
+    orgTaxId: organization?.gstin || "",
+    customerName:
+      typeof order.customerId === "object"
+        ? order.customerId?.displayName || order.customerId?.companyName || ""
+        : "",
+    invoiceNumber: order.salesOrderNumber || "",
+    invoiceDate: order.orderDate
+      ? new Date(order.orderDate).toISOString()
+      : new Date().toISOString(),
+    items: (order.lineItems || []).map((li: any) => {
+      const itemRef = typeof li.itemId === "object" ? li.itemId : null;
+      return {
+        name: itemRef?.name || li.name || li.description || "Item",
+        description: li.description || "",
+        hsnSacCode: itemRef?.hsnSacCode || li.hsnSacCode || "",
+        quantity: Number(li.quantity) || 0,
+        rate: Number(li.rate) || 0,
+        amount: Number(li.amount) || 0,
+      };
+    }),
+    subTotal: Number(order.subTotal) || 0,
+    adjustmentLabel: "Shipping & Adjustment",
+    adjustmentAmount:
+      (Number(order.shippingCharges) || 0) + (Number(order.adjustment) || 0),
+    total: Number(order.total) || 0,
+    balanceDue: Number(order.total) || 0,
+    customerNotes: order.notes || "",
+    termsAndConditions: order.terms || "",
+  };
+
+  // Reuse the invoice PDF generator with "SALES ORDER" title
+  // For now, just generate with the existing invoice format
+  return generateInvoicePdf(data);
+}

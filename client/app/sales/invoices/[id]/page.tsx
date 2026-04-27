@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Send,
@@ -56,8 +56,10 @@ import {
   type Invoice,
   type InvoiceStatus,
 } from "@/lib/api/invoices";
+import { salesOrderApi, type SalesOrder } from "@/lib/api/sales-orders";
 import { payUApi, type PayUConfig } from "@/lib/api/payu";
 import { toast } from "sonner";
+
 
 const statusColor: Record<InvoiceStatus, string> = {
   Draft: "bg-gray-100 text-gray-700 border-gray-300",
@@ -188,27 +190,51 @@ interface RecordPaymentModalProps {
   onRecorded: () => void;
 }
 
+const PAYMENT_MODES = [
+  "Cash",
+  "Bank Transfer",
+  "UPI",
+  "Credit Card",
+  "Debit Card",
+  "Cheque",
+  "Online Payment",
+] as const;
+
 function RecordPaymentModal({
   open,
   onClose,
   invoice,
   onRecorded,
 }: RecordPaymentModalProps) {
-  const [amount, setAmount] = useState(invoice.balanceDue || invoice.total);
+  const balanceDue = invoice.balanceDue ?? invoice.total;
+  const [amount, setAmount] = useState(balanceDue);
   const [paymentDate, setPaymentDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
+  const [paymentMode, setPaymentMode] = useState("Bank Transfer");
+  const [referenceNumber, setReferenceNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function handleRecord() {
+    if (amount <= 0) {
+      toast.error("Payment amount must be greater than zero");
+      return;
+    }
+    if (amount > balanceDue) {
+      toast.error(`Amount cannot exceed balance due (₹${balanceDue.toLocaleString("en-IN", { minimumFractionDigits: 2 })})`);
+      return;
+    }
     setSaving(true);
     try {
       await invoiceApi.recordPayment(invoice._id, {
         amount,
         paymentDate,
+        paymentModeId: paymentMode,
+        referenceNumber,
         notes,
       });
+      toast.success("Payment recorded successfully");
       onRecorded();
       onClose();
     } catch (e: any) {
@@ -220,46 +246,84 @@ function RecordPaymentModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Payment Amount</Label>
-            <div className="flex">
-              <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 bg-muted text-sm">
-                &#8377;
-              </span>
+          {/* Balance Due Banner */}
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex items-center justify-between">
+            <span className="text-sm text-amber-800 font-medium">Balance Due</span>
+            <span className="text-lg font-bold text-amber-900">
+              &#8377;{balanceDue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Payment Amount *</Label>
+              <div className="flex">
+                <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 bg-muted text-sm">
+                  &#8377;
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={balanceDue}
+                  step="0.01"
+                  className="rounded-l-none"
+                  value={amount}
+                  onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Payment Date</Label>
               <Input
-                type="number"
-                min={0}
-                step="0.01"
-                className="rounded-l-none"
-                value={amount}
-                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
               />
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Payment Date</Label>
-            <Input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-            />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Payment Mode</Label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={paymentMode}
+                onChange={(e) => setPaymentMode(e.target.value)}
+              >
+                {PAYMENT_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {mode}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reference #</Label>
+              <Input
+                placeholder="Txn ID / Cheque No."
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+              />
+            </div>
           </div>
+
           <div className="space-y-1.5">
             <Label>Notes</Label>
             <textarea
               className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[60px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Payment notes..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
         </div>
         <div className="flex items-center gap-3 pt-2">
-          <Button onClick={handleRecord} disabled={saving}>
+          <Button onClick={handleRecord} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             Record Payment
           </Button>
@@ -485,6 +549,7 @@ function SendEmailModal({
 export default function InvoiceDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params.id as string;
 
   const { firebaseUser, loading } = useAuth();
@@ -495,12 +560,12 @@ export default function InvoiceDetailPage() {
   } = useOrganization();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [linkedSalesOrders, setLinkedSalesOrders] = useState<SalesOrder[]>([]);
   const [fetching, setFetching] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [payUConfig, setPayUConfig] = useState<PayUConfig | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -519,11 +584,27 @@ export default function InvoiceDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, id]);
 
+  useEffect(() => {
+    if (!invoice) return;
+    if (invoice.status === "Paid" || invoice.status === "Void") return;
+    if (searchParams?.get("action") !== "payment") return;
+
+    router.replace(`/sales/payments-received/new?invoiceId=${invoice._id}`);
+  }, [invoice, router, searchParams]);
+
   async function fetchInvoice() {
     setFetching(true);
     try {
       const res = await invoiceApi.getById(id);
       setInvoice(res.data);
+      // Fetch linked sales orders (frontend filter for now)
+      salesOrderApi.list({ limit: 100 }).then(soRes => {
+         const linked = soRes.data.filter(so => 
+           (typeof so.invoiceId === "string" && so.invoiceId === id) || 
+           (typeof so.invoiceId === "object" && so.invoiceId?._id === id)
+         );
+         setLinkedSalesOrders(linked);
+      });
     } catch {
       // noop
     } finally {
@@ -712,7 +793,7 @@ export default function InvoiceDetailPage() {
                       Learn More
                     </button>
                   </div>
-                  <Button size="sm" onClick={() => setShowPaymentModal(true)}>
+                  <Button size="sm" onClick={() => router.push(`/sales/payments-received/new?invoiceId=${invoice._id}`)}>
                     Record Payment
                   </Button>
                 </div>
@@ -859,7 +940,7 @@ export default function InvoiceDetailPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuItem
-                        onClick={() => setShowPaymentModal(true)}
+                        onClick={() => router.push(`/sales/payments-received/new?invoiceId=${invoice._id}`)}
                       >
                         Record Payment
                       </DropdownMenuItem>
@@ -888,6 +969,42 @@ export default function InvoiceDetailPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
+
+              {/* ═══ Associated Sales Orders ═══ */}
+              {linkedSalesOrders.length > 0 && (
+                <div className="border rounded-lg mb-6 overflow-hidden bg-white shadow-sm">
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h3 className="font-medium text-gray-800">Associated sales orders</h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {linkedSalesOrders.map((so) => (
+                      <div key={so._id} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-blue-100 text-blue-600 p-2 rounded-md">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="font-medium text-blue-600 cursor-pointer hover:underline" onClick={() => router.push(`/sales/orders/${so._id}`)}>
+                              {so.salesOrderNumber}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Date: {new Date(so.orderDate).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                           <span className="font-medium">₹{Number(so.total).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                           <Badge variant="outline" className={`mt-1 font-normal ${so.status === 'CLOSED' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>
+                              {so.status}
+                           </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ═══ Tax Invoice Preview ═══ */}
               <div className="border rounded-lg overflow-hidden relative">
@@ -1003,6 +1120,9 @@ export default function InvoiceDetailPage() {
                           <TableHead className="font-bold text-foreground">
                             Item &amp; Description
                           </TableHead>
+                          <TableHead className="text-right font-bold text-foreground w-20">
+                            HSN/SAC
+                          </TableHead>
                           <TableHead className="text-right font-bold text-foreground w-16">
                             Qty
                           </TableHead>
@@ -1027,6 +1147,9 @@ export default function InvoiceDetailPage() {
                                   {item.description}
                                 </div>
                               )}
+                            </TableCell>
+                            <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
+                              {(item as any).hsnSacCode || "—"}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {fmtNum(item.quantity)}
@@ -1198,14 +1321,6 @@ export default function InvoiceDetailPage() {
         />
       )}
 
-      {invoice && showPaymentModal && (
-        <RecordPaymentModal
-          open={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          invoice={invoice}
-          onRecorded={fetchInvoice}
-        />
-      )}
     </SidebarProvider>
   );
 }

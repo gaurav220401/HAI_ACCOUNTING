@@ -200,6 +200,7 @@ export const invoiceApi = {
       amount: number;
       paymentDate: string;
       paymentModeId?: string;
+      referenceNumber?: string;
       notes?: string;
     },
   ) =>

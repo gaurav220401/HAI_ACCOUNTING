@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2, Send } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -38,20 +38,17 @@ import {
   type SalesOrderStatus,
 } from "@/lib/api/sales-orders";
 
-const EDITABLE_ORDER_STATUSES: SalesOrderStatus[] = [
-  "DRAFT",
-  "APPROVED",
-  "OVERDUE",
-  "CLOSED",
-];
+// Status is now set automatically based on save action
 
 type LineItemUi = {
   id: string;
   itemId: string;
   description: string;
+  hsnSacCode: string;
   quantity: string;
   rate: string;
   discount: string;
+  taxPercent: string;
   amount: number;
 };
 
@@ -84,7 +81,7 @@ export default function NewSalesOrderPage() {
   const [expectedShipmentDate, setExpectedShipmentDate] = useState("");
   const [paymentTermsId, setPaymentTermsId] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
-  const [status, setStatus] = useState<SalesOrderStatus>("DRAFT");
+  const [sendAfterSave, setSendAfterSave] = useState(false);
 
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
@@ -97,9 +94,11 @@ export default function NewSalesOrderPage() {
       id: crypto.randomUUID(),
       itemId: "",
       description: "",
+      hsnSacCode: "",
       quantity: "1",
       rate: "0",
       discount: "0",
+      taxPercent: "0",
       amount: 0,
     },
   ]);
@@ -166,9 +165,11 @@ export default function NewSalesOrderPage() {
         id: crypto.randomUUID(),
         itemId: "",
         description: "",
+        hsnSacCode: "",
         quantity: "1",
         rate: "0",
         discount: "0",
+        taxPercent: "0",
         amount: 0,
       },
     ]);
@@ -178,42 +179,35 @@ export default function NewSalesOrderPage() {
     setLineItems((prev) => (prev.length === 1 ? prev : prev.filter((li) => li.id !== id)));
   }
 
-  async function onSave() {
+  function buildPayload(saveStatus: SalesOrderStatus): CreateSalesOrderInput | null {
     setError("");
-
-    if (!customerId) {
-      setError("Customer Name is required");
-      return;
-    }
-
-    if (!salesOrderNumber.trim()) {
-      setError("Sales Order# is required");
-      return;
-    }
+    if (!customerId) { setError("Customer Name is required"); return null; }
+    if (!salesOrderNumber.trim()) { setError("Sales Order# is required"); return null; }
 
     const cleanedLines = lineItems
       .map((li) => {
         const qty = Number(li.quantity);
         const rate = Number(li.rate);
         const disc = Number(li.discount) || 0;
+        const selectedItem = itemsById.get(li.itemId);
         return {
           itemId: li.itemId,
+          name: selectedItem?.name || "",
           description: li.description || undefined,
+          hsnSacCode: li.hsnSacCode || selectedItem?.hsnSacCode || "",
           quantity: Number.isFinite(qty) ? qty : 0,
           rate: Number.isFinite(rate) ? rate : 0,
           discount: disc,
           taxId: null,
+          taxPercent: Number(li.taxPercent) || 0,
           amount: Number(li.amount) || 0,
         };
       })
       .filter((li) => li.itemId);
 
-    if (cleanedLines.length === 0) {
-      setError("Add at least one item in the Item Table");
-      return;
-    }
+    if (cleanedLines.length === 0) { setError("Add at least one item"); return null; }
 
-    const payload: CreateSalesOrderInput = {
+    return {
       customerId,
       salesOrderNumber: salesOrderNumber.trim(),
       reference: reference.trim() || undefined,
@@ -226,18 +220,37 @@ export default function NewSalesOrderPage() {
       adjustment: totals.adj,
       notes: notes.trim() || undefined,
       terms: terms.trim() || undefined,
-      status,
+      status: saveStatus,
     };
+  }
 
+  async function onSaveDraft() {
+    const payload = buildPayload("DRAFT");
+    if (!payload) return;
     setSaving(true);
     try {
       await salesOrderApi.create(payload);
       router.push("/sales/orders");
     } catch (e: any) {
       setError(e?.message || "Failed to create sales order");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
+  }
+
+  async function onSaveAndSend() {
+    const payload = buildPayload("APPROVED");
+    if (!payload) return;
+    setSaving(true);
+    try {
+      const res = await salesOrderApi.create(payload);
+      const newId = res.data?._id;
+      if (newId) {
+        router.push(`/sales/orders/${newId}/send-email`);
+      } else {
+        router.push("/sales/orders");
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to create sales order");
+    } finally { setSaving(false); }
   }
 
   if (loading || orgLoading || !firebaseUser) {
@@ -270,9 +283,13 @@ export default function NewSalesOrderPage() {
               <Button variant="outline" size="sm" onClick={() => router.push("/sales/orders")} disabled={saving}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={onSave} disabled={saving}>
+              <Button variant="outline" size="sm" onClick={onSaveDraft} disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Save
+                Save as Draft
+              </Button>
+              <Button size="sm" onClick={onSaveAndSend} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                Save and Send
               </Button>
             </>
           }
@@ -384,23 +401,7 @@ export default function NewSalesOrderPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Status</Label>
-                <div className="md:col-span-8">
-                  <Select value={status} onValueChange={(v) => setStatus(v as SalesOrderStatus)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EDITABLE_ORDER_STATUSES.map((st) => (
-                        <SelectItem key={st} value={st}>
-                          {st}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              {/* Status is determined automatically by save action */}
             </div>
 
             <div className="mt-8">
@@ -417,11 +418,12 @@ export default function NewSalesOrderPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Item Details</TableHead>
-                      <TableHead className="w-24 text-right">Quantity</TableHead>
-                      <TableHead className="w-28 text-right">Stock</TableHead>
-                      <TableHead className="w-28 text-right">Rate</TableHead>
-                      <TableHead className="w-28 text-right">Discount (Amt)</TableHead>
-                      <TableHead className="w-28 text-right">Amount</TableHead>
+                      <TableHead className="w-24 text-right">HSN/SAC</TableHead>
+                      <TableHead className="w-20 text-right">Qty</TableHead>
+                      <TableHead className="w-24 text-right">Stock</TableHead>
+                      <TableHead className="w-24 text-right">Rate</TableHead>
+                      <TableHead className="w-24 text-right">Discount</TableHead>
+                      <TableHead className="w-24 text-right">Amount</TableHead>
                       <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>
@@ -439,52 +441,52 @@ export default function NewSalesOrderPage() {
                       return (
                         <TableRow key={li.id}>
                           <TableCell>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              <div className="space-y-2">
-                                <Select
-                                  value={li.itemId}
-                                  onValueChange={(v) => {
-                                    const selected = itemsById.get(v);
-                                    updateLine(li.id, {
-                                      itemId: v,
-                                      description: selected?.description || "",
-                                      rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Type or click to select an item" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {items.map((it) => (
-                                      <SelectItem key={it._id} value={it._id}>
-                                        <div className="flex items-center justify-between gap-3">
-                                          <span>{it.name}</span>
-                                          <span className="text-xs text-muted-foreground">
-                                            {it.inventoryTracked ?
-                                              `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
-                                            : "Non-stock"}
-                                          </span>
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                {selectedItem ?
-                                  <p className="text-xs text-muted-foreground">
-                                    {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
-                                    {selectedItem.inventoryTracked ?
-                                      `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
-                                    : "Inventory not tracked"}
-                                  </p>
-                                : null}
-                              </div>
+                            <div className="space-y-2">
+                              <Select
+                                value={li.itemId}
+                                onValueChange={(v) => {
+                                  const selected = itemsById.get(v);
+                                  updateLine(li.id, {
+                                    itemId: v,
+                                    description: selected?.description || "",
+                                    hsnSacCode: selected?.hsnSacCode || "",
+                                    rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
+                                  });
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select an item" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {items.map((it) => (
+                                    <SelectItem key={it._id} value={it._id}>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span>{it.name}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {it.inventoryTracked ?
+                                            `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
+                                          : "Non-stock"}
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                               <Input
                                 placeholder="Description"
                                 value={li.description}
                                 onChange={(e) => updateLine(li.id, { description: e.target.value })}
+                                className="h-7 text-xs"
                               />
                             </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              value={li.hsnSacCode}
+                              onChange={(e) => updateLine(li.id, { hsnSacCode: e.target.value })}
+                              className="text-right text-xs w-20"
+                              placeholder="HSN"
+                            />
                           </TableCell>
                           <TableCell className="text-right">
                             <Input
