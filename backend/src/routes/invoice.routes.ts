@@ -7,6 +7,7 @@ import {
   create,
   update,
   remove,
+  downloadPdf,
   getNextNumber,
   sendInvoice,
   sendInvoiceEmail,
@@ -27,6 +28,7 @@ const upload = multer({
 router.get("/next-number", getNextNumber);
 router.get("/", list);
 router.post("/", create);
+router.get("/:id/pdf", downloadPdf);
 router.get("/:id", getOne);
 router.patch("/:id", update);
 router.delete("/:id", remove);

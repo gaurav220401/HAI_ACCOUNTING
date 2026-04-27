@@ -145,7 +145,7 @@ export default function EditInvoicePage() {
     "percent",
   );
   const [discountValue, setDiscountValue] = useState(0);
-  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("TDS");
+  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("none");
   const [totalTaxId, setTotalTaxId] = useState("");
   const [adjustmentLabel, setAdjustmentLabel] = useState("Adjustment");
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
@@ -245,6 +245,24 @@ export default function EditInvoicePage() {
     });
   }, []);
 
+  const updateLineTax = useCallback(
+    (key: number, taxId: string) => {
+      const tax = taxes.find((entry) => entry._id === taxId);
+      setLines((prev) =>
+        prev.map((line) =>
+          line.key === key ?
+            {
+              ...line,
+              taxId: tax?._id || "",
+              taxPercent: tax ? Number(tax.rate || 0) : 0,
+            }
+          : line,
+        ),
+      );
+    },
+    [taxes],
+  );
+
   const handleItemSelect = useCallback(
     (key: number, itemId: string) => {
       const item = items.find((i) => i._id === itemId);
@@ -263,6 +281,7 @@ export default function EditInvoicePage() {
               itemId: item._id,
               name: item.name,
               description: item.description || "",
+              hsnSacCode: (item as any).hsnSacCode || "",
               rate: item.sellingPrice || 0,
               taxId: linkedTax.taxId,
               taxPercent: linkedTax.taxPercent,
@@ -302,19 +321,26 @@ export default function EditInvoicePage() {
   }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
   // Calculations
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const lineTotals = lines.map(calcLineAmount);
+  const subTotal = lineTotals.reduce((s, l) => s + l.lineTotal, 0);
+  const lineDiscountAmount = lineTotals.reduce((s, l) => s + l.discAmt, 0);
+  const lineTaxAmount = lineTotals.reduce((s, l) => s + l.taxAmt, 0);
+  const lineItemsTotal = lineTotals.reduce((s, l) => s + l.amount, 0);
   const discountAmount =
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
   const selectedTax = taxes.find((t) => t._id === totalTaxId);
   const taxAmount =
-    selectedTax ? (subTotal * (selectedTax.rate || 0)) / 100 : 0;
+    selectedTax && taxType !== "none" ?
+      (subTotal * (selectedTax.rate || 0)) / 100
+    : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total = subTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total =
+    lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
 
   async function handleUpdate() {
     if (!customerId) {
@@ -352,8 +378,8 @@ export default function EditInvoicePage() {
           })),
         discountType,
         discountValue,
-        taxType,
-        taxId: totalTaxId || null,
+        taxType: totalTaxId && taxType !== "none" ? taxType : "none",
+        taxId: totalTaxId && taxType !== "none" ? totalTaxId : null,
         taxAmount,
         adjustmentLabel,
         adjustmentAmount,
@@ -572,6 +598,7 @@ export default function EditInvoicePage() {
                     <TableHead className="w-25 text-right">QTY</TableHead>
                     <TableHead className="w-30 text-right">RATE</TableHead>
                     <TableHead className="w-25 text-right">DISC %</TableHead>
+                    <TableHead className="w-36 text-right">TAX</TableHead>
                     <TableHead className="w-30 text-right">AMOUNT</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
@@ -662,6 +689,29 @@ export default function EditInvoicePage() {
                             }
                           />
                         </TableCell>
+                        <TableCell>
+                          <Select
+                            value={line.taxId || "__none"}
+                            onValueChange={(value) =>
+                              updateLineTax(
+                                line.key,
+                                value === "__none" ? "" : value,
+                              )
+                            }
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Tax" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none">No Tax</SelectItem>
+                              {taxes.map((tax) => (
+                                <SelectItem key={tax._id} value={tax._id}>
+                                  {tax.name} ({tax.rate}%)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
                           {amount.toFixed(2)}
                         </TableCell>
@@ -723,6 +773,22 @@ export default function EditInvoicePage() {
                   {subTotal.toFixed(2)}
                 </span>
               </div>
+              {lineDiscountAmount > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Line Item Discount</span>
+                  <span className="tabular-nums">
+                    - {lineDiscountAmount.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {lineTaxAmount > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Line Item Tax</span>
+                  <span className="tabular-nums">
+                    + {lineTaxAmount.toFixed(2)}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm">Discount</span>
                 <div className="flex items-center gap-2">
@@ -760,6 +826,17 @@ export default function EditInvoicePage() {
                     <input
                       type="radio"
                       name="editTaxType"
+                      value="none"
+                      checked={taxType === "none"}
+                      onChange={() => setTaxType("none")}
+                      className="accent-primary"
+                    />
+                    None
+                  </label>
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="radio"
+                      name="editTaxType"
                       value="TDS"
                       checked={taxType === "TDS"}
                       onChange={() => setTaxType("TDS")}
@@ -782,7 +859,15 @@ export default function EditInvoicePage() {
                 <div className="flex items-center gap-2">
                   <Select
                     value={totalTaxId || undefined}
-                    onValueChange={setTotalTaxId}
+                    onValueChange={(value) => {
+                      if (value === "__none") {
+                        setTotalTaxId("");
+                        setTaxType("none");
+                        return;
+                      }
+                      setTotalTaxId(value);
+                      if (taxType === "none") setTaxType("TDS");
+                    }}
                   >
                     <SelectTrigger className="h-8 w-44">
                       <SelectValue placeholder="Select a Tax" />

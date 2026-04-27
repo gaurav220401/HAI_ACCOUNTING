@@ -1,15 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus,
-  Search,
-  RefreshCw,
+  ChevronDown,
+  CreditCard,
+  Download,
   FileText,
   MoreHorizontal,
-  ChevronDown,
+  Pencil,
+  Plus,
+  Printer,
+  RefreshCw,
+  Search,
+  Send,
+  Trash2,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -63,10 +71,11 @@ function formatCurrency(n: number) {
     style: "currency",
     currency: "INR",
     minimumFractionDigits: 2,
-  }).format(n);
+  }).format(Number(n || 0));
 }
 
-function formatDate(d: string) {
+function formatDate(d?: string | null) {
+  if (!d) return "-";
   return new Date(d).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -76,7 +85,12 @@ function formatDate(d: string) {
 
 function getCustomerName(c: Invoice["customerId"]) {
   if (typeof c === "string") return c;
-  return c?.displayName || "—";
+  return c?.displayName || c?.companyName || "-";
+}
+
+function getPaymentTerms(pt: Invoice["paymentTermsId"]) {
+  if (!pt || typeof pt === "string") return "Due on Receipt";
+  return pt.name || "Due on Receipt";
 }
 
 function getDueStatus(invoice: Invoice) {
@@ -94,13 +108,37 @@ function getDueStatus(invoice: Invoice) {
   return `Due in ${diff} day(s)`;
 }
 
+function getLineDiscount(invoice: Invoice) {
+  return invoice.items.reduce(
+    (sum, item) => sum + Number(item.discountAmount || 0),
+    0,
+  );
+}
+
+function getLineTax(invoice: Invoice) {
+  return invoice.items.reduce(
+    (sum, item) => sum + Number(item.taxAmount || 0),
+    0,
+  );
+}
+
+function invoicePdfFilename(invoice: Invoice) {
+  const safeNumber = String(invoice.invoiceNumber || "invoice").replace(
+    /[^a-zA-Z0-9._-]/g,
+    "_",
+  );
+  return `Invoice-${safeNumber}.pdf`;
+}
+
 export default function InvoicesPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
+  const [actionId, setActionId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | "All">(
     "All",
@@ -111,14 +149,39 @@ export default function InvoicesPage() {
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) {
       router.push("/org-setup");
+    }
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
-    if (firebaseUser && !loading) fetchInvoices();
+    if (firebaseUser && !loading) void fetchInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, statusFilter]);
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return invoices;
+    return invoices.filter(
+      (inv) =>
+        inv.invoiceNumber.toLowerCase().includes(query) ||
+        inv.orderNumber?.toLowerCase().includes(query) ||
+        inv.subject?.toLowerCase().includes(query) ||
+        getCustomerName(inv.customerId).toLowerCase().includes(query),
+    );
+  }, [invoices, search]);
+
+  useEffect(() => {
+    if (filtered.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    if (selectedId && !filtered.some((inv) => inv._id === selectedId)) {
+      setSelectedId(filtered[0]._id);
+    }
+  }, [filtered, selectedId]);
+
+  const selectedInvoice = filtered.find((inv) => inv._id === selectedId) || null;
 
   async function fetchInvoices() {
     setFetching(true);
@@ -130,11 +193,100 @@ export default function InvoicesPage() {
         sortBy: "createdAt",
         sortOrder: "desc",
       });
-      setInvoices(res.data ?? []);
-    } catch {
-      // noop
+      const next = res.data ?? [];
+      setInvoices(next);
+      setSelectedId((current) =>
+        current && next.some((inv) => inv._id === current) ?
+          current
+        : next[0]?._id ?? null,
+      );
+    } catch (e: any) {
+      toast.error(e.message || "Failed to load invoices");
     } finally {
       setFetching(false);
+    }
+  }
+
+  async function markAsSent(invoice: Invoice) {
+    setActionId(invoice._id);
+    try {
+      await invoiceApi.send(invoice._id);
+      toast.success("Invoice marked as sent");
+      await fetchInvoices();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to mark invoice as sent");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function voidInvoice(invoice: Invoice) {
+    if (!confirm("Void this invoice? This cannot be undone.")) return;
+    setActionId(invoice._id);
+    try {
+      await invoiceApi.voidInvoice(invoice._id);
+      toast.success("Invoice voided");
+      await fetchInvoices();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to void invoice");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function deleteInvoice(invoice: Invoice) {
+    if (!confirm("Delete this invoice?")) return;
+    setActionId(invoice._id);
+    try {
+      await invoiceApi.remove(invoice._id);
+      toast.success("Invoice deleted");
+      await fetchInvoices();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete invoice");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function downloadPdf(invoice: Invoice) {
+    setActionId(invoice._id);
+    try {
+      const blob = await invoiceApi.downloadPdf(invoice._id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = invoicePdfFilename(invoice);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to download invoice PDF");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function printInvoice(invoice: Invoice) {
+    setActionId(invoice._id);
+    try {
+      const blob = await invoiceApi.downloadPdf(invoice._id, true);
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url, "_blank");
+      if (!printWindow) {
+        window.URL.revokeObjectURL(url);
+        toast.error("Please allow pop-ups to print this invoice");
+        return;
+      }
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 600);
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to print invoice");
+    } finally {
+      setActionId(null);
     }
   }
 
@@ -145,16 +297,6 @@ export default function InvoicesPage() {
       </div>
     );
   }
-
-  const filtered = invoices.filter(
-    (inv) =>
-      !search ||
-      inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
-      inv.subject?.toLowerCase().includes(search.toLowerCase()) ||
-      getCustomerName(inv.customerId)
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
 
   return (
     <SidebarProvider>
@@ -199,8 +341,7 @@ export default function InvoicesPage() {
           }
         />
 
-        <div className="flex flex-1 flex-col p-6 gap-4">
-          {/* Title + Status Filter */}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <DropdownMenu>
@@ -229,43 +370,17 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          {/* Content */}
           {filtered.length === 0 ?
-            <div className="flex flex-1 flex-col items-center justify-center gap-6 text-muted-foreground py-20">
+            <div className="flex flex-1 flex-col items-center justify-center gap-6 py-20 text-muted-foreground">
               <FileText className="h-16 w-16 opacity-30" />
-              <div className="text-center max-w-md space-y-2">
+              <div className="max-w-md space-y-2 text-center">
                 <h2 className="text-xl font-semibold text-foreground">
                   Get paid faster.
                 </h2>
                 <p className="text-sm">
                   Create professional invoices and send them to your customers
-                  to get paid on time!
+                  to get paid on time.
                 </p>
-
-                {/* Lifecycle diagram */}
-                <div className="mt-6 mb-2">
-                  <p className="text-xs font-medium text-muted-foreground mb-4">
-                    Life cycle of an Invoice
-                  </p>
-                  <div className="flex items-center justify-center gap-2 text-xs flex-wrap">
-                    <span className="border rounded px-3 py-1.5 bg-gray-50 text-gray-700 border-gray-300 font-medium">
-                      DRAFT
-                    </span>
-                    <span className="text-muted-foreground">&rarr;</span>
-                    <span className="border rounded px-3 py-1.5 bg-blue-50 text-blue-700 border-blue-300 font-medium">
-                      SENT
-                    </span>
-                    <span className="text-muted-foreground">&rarr;</span>
-                    <div className="flex flex-col items-start gap-1">
-                      <span className="border rounded px-3 py-1.5 bg-green-50 text-green-700 border-green-300 font-medium">
-                        PAID
-                      </span>
-                      <span className="border rounded px-3 py-1.5 bg-red-50 text-red-700 border-red-300 font-medium">
-                        OVERDUE
-                      </span>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <Button onClick={() => router.push("/sales/invoices/new")}>
@@ -273,160 +388,559 @@ export default function InvoicesPage() {
                 CREATE NEW INVOICE
               </Button>
             </div>
-          : <div className="rounded-lg border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Invoice#</TableHead>
-                    <TableHead>Order#</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Balance Due</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((inv) => {
-                    const dueStatus = getDueStatus(inv);
-                    return (
-                      <TableRow
-                        key={inv._id}
-                        className="cursor-pointer hover:bg-muted/50"
+          : <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-white">
+              <div
+                className={
+                  selectedInvoice ?
+                    "w-[380px] shrink-0 overflow-y-auto border-r bg-gray-50/60"
+                  : "min-w-0 flex-1 overflow-auto"
+                }
+              >
+                {selectedInvoice ?
+                  <div className="divide-y">
+                    {filtered.map((inv) => {
+                      const dueStatus = getDueStatus(inv);
+                      const active = selectedId === inv._id;
+                      return (
+                        <button
+                          key={inv._id}
+                          type="button"
+                          className={`block w-full px-4 py-3 text-left transition-colors ${
+                            active ?
+                              "bg-blue-50"
+                            : "bg-white hover:bg-muted/50"
+                          }`}
+                          onClick={() => setSelectedId(inv._id)}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-blue-700">
+                                {inv.invoiceNumber}
+                              </div>
+                              <div className="mt-0.5 truncate text-sm text-foreground">
+                                {getCustomerName(inv.customerId)}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {formatDate(inv.invoiceDate)}
+                                {inv.orderNumber ? ` - ${inv.orderNumber}` : ""}
+                              </div>
+                              {dueStatus && (
+                                <div
+                                  className={`mt-1 text-xs ${
+                                    dueStatus.includes("overdue") ?
+                                      "font-medium text-red-600"
+                                    : "text-muted-foreground"
+                                  }`}
+                                >
+                                  {dueStatus}
+                                </div>
+                              )}
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <div className="text-sm font-semibold tabular-nums">
+                                {formatCurrency(inv.total)}
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={`mt-1 ${statusColor[inv.status]}`}
+                              >
+                                {inv.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                : <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Invoice#</TableHead>
+                        <TableHead>Order#</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Due Date</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">
+                          Balance Due
+                        </TableHead>
+                        <TableHead className="w-10" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map((inv) => {
+                        const dueStatus = getDueStatus(inv);
+                        return (
+                          <TableRow
+                            key={inv._id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => setSelectedId(inv._id)}
+                          >
+                            <TableCell className="text-sm">
+                              {formatDate(inv.invoiceDate)}
+                            </TableCell>
+                            <TableCell className="text-sm font-medium text-blue-600">
+                              {inv.invoiceNumber}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {inv.orderNumber || "-"}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {getCustomerName(inv.customerId)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={statusColor[inv.status]}
+                              >
+                                {inv.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div>{formatDate(inv.dueDate)}</div>
+                              {dueStatus && (
+                                <div
+                                  className={`text-xs ${
+                                    dueStatus.includes("overdue") ?
+                                      "font-medium text-red-600"
+                                    : "text-muted-foreground"
+                                  }`}
+                                >
+                                  {dueStatus}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right text-sm font-medium tabular-nums">
+                              {formatCurrency(inv.total)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm font-medium tabular-nums">
+                              {formatCurrency(inv.balanceDue)}
+                            </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  asChild
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      router.push(
+                                        `/sales/invoices/${inv._id}/edit`,
+                                      )
+                                    }
+                                  >
+                                    Edit
+                                  </DropdownMenuItem>
+                                  {inv.status === "Draft" && (
+                                    <DropdownMenuItem
+                                      onClick={() => markAsSent(inv)}
+                                    >
+                                      Mark as Sent
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem
+                                    onClick={() => downloadPdf(inv)}
+                                  >
+                                    Download PDF
+                                  </DropdownMenuItem>
+                                  {inv.status !== "Paid" &&
+                                    inv.status !== "Void" && (
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          router.push(
+                                            `/sales/payments-received/new?invoiceId=${inv._id}`,
+                                          )
+                                        }
+                                      >
+                                        Record Payment
+                                      </DropdownMenuItem>
+                                    )}
+                                  {inv.status !== "Void" && (
+                                    <DropdownMenuItem
+                                      onClick={() => voidInvoice(inv)}
+                                    >
+                                      Void
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => deleteInvoice(inv)}
+                                  >
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                }
+              </div>
+
+              {selectedInvoice && (
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex min-h-[48px] items-center gap-1 border-b px-3">
+                    {["Draft", "Sent"].includes(selectedInvoice.status) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() =>
-                          router.push(`/sales/invoices/${inv._id}`)
+                          router.push(
+                            `/sales/invoices/${selectedInvoice._id}/edit`,
+                          )
                         }
                       >
-                        <TableCell className="text-sm">
-                          {formatDate(inv.invoiceDate)}
-                        </TableCell>
-                        <TableCell className="text-sm font-medium text-blue-600">
-                          {inv.invoiceNumber}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {inv.orderNumber || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {getCustomerName(inv.customerId)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={statusColor[inv.status]}
+                        <Pencil className="h-3.5 w-3.5 mr-1" />
+                        Edit
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={actionId === selectedInvoice._id}
+                      onClick={() =>
+                        selectedInvoice.status === "Draft" ?
+                          markAsSent(selectedInvoice)
+                        : router.push(`/sales/invoices/${selectedInvoice._id}`)
+                      }
+                    >
+                      <Send className="h-3.5 w-3.5 mr-1" />
+                      {selectedInvoice.status === "Draft" ?
+                        "Mark as Sent"
+                      : "Send Email"}
+                    </Button>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <Printer className="h-3.5 w-3.5 mr-1" />
+                          PDF/Print
+                          <ChevronDown className="h-3 w-3 ml-1" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem
+                          onClick={() => printInvoice(selectedInvoice)}
+                        >
+                          <Printer className="h-4 w-4 mr-2" />
+                          Print
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => downloadPdf(selectedInvoice)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Download PDF
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {selectedInvoice.status !== "Paid" &&
+                      selectedInvoice.status !== "Void" && (
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            router.push(
+                              `/sales/payments-received/new?invoiceId=${selectedInvoice._id}`,
+                            )
+                          }
+                        >
+                          <CreditCard className="h-3.5 w-3.5 mr-1" />
+                          Record Payment
+                        </Button>
+                      )}
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() =>
+                            router.push(
+                              `/sales/invoices/${selectedInvoice._id}`,
+                            )
+                          }
+                        >
+                          Open Full Detail
+                        </DropdownMenuItem>
+                        {selectedInvoice.status !== "Void" && (
+                          <DropdownMenuItem
+                            onClick={() => voidInvoice(selectedInvoice)}
                           >
-                            {inv.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
+                            Void Invoice
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => deleteInvoice(selectedInvoice)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Invoice
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto h-8 w-8"
+                      onClick={() => setSelectedId(null)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50 p-5">
+                    <div className="mx-auto max-w-4xl rounded-lg border bg-white shadow-sm">
+                      <div className="border-b p-6">
+                        <div className="flex items-start justify-between gap-4">
                           <div>
-                            {inv.dueDate ? formatDate(inv.dueDate) : "—"}
-                          </div>
-                          {dueStatus && (
-                            <div
-                              className={`text-xs ${dueStatus.includes("overdue") ? "text-red-600 font-medium" : "text-muted-foreground"}`}
-                            >
-                              {dueStatus}
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Tax Invoice
                             </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {formatCurrency(inv.total)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {formatCurrency(inv.balanceDue)}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              asChild
-                              onClick={(e) => e.stopPropagation()}
+                            <h1 className="mt-1 text-2xl font-bold">
+                              {selectedInvoice.invoiceNumber}
+                            </h1>
+                            <div className="mt-2 text-sm text-muted-foreground">
+                              {getCustomerName(selectedInvoice.customerId)}
+                              {selectedInvoice.orderNumber ?
+                                ` - Order ${selectedInvoice.orderNumber}`
+                              : ""}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge
+                              variant="outline"
+                              className={statusColor[selectedInvoice.status]}
                             >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(
-                                    `/sales/invoices/${inv._id}/edit`,
-                                  );
-                                }}
-                              >
-                                Edit
-                              </DropdownMenuItem>
-                              {inv.status === "Draft" && (
-                                <DropdownMenuItem
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await invoiceApi.send(inv._id);
-                                    fetchInvoices();
-                                  }}
-                                >
-                                  Mark as Sent
-                                </DropdownMenuItem>
-                              )}
-                              {inv.status !== "Paid" &&
-                                inv.status !== "Void" && (
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      router.push(
-                                        `/sales/payments-received/new?invoiceId=${inv._id}`,
-                                      );
-                                    }}
-                                  >
-                                    Record Payment
-                                  </DropdownMenuItem>
+                              {selectedInvoice.status}
+                            </Badge>
+                            <div className="mt-3 text-2xl font-bold tabular-nums">
+                              {formatCurrency(selectedInvoice.total)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Balance {formatCurrency(selectedInvoice.balanceDue)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 grid gap-4 text-sm md:grid-cols-4">
+                          <div>
+                            <div className="text-muted-foreground">
+                              Invoice Date
+                            </div>
+                            <div className="font-medium">
+                              {formatDate(selectedInvoice.invoiceDate)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">
+                              Due Date
+                            </div>
+                            <div className="font-medium">
+                              {formatDate(selectedInvoice.dueDate)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Terms</div>
+                            <div className="font-medium">
+                              {getPaymentTerms(selectedInvoice.paymentTermsId)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">
+                              Salesperson
+                            </div>
+                            <div className="font-medium">
+                              {typeof selectedInvoice.salesPersonId ===
+                              "object" ?
+                                selectedInvoice.salesPersonId?.name || "-"
+                              : "-"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-6">
+                        <div className="rounded-lg border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Item & Description</TableHead>
+                                <TableHead className="text-right">
+                                  Qty
+                                </TableHead>
+                                <TableHead className="text-right">
+                                  Rate
+                                </TableHead>
+                                <TableHead className="text-right">
+                                  Tax
+                                </TableHead>
+                                <TableHead className="text-right">
+                                  Amount
+                                </TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {selectedInvoice.items.map((item, index) => (
+                                <TableRow key={item._id || index}>
+                                  <TableCell>
+                                    <div className="font-medium">
+                                      {item.name}
+                                    </div>
+                                    {item.description && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {item.description}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">
+                                    {Number(item.quantity || 0).toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">
+                                    {Number(item.rate || 0).toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs tabular-nums">
+                                    {Number(item.taxPercent || 0) > 0 ?
+                                      `${Number(item.taxPercent || 0).toFixed(2)}%`
+                                    : "-"}
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium tabular-nums">
+                                    {Number(item.amount || 0).toFixed(2)}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+
+                        <div className="mt-6 flex justify-end">
+                          <div className="w-80 space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span>Sub Total</span>
+                              <span className="tabular-nums">
+                                {Number(selectedInvoice.subTotal || 0).toFixed(
+                                  2,
                                 )}
-                              {inv.status !== "Void" && (
-                                <DropdownMenuItem
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    if (
-                                      confirm(
-                                        "Are you sure you want to void this invoice?",
-                                      )
-                                    ) {
-                                      await invoiceApi.voidInvoice(inv._id);
-                                      fetchInvoices();
-                                    }
-                                  }}
-                                >
-                                  Void
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  if (
-                                    confirm(
-                                      "Are you sure you want to delete this invoice?",
-                                    )
-                                  ) {
-                                    await invoiceApi.remove(inv._id);
-                                    fetchInvoices();
-                                  }
-                                }}
-                              >
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                              </span>
+                            </div>
+                            {getLineDiscount(selectedInvoice) > 0 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>Line Item Discount</span>
+                                <span className="tabular-nums">
+                                  -{" "}
+                                  {getLineDiscount(selectedInvoice).toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+                            {getLineTax(selectedInvoice) > 0 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>Line Item Tax</span>
+                                <span className="tabular-nums">
+                                  + {getLineTax(selectedInvoice).toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+                            {Number(selectedInvoice.discountAmount || 0) >
+                              0 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>Discount</span>
+                                <span className="tabular-nums">
+                                  -{" "}
+                                  {Number(
+                                    selectedInvoice.discountAmount || 0,
+                                  ).toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+                            {Number(selectedInvoice.taxAmount || 0) > 0 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>{selectedInvoice.taxType}</span>
+                                <span className="tabular-nums">
+                                  {selectedInvoice.taxType === "TDS" ?
+                                    "- "
+                                  : "+ "}
+                                  {Number(selectedInvoice.taxAmount || 0).toFixed(
+                                    2,
+                                  )}
+                                </span>
+                              </div>
+                            )}
+                            {Number(selectedInvoice.adjustmentAmount || 0) !==
+                              0 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>
+                                  {selectedInvoice.adjustmentLabel ||
+                                    "Adjustment"}
+                                </span>
+                                <span className="tabular-nums">
+                                  {Number(selectedInvoice.adjustmentAmount) > 0 ?
+                                    "+ "
+                                  : ""}
+                                  {Number(
+                                    selectedInvoice.adjustmentAmount || 0,
+                                  ).toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+                            <div className="border-t pt-2">
+                              <div className="flex justify-between text-base font-bold">
+                                <span>Total</span>
+                                <span>{formatCurrency(selectedInvoice.total)}</span>
+                              </div>
+                              <div className="mt-1 flex justify-between font-semibold">
+                                <span>Balance Due</span>
+                                <span>
+                                  {formatCurrency(selectedInvoice.balanceDue)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {(selectedInvoice.customerNotes ||
+                          selectedInvoice.termsAndConditions) && (
+                          <div className="mt-8 grid gap-4 text-sm md:grid-cols-2">
+                            {selectedInvoice.customerNotes && (
+                              <div>
+                                <div className="font-semibold">Notes</div>
+                                <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                                  {selectedInvoice.customerNotes}
+                                </p>
+                              </div>
+                            )}
+                            {selectedInvoice.termsAndConditions && (
+                              <div>
+                                <div className="font-semibold">
+                                  Terms & Conditions
+                                </div>
+                                <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                                  {selectedInvoice.termsAndConditions}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           }
         </div>

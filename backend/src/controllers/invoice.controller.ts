@@ -234,6 +234,14 @@ function summarizeTotals(
     (sum, item) => sum + item.quantity * item.rate,
     0,
   );
+  const lineItemsTotal = items.reduce(
+    (sum, item) =>
+      sum +
+      (Number.isFinite(Number(item.amount)) ?
+        Number(item.amount)
+      : Number(item.quantity || 0) * Number(item.rate || 0)),
+    0,
+  );
   const discountAmount =
     discountType === "percent" ?
       (subTotal * discountValue) / 100
@@ -243,7 +251,8 @@ function summarizeTotals(
     taxType === "TCS" ? normalizedTaxAmount
     : taxType === "TDS" ? -normalizedTaxAmount
     : 0;
-  const total = subTotal - discountAmount + taxImpact + adjustmentAmount;
+  const total =
+    lineItemsTotal - discountAmount + taxImpact + adjustmentAmount;
   return { subTotal, discountAmount, total };
 }
 
@@ -606,6 +615,116 @@ export const getOne = asyncHandler(
 );
 
 // ─── Create Invoice ────────────────────────────────────────────────────
+// GET /api/invoices/:id/pdf
+export const downloadPdf = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const invoice = await Invoice.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    })
+      .populate("customerId", "displayName companyName email billingAddress")
+      .populate("paymentTermsId", "name netDays")
+      .populate("items.itemId", "name sku hsnSacCode")
+      .lean();
+
+    if (!invoice) throw new NotFoundError("Invoice");
+
+    const org = await Organization.findById(oid).lean();
+    if (!org) throw new NotFoundError("Organization");
+
+    const customer = invoice.customerId as any;
+    const customerName =
+      (typeof customer === "object" &&
+        (customer?.displayName || customer?.companyName)) ||
+      "Customer";
+    const customerAddress = [
+      customer?.billingAddress?.street,
+      customer?.billingAddress?.street2,
+      customer?.billingAddress?.city,
+      customer?.billingAddress?.state,
+      customer?.billingAddress?.zip,
+      customer?.billingAddress?.country,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const paymentTerms = invoice.paymentTermsId as any;
+
+    const pdfBuffer = await generateInvoicePdf({
+      orgName: org.name,
+      orgAddress: org.address as any,
+      orgEmail:
+        (org as any).smtpSettings?.fromEmail ||
+        (org as any).smtpSettings?.user ||
+        undefined,
+      orgTaxId: (org as any).taxId,
+
+      customerName,
+      customerAddress: customerAddress || undefined,
+      customerEmail: customer?.email,
+
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: (invoice.invoiceDate as any)?.toISOString
+        ? (invoice.invoiceDate as any).toISOString()
+        : String(invoice.invoiceDate),
+      dueDate:
+        (invoice.dueDate as any)?.toISOString ?
+          (invoice.dueDate as any).toISOString()
+        : invoice.dueDate ? String(invoice.dueDate)
+        : undefined,
+      paymentTerms: paymentTerms?.name || undefined,
+      orderNumber: invoice.orderNumber,
+      subject: invoice.subject,
+
+      items: (invoice.items as any[]).map((item) => ({
+        name:
+          (typeof item.itemId === "object" && item.itemId?.name) ||
+          item.name ||
+          "Item",
+        description: item.description,
+        hsnSacCode:
+          item.hsnSacCode ||
+          (typeof item.itemId === "object" ? item.itemId?.hsnSacCode : ""),
+        quantity: Number(item.quantity || 0),
+        rate: Number(item.rate || 0),
+        discountPercent: Number(item.discountPercent || 0),
+        discountAmount: Number(item.discountAmount || 0),
+        taxPercent: Number(item.taxPercent || 0),
+        taxAmount: Number(item.taxAmount || 0),
+        amount: Number(item.amount || 0),
+      })),
+
+      subTotal: Number(invoice.subTotal || 0),
+      discountType: invoice.discountType,
+      discountValue: Number(invoice.discountValue || 0),
+      discountAmount: Number(invoice.discountAmount || 0),
+      taxType: invoice.taxType,
+      taxAmount: Number(invoice.taxAmount || 0),
+      adjustmentLabel: invoice.adjustmentLabel,
+      adjustmentAmount: Number(invoice.adjustmentAmount || 0),
+      total: Number(invoice.total || 0),
+      balanceDue: Number(invoice.balanceDue ?? invoice.total ?? 0),
+
+      customerNotes: invoice.customerNotes,
+      termsAndConditions: invoice.termsAndConditions,
+      currencySymbol: org.baseCurrency === "INR" ? "₹" : org.baseCurrency,
+    });
+
+    const safeInvoiceNumber = String(invoice.invoiceNumber || "invoice")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
+      .slice(0, 120);
+    const isPreview = req.query.preview === "true";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `${isPreview ? "inline" : "attachment"}; filename="Invoice-${safeInvoiceNumber}.pdf"`,
+    );
+    res.send(pdfBuffer);
+  },
+);
+
+// Create Invoice
 export const create = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const oid = orgId(req);
@@ -784,24 +903,17 @@ export const update = asyncHandler(
       );
     }
 
-    invoice.subTotal = invoice.items.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.rate,
-      0,
+    const totals = summarizeTotals(
+      invoice.items,
+      invoice.discountType,
+      Number(invoice.discountValue) || 0,
+      invoice.taxType,
+      Number(invoice.taxAmount) || 0,
+      Number(invoice.adjustmentAmount) || 0,
     );
-    invoice.discountAmount =
-      invoice.discountType === "percent" ?
-        (invoice.subTotal * invoice.discountValue) / 100
-      : invoice.discountValue;
-    const normalizedTaxAmount = Number(invoice.taxAmount) || 0;
-    const taxImpact =
-      invoice.taxType === "TCS" ? normalizedTaxAmount
-      : invoice.taxType === "TDS" ? -normalizedTaxAmount
-      : 0;
-    invoice.total =
-      invoice.subTotal -
-      invoice.discountAmount +
-      taxImpact +
-      (invoice.adjustmentAmount || 0);
+    invoice.subTotal = totals.subTotal;
+    invoice.discountAmount = totals.discountAmount;
+    invoice.total = totals.total;
 
     if (req.body.balanceDue !== undefined) {
       invoice.balanceDue = Math.max(0, Number(req.body.balanceDue));
@@ -1100,6 +1212,7 @@ export const sendInvoiceEmail = asyncHandler(
         discountType: invoice.discountType,
         discountValue: invoice.discountValue,
         discountAmount: invoice.discountAmount,
+        taxType: invoice.taxType,
         taxAmount: invoice.taxAmount,
         adjustmentLabel: invoice.adjustmentLabel,
         adjustmentAmount: invoice.adjustmentAmount,

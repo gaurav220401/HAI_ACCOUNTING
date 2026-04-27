@@ -1,4 +1,4 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -140,6 +140,9 @@ export const invoiceApi = {
     ),
 
   getById: (id: string) => apiFetch<{ data: Invoice }>(`/invoices/${id}`),
+
+  downloadPdf: (id: string, preview = false) =>
+    apiFetchBlob(`/invoices/${id}/pdf${preview ? "?preview=true" : ""}`),
 
   create: (data: CreateInvoiceInput) =>
     apiFetch<{ data: Invoice }>("/invoices", {

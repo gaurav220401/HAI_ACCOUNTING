@@ -48,6 +48,7 @@ export interface InvoicePdfData {
   discountType?: string;
   discountValue?: number;
   discountAmount?: number;
+  taxType?: string;
   taxAmount?: number;
   adjustmentLabel?: string;
   adjustmentAmount?: number;
@@ -584,6 +585,14 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     const wordsW = dividerX - left - 10;
 
     const sectionStartY = y;
+    const lineItemDiscountAmount = data.items.reduce(
+      (sum, item) => sum + (Number(item.discountAmount) || 0),
+      0,
+    );
+    const lineItemTaxAmount = data.items.reduce(
+      (sum, item) => sum + (Number(item.taxAmount) || 0),
+      0,
+    );
 
     // Total in words - left side
     doc
@@ -617,6 +626,12 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     };
 
     addTotalRow("Sub Total", fmtNum(data.subTotal));
+    if (lineItemDiscountAmount > 0) {
+      addTotalRow("Line Item Discount", `- ${fmtNum(lineItemDiscountAmount)}`);
+    }
+    if (lineItemTaxAmount > 0) {
+      addTotalRow("Line Item Tax", `+ ${fmtNum(lineItemTaxAmount)}`);
+    }
     if (data.discountAmount && data.discountAmount !== 0) {
       const discLabel =
         data.discountType === "percent" ?
@@ -625,7 +640,10 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
       addTotalRow(discLabel, `- ${fmtNum(data.discountAmount)}`);
     }
     if (data.taxAmount && data.taxAmount !== 0) {
-      addTotalRow("Tax", fmtNum(data.taxAmount));
+      const taxLabel =
+        data.taxType && data.taxType !== "none" ? data.taxType : "Tax";
+      const prefix = data.taxType === "TDS" ? "- " : "+ ";
+      addTotalRow(taxLabel, `${prefix}${fmtNum(data.taxAmount)}`);
     }
     if (data.adjustmentAmount && data.adjustmentAmount !== 0) {
       addTotalRow(

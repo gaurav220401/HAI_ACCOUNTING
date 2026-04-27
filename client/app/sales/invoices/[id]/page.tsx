@@ -115,6 +115,12 @@ function salesPersonName(sp: Invoice["salesPersonId"]) {
   return sp.name || "—";
 }
 
+function paymentTermsName(pt: Invoice["paymentTermsId"]) {
+  if (!pt) return "Due on Receipt";
+  if (typeof pt === "string") return "Due on Receipt";
+  return pt.name || "Due on Receipt";
+}
+
 function numberToWords(num: number): string {
   const ones = [
     "",
@@ -566,6 +572,7 @@ export default function InvoiceDetailPage() {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [payUConfig, setPayUConfig] = useState<PayUConfig | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -675,6 +682,50 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  async function handleDownloadPdf() {
+    if (!invoice) return;
+    setPdfLoading(true);
+    try {
+      const blob = await invoiceApi.downloadPdf(invoice._id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Invoice-${invoice.invoiceNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to download invoice PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
+  async function handlePrintInvoice() {
+    if (!invoice) return;
+    setPdfLoading(true);
+    try {
+      const blob = await invoiceApi.downloadPdf(invoice._id, true);
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url, "_blank");
+      if (!printWindow) {
+        window.URL.revokeObjectURL(url);
+        toast.error("Please allow pop-ups to print this invoice");
+        return;
+      }
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 600);
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to print invoice");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
@@ -700,6 +751,15 @@ export default function InvoiceDetailPage() {
   const cEmail = customerEmail(invoice.customerId);
   const dueLabel = getDueLabel(invoice);
   const orgName = activeOrganization?.name || "HAI";
+  const paymentTermsLabel = paymentTermsName(invoice.paymentTermsId);
+  const lineDiscountAmount = invoice.items.reduce(
+    (sum, item) => sum + Number(item.discountAmount || 0),
+    0,
+  );
+  const lineTaxAmount = invoice.items.reduce(
+    (sum, item) => sum + Number(item.taxAmount || 0),
+    0,
+  );
 
   // Generate journal entries
   const journalEntries = invoice.journalEntries || [
@@ -911,18 +971,18 @@ export default function InvoiceDetailPage() {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" disabled={pdfLoading}>
                       <Printer className="h-3.5 w-3.5 mr-1" />
                       PDF/Print
                       <ChevronDown className="h-3 w-3 ml-1" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDownloadPdf}>
                       <Download className="h-4 w-4 mr-2" />
                       Download PDF
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={handlePrintInvoice}>
                       <Printer className="h-4 w-4 mr-2" />
                       Print
                     </DropdownMenuItem>
@@ -1074,7 +1134,9 @@ export default function InvoiceDetailPage() {
                       </div>
                       <div className="flex gap-12">
                         <span className="text-muted-foreground">Terms</span>
-                        <span className="font-medium">: Due on Receipt</span>
+                        <span className="font-medium">
+                          : {paymentTermsLabel}
+                        </span>
                       </div>
                       {invoice.orderNumber ?
                         <div className="flex gap-4">
@@ -1129,6 +1191,9 @@ export default function InvoiceDetailPage() {
                           <TableHead className="text-right font-bold text-foreground w-20">
                             Rate
                           </TableHead>
+                          <TableHead className="text-right font-bold text-foreground w-20">
+                            Tax
+                          </TableHead>
                           <TableHead className="text-right font-bold text-foreground w-24">
                             Amount
                           </TableHead>
@@ -1157,6 +1222,11 @@ export default function InvoiceDetailPage() {
                             <TableCell className="text-right tabular-nums">
                               {fmtNum(item.rate)}
                             </TableCell>
+                            <TableCell className="text-right text-xs tabular-nums">
+                              {Number(item.taxPercent || 0) > 0 ?
+                                `${fmtNum(item.taxPercent)}%`
+                              : "â€”"}
+                            </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {fmtNum(item.amount)}
                             </TableCell>
@@ -1175,11 +1245,45 @@ export default function InvoiceDetailPage() {
                           {fmtNum(invoice.subTotal)}
                         </span>
                       </div>
+                      {lineDiscountAmount > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Line Item Discount</span>
+                          <span className="tabular-nums">
+                            - {fmtNum(lineDiscountAmount)}
+                          </span>
+                        </div>
+                      )}
+                      {lineTaxAmount > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Line Item Tax</span>
+                          <span className="tabular-nums">
+                            + {fmtNum(lineTaxAmount)}
+                          </span>
+                        </div>
+                      )}
                       {invoice.discountAmount > 0 && (
                         <div className="flex justify-between text-muted-foreground">
                           <span>Discount</span>
                           <span className="tabular-nums">
                             - {fmtNum(invoice.discountAmount)}
+                          </span>
+                        </div>
+                      )}
+                      {Number(invoice.taxAmount || 0) > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>{invoice.taxType}</span>
+                          <span className="tabular-nums">
+                            {invoice.taxType === "TDS" ? "- " : "+ "}
+                            {fmtNum(invoice.taxAmount)}
+                          </span>
+                        </div>
+                      )}
+                      {Number(invoice.adjustmentAmount || 0) !== 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>{invoice.adjustmentLabel || "Adjustment"}</span>
+                          <span className="tabular-nums">
+                            {Number(invoice.adjustmentAmount) > 0 ? "+ " : ""}
+                            {fmtNum(invoice.adjustmentAmount)}
                           </span>
                         </div>
                       )}
