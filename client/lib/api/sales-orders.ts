@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
+import type { CreatePurchaseOrderInput } from "./purchase-orders";
 
 export type SalesOrderStatus =
   | "DRAFT"
@@ -110,6 +111,12 @@ export interface SalesOrderConvertToPurchaseOrderResponse {
   purchaseOrderNumber?: string;
 }
 
+export interface SalesOrderPurchaseOrderDraftResponse extends CreatePurchaseOrderInput {
+  vendor?: any;
+  sourceSalesOrderId?: string;
+  sourceSalesOrderNumber?: string;
+}
+
 export interface SalesOrderListParams extends ListParams {
   status?: SalesOrderStatus;
   customerId?: string;
@@ -163,6 +170,11 @@ export const salesOrderApi = {
         method: "POST",
         body: JSON.stringify({}),
       },
+    ),
+
+  purchaseOrderDraft: (id: string) =>
+    apiFetch<{ data: SalesOrderPurchaseOrderDraftResponse }>(
+      `/sales-orders/${id}/purchase-order-draft`,
     ),
 
   convertToPurchaseOrder: (

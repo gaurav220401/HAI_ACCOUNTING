@@ -276,6 +276,17 @@ async function autoCreateVendorFromCustomer(params: {
   attachUser(vendor as any, req);
   await vendor.save();
 
+  if (linkedContactId && !Types.ObjectId.isValid(String((source as any).linkedContactId || ""))) {
+    await Contact.updateOne(
+      {
+        _id: linkedContactId,
+        organizationId,
+        isDeleted: false,
+      },
+      { $set: { linkedContactId: vendor._id } },
+    );
+  }
+
   return vendor._id;
 }
 
@@ -310,6 +321,21 @@ async function resolveVendorForPurchaseOrder(params: {
     return customer._id;
   }
 
+  if (Types.ObjectId.isValid(customerId)) {
+    const existingVendor = await Contact.findOne({
+      organizationId,
+      isDeleted: false,
+      contactType: { $in: ["Vendor", "Both"] },
+      linkedContactId: customer._id,
+    })
+      .select("_id")
+      .lean();
+
+    if (existingVendor) {
+      return existingVendor._id;
+    }
+  }
+
   const linkedContactId = String(customer?.linkedContactId || "");
   if (Types.ObjectId.isValid(linkedContactId)) {
     const linkedVendor = await Contact.findOne({
@@ -331,6 +357,132 @@ async function resolveVendorForPurchaseOrder(params: {
     customer,
     req,
   });
+}
+
+async function buildPurchaseOrderDraftFromSalesOrder(params: {
+  organizationId: any;
+  salesOrderId: string;
+  requestedVendorId?: unknown;
+  copyDescriptions?: boolean;
+  req: AuthenticatedRequest;
+}) {
+  const { organizationId, salesOrderId, requestedVendorId, req } = params;
+  const order = await SalesOrder.findOne({
+    _id: salesOrderId,
+    organizationId,
+    isDeleted: false,
+  } as any)
+    .populate("customerId", "_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress")
+    .populate("lineItems.itemId", "name purchaseAccountId unit")
+    .lean();
+
+  if (!order) throw new NotFoundError("Sales Order");
+  if (String((order as any).status || "") === "VOID") {
+    throw new ValidationError("Cannot convert a void sales order to purchase order");
+  }
+
+  let customer = (order as any).customerId;
+  if (!customer || typeof customer !== "object") {
+    const customerId = String(customer || "");
+    if (Types.ObjectId.isValid(customerId)) {
+      customer = await Contact.findOne({
+        _id: customerId,
+        organizationId,
+        isDeleted: false,
+      })
+        .select("_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress")
+        .lean();
+    }
+  }
+
+  const vendorId = await resolveVendorForPurchaseOrder({
+    organizationId,
+    requestedVendorId,
+    customer,
+    req,
+  });
+
+  const vendor = await Contact.findOne({
+    _id: vendorId,
+    organizationId,
+    isDeleted: false,
+  })
+    .select("_id displayName companyName email phone mobile billingAddress shippingAddress")
+    .lean();
+
+  const purchaseOrderNumber = await nextPurchaseOrderNumber(organizationId);
+  const copyDescriptions = params.copyDescriptions !== false;
+  const lineItems = ((order as any).lineItems || [])
+    .map((li: any) => {
+      const qty = toNum(li.quantity);
+      const rate = toNum(li.rate);
+      const lineTotal = round2(qty * rate);
+      const discountAmount = Math.min(round2(toNum(li.discount)), lineTotal);
+      const amount = round2(Math.max(0, lineTotal - discountAmount));
+      const item = typeof li.itemId === "object" ? li.itemId : null;
+
+      return {
+        itemId: item?._id || li.itemId,
+        name:
+          item?.name ||
+          li.name ||
+          li.description ||
+          "Item",
+        accountId: item?.purchaseAccountId || null,
+        description: copyDescriptions ? li.description || "" : "",
+        quantity: qty,
+        rate,
+        discountPercent: lineTotal > 0 ? round2((discountAmount / lineTotal) * 100) : 0,
+        discountAmount,
+        amount,
+      };
+    })
+    .filter((li: any) => li.itemId && li.quantity > 0);
+
+  if (lineItems.length === 0) {
+    throw new ValidationError("Sales order has no line items to convert");
+  }
+
+  const subTotal = round2(lineItems.reduce((s: number, li: any) => s + li.quantity * li.rate, 0));
+  const discountAmount = round2(lineItems.reduce((s: number, li: any) => s + (li.discountAmount || 0), 0));
+  const adjustmentAmount = round2(toNum((order as any).shippingCharges) + toNum((order as any).adjustment));
+  const total = round2(subTotal - discountAmount + adjustmentAmount);
+
+  return {
+    order,
+    draft: {
+      vendorId: String(vendorId),
+      vendor,
+      deliveryAddressType: "Organization",
+      deliveryCustomerId: null,
+      purchaseOrderNumber,
+      referenceNumber: String((order as any).reference || (order as any).salesOrderNumber || ""),
+      purchaseOrderDate: new Date().toISOString(),
+      deliveryDate: (order as any).expectedShipmentDate || null,
+      paymentTermsId: (order as any).paymentTermsId || null,
+      shipmentPreference: String((order as any).deliveryMethod || ""),
+      discountLevel: "line_item",
+      discountAccountId: null,
+      lineItems,
+      subTotal,
+      discountPercent: 0,
+      discountAmount,
+      taxType: "none",
+      tdsId: null,
+      tcsId: null,
+      taxAmount: 0,
+      tcsAmount: 0,
+      adjustmentLabel: "Adjustment",
+      adjustmentAmount,
+      total,
+      notes: String((order as any).notes || ""),
+      termsAndConditions: String((order as any).terms || ""),
+      attachments: [],
+      status: "Draft",
+      sourceSalesOrderId: String((order as any)._id),
+      sourceSalesOrderNumber: String((order as any).salesOrderNumber || ""),
+    },
+  };
 }
 
 /** Update committed stock for items on SO creation/approval */
@@ -946,7 +1098,7 @@ export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: R
     _id: req.params.id,
     organizationId: oid,
     isDeleted: false,
-  })
+  } as any)
     .populate("customerId", "displayName companyName email billingAddress")
     .populate("lineItems.itemId", "name hsnSacCode")
     .lean();
@@ -1002,7 +1154,7 @@ export const markShipmentFulfilled = asyncHandler(async (req: AuthenticatedReque
     organizationId: oid,
     salesOrderId: (order as any)._id,
     isDeleted: false,
-  })
+  } as any)
     .select("lineItems")
     .lean();
 
@@ -1174,103 +1326,59 @@ export const cloneOrder = asyncHandler(async (req: AuthenticatedRequest, res: Re
   res.status(201).json({ success: true, data: clone, message: "Sales order cloned" });
 });
 
-/** POST /api/sales-orders/:id/convert-to-purchase-order */
-export const convertToPurchaseOrder = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+/** GET /api/sales-orders/:id/purchase-order-draft */
+export const getPurchaseOrderDraft = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid, isDeleted: false } as any)
-    .populate("customerId", "_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress")
-    .populate("lineItems.itemId", "name")
-    .lean();
-
-  if (!order) throw new NotFoundError("Sales Order");
-  if (String((order as any).status || "") === "VOID") {
-    throw new ValidationError("Cannot convert a void sales order to purchase order");
-  }
-
-  let customer = (order as any).customerId;
-  if (!customer || typeof customer !== "object") {
-    const customerId = String(customer || "");
-    if (Types.ObjectId.isValid(customerId)) {
-      customer = await Contact.findOne({
-        _id: customerId,
-        organizationId: oid,
-        isDeleted: false,
-      })
-        .select("_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress")
-        .lean();
-    }
-  }
-
-  const vendorId = await resolveVendorForPurchaseOrder({
+  const { draft } = await buildPurchaseOrderDraftFromSalesOrder({
     organizationId: oid,
-    requestedVendorId: req.body?.vendorId,
-    customer,
+    salesOrderId: String(req.params.id),
+    requestedVendorId: req.query?.vendorId,
+    copyDescriptions: req.query?.copyDescriptions !== "false",
     req,
   });
 
-  const purchaseOrderNumber = await nextPurchaseOrderNumber(oid);
-  const copyDescriptions = req.body?.copyDescriptions !== false;
-  const lineItems = ((order as any).lineItems || [])
-    .map((li: any) => {
-      const qty = toNum(li.quantity);
-      const rate = toNum(li.rate);
-      const lineTotal = round2(qty * rate);
-      const discountAmount = Math.min(round2(toNum(li.discount)), lineTotal);
-      const amount = round2(Math.max(0, lineTotal - discountAmount));
-      return {
-        itemId: typeof li.itemId === "object" ? li.itemId?._id : li.itemId,
-        name:
-          (typeof li.itemId === "object" ? li.itemId?.name : "") ||
-          li.name ||
-          li.description ||
-          "Item",
-        description: copyDescriptions ? li.description || "" : "",
-        quantity: qty,
-        rate,
-        discountPercent: lineTotal > 0 ? round2((discountAmount / lineTotal) * 100) : 0,
-        discountAmount,
-        amount,
-      };
-    })
-    .filter((li: any) => li.itemId && li.quantity > 0);
+  res.json({ success: true, data: draft });
+});
 
-  if (lineItems.length === 0) {
-    throw new ValidationError("Sales order has no line items to convert");
-  }
-
-  const subTotal = round2(lineItems.reduce((s: number, li: any) => s + li.quantity * li.rate, 0));
-  const discountAmount = round2(lineItems.reduce((s: number, li: any) => s + (li.discountAmount || 0), 0));
-  const adjustmentAmount = round2(toNum((order as any).shippingCharges) + toNum((order as any).adjustment));
-  const total = round2(subTotal - discountAmount + adjustmentAmount);
+/** POST /api/sales-orders/:id/convert-to-purchase-order */
+export const convertToPurchaseOrder = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = orgId(req);
+  const { order, draft } = await buildPurchaseOrderDraftFromSalesOrder({
+    organizationId: oid,
+    salesOrderId: String(req.params.id),
+    requestedVendorId: req.body?.vendorId,
+    copyDescriptions: req.body?.copyDescriptions !== false,
+    req,
+  });
 
   const po = new PurchaseOrder({
     organizationId: oid,
-    vendorId,
-    deliveryAddressType: "Organization",
-    deliveryCustomerId: null,
-    purchaseOrderNumber,
-    referenceNumber: String((order as any).reference || (order as any).salesOrderNumber || ""),
-    purchaseOrderDate: new Date(),
-    deliveryDate: (order as any).expectedShipmentDate || null,
-    paymentTermsId: (order as any).paymentTermsId || null,
-    shipmentPreference: String((order as any).deliveryMethod || ""),
-    discountLevel: "line_item",
-    discountAccountId: null,
-    lineItems,
-    subTotal,
-    discountPercent: 0,
-    discountAmount,
-    taxType: "none",
-    tdsId: null,
-    tcsId: null,
-    taxAmount: 0,
-    tcsAmount: 0,
-    adjustmentLabel: "Adjustment",
-    adjustmentAmount,
-    total,
-    notes: String((order as any).notes || ""),
-    termsAndConditions: String((order as any).terms || ""),
-    attachments: [],
+    vendorId: draft.vendorId,
+    deliveryAddressType: draft.deliveryAddressType,
+    deliveryCustomerId: draft.deliveryCustomerId,
+    purchaseOrderNumber: draft.purchaseOrderNumber,
+    referenceNumber: draft.referenceNumber,
+    purchaseOrderDate: draft.purchaseOrderDate,
+    deliveryDate: draft.deliveryDate,
+    paymentTermsId: draft.paymentTermsId,
+    shipmentPreference: draft.shipmentPreference,
+    discountLevel: draft.discountLevel,
+    discountAccountId: draft.discountAccountId,
+    lineItems: draft.lineItems,
+    subTotal: draft.subTotal,
+    discountPercent: draft.discountPercent,
+    discountAmount: draft.discountAmount,
+    taxType: draft.taxType,
+    tdsId: draft.tdsId,
+    tcsId: draft.tcsId,
+    taxAmount: draft.taxAmount,
+    tcsAmount: draft.tcsAmount,
+    adjustmentLabel: draft.adjustmentLabel,
+    adjustmentAmount: draft.adjustmentAmount,
+    total: draft.total,
+    notes: draft.notes,
+    termsAndConditions: draft.termsAndConditions,
+    attachments: draft.attachments,
     comments: [
       {
         author: "System",

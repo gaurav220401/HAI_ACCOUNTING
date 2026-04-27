@@ -16,6 +16,7 @@ import {
   cancelItems,
   voidOrder,
   cloneOrder,
+  getPurchaseOrderDraft,
   convertToPurchaseOrder,
 } from "../controllers/sales-order.controller";
 
@@ -26,6 +27,7 @@ router.get("/", list);
 router.post("/", create);
 router.post("/:id/convert-to-invoice", convertToInvoice);
 router.post("/:id/instant-invoice", instantInvoice);
+router.get("/:id/purchase-order-draft", getPurchaseOrderDraft);
 router.post("/:id/convert-to-purchase-order", convertToPurchaseOrder);
 router.post("/:id/send-email", sendEmail);
 router.get("/:id/pdf", downloadPdf);

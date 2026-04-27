@@ -1496,6 +1496,7 @@ export default function PurchaseOrdersPage() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | PurchaseOrderStatus>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedFromQuery, setSelectedFromQuery] = useState("");
   const [toDelete, setToDelete] = useState<PurchaseOrder | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showFilterDD, setShowFilterDD] = useState(false);
@@ -1509,6 +1510,11 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setSelectedFromQuery(params.get("selected") || params.get("orderId") || "");
+  }, []);
 
   useEffect(() => {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
@@ -1558,6 +1564,35 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     if (firebaseUser && !loading && activeOrganization?._id) fetchOrders();
   }, [firebaseUser, loading, activeOrganization?._id, fetchOrders]);
+
+  useEffect(() => {
+    if (!selectedFromQuery || !activeOrganization?._id) return;
+
+    const existing = orders.find((order) => order._id === selectedFromQuery);
+    if (existing) {
+      setSelectedId(selectedFromQuery);
+      return;
+    }
+
+    if (fetching) return;
+
+    let cancelled = false;
+    purchaseOrderApi.getOne(selectedFromQuery)
+      .then((res) => {
+        if (cancelled) return;
+        setOrders((prev) => (
+          prev.some((order) => order._id === res.data._id) ? prev : [res.data, ...prev]
+        ));
+        setSelectedId(selectedFromQuery);
+      })
+      .catch(() => {
+        // Ignore invalid deep links; the regular list stays usable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOrganization?._id, fetching, orders, selectedFromQuery]);
 
   const filtered = orders.filter((o) => {
     if (filterStatus && o.status !== filterStatus) return false;

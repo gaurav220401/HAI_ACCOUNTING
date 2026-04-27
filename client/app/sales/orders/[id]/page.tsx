@@ -104,6 +104,24 @@ function statusVariant(status: SalesOrderStatus) {
   return "default" as const;
 }
 
+const VALID_SALES_ORDER_STATUSES: SalesOrderStatus[] = [
+  "DRAFT",
+  "APPROVED",
+  "INVOICED",
+  "PARTIALLY_INVOICED",
+  "CLOSED",
+  "OVERDUE",
+  "VOID",
+];
+
+function salesOrderStatusOf(order: Partial<SalesOrder> | null | undefined): SalesOrderStatus {
+  const raw = String((order as any)?.status || "").toUpperCase();
+  if (VALID_SALES_ORDER_STATUSES.includes(raw as SalesOrderStatus)) {
+    return raw as SalesOrderStatus;
+  }
+  return "DRAFT";
+}
+
 function invoiceStatusOf(order: Partial<SalesOrder> | null | undefined): "Invoiced" | "Not Invoiced" {
   const raw = String((order as any)?.invoiceStatus || "");
   if (raw === "Invoiced" || raw === "Not Invoiced") return raw;
@@ -119,9 +137,14 @@ function shipmentStatusOf(order: Partial<SalesOrder> | null | undefined): "Pendi
 function normalizeSalesOrder(order: SalesOrder): SalesOrder {
   return {
     ...order,
-    status: ((order as any)?.status || "DRAFT") as SalesOrderStatus,
+    status: salesOrderStatusOf(order),
     invoiceStatus: invoiceStatusOf(order),
     shipmentStatus: shipmentStatusOf(order),
+    lineItems: Array.isArray((order as any)?.lineItems) ? order.lineItems : [],
+    subTotal: Number((order as any)?.subTotal || 0),
+    shippingCharges: Number((order as any)?.shippingCharges || 0),
+    adjustment: Number((order as any)?.adjustment || 0),
+    total: Number((order as any)?.total || 0),
   };
 }
 
@@ -404,25 +427,9 @@ export default function SalesOrderDetailsPage() {
     }
   }
 
-  async function handleConvertToPurchaseOrder() {
+  function handleConvertToPurchaseOrder() {
     if (!active) return;
-    try {
-      const copyDescriptions = window.confirm(
-        "You're converting this sales order into a purchase order.\n\nCopy item descriptions to the new purchase order?",
-      );
-
-      const result = await salesOrderApi.convertToPurchaseOrder(active._id, {
-        copyDescriptions,
-      });
-      const poNumber = result.data?.purchaseOrderNumber || "";
-      toast.success("Converted to purchase order");
-      router.push("/purchases/orders");
-      if (poNumber) {
-        toast.info(`Purchase Order ${poNumber} created`);
-      }
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to convert to purchase order");
-    }
+    router.push(`/purchases/orders/new?sourceSalesOrderId=${encodeURIComponent(active._id)}`);
   }
 
   async function handleDropship() {
@@ -541,6 +548,7 @@ export default function SalesOrderDetailsPage() {
 
   const activeInvoiceStatus = invoiceStatusOf(active);
   const activeShipmentStatus = shipmentStatusOf(active);
+  const activeStatus = salesOrderStatusOf(active);
 
   return (
     <SidebarProvider>
@@ -665,8 +673,8 @@ export default function SalesOrderDetailsPage() {
                       {active.reference ?
                         <span>Ref {active.reference}</span>
                       : null}
-                      <Badge variant={statusVariant(active.status)}>
-                        {active.status}
+                      <Badge variant={statusVariant(activeStatus)}>
+                        {activeStatus}
                       </Badge>
                       {activeInvoiceStatus === "Invoiced" && (
                         <Badge variant="default" className="bg-green-600">
@@ -706,8 +714,8 @@ export default function SalesOrderDetailsPage() {
                       size="sm"
                       onClick={handleConvertToInvoice}
                       disabled={
-                        active.status === "INVOICED" ||
-                        active.status === "PARTIALLY_INVOICED"
+                        activeStatus === "INVOICED" ||
+                        activeStatus === "PARTIALLY_INVOICED"
                       }
                     >
                       <FileText className="h-4 w-4 mr-1" />
@@ -748,19 +756,36 @@ export default function SalesOrderDetailsPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={handleConvertToPurchaseOrder}>
                           <FileText className="h-4 w-4 mr-2" />
-                          Convert to Purchase Order
+                          Create Purchase Order
                         </DropdownMenuItem>
-                        {activeShipmentStatus === "Delivered" ? (
-                          <DropdownMenuItem onClick={() => handleUpdateShipment("Pending") }>
+                        <DropdownMenuSeparator />
+                        {activeShipmentStatus === "Pending" ? (
+                          <DropdownMenuItem onClick={() => handleUpdateShipment("Shipped")}>
                             <Truck className="h-4 w-4 mr-2" />
-                            Undo Fulfillment
+                            Mark as Shipped
+                          </DropdownMenuItem>
+                        ) : null}
+                        {activeShipmentStatus !== "Delivered" ? (
+                          <DropdownMenuItem
+                            disabled={fulfilling}
+                            onClick={handleMarkShipmentFulfilled}
+                          >
+                            <PackageIcon className="h-4 w-4 mr-2" />
+                            {fulfilling ? "Fulfilling shipment..." : "Mark shipment fulfilled"}
                           </DropdownMenuItem>
                         ) : (
-                          <DropdownMenuItem onClick={handleMarkShipmentFulfilled}>
+                          <DropdownMenuItem onClick={() => handleUpdateShipment("Pending")}>
                             <Truck className="h-4 w-4 mr-2" />
-                            Mark shipment as fulfilled
+                            Reset shipment to Pending
                           </DropdownMenuItem>
                         )}
+                        {activeShipmentStatus === "Shipped" ? (
+                          <DropdownMenuItem onClick={() => handleUpdateShipment("Pending")}>
+                            <Truck className="h-4 w-4 mr-2" />
+                            Reset shipment to Pending
+                          </DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={handleDropship}>
                           <Truck className="h-4 w-4 mr-2" />
                           Dropship
@@ -777,22 +802,10 @@ export default function SalesOrderDetailsPage() {
                           <Copy className="h-4 w-4 mr-2" />
                           Clone
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={handleDownloadPDF}>
                           <Download className="h-4 w-4 mr-2" />
                           Download PDF
                         </DropdownMenuItem>
-                        {activeShipmentStatus === "Delivered" ? (
-                          <DropdownMenuItem onClick={() => handleUpdateShipment("Pending")}>
-                            <PackageIcon className="h-4 w-4 mr-2" />
-                            Mark as Pending
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => handleUpdateShipment("Delivered")}>
-                            <PackageIcon className="h-4 w-4 mr-2" />
-                            Mark as Delivered
-                          </DropdownMenuItem>
-                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={handleDelete}
@@ -864,15 +877,15 @@ export default function SalesOrderDetailsPage() {
                       {showPdfView ? (
                       <div className="border border-gray-200 rounded-lg overflow-hidden relative bg-white shadow-sm max-w-4xl mx-auto">
                          {/* Ribbon */}
-                         {active.status && (
-                           <div className="absolute top-0 left-0 z-10 w-32 h-32 overflow-hidden pointer-events-none">
-                              <div
-                                className={`absolute top-6 -left-8 text-white text-xs font-bold px-10 py-1 transform -rotate-45 shadow-md tracking-wider ${active.status === "CLOSED" ? "bg-green-500" : active.status === "DRAFT" ? "bg-gray-400" : "bg-blue-500"}`}
+                         {activeStatus && (
+                            <div className="absolute top-0 left-0 z-10 w-32 h-32 overflow-hidden pointer-events-none">
+                               <div
+                                className={`absolute top-6 -left-8 text-white text-xs font-bold px-10 py-1 transform -rotate-45 shadow-md tracking-wider ${activeStatus === "CLOSED" ? "bg-green-500" : activeStatus === "DRAFT" ? "bg-gray-400" : "bg-blue-500"}`}
                               >
-                                {active.status.toUpperCase()}
+                                {activeStatus.toUpperCase()}
                               </div>
-                           </div>
-                         )}
+                            </div>
+                          )}
 
                          <div className="p-12 pl-16 pr-16 bg-white min-h-[800px]">
                            <div className="flex justify-between items-start">
@@ -1025,7 +1038,7 @@ export default function SalesOrderDetailsPage() {
                             <CardContent className="space-y-3 text-sm">
                               <div className="flex items-center justify-between">
                                 <span className="text-muted-foreground">Order</span>
-                                <Badge variant={statusVariant(active.status)}>{active.status}</Badge>
+                                <Badge variant={statusVariant(activeStatus)}>{activeStatus}</Badge>
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="text-muted-foreground">Invoice</span>
