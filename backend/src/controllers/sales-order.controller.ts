@@ -915,7 +915,7 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
 
     const taxRef = line.taxId as any;
     const taxPercent = Number(taxRef?.rate) || Number(line.taxPercent) || 0;
-    const itemTaxAmount = (afterDiscount * taxPercent) / 100;
+    const itemTaxAmount = round2((afterDiscount * taxPercent) / 100);
 
     const itemRef = line.itemId as any;
     const itemId = itemRef?._id || line.itemId || null;
@@ -932,7 +932,7 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
       taxId: taxRef?._id || line.taxId || null,
       taxPercent,
       taxAmount: itemTaxAmount,
-      amount: afterDiscount + itemTaxAmount,
+      amount: round2(afterDiscount + itemTaxAmount),
       accountId: null,
       projectId: null,
       costRate: 0,
@@ -944,18 +944,20 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
     throw new ValidationError("Sales order has no line items to convert");
   }
 
-  const subTotal = invoiceItems.reduce(
+  const subTotal = round2(invoiceItems.reduce(
     (sum: number, line: any) => sum + (Number(line.quantity) || 0) * (Number(line.rate) || 0),
     0,
-  );
-  const discountValue = ((order as any).lineItems || []).reduce(
+  ));
+  const lineDiscountAmount = round2(((order as any).lineItems || []).reduce(
     (sum: number, line: any) => sum + (Number(line.discount) || 0),
     0,
-  );
+  ));
   const discountType: "amount" = "amount";
-  const discountAmount = discountValue;
-  const adjustmentAmount = (Number((order as any).shippingCharges) || 0) + (Number((order as any).adjustment) || 0);
-  const total = subTotal - discountAmount + adjustmentAmount;
+  const discountValue = 0;
+  const discountAmount = 0;
+  const adjustmentAmount = round2((Number((order as any).shippingCharges) || 0) + (Number((order as any).adjustment) || 0));
+  const totalTaxAmount = round2(invoiceItems.reduce((sum: number, line: any) => sum + (Number(line.taxAmount) || 0), 0));
+  const total = round2(subTotal - lineDiscountAmount + totalTaxAmount + adjustmentAmount);
 
   const dueDateInput = req.body?.dueDate;
   const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;

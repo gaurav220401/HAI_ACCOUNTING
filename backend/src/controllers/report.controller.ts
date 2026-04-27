@@ -9,6 +9,7 @@ import Invoice from "../models/invoice.model";
 import InventoryAdjustment from "../models/inventory-adjustment.model";
 import Item from "../models/item.model";
 import PaymentMade from "../models/payment-made.model";
+import PaymentInvoiceMap from "../models/payment-invoice-map.model";
 import PaymentReceived from "../models/payment-received.model";
 import PurchaseOrder from "../models/purchase-order.model";
 import SalesOrder from "../models/sales-order.model";
@@ -2435,7 +2436,7 @@ export const salesByCustomer = asyncHandler(async (req: AuthenticatedRequest, re
         _id: "$customerId",
         invoiceCount: { $sum: 1 },
         totalSales: { $sum: { $ifNull: ["$total", 0] } },
-        totalWithTax: { $sum: { $add: [{ $ifNull: ["$total", 0] }, { $ifNull: ["$taxAmount", 0] }] } },
+        totalWithTax: { $sum: { $ifNull: ["$total", 0] } },
       },
     },
     { $sort: { totalSales: -1 } },
@@ -2526,21 +2527,46 @@ export const paymentsReceivedReport = asyncHandler(async (req: AuthenticatedRequ
     .sort({ payment_date: -1 })
     .lean();
 
-  const rows = payments.map((p: any) => ({
-    paymentId: String(p._id),
-    paymentNumber: p.payment_number,
-    paymentDate: p.payment_date,
-    customerName: p.customer_id?.displayName || p.customer_id?.companyName || "Unknown",
-    paymentMode: p.payment_mode,
-    totalReceived: round2(toNum(p.total_amount_received)),
-    usedForInvoices: round2(toNum(p.amount_used_for_invoices)),
-    excess: round2(toNum(p.amount_in_excess)),
-    status: p.status,
-  }));
+  const paymentIds = payments.map((payment: any) => payment._id).filter(Boolean);
+  const applications = paymentIds.length > 0
+    ? await PaymentInvoiceMap.find({
+        organization_id: organizationId,
+        payment_id: { $in: paymentIds },
+        is_deleted: false,
+      })
+        .populate("invoice_id", "invoiceNumber invoiceDate total balanceDue status")
+        .lean()
+    : [];
+  const applicationsByPayment = new Map<string, any[]>();
+  for (const application of applications as any[]) {
+    const key = String(application.payment_id || "");
+    if (!applicationsByPayment.has(key)) applicationsByPayment.set(key, []);
+    applicationsByPayment.get(key)!.push(application);
+  }
+
+  const rows = payments.map((p: any) => {
+    const paymentApplications = applicationsByPayment.get(String(p._id)) || [];
+    return {
+      paymentId: String(p._id),
+      paymentNumber: p.payment_number,
+      paymentDate: p.payment_date,
+      customerName: p.customer_id?.displayName || p.customer_id?.companyName || "Unknown",
+      paymentMode: p.payment_mode,
+      invoiceNumbers: paymentApplications
+        .map((application: any) => application.invoice_id?.invoiceNumber || "")
+        .filter(Boolean),
+      totalReceived: round2(toNum(p.total_amount_received)),
+      usedForInvoices: round2(toNum(p.amount_used_for_invoices)),
+      refunded: round2(toNum(p.amount_refunded)),
+      excess: round2(toNum(p.amount_in_excess)),
+      status: p.status,
+    };
+  });
 
   const totals = {
     totalReceived: round2(rows.reduce((s, r) => s + r.totalReceived, 0)),
     totalUsed: round2(rows.reduce((s, r) => s + r.usedForInvoices, 0)),
+    totalRefunded: round2(rows.reduce((s, r) => s + r.refunded, 0)),
     totalExcess: round2(rows.reduce((s, r) => s + r.excess, 0)),
   };
 

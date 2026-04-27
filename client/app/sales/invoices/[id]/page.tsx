@@ -1100,233 +1100,197 @@ export default function InvoiceDetailPage() {
                   </DropdownMenu>
                 </div>
 
-                <div className="bg-white p-8 space-y-6">
+                <div className="bg-white p-8 shadow-sm text-black">
                   {/* Company Header */}
-                  <div className="flex justify-between items-start">
+                  <div className="flex justify-between items-start mb-8">
                     <div className="text-sm">
-                      <div className="font-bold text-lg">{orgName}</div>
-                      <div className="text-muted-foreground">
-                        {activeOrganization?.country || "India"}
+                      <div className="font-bold text-base text-black">{orgName}</div>
+                      <div className="text-black">
+                        {activeOrganization?.address?.street || "Chhattisgarh"}<br/>
+                        {activeOrganization?.country || "India"}<br/>
+                        {activeOrganization?.taxId ? `GSTIN ${activeOrganization.taxId}` : ""}<br/>
+                        {activeOrganization?.email || "technosquarebhilai@gmail.com"}
                       </div>
-                      <div className="text-muted-foreground">{cEmail}</div>
                     </div>
-                    <div className="text-2xl font-bold tracking-wide text-right">
+                    <div className="text-3xl font-serif tracking-widest text-right text-black">
                       TAX INVOICE
                     </div>
                   </div>
 
-                  {/* Invoice Meta */}
-                  <div className="grid grid-cols-2 gap-4 border rounded p-4 text-sm">
-                    <div className="space-y-1">
-                      <div className="flex gap-20">
-                        <span className="text-muted-foreground">#</span>
-                        <span className="font-medium">
-                          : {invoice.invoiceNumber}
-                        </span>
+                  {/* Invoice Meta & Bill To Grid */}
+                  <div className="border border-gray-400 mb-6 flex flex-col">
+                    <div className="flex border-b border-gray-400">
+                      <div className="flex-1 p-3 border-r border-gray-400">
+                        <table className="text-xs text-black w-full">
+                          <tbody>
+                            <tr>
+                              <td className="w-24 pb-1">#</td>
+                              <td className="font-bold pb-1">: {invoice.invoiceNumber}</td>
+                            </tr>
+                            <tr>
+                              <td className="pb-1">Invoice Date</td>
+                              <td className="font-bold pb-1">: {fmtDate(invoice.invoiceDate)}</td>
+                            </tr>
+                            <tr>
+                              <td className="pb-1">Terms</td>
+                              <td className="font-bold pb-1">: {paymentTermsLabel || "Due on Receipt"}</td>
+                            </tr>
+                            <tr>
+                              <td className="pb-1">Due Date</td>
+                              <td className="font-bold pb-1">: {invoice.dueDate ? fmtDate(invoice.dueDate) : fmtDate(invoice.invoiceDate)}</td>
+                            </tr>
+                            {invoice.orderNumber && (
+                              <tr>
+                                <td className="pb-1">P.O.#</td>
+                                <td className="font-bold pb-1">: {invoice.orderNumber}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
-                      <div className="flex gap-4">
-                        <span className="text-muted-foreground">
-                          Invoice Date
-                        </span>
-                        <span className="font-medium">
-                          : {fmtDate(invoice.invoiceDate)}
-                        </span>
-                      </div>
-                      <div className="flex gap-12">
-                        <span className="text-muted-foreground">Terms</span>
-                        <span className="font-medium">
-                          : {paymentTermsLabel}
-                        </span>
-                      </div>
-                      {invoice.orderNumber ?
-                        <div className="flex gap-4">
-                          <span className="text-muted-foreground">
-                            Order / Challan
-                          </span>
-                          <span className="font-medium">
-                            : {invoice.orderNumber}
-                          </span>
+                      <div className="flex-1 p-3">
+                        <div className="text-xs text-black flex gap-2">
+                          <span className="w-24">Place Of Supply</span>
+                          <span className="font-bold">: {activeOrganization?.address?.state || "Chhattisgarh (22)"}</span>
                         </div>
-                      : null}
-                      <div className="flex gap-6">
-                        <span className="text-muted-foreground">Due Date</span>
-                        <span className="font-medium">
-                          :{" "}
-                          {invoice.dueDate ?
-                            fmtDate(invoice.dueDate)
-                          : fmtDate(invoice.invoiceDate)}
-                        </span>
                       </div>
                     </div>
-                    <div />
-                  </div>
-
-                  {/* Bill To */}
-                  <div className="text-sm">
-                    <div className="font-bold bg-muted/50 px-2 py-1">
-                      Bill To
+                    <div className="p-3 bg-gray-50 border-b border-gray-400">
+                      <div className="text-xs font-bold text-black">Bill To</div>
                     </div>
-                    <div className="px-2 py-1 text-blue-600 font-medium">
+                    <div className="p-3 text-sm text-blue-600 font-bold">
                       {cName}
                     </div>
                   </div>
 
                   {/* Items Table */}
-                  <div className="border rounded overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-10 font-bold text-foreground">
-                            #
-                          </TableHead>
-                          <TableHead className="font-bold text-foreground">
-                            Item &amp; Description
-                          </TableHead>
-                          <TableHead className="text-right font-bold text-foreground w-20">
-                            HSN/SAC
-                          </TableHead>
-                          <TableHead className="text-right font-bold text-foreground w-16">
-                            Qty
-                          </TableHead>
-                          <TableHead className="text-right font-bold text-foreground w-20">
-                            Rate
-                          </TableHead>
-                          <TableHead className="text-right font-bold text-foreground w-20">
-                            Tax
-                          </TableHead>
-                          <TableHead className="text-right font-bold text-foreground w-24">
-                            Amount
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {invoice.items.map((item, idx) => (
-                          <TableRow key={item._id || idx}>
-                            <TableCell className="text-muted-foreground">
-                              {idx + 1}
-                            </TableCell>
-                            <TableCell>
-                              <div>{item.name}</div>
-                              {item.description && (
-                                <div className="text-xs text-muted-foreground">
-                                  {item.description}
+                  <div className="border border-gray-400 mb-0">
+                    <table className="w-full text-xs text-black text-left">
+                      <thead className="bg-gray-50 border-b border-gray-400">
+                        <tr>
+                          <th className="py-2 px-2 border-r border-gray-400 font-bold w-10 text-center">#</th>
+                          <th className="py-2 px-2 border-r border-gray-400 font-bold">Item &amp; Description</th>
+                          <th className="py-2 px-2 border-r border-gray-400 font-bold text-center w-24">HSN/SAC</th>
+                          <th className="py-2 px-2 border-r border-gray-400 font-bold text-right w-16">Qty</th>
+                          <th className="py-2 px-2 border-r border-gray-400 font-bold text-right w-20">Rate</th>
+                          <th className="py-0 px-0 border-r border-gray-400 text-center w-20">
+                            <div className="border-b border-gray-400 py-1 font-bold">CGST</div>
+                            <div className="flex">
+                              <div className="flex-1 border-r border-gray-400 py-1 font-bold">%</div>
+                              <div className="flex-1 py-1 font-bold">Amt</div>
+                            </div>
+                          </th>
+                          <th className="py-0 px-0 border-r border-gray-400 text-center w-20">
+                            <div className="border-b border-gray-400 py-1 font-bold">SGST</div>
+                            <div className="flex">
+                              <div className="flex-1 border-r border-gray-400 py-1 font-bold">%</div>
+                              <div className="flex-1 py-1 font-bold">Amt</div>
+                            </div>
+                          </th>
+                          <th className="py-2 px-2 font-bold text-right w-24">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoice.items.map((item, idx) => {
+                          const taxP = Number(item.taxPercent || 0);
+                          const taxA = Number(item.taxAmount || 0);
+                          const halfP = taxP / 2;
+                          const halfA = taxA / 2;
+                          return (
+                            <tr key={item._id || idx} className="border-b border-gray-400 last:border-b-0">
+                              <td className="py-2 px-2 border-r border-gray-400 text-center">{idx + 1}</td>
+                              <td className="py-2 px-2 border-r border-gray-400">
+                                <div>{item.name}</div>
+                                {item.description && <div className="text-gray-500">{item.description}</div>}
+                              </td>
+                              <td className="py-2 px-2 border-r border-gray-400 text-center">{(item as any).hsnSacCode || "—"}</td>
+                              <td className="py-2 px-2 border-r border-gray-400 text-right">
+                                {fmtNum(item.quantity)}<br/>
+                                <span className="text-[10px]">Number</span>
+                              </td>
+                              <td className="py-2 px-2 border-r border-gray-400 text-right">{fmtNum(item.rate)}</td>
+                              <td className="py-0 px-0 border-r border-gray-400 text-right">
+                                <div className="flex h-full min-h-[32px] items-center">
+                                  <div className="flex-1 border-r border-gray-400 h-full flex items-center justify-center">{taxP > 0 ? `${halfP}%` : ""}</div>
+                                  <div className="flex-1 px-1">{taxP > 0 ? fmtNum(halfA) : ""}</div>
                                 </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
-                              {(item as any).hsnSacCode || "—"}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {fmtNum(item.quantity)}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {fmtNum(item.rate)}
-                            </TableCell>
-                            <TableCell className="text-right text-xs tabular-nums">
-                              {Number(item.taxPercent || 0) > 0 ?
-                                `${fmtNum(item.taxPercent)}%`
-                              : "â€”"}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {fmtNum(item.amount)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                              </td>
+                              <td className="py-0 px-0 border-r border-gray-400 text-right">
+                                <div className="flex h-full min-h-[32px] items-center">
+                                  <div className="flex-1 border-r border-gray-400 h-full flex items-center justify-center">{taxP > 0 ? `${halfP}%` : ""}</div>
+                                  <div className="flex-1 px-1">{taxP > 0 ? fmtNum(halfA) : ""}</div>
+                                </div>
+                              </td>
+                              <td className="py-2 px-2 text-right">{fmtNum(Number(item.quantity) * Number(item.rate))}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
 
-                  {/* Totals */}
-                  <div className="flex justify-end">
-                    <div className="w-72 space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span>Sub Total</span>
-                        <span className="tabular-nums">
-                          {fmtNum(invoice.subTotal)}
-                        </span>
+                  {/* Footer & Totals */}
+                  <div className="flex border border-t-0 border-gray-400 text-xs text-black">
+                    <div className="flex-[3] p-4 flex flex-col justify-between">
+                      <div>
+                        <div className="mb-1">Total In Words</div>
+                        <div className="italic font-bold">{numberToWords(invoice.total)}</div>
                       </div>
-                      {lineDiscountAmount > 0 && (
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Line Item Discount</span>
-                          <span className="tabular-nums">
-                            - {fmtNum(lineDiscountAmount)}
-                          </span>
-                        </div>
-                      )}
-                      {lineTaxAmount > 0 && (
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Line Item Tax</span>
-                          <span className="tabular-nums">
-                            + {fmtNum(lineTaxAmount)}
-                          </span>
-                        </div>
-                      )}
-                      {invoice.discountAmount > 0 && (
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Discount</span>
-                          <span className="tabular-nums">
-                            - {fmtNum(invoice.discountAmount)}
-                          </span>
-                        </div>
-                      )}
-                      {Number(invoice.taxAmount || 0) > 0 && (
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>{invoice.taxType}</span>
-                          <span className="tabular-nums">
-                            {invoice.taxType === "TDS" ? "- " : "+ "}
-                            {fmtNum(invoice.taxAmount)}
-                          </span>
-                        </div>
-                      )}
-                      {Number(invoice.adjustmentAmount || 0) !== 0 && (
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>{invoice.adjustmentLabel || "Adjustment"}</span>
-                          <span className="tabular-nums">
-                            {Number(invoice.adjustmentAmount) > 0 ? "+ " : ""}
-                            {fmtNum(invoice.adjustmentAmount)}
-                          </span>
-                        </div>
-                      )}
-                      <Separator />
-                      <div className="flex justify-between font-bold">
-                        <span>Total</span>
-                        <span className="tabular-nums">
-                          &#8377;{fmtNum(invoice.total)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between font-bold">
-                        <span>Balance Due</span>
-                        <span className="tabular-nums">
-                          &#8377;{fmtNum(invoice.balanceDue ?? invoice.total)}
-                        </span>
+                      <div className="mt-4">
+                        <div className="mb-1">Notes</div>
+                        <div className="italic">{invoice.customerNotes || "Thanks for your business."}</div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Total in Words */}
-                  <div className="text-sm">
-                    <span className="text-muted-foreground">
-                      Total In Words
-                    </span>
-                    <div className="italic font-medium">
-                      {numberToWords(invoice.total)}
+                    <div className="flex-[2] border-l border-gray-400 p-0 flex flex-col justify-between">
+                      <div className="p-4 space-y-2">
+                        <div className="flex justify-between">
+                          <span>Sub Total</span>
+                          <span className="tabular-nums font-medium">{fmtNum(invoice.subTotal)}</span>
+                        </div>
+                        {lineDiscountAmount > 0 && (
+                          <div className="flex justify-between">
+                            <span>Discount</span>
+                            <span className="tabular-nums font-medium">- {fmtNum(lineDiscountAmount)}</span>
+                          </div>
+                        )}
+                        {/* Dynamic Tax Rows */}
+                        {(() => {
+                           const taxTotals = invoice.items.reduce((acc, item) => {
+                              const p = Number(item.taxPercent || 0);
+                              if (p > 0) {
+                                 const halfP = p / 2;
+                                 acc[`CGST (${halfP}%)`] = (acc[`CGST (${halfP}%)`] || 0) + (Number(item.taxAmount) / 2);
+                                 acc[`SGST (${halfP}%)`] = (acc[`SGST (${halfP}%)`] || 0) + (Number(item.taxAmount) / 2);
+                              }
+                              return acc;
+                           }, {} as Record<string, number>);
+                           return Object.entries(taxTotals).map(([key, val]) => (
+                             <div key={key} className="flex justify-between">
+                               <span>{key}</span>
+                               <span className="tabular-nums font-medium">{fmtNum(val)}</span>
+                             </div>
+                           ));
+                        })()}
+                        {Number(invoice.adjustmentAmount || 0) !== 0 && (
+                          <div className="flex justify-between">
+                            <span>{invoice.adjustmentLabel || "Adjustment"}</span>
+                            <span className="tabular-nums font-medium">{fmtNum(invoice.adjustmentAmount)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold text-sm mt-2 pt-2 border-t border-gray-300">
+                          <span>Total</span>
+                          <span className="tabular-nums">₹{fmtNum(invoice.total)}</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-sm bg-gray-100 -mx-4 px-4 py-1 mt-1">
+                          <span>Balance Due</span>
+                          <span className="tabular-nums">₹{fmtNum(invoice.balanceDue ?? invoice.total)}</span>
+                        </div>
+                      </div>
+                      <div className="p-4 pt-16 text-right">
+                        <div className="w-48 ml-auto border-t border-gray-800 mb-1" />
+                        <span className="mr-2">Authorized Signature</span>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Notes */}
-                  {invoice.customerNotes && (
-                    <div className="text-sm">
-                      <span className="text-muted-foreground italic">
-                        Notes
-                      </span>
-                      <div className="italic">{invoice.customerNotes}</div>
-                    </div>
-                  )}
-
-                  {/* Authorized Signature */}
-                  <div className="text-right text-sm text-muted-foreground pt-8">
-                    <Separator className="ml-auto w-48 mb-2" />
-                    Authorized Signature
                   </div>
                 </div>
               </div>

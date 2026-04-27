@@ -499,10 +499,15 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
 
     // ── Items table ────────────────────────────────────────────
     const colNum = left;
-    const colItem = left + 30;
-    const colQty = left + pageW - 180;
-    const colRate = left + pageW - 110;
-    const colAmt = left + pageW - 50;
+    const colItem = colNum + 24;
+    const colHsn = colItem + 115;
+    const colQty = colHsn + 50;
+    const colRate = colQty + 40;
+    const colCgstRate = colRate + 48;
+    const colCgstAmt = colCgstRate + 34;
+    const colSgstRate = colCgstAmt + 44;
+    const colSgstAmt = colSgstRate + 34;
+    const colAmt = colSgstAmt + 44;
     const rowH = 18;
 
     // Header row with top & bottom border
@@ -516,15 +521,20 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     doc
       .fillColor("#000000")
       .font(F_BOLD)
-      .fontSize(8.5)
-      .text("#", colNum + 4, y + 5, { width: 25 })
+      .fontSize(7.5)
+      .text("#", colNum, y + 5, { width: 20, align: "center" })
       .text("Item & Description", colItem, y + 5, {
-        width: colQty - colItem - 5,
+        width: 110,
       })
-      .text("Qty", colQty, y + 5, { width: 60, align: "right" })
-      .text("Rate", colRate, y + 5, { width: 55, align: "right" })
+      .text("HSN/SAC", colHsn, y + 5, { width: 45, align: "center" })
+      .text("Qty", colQty, y + 5, { width: 35, align: "right" })
+      .text("Rate", colRate, y + 5, { width: 43, align: "right" })
+      .text("CGST %", colCgstRate, y + 5, { width: 30, align: "right" })
+      .text("CGST Amt", colCgstAmt, y + 5, { width: 40, align: "right" })
+      .text("SGST %", colSgstRate, y + 5, { width: 30, align: "right" })
+      .text("SGST Amt", colSgstAmt, y + 5, { width: 40, align: "right" })
       .text("Amount", colAmt, y + 5, {
-        width: pageW - (colAmt - left),
+        width: right - colAmt,
         align: "right",
       });
 
@@ -541,24 +551,49 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     data.items.forEach((item, idx) => {
       y += 4;
       const textY = y;
+      const taxableAmount = Math.max(
+        0,
+        Number(item.quantity || 0) * Number(item.rate || 0) - (Number(item.discountAmount) || 0),
+      );
+      const taxPercent = Number(item.taxPercent || 0);
+      const taxAmount = Number(item.taxAmount || 0);
+      const halfTaxPercent = taxPercent / 2;
+      const halfTaxAmount = taxAmount / 2;
       doc
         .fillColor("#000000")
         .font(F_REG)
-        .fontSize(9)
-        .text(String(idx + 1), colNum + 4, textY, { width: 25 })
-        .text(item.name, colItem, textY, { width: colQty - colItem - 5 });
+        .fontSize(8)
+        .text(String(idx + 1), colNum, textY, { width: 20, align: "center" })
+        .text(item.name, colItem, textY, { width: 110 })
+        .text(item.hsnSacCode || "-", colHsn, textY, { width: 45, align: "center" });
 
       doc
         .text(fmtNum(item.quantity), colQty, textY, {
-          width: 60,
+          width: 35,
           align: "right",
         })
         .text(fmtNum(item.rate), colRate, textY, {
-          width: 55,
+          width: 43,
           align: "right",
         })
-        .text(fmtNum(item.amount), colAmt, textY, {
-          width: pageW - (colAmt - left),
+        .text(taxPercent > 0 ? fmtNum(halfTaxPercent) : "-", colCgstRate, textY, {
+          width: 30,
+          align: "right",
+        })
+        .text(taxPercent > 0 ? fmtNum(halfTaxAmount) : "-", colCgstAmt, textY, {
+          width: 40,
+          align: "right",
+        })
+        .text(taxPercent > 0 ? fmtNum(halfTaxPercent) : "-", colSgstRate, textY, {
+          width: 30,
+          align: "right",
+        })
+        .text(taxPercent > 0 ? fmtNum(halfTaxAmount) : "-", colSgstAmt, textY, {
+          width: 40,
+          align: "right",
+        })
+        .text(fmtNum(taxableAmount), colAmt, textY, {
+          width: right - colAmt,
           align: "right",
         });
 
@@ -589,10 +624,18 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
       (sum, item) => sum + (Number(item.discountAmount) || 0),
       0,
     );
-    const lineItemTaxAmount = data.items.reduce(
-      (sum, item) => sum + (Number(item.taxAmount) || 0),
-      0,
-    );
+    const lineItemTaxTotals = data.items.reduce((acc, item) => {
+      const taxPercent = Number(item.taxPercent || 0);
+      const taxAmount = Number(item.taxAmount || 0);
+      if (taxPercent <= 0 || taxAmount <= 0) return acc;
+
+      const halfTaxPercent = taxPercent / 2;
+      const cgstLabel = `CGST (${fmtNum(halfTaxPercent)}%)`;
+      const sgstLabel = `SGST (${fmtNum(halfTaxPercent)}%)`;
+      acc[cgstLabel] = (acc[cgstLabel] || 0) + taxAmount / 2;
+      acc[sgstLabel] = (acc[sgstLabel] || 0) + taxAmount / 2;
+      return acc;
+    }, {} as Record<string, number>);
 
     // Total in words - left side
     doc
@@ -629,9 +672,9 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     if (lineItemDiscountAmount > 0) {
       addTotalRow("Line Item Discount", `- ${fmtNum(lineItemDiscountAmount)}`);
     }
-    if (lineItemTaxAmount > 0) {
-      addTotalRow("Line Item Tax", `+ ${fmtNum(lineItemTaxAmount)}`);
-    }
+    Object.entries(lineItemTaxTotals).forEach(([label, amount]) => {
+      addTotalRow(label, `+ ${fmtNum(amount)}`);
+    });
     if (data.discountAmount && data.discountAmount !== 0) {
       const discLabel =
         data.discountType === "percent" ?
