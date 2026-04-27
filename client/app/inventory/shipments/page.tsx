@@ -37,6 +37,7 @@ interface ShipmentMetaPayload {
   shippingCharges?: number;
   shipmentAlreadyDelivered?: boolean;
   shipDate?: string;
+  notes?: string;
 }
 
 interface ShipmentRow {

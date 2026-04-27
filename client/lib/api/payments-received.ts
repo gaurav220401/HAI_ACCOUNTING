@@ -71,6 +71,8 @@ export interface PaymentInvoiceMap {
 export interface PaymentReceivedListParams extends ListParams {
   customer_id?: string;
   customerId?: string;
+  invoiceId?: string;
+  invoice_id?: string;
   status?: string;
 }
 

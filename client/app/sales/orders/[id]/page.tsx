@@ -13,9 +13,9 @@ import {
   Download,
   Copy,
   Mail,
-  Send,
   Truck,
   Package as PackageIcon,
+  ArrowRightLeft,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -55,7 +55,7 @@ import {
 } from "@/lib/api/sales-orders";
 import { packageApi, type Package } from "@/lib/api/packages";
 
-type TabKey = "overview" | "packages";
+type TabKey = "overview" | "packages" | "documents";
 
 function getCustomerName(
   customer: SalesOrder["customerId"] | null | undefined,
@@ -160,27 +160,24 @@ interface SendEmailModalProps {
 
 function SendEmailModal({ open, onClose, order, onSent }: SendEmailModalProps) {
   const name = getCustomerName(order.customerId);
-  const email = (order.customerId as any)?.email || "";
+  const customerEmail = (order.customerId as any)?.email || "";
   const { activeOrganization } = useOrganization();
 
-  const [to, setTo] = useState(email);
+  const [to, setTo] = useState(customerEmail);
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState(
     `Sales Order - ${order.salesOrderNumber} from ${activeOrganization?.name || "HAI"}`,
   );
   
   const defaultBody = `Dear ${name},
 
-Thanks for your interest in our services. Please find our sales order attached with this mail.
+Thanks for your business. Please find our sales order (${order.salesOrderNumber}) attached for your reference.
 
-An overview of the sales order is available below for your reference:
-
-----------------------------------------------------------------------------------------
-Sales Order # : ${order.salesOrderNumber}
-----------------------------------------------------------------------------------------
- Order Date      :  ${formatDate(order.orderDate)}
- Amount          :  ₹${Number(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-----------------------------------------------------------------------------------------
+Order Summary:
+- Number: ${order.salesOrderNumber}
+- Date: ${formatDate(order.orderDate)}
+- Total Amount: ₹${Number(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
 
 Assuring you of our best services at all times.
 
@@ -192,17 +189,12 @@ ${activeOrganization?.name || "HAI"}`;
   const [sending, setSending] = useState(false);
 
   async function handleSend() {
-    const toList = to
-      .split(",")
-      .map((e: string) => e.trim())
-      .filter(Boolean);
-    const ccList = cc
-      .split(",")
-      .map((e: string) => e.trim())
-      .filter(Boolean);
+    const toList = to.split(",").map((e: string) => e.trim()).filter(Boolean);
+    const ccList = cc.split(",").map((e: string) => e.trim()).filter(Boolean);
+    const bccList = bcc.split(",").map((e: string) => e.trim()).filter(Boolean);
 
     if (toList.length === 0) {
-      toast.error("Please enter at least one recipient email address");
+      toast.error("Please provide at least one recipient email");
       return;
     }
 
@@ -211,106 +203,107 @@ ${activeOrganization?.name || "HAI"}`;
       await salesOrderApi.sendEmail(order._id, {
         to: toList,
         cc: ccList,
+        bcc: bccList,
         subject,
         body,
         attachPdf,
       });
-      toast.success("Sales order emailed successfully");
+      toast.success(`Email sent to ${toList.length} recipient(s)`);
       onSent();
       onClose();
-    } catch (e: any) {
-      toast.error(e.message || "Failed to send email");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send email");
     } finally {
       setSending(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Email To {name}</DialogTitle>
-        </DialogHeader>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden rounded-xl border-none shadow-2xl">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
+           <DialogHeader>
+             <DialogTitle className="text-xl font-bold flex items-center gap-2">
+               <Mail className="h-5 w-5" />
+               Send Sales Order
+             </DialogTitle>
+             <p className="text-blue-100 text-sm mt-1">Send professionally formatted order details to your customers.</p>
+           </DialogHeader>
+        </div>
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-sm">
-            <span className="text-muted-foreground">From</span>
-            <span className="text-foreground font-medium">
-              {activeOrganization?.name || "Your Organization"}{" "}
-              <span className="text-xs text-muted-foreground">
-                (via SMTP settings)
-              </span>
-            </span>
+        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <div className="space-y-1.5">
+               <Label className="text-xs font-semibold uppercase text-muted-foreground">To (Recipients)</Label>
+               <Input 
+                 placeholder="customer@example.com, colleague@example.com"
+                 value={to}
+                 onChange={(e) => setTo(e.target.value)}
+                 className="bg-muted/30 focus-visible:ring-blue-500"
+               />
+               <p className="text-[10px] text-muted-foreground italic">Use commas to separate multiple emails</p>
+             </div>
+             <div className="space-y-1.5">
+               <Label className="text-xs font-semibold uppercase text-muted-foreground">CC / BCC</Label>
+               <div className="flex gap-2">
+                 <Input 
+                   placeholder="CC"
+                   value={cc}
+                   onChange={(e) => setCc(e.target.value)}
+                   className="bg-muted/30"
+                 />
+                 <Input 
+                   placeholder="BCC"
+                   value={bcc}
+                   onChange={(e) => setBcc(e.target.value)}
+                   className="bg-muted/30"
+                 />
+               </div>
+             </div>
           </div>
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-sm">
-            <Label className="text-muted-foreground text-sm font-normal">
-              Send To
-            </Label>
-            <div className="space-y-1">
-              <Input
-                type="email"
-                placeholder="customer@example.com"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="h-8 text-sm"
-              />
-              {!to && (
-                <p className="text-xs text-red-500">
-                  No email on record for this customer. Enter the recipient email above.
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-sm">
-            <Label className="text-muted-foreground text-sm font-normal">
-              Cc
-            </Label>
-            <Input
-              type="email"
-              placeholder="optional@example.com"
-              value={cc}
-              onChange={(e) => setCc(e.target.value)}
-              className="h-8 text-sm"
-            />
-          </div>
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2 text-sm">
-            <Label className="text-muted-foreground text-sm font-normal">
-              Subject
-            </Label>
-            <Input
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Subject</Label>
+            <Input 
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className="h-8 text-sm"
+              className="bg-muted/30"
             />
           </div>
-          <div className="space-y-1.5 pt-2">
-            <Textarea
-              className="min-h-[200px] text-sm resize-y"
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Message Body</Label>
+            <Textarea 
+              rows={8}
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              className="bg-muted/30 font-sans resize-none"
             />
           </div>
-          <div className="flex items-center space-x-2 pt-2">
-            <Checkbox
-              id="attach-pdf"
-              checked={attachPdf}
-              onCheckedChange={(c) => setAttachPdf(!!c)}
+
+          <div className="flex items-center space-x-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+            <Checkbox 
+              id="attach" 
+              checked={attachPdf} 
+              onCheckedChange={(v) => setAttachPdf(v === true)}
+              className="data-[state=checked]:bg-blue-600"
             />
-            <label
-              htmlFor="attach-pdf"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-            >
+            <Label htmlFor="attach" className="text-sm font-medium text-blue-900 cursor-pointer flex items-center gap-2">
+              <FileText className="h-4 w-4 text-blue-600" />
               Attach Sales Order PDF
-            </label>
+            </Label>
           </div>
         </div>
 
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={onClose} disabled={sending}>
-            Cancel
-          </Button>
-          <Button onClick={handleSend} disabled={sending}>
-            {sending ? "Sending..." : "Send Email"}
+        <DialogFooter className="p-4 bg-muted/20 border-t flex justify-between items-center sm:justify-between">
+          <Button variant="ghost" onClick={onClose} disabled={sending}>Cancel</Button>
+          <Button 
+            onClick={handleSend} 
+            disabled={sending}
+            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
+          >
+            {sending ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
+            Send Email
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -358,16 +351,18 @@ export default function SalesOrderDetailsPage() {
     if (!id) return;
     if (orders.length === 0) return;
     const found = orders.find((o) => o._id === id) || null;
-    setActive(found);
     if (found) {
-      packageApi.listByOrder(found._id).then(res => setPackages(res.data || [])).catch(() => {});
+        setActive(found);
+        salesOrderApi.getById(found._id).then(res => setActive(normalizeSalesOrder(res.data))).catch(() => {});
+        packageApi.listByOrder(found._id).then(res => setPackages(res.data || [])).catch(() => {});
     }
   }, [id, orders]);
 
   // Auto-open email modal when navigated from "Save and Send"
   useEffect(() => {
     if (searchParams?.get("send") === "true" && active) {
-      router.replace(`/sales/orders/${active._id}/send-email`, { scroll: false });
+      setShowEmailModal(true);
+      router.replace(`/sales/orders/${active._id}`, { scroll: false });
     }
   }, [active, searchParams, router]);
 
@@ -405,12 +400,12 @@ export default function SalesOrderDetailsPage() {
     try {
       const result = await salesOrderApi.convertToInvoice(active._id);
       const invoiceId = getConvertedInvoiceId(result.data);
-      alert("Sales order converted to invoice successfully");
+      toast.success("Sales order converted to invoice successfully");
       if (invoiceId) {
         router.push(`/sales/invoices/${invoiceId}`);
       }
     } catch {
-      alert("Failed to convert sales order to invoice");
+      toast.error("Failed to convert sales order to invoice");
     }
   }
 
@@ -489,10 +484,10 @@ export default function SalesOrderDetailsPage() {
     if (!confirm("Are you sure you want to delete this sales order?")) return;
     try {
       await salesOrderApi.remove(active._id);
-      alert("Sales order deleted successfully");
+      toast.success("Sales order deleted successfully");
       router.push("/sales/orders");
     } catch (error) {
-      alert("Failed to delete sales order");
+      toast.error("Failed to delete sales order");
     }
   }
 
@@ -706,7 +701,7 @@ export default function SalesOrderDetailsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => router.push(`/sales/orders/${active._id}/send-email`)}
+                      onClick={() => setShowEmailModal(true)}
                     >
                       <Mail className="h-4 w-4 mr-1" />
                       Send Email
@@ -716,7 +711,8 @@ export default function SalesOrderDetailsPage() {
                       onClick={handleConvertToInvoice}
                       disabled={
                         activeStatus === "INVOICED" ||
-                        activeStatus === "PARTIALLY_INVOICED"
+                        activeStatus === "PARTIALLY_INVOICED" ||
+                        activeStatus === "CLOSED"
                       }
                     >
                       <FileText className="h-4 w-4 mr-1" />
@@ -780,12 +776,6 @@ export default function SalesOrderDetailsPage() {
                             Reset shipment to Pending
                           </DropdownMenuItem>
                         )}
-                        {activeShipmentStatus === "Shipped" ? (
-                          <DropdownMenuItem onClick={() => handleUpdateShipment("Pending")}>
-                            <Truck className="h-4 w-4 mr-2" />
-                            Reset shipment to Pending
-                          </DropdownMenuItem>
-                        ) : null}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={handleDropship}>
                           <Truck className="h-4 w-4 mr-2" />
@@ -823,11 +813,26 @@ export default function SalesOrderDetailsPage() {
                 <div className="mt-6">
                   <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
                     <TabsList
-                      variant="line"
-                      className="w-full justify-start border-b rounded-none px-0"
+                      className="w-full justify-start border-b rounded-none px-0 bg-transparent h-auto"
                     >
-                      <TabsTrigger value="overview">Sales Order</TabsTrigger>
-                      <TabsTrigger value="packages">Packages</TabsTrigger>
+                      <TabsTrigger 
+                        value="overview" 
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3"
+                      >
+                        Sales Order
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="packages" 
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3"
+                      >
+                        Packages
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="documents" 
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3"
+                      >
+                        Linked Documents
+                      </TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="packages" className="pt-6">
@@ -842,7 +847,7 @@ export default function SalesOrderDetailsPage() {
                           </div>
                         ) : (
                           packages.map(pkg => (
-                            <div key={pkg._id} className="p-4 border rounded-lg bg-card flex justify-between items-center hover:bg-muted/30">
+                            <div key={pkg._id} className="p-4 border rounded-lg bg-card flex justify-between items-center hover:bg-muted/30 cursor-pointer" onClick={() => router.push(`/sales/packages/${pkg._id}`)}>
                               <div>
                                 <div className="font-medium text-blue-600">{pkg.packageSlipNumber}</div>
                                 <div className="text-sm text-muted-foreground mt-1">Date: {new Date(pkg.date).toLocaleDateString()}</div>
@@ -855,6 +860,84 @@ export default function SalesOrderDetailsPage() {
                           ))
                         )}
                       </div>
+                    </TabsContent>
+
+                    <TabsContent value="documents" className="pt-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <Card>
+                            <CardHeader className="pb-3">
+                               <CardTitle className="text-sm font-semibold flex items-center">
+                                  <FileText className="h-4 w-4 mr-2 text-blue-500" />
+                                  Linked Invoices
+                               </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                               {!active?.linkedDocuments?.invoices?.length ? (
+                                  <div className="text-xs text-muted-foreground italic p-2 bg-muted/20 rounded">No linked invoices.</div>
+                               ) : (
+                                  active.linkedDocuments.invoices.map(inv => (
+                                     <div key={inv._id} className="flex items-center justify-between p-2 border rounded hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => router.push(`/sales/invoices/${inv._id}`)}>
+                                        <div>
+                                           <div className="text-sm font-medium text-blue-600">{inv.invoiceNumber}</div>
+                                           <div className="text-[10px] text-muted-foreground">{formatDate(inv.invoiceDate)}</div>
+                                        </div>
+                                        <div className="text-right">
+                                           <div className="text-sm font-bold">₹{inv.total.toLocaleString("en-IN")}</div>
+                                           <Badge variant="outline" className="text-[10px] h-4 py-0 uppercase">{inv.status}</Badge>
+                                        </div>
+                                     </div>
+                                  ))
+                               )}
+                            </CardContent>
+                          </Card>
+                          <Card>
+                             <CardHeader className="pb-3">
+                                <CardTitle className="text-sm font-semibold flex items-center">
+                                   <Truck className="h-4 w-4 mr-2 text-orange-500" />
+                                   Linked Delivery Challans
+                                </CardTitle>
+                             </CardHeader>
+                             <CardContent className="space-y-3">
+                                {!active?.linkedDocuments?.deliveryChallans?.length ? (
+                                   <div className="text-xs text-muted-foreground italic p-2 bg-muted/20 rounded">No linked challans.</div>
+                                ) : (
+                                   active.linkedDocuments.deliveryChallans.map(dc => (
+                                      <div key={dc._id} className="flex items-center justify-between p-2 border rounded hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => router.push(`/inventory/delivery-challans/${dc._id}`)}>
+                                         <div>
+                                            <div className="text-sm font-medium text-orange-600">{dc.challanNumber}</div>
+                                            <div className="text-[10px] text-muted-foreground">{formatDate(dc.challanDate)}</div>
+                                         </div>
+                                         <Badge variant="outline" className="text-[10px] h-4 py-0 uppercase">{dc.status}</Badge>
+                                      </div>
+                                   ))
+                                )}
+                             </CardContent>
+                          </Card>
+
+                          <Card>
+                             <CardHeader className="pb-3">
+                                <CardTitle className="text-sm font-semibold flex items-center">
+                                   <ArrowRightLeft className="h-4 w-4 mr-2 text-indigo-500" />
+                                   Linked Move Orders (Transfers)
+                                </CardTitle>
+                             </CardHeader>
+                             <CardContent className="space-y-3">
+                                {!active?.linkedDocuments?.moveOrders?.length ? (
+                                   <div className="text-xs text-muted-foreground italic p-2 bg-muted/20 rounded">No linked move orders.</div>
+                                ) : (
+                                   active.linkedDocuments.moveOrders.map(mo => (
+                                      <div key={mo._id} className="flex items-center justify-between p-2 border rounded hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => router.push(`/inventory/move-orders/${mo._id}`)}>
+                                         <div>
+                                            <div className="text-sm font-medium text-indigo-600">{mo.orderNumber}</div>
+                                            <div className="text-[10px] text-muted-foreground">{formatDate(mo.date)}</div>
+                                         </div>
+                                         <Badge variant="outline" className="text-[10px] h-4 py-0 uppercase">{mo.status}</Badge>
+                                      </div>
+                                   ))
+                                )}
+                             </CardContent>
+                          </Card>
+                       </div>
                     </TabsContent>
 
                     <TabsContent value="overview" className="pt-6">

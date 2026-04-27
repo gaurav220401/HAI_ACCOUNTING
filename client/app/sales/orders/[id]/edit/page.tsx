@@ -44,6 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { cn } from "@/lib/utils";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
@@ -74,7 +75,7 @@ type LineItemUi = {
   quantity: string;
   rate: string;
   discount: string;
-  taxId: string;
+  taxId: string | null;
   amount: number;
 };
 
@@ -225,7 +226,7 @@ export default function EditSalesOrderPage() {
             itemId: getRefId(li.itemId),
             description: li.description || "",
             hsnSacCode: li.hsnSacCode || "",
-            taxId: getRefId(li.taxId),
+            taxId: getRefId(li.taxId) || (Number(li.taxPercent || 0) <= 0 ? null : ""),
             taxPercent: String(li.taxPercent || 0),
             quantity: String(li.quantity || 1),
             rate: String(li.rate || 0),
@@ -390,6 +391,7 @@ export default function EditSalesOrderPage() {
             const taxP = Number(li.taxPercent) || 0;
             const amountBeforeTax = q * r - d;
             const lineTaxAmount = (amountBeforeTax * taxP) / 100;
+            const taxId = li.taxId && li.taxId !== "none" ? li.taxId : null;
             return {
               itemId: li.itemId,
               name: itemsById.get(li.itemId)?.name || "",
@@ -398,7 +400,7 @@ export default function EditSalesOrderPage() {
               quantity: q,
               rate: r,
               discount: d,
-              taxId: li.taxId || null,
+              taxId,
               taxPercent: taxP,
               taxAmount: lineTaxAmount,
               amount: amountBeforeTax + lineTaxAmount,
@@ -847,11 +849,11 @@ export default function EditSalesOrderPage() {
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={li.taxId}
+                            value={li.taxId || "none"}
                             onValueChange={(val) => {
                               const selectedTax = allTaxes.find(t => t._id === val);
                               updateLineItem(li.id, { 
-                                taxId: val, 
+                                taxId: val === "none" ? null : val, 
                                 taxPercent: selectedTax ? String(selectedTax.rate) : "0" 
                               });
                             }}
@@ -1003,36 +1005,109 @@ export default function EditSalesOrderPage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Sub Total:</span>
-                <span className="tabular-nums">₹{totals.subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+            <div className="bg-muted/30 rounded-xl border p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Sub Total</span>
+                <span className="tabular-nums font-medium">₹{totals.subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
-              {totals.taxBreakdown.map((b, idx) => (
-                <div key={idx} className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{b.name} [{b.rate}%]</span>
-                  <span className="tabular-nums">₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                </div>
-              ))}
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Shipping Charges</span>
-                <span className="tabular-nums">₹{totals.shipping.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-              </div>
-              {totals.taxAmount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{formData.taxType} Amount</span>
-                  <span className="tabular-nums">
-                    {formData.taxType === "TDS" ? "-" : "+"} ₹{totals.taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                  </span>
+
+              {totals.taxBreakdown.length > 0 && (
+                <div className="py-2 border-y border-dashed space-y-2">
+                  {totals.taxBreakdown.map((b, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+                        {b.name} <span className="text-[10px] opacity-70">[{b.rate}%]</span>
+                      </span>
+                      <span className="tabular-nums font-medium">₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  ))}
                 </div>
               )}
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Adjustment</span>
-                <span className="tabular-nums">₹{totals.adjustment.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+
+              <div className="flex items-center justify-between gap-4 pt-1">
+                <span className="text-muted-foreground text-sm">Shipping Charges</span>
+                <div className="w-32 relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                  <Input
+                    value={formData.shippingCharges}
+                    onChange={(e) => setFormData(p => ({...p, shippingCharges: e.target.value}))}
+                    className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                    placeholder="0.00"
+                  />
+                </div>
               </div>
-              <div className="flex justify-between font-semibold border-t pt-2 mt-2">
-                <span>Total ( ₹ )</span>
-                <span className="tabular-nums text-lg">₹{totals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground text-sm">Adjustment</span>
+                <div className="w-32 relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                  <Input
+                    value={formData.adjustment}
+                    onChange={(e) => setFormData(p => ({...p, adjustment: e.target.value}))}
+                    className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 mt-2 border-t">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    {["none", "TDS", "TCS"].map((t) => (
+                      <label key={t} className={cn(
+                        "flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors border",
+                        formData.taxType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input hover:bg-muted"
+                      )}>
+                        <input
+                          type="radio"
+                          name="taxType"
+                          value={t}
+                          checked={formData.taxType === t}
+                          onChange={() => setFormData(p => ({...p, taxType: t as any}))}
+                          className="sr-only"
+                        />
+                        {t.toUpperCase()}
+                      </label>
+                    ))}
+                  </div>
+                  
+                  {formData.taxType !== "none" && (
+                    <div className="w-32">
+                      <Select value={formData.taxType === "TDS" ? formData.tdsId : formData.tcsId} onValueChange={(v) => setFormData(p => ({...p, [formData.taxType === "TDS" ? "tdsId" : "tcsId"]: v}))}>
+                        <SelectTrigger className="h-7 text-[10px]">
+                          <SelectValue placeholder={`Select ${formData.taxType}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(formData.taxType === "TDS" ? tdsTaxes : tcsTaxes).map((t) => (
+                            <SelectItem key={t._id} value={t._id} className="text-xs">
+                              {t.taxName} ({t.rate}%)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
+                {formData.taxType !== "none" && (
+                  <div className="flex items-center justify-between text-xs py-1 text-muted-foreground bg-muted/50 px-2 rounded mb-3">
+                    <span>{formData.taxType} Amount</span>
+                    <span className="tabular-nums font-medium">
+                      {formData.taxType === "TDS" ? "-" : "+"} ₹{totals.taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-base font-bold text-foreground">Total</span>
+                  <div className="text-right">
+                    <span className="text-xl font-bold text-primary tabular-nums">
+                      ₹{totals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Indian Rupee</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

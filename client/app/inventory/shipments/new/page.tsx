@@ -361,7 +361,7 @@ export default function NewInventoryShipmentPage() {
 
       await Promise.all([
         salesOrderApi.updateShipment(order._id, shipmentStatus),
-        salesOrderApi.update(order._id, orderUpdate),
+        salesOrderApi.update(order._id, orderUpdate as any),
       ]);
 
       toast.success("Shipment saved successfully");

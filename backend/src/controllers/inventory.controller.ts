@@ -5,7 +5,10 @@ import InventoryAdjustment, {
   type InventoryAdjustmentReason,
 } from "../models/inventory-adjustment.model";
 import SalesOrder from "../models/sales-order.model";
+import Invoice from "../models/invoice.model";
+import Bill from "../models/bill.model";
 import { attachUser } from "../plugins";
+
 import {
   applyInventoryValueDeltas,
   applyStockDeltas,
@@ -414,3 +417,112 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
 
   res.status(201).json({ success: true, data: adjustment });
 });
+
+export const syncItemStock = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = getOrgId(req);
+  const itemId = req.params.id;
+
+  if (!Types.ObjectId.isValid(itemId as any)) {
+    throw new ValidationError("Invalid Item ID");
+  }
+
+  const [item, invoices, bills, adjustments, salesOrders] = await Promise.all([
+    Item.findOne({ _id: itemId, organizationId } as any),
+    Invoice.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      "items.itemId": itemId,
+    } as any).select("items.itemId items.quantity orderNumber").lean(),
+    
+    Bill.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      "lineItems.itemId": itemId,
+    } as any).select("lineItems.itemId lineItems.quantity lineItems.isHeader").lean(),
+    
+    InventoryAdjustment.find({
+      organizationId,
+      itemId,
+    } as any).select("quantityDelta").lean(),
+
+    SalesOrder.find({
+      organizationId,
+      isDeleted: false,
+      status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+      "lineItems.itemId": itemId,
+    } as any).select("lineItems.itemId lineItems.quantity shipmentStatus").lean(),
+  ]);
+
+  if (!item) throw new NotFoundError("Item");
+
+  let totalStock = 0;
+
+  // 1. Add Purchases
+  for (const bill of bills as any[]) {
+    for (const line of bill.lineItems || []) {
+      if (String(line.itemId) === itemId && !line.isHeader) {
+        totalStock += Number(line.quantity || 0);
+      }
+    }
+  }
+
+  // 2. Add Adjustments
+  for (const adj of adjustments as any[]) {
+    totalStock += Number(adj.quantityDelta || 0);
+  }
+
+  // 3. Subtract Sales (Only those that moved stock)
+  // Logic: Invoices move stock IF they are NOT linked to a Delivered SO.
+  // Actually, for a simple repair, we subtract ALL invoices that are not "Draft/Void"
+  // BUT we must be careful with SO linkage.
+  // Standard logic: Subtract all posted invoices. 
+  for (const inv of invoices as any[]) {
+    for (const line of inv.items || []) {
+      if (String(line.itemId) === itemId) {
+        totalStock -= Number(line.quantity || 0);
+      }
+    }
+  }
+
+  // 4. Calculate Committed Stock
+  // Approved SOs that are NOT delivered.
+  let committedStock = 0;
+  for (const so of salesOrders as any[]) {
+    if (so.shipmentStatus !== "Delivered") {
+      for (const line of so.lineItems || []) {
+        if (String(line.itemId) === itemId) {
+          committedStock += Number(line.quantity || 0);
+        }
+      }
+    }
+  }
+
+  const roundedStock = round2(totalStock);
+  const roundedCommitted = round2(committedStock);
+  
+  let changed = false;
+  if (item.stockOnHand !== roundedStock) {
+    item.stockOnHand = roundedStock;
+    changed = true;
+  }
+  if ((item as any).committedStock !== roundedCommitted) {
+    (item as any).committedStock = roundedCommitted;
+    changed = true;
+  }
+
+  if (changed) {
+    attachUser(item as any, req);
+    await item.save();
+  }
+
+  res.json({ 
+    success: true, 
+    data: { 
+      stockOnHand: item.stockOnHand,
+      committedStock: (item as any).committedStock
+    } 
+  });
+});
+

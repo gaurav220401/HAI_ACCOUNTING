@@ -5,6 +5,8 @@ import Item from "../models/item.model";
 import Contact from "../models/contact.model";
 import Organization from "../models/organization.model";
 import PurchaseOrder from "../models/purchase-order.model";
+import DeliveryChallan from "../models/delivery-challan.model";
+import MoveOrder from "../models/move-order.model";
 import Package from "../models/package.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
@@ -169,6 +171,8 @@ function normalizeLineItems(items: any[] = [], discountLevel: string = "transact
   return (items || [])
     .map((line) => {
       const { ...rest } = line || {};
+      const rawTaxId = String(rest.taxId || "").trim();
+      const taxId = rawTaxId && rawTaxId.toLowerCase() !== "none" ? rest.taxId : null;
       
       if (rest.isHeader) {
         return {
@@ -213,7 +217,7 @@ function normalizeLineItems(items: any[] = [], discountLevel: string = "transact
         discountPercent,
         discountAmount,
         discount: discountAmount,
-        taxId: rest.taxId || null,
+        taxId,
         taxPercent,
         taxAmount,
         amount,
@@ -687,12 +691,43 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 
 /** GET /api/sales-orders/:id */
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) } as any)
+  const oid = orgId(req);
+  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any)
     .populate("customerId paymentTermsId salesPersonId lineItems.itemId lineItems.taxId invoiceId");
   if (!order) throw new NotFoundError("Sales Order");
+  
   const orderData = (order as any).toObject ? (order as any).toObject() : order;
   const normalizedOrder = normalizeLegacyOrderForResponse(orderData);
-  res.json({ success: true, data: normalizedOrder });
+
+  // Find linked documents
+  const salesOrderNumber = normalizedOrder.salesOrderNumber;
+  const [linkedInvoices, linkedPackages, linkedChallans, linkedMoveOrders] = await Promise.all([
+    Invoice.find({ organizationId: oid, orderNumber: salesOrderNumber, isDeleted: false } as any)
+      .select("invoiceNumber status total balanceDue invoiceDate")
+      .lean(),
+    Package.find({ organizationId: oid, salesOrderId: order._id, isDeleted: false } as any)
+      .select("packageSlipNumber date")
+      .lean(),
+    DeliveryChallan.find({ organizationId: oid, salesOrderNumber: salesOrderNumber, isDeleted: false } as any)
+      .select("challanNumber challanDate status")
+      .lean(),
+    MoveOrder.find({ organizationId: oid, salesOrderId: order._id, isDeleted: false } as any)
+      .select("orderNumber date status")
+      .lean(),
+  ]);
+
+  res.json({ 
+    success: true, 
+    data: { 
+      ...normalizedOrder,
+      linkedDocuments: {
+        invoices: linkedInvoices,
+        packages: linkedPackages,
+        deliveryChallans: linkedChallans,
+        moveOrders: linkedMoveOrders,
+      }
+    } 
+  });
 });
 
 /** POST /api/sales-orders */
@@ -1039,7 +1074,7 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
     const discountPercent = lineTotal > 0 ? (lineDiscountAmount / lineTotal) * 100 : 0;
     const afterDiscount = Math.max(0, lineTotal - lineDiscountAmount);
 
-    const taxRef = line.taxId as any;
+    const taxRef = line.taxId && String(line.taxId) !== "none" ? (line.taxId as any) : null;
     const taxPercent = Number(taxRef?.rate) || Number(line.taxPercent) || 0;
     const itemTaxAmount = round2((afterDiscount * taxPercent) / 100);
 

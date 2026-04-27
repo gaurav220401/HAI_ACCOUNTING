@@ -80,6 +80,34 @@ export interface SalesOrder {
   taxAmount?: number;
   tcsAmount?: number;
   invoiceId?: string | { _id: string; invoiceNumber?: string } | null;
+  linkedDocuments?: {
+    invoices: Array<{
+      _id: string;
+      invoiceNumber: string;
+      status: string;
+      total: number;
+      balanceDue: number;
+      invoiceDate: string;
+    }>;
+    packages: Array<{
+      _id: string;
+      packageSlipNumber: string;
+      date: string;
+      status: string;
+    }>;
+    deliveryChallans: Array<{
+      _id: string;
+      challanNumber: string;
+      challanDate: string;
+      status: string;
+    }>;
+    moveOrders: Array<{
+      _id: string;
+      orderNumber: string;
+      date: string;
+      status: string;
+    }>;
+  };
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

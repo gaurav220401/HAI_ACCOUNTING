@@ -662,6 +662,8 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
   const {
     customer_id,
     customerId,
+    invoice_id,
+    invoiceId,
     status,
     search,
     page = 1,
@@ -676,6 +678,16 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
   };
   if (customer_id || customerId) filter.customer_id = customer_id || customerId;
   if (status && status !== "All") filter.status = status;
+  const invoiceFilterId = invoice_id || invoiceId;
+  if (invoiceFilterId) {
+    const maps = await PaymentInvoiceMap.find({
+      organization_id: orgId(req),
+      invoice_id: invoiceFilterId,
+      is_deleted: false,
+    }).select("payment_id");
+    filter._id = { $in: maps.map((m) => m.payment_id) };
+  }
+
   if (search) {
     filter.$or = [
       { payment_number: { $regex: search, $options: "i" } },
@@ -695,15 +707,20 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
     .lean();
+
   const applicationsByPayment = await loadPaymentApplications(organizationId, data);
   const rows = data.map((payment: any) => {
-    const invoice_applications = applicationsByPayment.get(String(payment._id)) || [];
+    const applications = applicationsByPayment.get(String(payment._id)) || [];
     return {
       ...payment,
-      invoice_applications,
-      invoice_numbers: invoice_applications
-        .map((app: any) => app.invoice_id?.invoiceNumber || "")
-        .filter(Boolean),
+      invoice_applications: applications,
+      invoice_numbers: Array.from(
+        new Set(
+          applications
+            .map((map: any) => String(map.invoice_id?.invoiceNumber || ""))
+            .filter(Boolean),
+        ),
+      ),
     };
   });
 

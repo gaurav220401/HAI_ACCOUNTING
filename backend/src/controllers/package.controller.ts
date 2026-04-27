@@ -5,6 +5,7 @@ import SalesOrder from "../models/sales-order.model";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 import asyncHandler from "../utils/asyncHandler";
 import { Types } from "mongoose";
+import { syncSalesOrderStatus } from "../services/status-sync.service";
 
 const orgId = (req: AuthenticatedRequest) => {
   const id = req.user?.activeOrganization;
@@ -40,17 +41,11 @@ export const createPackage = asyncHandler(async (req: AuthenticatedRequest, res:
   attachUser(newPackage, req);
   await newPackage.save();
 
-  const hasPackedLines = Array.isArray(lineItems)
-    && lineItems.some((line) => Number(line?.quantityToPack || 0) > 0);
-
-  if (hasPackedLines && String((order as any).shipmentStatus || "") !== "Delivered") {
-    (order as any).shipmentStatus = "Shipped";
-    if (String((order as any).status || "") === "DRAFT") {
-      (order as any).status = "APPROVED";
-    }
-    attachUser(order, req);
-    await order.save();
-  }
+  await syncSalesOrderStatus({
+    organizationId: oid,
+    salesOrderId,
+    req,
+  });
 
   res.status(201).json({ success: true, data: newPackage });
 });

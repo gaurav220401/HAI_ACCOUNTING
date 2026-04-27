@@ -88,4 +88,9 @@ export const inventoryApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  syncStock: (itemId: string) =>
+    apiFetch<{ data: { stockOnHand: number } }>(`/inventory/sync/${itemId}`, {
+      method: "POST",
+    }),
 };
+

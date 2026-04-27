@@ -37,6 +37,7 @@ import reportRoutes from "./report.routes";
 import inventoryRoutes from "./inventory.routes";
 import fixedAssetRoutes from "./fixed-asset.routes";
 import packageRoutes from "./package.routes";
+import moveOrderRoutes from "./move-order.routes";
 
 const router = Router();
 
@@ -78,5 +79,6 @@ router.use("/reports", reportRoutes);
 router.use("/inventory", inventoryRoutes);
 router.use("/fixed-assets", fixedAssetRoutes);
 router.use("/packages", packageRoutes);
+router.use("/move-orders", moveOrderRoutes);
 
 export default router;

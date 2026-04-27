@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import RichTextEditor from "@/components/ui/rich-text-editor";
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { salesOrderApi, type SalesOrder } from "@/lib/api/sales-orders";
 import { smtpApi } from "@/lib/api/smtp";
@@ -505,30 +505,37 @@ export default function SendSalesOrderEmailPage() {
                             <div className="flex items-center justify-center py-4">
                               <Loader2 className="h-4 w-4 animate-spin" />
                             </div>
-                          ) : filteredContactPersons.length === 0 ? (
-                            <p className="px-4 py-3 text-sm text-muted-foreground uppercase">No contact persons found.</p>
                           ) : (
-                            <CommandGroup>
-                              {filteredContactPersons.map((contact, idx) => {
-                                const primaryEmail = contact.email?.trim();
-                                if (!primaryEmail) return null;
-                                return (
-                                  <CommandItem
-                                    key={`${primaryEmail}-${idx}`}
-                                    onSelect={() => {
-                                      addEmailToField("to", primaryEmail);
-                                      setShowContactDropdown(false);
-                                      toast.success(`Added ${primaryEmail} to TO`);
-                                    }}
-                                  >
-                                    <div className="flex flex-col">
-                                      <span>{contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || primaryEmail}</span>
-                                      <span className="text-xs text-muted-foreground">{primaryEmail}</span>
-                                    </div>
-                                  </CommandItem>
-                                );
-                              })}
-                            </CommandGroup>
+                            <>
+                              <CommandEmpty>No contact persons found.</CommandEmpty>
+                              <CommandGroup>
+                                {contactOptions.filter(cp => {
+                                  const q = contactSearch.trim().toLowerCase();
+                                  if (!q) return true;
+                                  return [cp.salutation, cp.firstName, cp.lastName, cp.email, cp.designation, cp.department, cp.skypeName]
+                                    .filter(Boolean)
+                                    .some(f => f?.toLowerCase().includes(q));
+                                }).map((contact, idx) => {
+                                  const email = contact.email?.trim();
+                                  if (!email) return null;
+                                  return (
+                                    <CommandItem
+                                      key={`${email}-${idx}`}
+                                      onSelect={() => {
+                                        addEmailToField("to", email);
+                                        setShowContactDropdown(false);
+                                        toast.success(`Added ${email} to TO`);
+                                      }}
+                                    >
+                                      <div className="flex flex-col">
+                                        <span>{contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || email}</span>
+                                        <span className="text-xs text-muted-foreground">{email}</span>
+                                      </div>
+                                    </CommandItem>
+                                  );
+                                }).filter(Boolean)}
+                              </CommandGroup>
+                            </>
                           )}
                         </CommandList>
                       </Command>
@@ -574,30 +581,37 @@ export default function SendSalesOrderEmailPage() {
                                 <div className="flex items-center justify-center py-4">
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 </div>
-                              ) : filteredContactPersons.length === 0 ? (
-                                <p className="px-4 py-3 text-sm text-muted-foreground uppercase">No contact persons found.</p>
                               ) : (
-                                <CommandGroup>
-                                  {filteredContactPersons.map((contact, idx) => {
-                                    const primaryEmail = contact.email?.trim();
-                                    if (!primaryEmail) return null;
-                                    return (
-                                      <CommandItem
-                                        key={`${primaryEmail}-${idx}`}
-                                        onSelect={() => {
-                                          addEmailToField("cc", primaryEmail);
-                                          setShowContactDropdown(false);
-                                          toast.success(`Added ${primaryEmail} to CC`);
-                                        }}
-                                      >
-                                        <div className="flex flex-col">
-                                          <span>{contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || primaryEmail}</span>
-                                          <span className="text-xs text-muted-foreground">{primaryEmail}</span>
-                                        </div>
-                                      </CommandItem>
-                                    );
-                                  })}
-                                </CommandGroup>
+                                <>
+                                  <CommandEmpty>No contact persons found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {contactOptions.filter(cp => {
+                                      const q = contactSearch.trim().toLowerCase();
+                                      if (!q) return true;
+                                      return [cp.salutation, cp.firstName, cp.lastName, cp.email, cp.designation, cp.department, cp.skypeName]
+                                        .filter(Boolean)
+                                        .some(f => f?.toLowerCase().includes(q));
+                                    }).map((contact, idx) => {
+                                      const email = contact.email?.trim();
+                                      if (!email) return null;
+                                      return (
+                                        <CommandItem
+                                          key={`${email}-${idx}`}
+                                          onSelect={() => {
+                                            addEmailToField("cc", email);
+                                            setShowContactDropdown(false);
+                                            toast.success(`Added ${email} to CC`);
+                                          }}
+                                        >
+                                          <div className="flex flex-col">
+                                            <span>{contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || email}</span>
+                                            <span className="text-xs text-muted-foreground">{email}</span>
+                                          </div>
+                                        </CommandItem>
+                                      );
+                                    }).filter(Boolean)}
+                                  </CommandGroup>
+                                </>
                               )}
                             </CommandList>
                           </Command>
@@ -634,30 +648,37 @@ export default function SendSalesOrderEmailPage() {
                                 <div className="flex items-center justify-center py-4">
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 </div>
-                              ) : filteredContactPersons.length === 0 ? (
-                                <p className="px-4 py-3 text-sm text-muted-foreground uppercase">No contact persons found.</p>
                               ) : (
-                                <CommandGroup>
-                                  {filteredContactPersons.map((contact, idx) => {
-                                    const primaryEmail = contact.email?.trim();
-                                    if (!primaryEmail) return null;
-                                    return (
-                                      <CommandItem
-                                        key={`${primaryEmail}-${idx}`}
-                                        onSelect={() => {
-                                          addEmailToField("bcc", primaryEmail);
-                                          setShowContactDropdown(false);
-                                          toast.success(`Added ${primaryEmail} to BCC`);
-                                        }}
-                                      >
-                                        <div className="flex flex-col">
-                                          <span>{contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || primaryEmail}</span>
-                                          <span className="text-xs text-muted-foreground">{primaryEmail}</span>
-                                        </div>
-                                      </CommandItem>
-                                    );
-                                  })}
-                                </CommandGroup>
+                                <>
+                                  <CommandEmpty>No contact persons found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {contactOptions.filter(cp => {
+                                      const q = contactSearch.trim().toLowerCase();
+                                      if (!q) return true;
+                                      return [cp.salutation, cp.firstName, cp.lastName, cp.email, cp.designation, cp.department, cp.skypeName]
+                                        .filter(Boolean)
+                                        .some(f => f?.toLowerCase().includes(q));
+                                    }).map((contact, idx) => {
+                                      const email = contact.email?.trim();
+                                      if (!email) return null;
+                                      return (
+                                        <CommandItem
+                                          key={`${email}-${idx}`}
+                                          onSelect={() => {
+                                            addEmailToField("bcc", email);
+                                            setShowContactDropdown(false);
+                                            toast.success(`Added ${email} to BCC`);
+                                          }}
+                                        >
+                                          <div className="flex flex-col">
+                                            <span>{contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || email}</span>
+                                            <span className="text-xs text-muted-foreground">{email}</span>
+                                          </div>
+                                        </CommandItem>
+                                      );
+                                    }).filter(Boolean)}
+                                  </CommandGroup>
+                                </>
                               )}
                             </CommandList>
                           </Command>

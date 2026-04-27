@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   Plus, Search, Package, RefreshCw, Pencil, X, MoreHorizontal, Copy,
-  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag,
+  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/table";
 import { itemApi, type Item, type ItemBulkAction, type ItemInventoryMetrics } from "@/lib/api/items";
 import { inventoryApi, type InventoryAdjustment } from "@/lib/api/inventory";
+import { reportApi } from "@/lib/api/reports";
 
 // ─── Item detail type with populated fields ────────────────────────────────
 interface PopulatedAccount { _id: string; name: string; }
@@ -98,6 +99,9 @@ export default function ItemsPage() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [inventoryMetrics, setInventoryMetrics] = useState<ItemInventoryMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "history">("overview");
+  const [itemTransactions, setItemTransactions] = useState<any[]>([]);
+  const [itemTransactionsLoading, setItemTransactionsLoading] = useState(false);
+  const [syncActioning, setSyncActioning] = useState(false);
 
   // Action states
   const [toDelete, setToDelete] = useState<Item | null>(null);
@@ -184,14 +188,80 @@ export default function ItemsPage() {
     }
   }, []);
 
+  const fetchItemTransactions = useCallback(async (id: string) => {
+    setItemTransactionsLoading(true);
+    try {
+      const [salesRes, purchaseRes] = await Promise.all([
+        reportApi.salesByItemDetails({ itemId: id }),
+        reportApi.purchasesByItemDetails({ itemId: id }),
+      ]);
+      
+      const sales = (salesRes.data.rows || []).map((r: any) => ({
+        ...r,
+        type: "Sale",
+        date: r.invoiceDate,
+        number: r.invoiceNumber,
+        party: r.customerName,
+        delta: -r.quantity,
+      }));
+      
+      const purchases = (purchaseRes.data.rows || []).map((r: any) => ({
+        ...r,
+        type: "Purchase",
+        date: r.billDate,
+        number: r.billNumber,
+        party: r.vendorName,
+        delta: r.quantity,
+      }));
+      
+      const combined = [...sales, ...purchases].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setItemTransactions(combined);
+    } catch {
+      setItemTransactions([]);
+    } finally {
+      setItemTransactionsLoading(false);
+    }
+  }, []);
+
+  const [ledgerRows, setLedgerRows] = useState<any[]>([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  const fetchItemLedger = useCallback(async (id: string) => {
+    setLedgerLoading(true);
+    try {
+      const res = await reportApi.itemTransactionHistory({ itemId: id });
+      setLedgerRows(res.data.rows || []);
+    } catch {
+      setLedgerRows([]);
+    } finally {
+      setLedgerLoading(false);
+    }
+  }, []);
+
+  async function handleSyncStock() {
+    if (!detail) return;
+    setSyncActioning(true);
+    try {
+      await inventoryApi.syncStock(detail._id);
+      toast.success("Inventory data synchronized successfully");
+      await refreshSelectedItem(detail._id);
+    } catch (e) {
+      toast.error((e as Error).message || "Sync failed");
+    } finally {
+      setSyncActioning(false);
+    }
+  }
+
   const refreshSelectedItem = useCallback(async (id: string) => {
     await Promise.all([
       fetchDetail(id),
       fetchItems(),
       loadItemAdjustments(id),
       fetchInventoryMetrics(id),
+      fetchItemTransactions(id),
+      fetchItemLedger(id),
     ]);
-  }, [fetchDetail, fetchItems, loadItemAdjustments, fetchInventoryMetrics]);
+  }, [fetchDetail, fetchItems, loadItemAdjustments, fetchInventoryMetrics, fetchItemTransactions, fetchItemLedger]);
 
   function selectItem(id: string) {
     setSelectedId(id);
@@ -199,6 +269,8 @@ export default function ItemsPage() {
     void fetchDetail(id);
     void loadItemAdjustments(id);
     void fetchInventoryMetrics(id);
+    void fetchItemTransactions(id);
+    void fetchItemLedger(id);
   }
 
   function closeDetail() {
@@ -206,6 +278,7 @@ export default function ItemsPage() {
     setDetail(null);
     setInventoryMetrics(null);
     setStockAdjustments([]);
+    setItemTransactions([]);
     setOpeningStockDialogOpen(false);
     setAdjustStockDialogOpen(false);
   }
@@ -860,17 +933,27 @@ export default function ItemsPage() {
                   {/* Detail header */}
                   <div className="flex items-center gap-3 px-6 py-3 border-b bg-background shrink-0">
                     <h2 className="text-base font-semibold flex-1 truncate">{detail.name}</h2>
-                    <Button
-                      variant="ghost" size="icon" className="h-8 w-8"
-                      title="Edit" onClick={() => router.push(`/items/${detail._id}/edit`)}
-                    >
-                      <Pencil className="h-4 w-4" />
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => router.push(`/items/${detail._id}/edit`)}>
+                      <Pencil className="h-3.5 w-3.5" /> Edit
                     </Button>
-                    {detail.inventoryTracked ? (
-                      <Button size="sm" className="h-8" onClick={openAdjustStockDialog}>
-                        Adjust Stock
-                      </Button>
-                    ) : null}
+                    
+                    {detail.inventoryTracked && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-8 gap-1.5">
+                            Inventory <MoreHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={openAdjustStockDialog}>
+                             <RefreshCw className="h-4 w-4 mr-2" /> Adjust Stock
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/inventory/move-orders/new?itemId=${detail._id}`)}>
+                             <ArrowRightLeft className="h-4 w-4 mr-2" /> Transfer Stock
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm" className="h-8 gap-1">
@@ -907,13 +990,15 @@ export default function ItemsPage() {
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`capitalize text-sm px-0 py-2.5 mr-6 border-b-2 transition-colors ${
+                        className={`text-sm px-0 py-2.5 mr-6 border-b-2 transition-colors ${
                           activeTab === tab
                             ? "border-primary text-primary font-medium"
                             : "border-transparent text-muted-foreground hover:text-foreground"
                         }`}
                       >
-                        {tab}
+                        {tab === "overview" && "Overview"}
+                        {tab === "transactions" && "Transactions"}
+                        {tab === "history" && "Stock History"}
                       </button>
                     ))}
                   </div>
@@ -1064,6 +1149,16 @@ export default function ItemsPage() {
                                 />
                                 <div className="flex items-center gap-3">
                                   {metricsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-8 gap-1.5" 
+                                    onClick={handleSyncStock} 
+                                    disabled={syncActioning}
+                                  >
+                                    <RefreshCw className={`h-3.5 w-3.5 ${syncActioning ? "animate-spin" : ""}`} />
+                                    Sync Data
+                                  </Button>
                                   <Button variant="link" size="sm" className="h-auto p-0" onClick={openOpeningStockDialog}>Edit</Button>
                                 </div>
                               </div>
@@ -1201,40 +1296,52 @@ export default function ItemsPage() {
                       </div>
                     )}
                     {activeTab === "transactions" && (
-                      adjustmentsLoading && stockAdjustments.length === 0 ? (
+                      itemTransactionsLoading ? (
                         <div className="flex items-center justify-center py-20">
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                         </div>
-                      ) : stockAdjustments.length === 0 ? (
+                      ) : itemTransactions.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
                           <ShoppingCart className="h-10 w-10 opacity-30" />
-                          <p className="text-sm">No stock transactions yet</p>
+                          <p className="text-sm font-medium">No sales or purchase transactions yet</p>
+                          <p className="text-xs text-center max-w-[200px]">Transactions will appear here once you create invoices or bills for this item.</p>
                         </div>
                       ) : (
                         <div className="overflow-x-auto rounded-md border">
                           <table className="w-full text-sm">
                             <thead className="bg-muted/40">
                               <tr>
+                                <th className="px-3 py-2 text-left">Type</th>
                                 <th className="px-3 py-2 text-left">Date</th>
-                                <th className="px-3 py-2 text-left">Reference</th>
-                                <th className="px-3 py-2 text-left">Reason</th>
-                                <th className="px-3 py-2 text-right">Qty Delta</th>
-                                <th className="px-3 py-2 text-right">Value Delta</th>
-                                <th className="px-3 py-2 text-right">Result Stock</th>
+                                <th className="px-3 py-2 text-left">Number</th>
+                                <th className="px-3 py-2 text-left">Contact</th>
+                                <th className="px-3 py-2 text-right">Qty</th>
+                                <th className="px-3 py-2 text-right">Rate</th>
+                                <th className="px-3 py-2 text-right">Total</th>
+                                <th className="px-3 py-2 text-left">Status</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {stockAdjustments.map((row) => (
-                                <tr key={row._id} className="border-t">
-                                  <td className="px-3 py-2">{new Date(row.adjustedAt).toLocaleDateString("en-IN")}</td>
-                                  <td className="px-3 py-2">{row.referenceNumber || "-"}</td>
-                                  <td className="px-3 py-2">{row.reason || "-"}</td>
-                                  <td className={`px-3 py-2 text-right tabular-nums ${row.quantityDelta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                                    {row.quantityDelta >= 0 ? "+" : ""}
-                                    {formatQuantity(row.quantityDelta)}
+                              {itemTransactions.map((row, idx) => (
+                                <tr key={idx} className="border-t hover:bg-muted/10 transition-colors">
+                                  <td className="px-3 py-2">
+                                    <Badge variant={row.type === "Sale" ? "outline" : "secondary"} className="text-[10px] uppercase font-bold">
+                                      {row.type}
+                                    </Badge>
                                   </td>
-                                  <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.valueDelta)}</td>
-                                  <td className="px-3 py-2 text-right tabular-nums">{formatQuantity(row.resultingStockOnHand)}</td>
+                                  <td className="px-3 py-2 text-muted-foreground">{new Date(row.date).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                  <td className="px-3 py-2 font-medium text-primary hover:underline cursor-pointer" onClick={() => router.push(row.type === "Sale" ? `/sales/invoices/${row.invoiceId}` : `/purchases/bills/${row.billId}`)}>
+                                    {row.number}
+                                  </td>
+                                  <td className="px-3 py-2 text-muted-foreground truncate max-w-[150px]">{row.party}</td>
+                                  <td className={`px-3 py-2 text-right tabular-nums font-semibold ${row.type === "Sale" ? "text-rose-600" : "text-emerald-600"}`}>
+                                    {row.type === "Sale" ? "-" : "+"}{formatQuantity(row.quantity)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{formatCurrency(row.rate)}</td>
+                                  <td className="px-3 py-2 text-right tabular-nums font-medium">{formatCurrency(row.amount)}</td>
+                                  <td className="px-3 py-2">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">{row.status}</span>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1243,35 +1350,68 @@ export default function ItemsPage() {
                       )
                     )}
                     {activeTab === "history" && (
-                      adjustmentsLoading && stockAdjustments.length === 0 ? (
+                      ledgerLoading ? (
                         <div className="flex items-center justify-center py-20">
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                         </div>
-                      ) : stockAdjustments.length === 0 ? (
+                      ) : ledgerRows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
                           <Tag className="h-10 w-10 opacity-30" />
-                          <p className="text-sm">No history available</p>
+                          <p className="text-sm">No inventory history available</p>
                         </div>
                       ) : (
-                        <div className="space-y-3">
-                          {stockAdjustments.map((row) => (
-                            <div key={row._id} className="rounded-md border p-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-medium">{row.reason}</p>
-                                <p className="text-xs text-muted-foreground">{new Date(row.adjustedAt).toLocaleString("en-IN")}</p>
-                              </div>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                Qty delta: {row.quantityDelta >= 0 ? "+" : ""}{formatQuantity(row.quantityDelta)} | Value delta: {formatCurrency(row.valueDelta)}
-                              </p>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                Result stock on hand: {formatQuantity(row.resultingStockOnHand)}
-                              </p>
-                              {row.referenceNumber ? (
-                                <p className="mt-1 text-xs text-muted-foreground">Reference: {row.referenceNumber}</p>
-                              ) : null}
-                              {row.notes ? <p className="mt-1 text-sm">{row.notes}</p> : null}
-                            </div>
-                          ))}
+                        <div className="overflow-x-auto rounded-md border">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/40">
+                              <tr>
+                                <th className="px-3 py-2 text-left">Date</th>
+                                <th className="px-3 py-2 text-left">Type</th>
+                                <th className="px-3 py-2 text-left">Reference</th>
+                                <th className="px-3 py-2 text-left">Party/Reason</th>
+                                <th className="px-3 py-2 text-right">In</th>
+                                <th className="px-3 py-2 text-right">Out</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {ledgerRows.map((row, idx) => (
+                                <tr key={idx} className="border-t hover:bg-muted/5 transition-colors">
+                                  <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                                    {new Date(row.date).toLocaleDateString("en-IN")}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                      row.type === "Sale" ? "bg-rose-50 text-rose-700 border border-rose-100" :
+                                      row.type === "Purchase" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
+                                      row.type === "Transfer" ? "bg-indigo-50 text-indigo-700 border border-indigo-100" :
+                                      "bg-blue-50 text-blue-700 border border-blue-100"
+                                    }`}>
+                                      {row.type}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 font-medium">
+                                    <button
+                                      className="text-primary hover:underline"
+                                      onClick={() => {
+                                        if (row.type === "Sale") router.push(`/sales/invoices/${row.docId}`);
+                                        else if (row.type === "Purchase") router.push(`/purchases/bills/${row.docId}`);
+                                        else if (row.type === "Transfer") router.push(`/inventory/move-orders/${row.docId}`);
+                                        else router.push(`/inventory/adjustments/${row.docId}`);
+                                      }}
+                                    >
+                                      {row.reference}
+                                    </button>
+                                  </td>
+                                  <td className="px-3 py-2 text-muted-foreground truncate max-w-[200px]">{row.party}</td>
+                                  <td className="px-3 py-2 text-right tabular-nums text-emerald-600 font-medium">
+                                    {row.quantityIn > 0 ? `+${formatQuantity(row.quantityIn)}` : ""}
+                                  </td>
+                                  <td className="px-3 py-2 text-right tabular-nums text-rose-600 font-medium">
+                                    {row.quantityOut > 0 ? `-${formatQuantity(row.quantityOut)}` : ""}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )
                     )}
