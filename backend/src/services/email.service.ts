@@ -349,6 +349,7 @@ export interface SendSalesOrderEmailOptions {
   organizationId: string;
   to: string[];
   cc?: string[];
+  bcc?: string[];
   subject: string;
   body: string;
   order: any;
@@ -488,6 +489,7 @@ export async function sendSalesOrderEmail(
       from: `"${fromName}" <${fromEmail}>`,
       to: opts.to.join(", "),
       cc: opts.cc?.join(", "),
+      bcc: opts.bcc?.join(", "),
       subject: opts.subject,
       html: buildSalesOrderHtml(opts),
       attachments,

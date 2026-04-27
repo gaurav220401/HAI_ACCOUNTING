@@ -1168,6 +1168,7 @@ export const sendEmail = asyncHandler(async (req: AuthenticatedRequest, res: Res
   const body = req.body || {};
   const toEmails: string[] = body.to || [];
   const ccEmails: string[] = body.cc || [];
+  const bccEmails: string[] = body.bcc || [];
   const subject: string = body.subject || `Sales Order - ${(order as any).salesOrderNumber}`;
   const emailBody: string = body.body || "";
   const attachPdf: boolean = body.attachPdf !== false;
@@ -1202,6 +1203,7 @@ export const sendEmail = asyncHandler(async (req: AuthenticatedRequest, res: Res
       organizationId: String(oid),
       to: toEmails,
       cc: ccEmails,
+      bcc: bccEmails,
       subject,
       body: emailBody,
       order: order as any,

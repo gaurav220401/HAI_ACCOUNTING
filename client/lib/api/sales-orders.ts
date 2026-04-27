@@ -135,6 +135,7 @@ export interface SalesOrderListParams extends ListParams {
 export interface SendSalesOrderEmailInput {
   to: string[];
   cc?: string[];
+  bcc?: string[];
   subject: string;
   body: string;
   attachPdf?: boolean;
