@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Loader2, Paperclip, X } from "lucide-react";
+import { Check, ChevronsUpDown, Calendar, Loader2, Paperclip, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -101,6 +103,36 @@ export function PaymentReceivedEditor({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [accountSearchOpen, setAccountSearchOpen] = useState(false);
+
+  const PRIORITY_ACCOUNTS = [
+    "Petty Cash",
+    "Cash",
+    "Habib Bank Limited",
+    "MCB Bank Limited",
+    "Undeposited Funds",
+    "Other Current Liability",
+    "Accrued expenses",
+    "Employee Reimbursements",
+    "Opening Balance Adjustments",
+    "TDS Payable",
+  ];
+
+  const sortedAccounts = useMemo(() => {
+    const priority = [...accounts].filter((acc) =>
+      PRIORITY_ACCOUNTS.some((p) => acc.name.toLowerCase().includes(p.toLowerCase())),
+    );
+
+    // Sort priority accounts based on the order in PRIORITY_ACCOUNTS
+    priority.sort((a, b) => {
+      const indexA = PRIORITY_ACCOUNTS.findIndex((p) => a.name.toLowerCase().includes(p.toLowerCase()));
+      const indexB = PRIORITY_ACCOUNTS.findIndex((p) => b.name.toLowerCase().includes(p.toLowerCase()));
+      return indexA - indexB;
+    });
+
+    const others = accounts.filter((acc) => !priority.find((p) => p._id === acc._id));
+    return { priority, others };
+  }, [accounts]);
 
   const selectedCustomer = useMemo(
     () => customers.find((c) => c._id === form.customer_id) || null,
@@ -131,6 +163,14 @@ export function PaymentReceivedEditor({
             payment_number: nextNum.data.payment_number,
             customer_id: initialCustomerId || prev.customer_id,
           }));
+
+          // Set default "Petty Cash" account
+          const pettyCash = accountRes.data.find((acc: Account) =>
+            acc.name.toLowerCase().includes("petty cash"),
+          );
+          if (pettyCash) {
+            setForm((prev) => ({ ...prev, deposited_to_account: pettyCash._id }));
+          }
 
           if (initialInvoiceId) {
             const invoiceRes = await invoiceApi.getById(initialInvoiceId);
@@ -462,22 +502,76 @@ export function PaymentReceivedEditor({
 
                   <div className="customer-dependent space-y-1.5">
                     <Label>Deposited To*</Label>
-                    <Select
-                      disabled={customerLocked}
-                      value={form.deposited_to_account}
-                      onValueChange={(v) => setForm((prev) => ({ ...prev, deposited_to_account: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {accounts.map((acc) => (
-                          <SelectItem key={acc._id} value={acc._id}>
-                            {acc.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={accountSearchOpen} onOpenChange={setAccountSearchOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={accountSearchOpen}
+                          className="w-full justify-between font-normal"
+                          disabled={customerLocked}
+                        >
+                          {form.deposited_to_account
+                            ? (() => {
+                                const acc = accounts.find((a) => a._id === form.deposited_to_account);
+                                if (!acc) return "Select account...";
+                                return acc.code ? `[ ${acc.code} ] ${acc.name}` : acc.name;
+                              })()
+                            : "Select account..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search account..." />
+                          <CommandList>
+                            <CommandEmpty>No account found.</CommandEmpty>
+                            <CommandGroup heading="Priority Accounts">
+                              {sortedAccounts.priority.map((acc) => (
+                                <CommandItem
+                                  key={acc._id}
+                                  value={acc.name}
+                                  onSelect={() => {
+                                    setForm((prev) => ({ ...prev, deposited_to_account: acc._id }));
+                                    setAccountSearchOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      form.deposited_to_account === acc._id ? "opacity-100" : "opacity-0",
+                                    )}
+                                  />
+                                  {acc.code ? `[ ${acc.code} ] ${acc.name}` : acc.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                            {sortedAccounts.others.length > 0 && (
+                              <CommandGroup heading="Other Accounts">
+                                {sortedAccounts.others.map((acc) => (
+                                  <CommandItem
+                                    key={acc._id}
+                                    value={acc.name}
+                                    onSelect={() => {
+                                      setForm((prev) => ({ ...prev, deposited_to_account: acc._id }));
+                                      setAccountSearchOpen(false);
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        form.deposited_to_account === acc._id ? "opacity-100" : "opacity-0",
+                                      )}
+                                    />
+                                    {acc.code ? `[ ${acc.code} ] ${acc.name}` : acc.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            )}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </div>
 
                   <div className="customer-dependent space-y-1.5">
