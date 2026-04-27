@@ -175,9 +175,11 @@ export default function NewSalesOrderPage() {
         if (selectedTax && selectedTax.components && selectedTax.components.length > 0) {
           selectedTax.components.forEach((comp) => {
             const compAmount = (amountBeforeTax * comp.rate) / 100;
-            const existing = breakdownMap.get(comp.name) || { name: comp.name, amount: 0, rate: comp.rate };
+            const compTax = allTaxes.find(t => t._id === comp.taxId);
+            const compName = compTax?.name || (comp as any).name || `Tax ${comp.rate}%`;
+            const existing = breakdownMap.get(compName) || { name: compName, amount: 0, rate: comp.rate };
             existing.amount += compAmount;
-            breakdownMap.set(comp.name, existing);
+            breakdownMap.set(compName, existing);
           });
         } else {
           const amount = (amountBeforeTax * taxP) / 100;
