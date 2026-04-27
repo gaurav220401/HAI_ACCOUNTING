@@ -101,6 +101,7 @@ function statusVariant(status: SalesOrderStatus) {
   if (status === "OVERDUE") return "destructive" as const;
   if (status === "VOID") return "destructive" as const;
   if (status === "APPROVED") return "outline" as const;
+  if (status === "CLOSED") return "success" as const;
   return "default" as const;
 }
 

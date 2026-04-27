@@ -74,6 +74,11 @@ export interface SalesOrder {
   status: SalesOrderStatus;
   invoiceStatus: SalesOrderInvoiceStatus;
   shipmentStatus: SalesOrderShipmentStatus;
+  taxType: "TDS" | "TCS" | "none";
+  tdsId?: string | { _id: string; taxName: string; rate: number } | null;
+  tcsId?: string | { _id: string; taxName: string; rate: number } | null;
+  taxAmount?: number;
+  tcsAmount?: number;
   invoiceId?: string | { _id: string; invoiceNumber?: string } | null;
   isActive: boolean;
   createdAt: string;
@@ -95,6 +100,11 @@ export interface CreateSalesOrderInput {
   notes?: string;
   terms?: string;
   status?: SalesOrderStatus;
+  taxType?: "TDS" | "TCS" | "none";
+  tdsId?: string | null;
+  tcsId?: string | null;
+  taxAmount?: number;
+  tcsAmount?: number;
 }
 
 export type UpdateSalesOrderInput = Partial<CreateSalesOrderInput>;

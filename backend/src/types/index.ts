@@ -815,7 +815,10 @@ export interface IInvoice extends Document {
   discountAmount: number;
   taxType: InvoiceTaxType;
   taxId?: Types.ObjectId | null;
+  tdsId?: Types.ObjectId | null;
+  tcsId?: Types.ObjectId | null;
   taxAmount: number;
+  tcsAmount: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   total: number;

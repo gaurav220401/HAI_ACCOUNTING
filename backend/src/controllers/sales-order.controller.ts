@@ -130,22 +130,74 @@ async function ensureSalesOrderNumberCanChange(params: {
   }
 }
 
-function computeTotals(lineItems: any[], shippingCharges: number, adjustment: number) {
+function computeTotals(
+  lineItems: any[],
+  shippingCharges: number,
+  adjustment: number,
+  discountLevel: string = "transaction",
+  discountPercent: number = 0,
+  discountAmountRaw: number = 0,
+  taxType: string = "none",
+  taxAmountRaw: number = 0,
+  tcsAmountRaw: number = 0
+) {
   const subTotal = round2((lineItems || []).reduce((sum, li) => sum + toNum(li?.amount), 0));
-  const total = round2(subTotal + toNum(shippingCharges) + toNum(adjustment));
-  return { subTotal, total };
+
+  let globalDiscountAmount = 0;
+  let totalDiscountAmount = 0;
+
+  if (discountLevel === "transaction") {
+    globalDiscountAmount = toNum(discountAmountRaw) || round2((subTotal * toNum(discountPercent)) / 100);
+    totalDiscountAmount = globalDiscountAmount;
+  } else {
+    totalDiscountAmount = (lineItems || []).reduce((sum, li) => sum + toNum(li?.discountAmount), 0);
+  }
+
+  const taxAmount = taxType === "TDS" ? toNum(taxAmountRaw) : 0;
+  const tcsAmount = taxType === "TCS" ? toNum(tcsAmountRaw) : 0;
+
+  let total = subTotal;
+  if (discountLevel === "transaction") {
+     total -= globalDiscountAmount;
+  }
+  total = round2(total - taxAmount + tcsAmount + toNum(shippingCharges) + toNum(adjustment));
+
+  return { subTotal, discountAmount: totalDiscountAmount, total };
 }
 
-function normalizeLineItems(items: any[] = []) {
+function normalizeLineItems(items: any[] = [], discountLevel: string = "transaction") {
   return (items || [])
     .map((line) => {
       const { ...rest } = line || {};
+      
+      if (rest.isHeader) {
+        return {
+          ...rest,
+          quantity: 0,
+          rate: 0,
+          discountPercent: 0,
+          discountAmount: 0,
+          discount: 0,
+          taxPercent: 0,
+          taxAmount: 0,
+          amount: 0,
+        };
+      }
+
       const quantity = Math.max(0, toNum(rest.quantity));
       const rate = Math.max(0, toNum(rest.rate));
       const lineTotal = round2(quantity * rate);
-      const rawDiscount = Math.max(0, toNum(rest.discount));
-      const discount = round2(Math.min(rawDiscount, lineTotal));
-      const afterDiscount = round2(Math.max(0, lineTotal - discount));
+
+      let discountAmount = 0;
+      let discountPercent = 0;
+      
+      if (discountLevel === "line_item") {
+        discountPercent = toNum(rest.discountPercent);
+        discountAmount = round2(toNum(rest.discountAmount) || (lineTotal * discountPercent) / 100);
+        discountAmount = Math.min(discountAmount, lineTotal);
+      }
+      
+      const afterDiscount = round2(Math.max(0, lineTotal - discountAmount));
       const taxPercent = toNum(rest.taxPercent);
       const taxAmount = round2((afterDiscount * taxPercent) / 100);
       const amount = round2(afterDiscount + taxAmount);
@@ -155,9 +207,12 @@ function normalizeLineItems(items: any[] = []) {
         name: String(rest.name || "").trim(),
         description: String(rest.description || "").trim(),
         hsnSacCode: String(rest.hsnSacCode || "").trim(),
+        accountId: rest.accountId || null,
         quantity,
         rate,
-        discount,
+        discountPercent,
+        discountAmount,
+        discount: discountAmount,
         taxId: rest.taxId || null,
         taxPercent,
         taxAmount,
@@ -165,6 +220,7 @@ function normalizeLineItems(items: any[] = []) {
       };
     })
     .filter((line) => {
+      if (line.isHeader) return Boolean(String(line.headerText || "").trim());
       const itemId = String(line?.itemId || "").trim();
       return Boolean(itemId) && line.quantity > 0;
     });
@@ -234,6 +290,10 @@ function normalizeLegacyOrderForResponse(order: any) {
 
   if (!normalized.shipmentStatus) {
     normalized.shipmentStatus = "Pending";
+  }
+
+  if (order.invoiceId && typeof order.invoiceId === 'object') {
+    normalized.invoicePaymentReceived = !!order.invoiceId.paymentReceived;
   }
 
   return normalized;
@@ -608,7 +668,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 
   const total = await SalesOrder.countDocuments(filter);
   const orders = await SalesOrder.find(filter)
-    .populate("customerId paymentTermsId salesPersonId")
+    .populate("customerId paymentTermsId salesPersonId invoiceId")
     .sort({ orderDate: -1 })
     .skip((+page - 1) * +limit)
     .limit(+limit)
@@ -656,12 +716,14 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     status,
   });
 
+  const discountLevel = String(body.discountLevel || "transaction");
   const linkedLineItems = normalizeLineItems(
     await applyItemTaxLinkageToItems({
       organizationId: oid,
       contactId: customerId,
       items: body.lineItems,
     }),
+    discountLevel
   );
 
   if (linkedLineItems.length === 0) {
@@ -670,10 +732,24 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   const shippingCharges = round2(toNum(body.shippingCharges));
   const adjustment = round2(toNum(body.adjustment));
-  const { subTotal, total } = computeTotals(
+  
+  const discountPercent = discountLevel === "transaction" ? toNum(body.discountPercent) : 0;
+  const taxType = String(body.taxType || "none");
+  const tdsId = taxType === "TDS" ? (body.tdsId || null) : null;
+  const tcsId = taxType === "TCS" ? (body.tcsId || null) : null;
+  const taxAmountRaw = taxType === "TDS" ? toNum(body.taxAmount) : 0;
+  const tcsAmountRaw = taxType === "TCS" ? toNum(body.tcsAmount) : 0;
+
+  const { subTotal, discountAmount, total } = computeTotals(
     linkedLineItems,
     shippingCharges,
     adjustment,
+    discountLevel,
+    discountPercent,
+    toNum(body.discountAmount),
+    taxType,
+    taxAmountRaw,
+    tcsAmountRaw
   );
 
   const order = new SalesOrder({
@@ -682,6 +758,16 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     salesOrderNumber,
     expectedShipmentDate: normalizeExpectedShipmentDate(body.expectedShipmentDate),
     lineItems: linkedLineItems,
+    discountLevel,
+    discountAccountId: body.discountAccountId || null,
+    discountPercent,
+    discountAmount,
+    taxType,
+    tdsId,
+    tcsId,
+    taxAmount: taxAmountRaw,
+    tcsAmount: tcsAmountRaw,
+    adjustmentLabel: body.adjustmentLabel || "Adjustment",
     shippingCharges,
     adjustment,
     subTotal,
@@ -778,6 +864,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   }
 
   let lineItemsChanged = false;
+  const discountLevel = body.discountLevel !== undefined ? String(body.discountLevel) : String((order as any).discountLevel || "transaction");
+  
   if (body.lineItems !== undefined || body.customerId !== undefined) {
     const customerId = body.customerId ?? (order as any).customerId;
     const sourceLineItems =
@@ -791,6 +879,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
         contactId: customerId,
         items: sourceLineItems,
       }),
+      discountLevel
     );
 
     if (linkedLineItems.length === 0) {
@@ -800,19 +889,56 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     (order as any).lineItems = linkedLineItems;
     lineItemsChanged = true;
   }
+  
+  const additionalFields = [
+    "discountLevel",
+    "discountAccountId",
+    "taxType",
+    "tdsId",
+    "tcsId",
+    "adjustmentLabel"
+  ];
+  additionalFields.forEach((f) => {
+    if (body[f] !== undefined) (order as any)[f] = body[f];
+  });
+  
+  if (body.discountPercent !== undefined) {
+    (order as any).discountPercent = toNum(body.discountPercent);
+  }
+  if (body.taxAmount !== undefined) {
+    (order as any).taxAmount = toNum(body.taxAmount);
+  }
+  if (body.tcsAmount !== undefined) {
+    (order as any).tcsAmount = toNum(body.tcsAmount);
+  }
 
   if (
     lineItemsChanged ||
     body.customerId !== undefined ||
     body.shippingCharges !== undefined ||
-    body.adjustment !== undefined
+    body.adjustment !== undefined ||
+    body.discountLevel !== undefined ||
+    body.discountPercent !== undefined ||
+    body.discountAmount !== undefined ||
+    body.taxType !== undefined ||
+    body.taxAmount !== undefined ||
+    body.tcsAmount !== undefined
   ) {
-    const { subTotal, total } = computeTotals(
+    const discountAmountRaw = body.discountAmount !== undefined ? toNum(body.discountAmount) : toNum((order as any).discountAmount);
+    
+    const { subTotal, discountAmount, total } = computeTotals(
       (order as any).lineItems || [],
       (order as any).shippingCharges,
       (order as any).adjustment,
+      (order as any).discountLevel,
+      toNum((order as any).discountPercent),
+      discountAmountRaw,
+      (order as any).taxType,
+      toNum((order as any).taxAmount),
+      toNum((order as any).tcsAmount)
     );
     (order as any).subTotal = subTotal;
+    (order as any).discountAmount = discountAmount;
     (order as any).total = total;
   }
 
@@ -957,7 +1083,9 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
   const discountAmount = 0;
   const adjustmentAmount = round2((Number((order as any).shippingCharges) || 0) + (Number((order as any).adjustment) || 0));
   const totalTaxAmount = round2(invoiceItems.reduce((sum: number, line: any) => sum + (Number(line.taxAmount) || 0), 0));
-  const total = round2(subTotal - lineDiscountAmount + totalTaxAmount + adjustmentAmount);
+  const tdsAmount = (order as any).taxType === "TDS" ? Number((order as any).taxAmount || 0) : 0;
+  const tcsAmount = (order as any).taxType === "TCS" ? Number((order as any).tcsAmount || 0) : 0;
+  const total = round2(subTotal - lineDiscountAmount + totalTaxAmount + adjustmentAmount - tdsAmount + tcsAmount);
 
   const dueDateInput = req.body?.dueDate;
   const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;
@@ -979,9 +1107,11 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
     discountType,
     discountValue,
     discountAmount,
-    taxType: "none",
-    taxId: null,
-    taxAmount: 0,
+    taxType: (order as any).taxType || "none",
+    tdsId: (order as any).tdsId || null,
+    tcsId: (order as any).tcsId || null,
+    taxAmount: (order as any).taxAmount || 0,
+    tcsAmount: (order as any).tcsAmount || 0,
     adjustmentLabel: "Shipping & Adjustment",
     adjustmentAmount,
     total,

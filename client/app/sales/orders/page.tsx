@@ -55,6 +55,7 @@ function statusBadgeVariant(status: SalesOrderStatus) {
   if (status === "APPROVED") return "outline" as const;
   if (status === "OVERDUE") return "destructive" as const;
   if (status === "VOID") return "destructive" as const;
+  if (status === "CLOSED") return "success" as const;
   return "default" as const;
 }
 
@@ -351,7 +352,14 @@ export default function SalesOrdersPage() {
                       />
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/30" />
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          o.status === "CLOSED" ?
+                            "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                          : "bg-muted-foreground/30"
+                        }`}
+                        title={o.status === "CLOSED" ? "Fully Paid" : "Unpaid"}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

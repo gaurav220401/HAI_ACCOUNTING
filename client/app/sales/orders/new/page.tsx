@@ -31,12 +31,14 @@ import {
 
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
-import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
+import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
 import {
   salesOrderApi,
   type CreateSalesOrderInput,
   type SalesOrderStatus,
 } from "@/lib/api/sales-orders";
+import { tdsTaxApi, type TdsTax } from "@/lib/api/tds-taxes";
+import { tcsTaxApi, type TcsTax } from "@/lib/api/tcs-taxes";
 
 // Status is now set automatically based on save action
 
@@ -48,6 +50,7 @@ type LineItemUi = {
   quantity: string;
   rate: string;
   discount: string;
+  taxId: string;
   taxPercent: string;
   amount: number;
 };
@@ -81,6 +84,12 @@ export default function NewSalesOrderPage() {
   const [expectedShipmentDate, setExpectedShipmentDate] = useState("");
   const [paymentTermsId, setPaymentTermsId] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
+  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("none");
+  const [tdsId, setTdsId] = useState("");
+  const [tcsId, setTcsId] = useState("");
+  const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
+  const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
+  const [allTaxes, setAllTaxes] = useState<Tax[]>([]);
   const [sendAfterSave, setSendAfterSave] = useState(false);
 
   const [notes, setNotes] = useState("");
@@ -98,6 +107,7 @@ export default function NewSalesOrderPage() {
       quantity: "1",
       rate: "0",
       discount: "0",
+      taxId: "",
       taxPercent: "0",
       amount: 0,
     },
@@ -136,21 +146,75 @@ export default function NewSalesOrderPage() {
       .list()
       .then((res) => setPaymentTerms(res.data ?? []))
       .catch(() => setPaymentTerms([]));
+
+    tdsTaxApi.list().then(res => setTdsTaxes(res.data ?? []));
+    tcsTaxApi.list().then(res => setTcsTaxes(res.data ?? []));
+    settingsApi.taxes.list().then(res => setAllTaxes(res.data ?? []));
   }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   const totals = useMemo(() => {
-    const subTotal = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+    const subTotal = lineItems.reduce((sum, li) => {
+      const q = Number(li.quantity) || 0;
+      const r = Number(li.rate) || 0;
+      const d = Number(li.discount) || 0;
+      return sum + (q * r - d);
+    }, 0);
+
+    const taxBreakdown: Array<{ name: string; amount: number; rate: number }> = [];
+    const breakdownMap = new Map<string, { name: string; amount: number; rate: number }>();
+    
+    lineItems.forEach((li) => {
+      const q = Number(li.quantity) || 0;
+      const r = Number(li.rate) || 0;
+      const d = Number(li.discount) || 0;
+      const amountBeforeTax = q * r - d;
+      const taxP = Number(li.taxPercent) || 0;
+
+      if (taxP > 0) {
+        const selectedTax = allTaxes.find((t) => t._id === li.taxId);
+        if (selectedTax && selectedTax.components && selectedTax.components.length > 0) {
+          selectedTax.components.forEach((comp) => {
+            const compAmount = (amountBeforeTax * comp.rate) / 100;
+            const existing = breakdownMap.get(comp.name) || { name: comp.name, amount: 0, rate: comp.rate };
+            existing.amount += compAmount;
+            breakdownMap.set(comp.name, existing);
+          });
+        } else {
+          const amount = (amountBeforeTax * taxP) / 100;
+          const name = selectedTax?.name || `Tax ${taxP}%`;
+          const existing = breakdownMap.get(name) || { name, amount: 0, rate: taxP };
+          existing.amount += amount;
+          breakdownMap.set(name, existing);
+        }
+      }
+    });
+
+    breakdownMap.forEach((v) => taxBreakdown.push(v));
+    const itemTaxes = taxBreakdown.reduce((sum, b) => sum + b.amount, 0);
+
     const shipping = shippingCharges.trim() ? Number(shippingCharges) : 0;
     const adj = adjustment.trim() ? Number(adjustment) : 0;
-    const total = subTotal + shipping + adj;
-    return { subTotal, shipping, adj, total };
-  }, [lineItems, shippingCharges, adjustment]);
+
+    let taxAmount = 0;
+    if (taxType === "TDS") {
+      const selected = tdsTaxes.find((t) => t._id === tdsId);
+      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+    } else if (taxType === "TCS") {
+      const selected = tcsTaxes.find((t) => t._id === tcsId);
+      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+    }
+
+    const total = subTotal + itemTaxes + shipping + adj + (taxType === "TCS" ? taxAmount : -taxAmount);
+    return { subTotal, itemTaxes, taxBreakdown, shipping, adj, taxAmount, total };
+  }, [lineItems, allTaxes, shippingCharges, adjustment, taxType, tdsId, tcsId, tdsTaxes, tcsTaxes]);
 
   function recalcLine(item: LineItemUi): LineItemUi {
     const qty = Number(item.quantity) || 0;
     const rate = Number(item.rate) || 0;
     const disc = Number(item.discount) || 0;
-    const amount = Math.max(0, qty * rate - disc);
+    const taxP = Number(item.taxPercent) || 0;
+    const amountBeforeTax = qty * rate - disc;
+    const amount = amountBeforeTax + (amountBeforeTax * taxP) / 100;
     return { ...item, amount };
   }
 
@@ -159,9 +223,10 @@ export default function NewSalesOrderPage() {
   }
 
   function addLine() {
+    const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
     setLineItems((prev) => [
       ...prev,
-      {
+      recalcLine({
         id: crypto.randomUUID(),
         itemId: "",
         description: "",
@@ -169,9 +234,10 @@ export default function NewSalesOrderPage() {
         quantity: "1",
         rate: "0",
         discount: "0",
-        taxPercent: "0",
+        taxId: gst18?._id || "",
+        taxPercent: gst18 ? String(gst18.rate) : "0",
         amount: 0,
-      },
+      }),
     ]);
   }
 
@@ -198,8 +264,9 @@ export default function NewSalesOrderPage() {
           quantity: Number.isFinite(qty) ? qty : 0,
           rate: Number.isFinite(rate) ? rate : 0,
           discount: disc,
-          taxId: null,
+          taxId: li.taxId || null,
           taxPercent: Number(li.taxPercent) || 0,
+          taxAmount: ((Number(li.quantity) * Number(li.rate) - (Number(li.discount) || 0)) * (Number(li.taxPercent) || 0)) / 100,
           amount: Number(li.amount) || 0,
         };
       })
@@ -218,6 +285,11 @@ export default function NewSalesOrderPage() {
       lineItems: cleanedLines,
       shippingCharges: totals.shipping,
       adjustment: totals.adj,
+      taxType,
+      tdsId: taxType === "TDS" ? tdsId : undefined,
+      tcsId: taxType === "TCS" ? tcsId : undefined,
+      taxAmount: taxType === "TDS" ? totals.taxAmount : 0,
+      tcsAmount: taxType === "TCS" ? totals.taxAmount : 0,
       notes: notes.trim() || undefined,
       terms: terms.trim() || undefined,
       status: saveStatus,
@@ -423,6 +495,7 @@ export default function NewSalesOrderPage() {
                       <TableHead className="w-24 text-right">Stock</TableHead>
                       <TableHead className="w-24 text-right">Rate</TableHead>
                       <TableHead className="w-24 text-right">Discount</TableHead>
+                      <TableHead className="w-40 text-right">Tax</TableHead>
                       <TableHead className="w-24 text-right">Amount</TableHead>
                       <TableHead className="w-12" />
                     </TableRow>
@@ -446,11 +519,14 @@ export default function NewSalesOrderPage() {
                                 value={li.itemId}
                                 onValueChange={(v) => {
                                   const selected = itemsById.get(v);
+                                  const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
                                   updateLine(li.id, {
                                     itemId: v,
                                     description: selected?.description || "",
                                     hsnSacCode: selected?.hsnSacCode || "",
                                     rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
+                                    taxId: li.taxId || gst18?._id || "",
+                                    taxPercent: li.taxId ? li.taxPercent : (gst18 ? String(gst18.rate) : "0"),
                                   });
                                 }}
                               >
@@ -518,6 +594,30 @@ export default function NewSalesOrderPage() {
                               className="text-right"
                             />
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Select
+                              value={li.taxId}
+                              onValueChange={(val) => {
+                                const selectedTax = allTaxes.find(t => t._id === val);
+                                updateLine(li.id, { 
+                                  taxId: val, 
+                                  taxPercent: selectedTax ? String(selectedTax.rate) : "0" 
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="h-9 text-xs">
+                                <SelectValue placeholder="Select Tax" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Non-Taxable</SelectItem>
+                                {allTaxes.map((t) => (
+                                  <SelectItem key={t._id} value={t._id} className="text-xs">
+                                    {t.name} ({t.rate}%)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">
                             {li.amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
@@ -548,8 +648,14 @@ export default function NewSalesOrderPage() {
                 <div className="rounded-lg border p-4">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Sub Total</span>
-                    <span className="tabular-nums">{totals.subTotal.toFixed(2)}</span>
+                    <span className="tabular-nums">₹{totals.subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                   </div>
+                  {totals.taxBreakdown.map((b, idx) => (
+                     <div key={idx} className="flex items-center justify-between text-sm mt-1">
+                       <span className="text-muted-foreground">{b.name} [{b.rate}%]</span>
+                       <span className="tabular-nums">₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                     </div>
+                   ))}
 
                   <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                     <span className="text-muted-foreground">Shipping Charges</span>
@@ -575,9 +681,87 @@ export default function NewSalesOrderPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 border-t pt-4 flex items-center justify-between">
-                    <span className="font-medium">Total (₹)</span>
-                    <span className="font-semibold tabular-nums">{totals.total.toFixed(2)}</span>
+                  <div className="mt-4 border-t pt-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1 text-xs cursor-pointer">
+                          <input
+                            type="radio"
+                            name="taxType"
+                            value="none"
+                            checked={taxType === "none"}
+                            onChange={() => setTaxType("none")}
+                            className="accent-primary"
+                          />
+                          None
+                        </label>
+                        <label className="flex items-center gap-1 text-xs cursor-pointer">
+                          <input
+                            type="radio"
+                            name="taxType"
+                            value="TDS"
+                            checked={taxType === "TDS"}
+                            onChange={() => setTaxType("TDS")}
+                            className="accent-primary"
+                          />
+                          TDS
+                        </label>
+                        <label className="flex items-center gap-1 text-xs cursor-pointer">
+                          <input
+                            type="radio"
+                            name="taxType"
+                            value="TCS"
+                            checked={taxType === "TCS"}
+                            onChange={() => setTaxType("TCS")}
+                            className="accent-primary"
+                          />
+                          TCS
+                        </label>
+                      </div>
+                      <div className="w-40">
+                        {taxType === "TDS" && (
+                          <Select value={tdsId} onValueChange={setTdsId}>
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select TDS" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tdsTaxes.map((t) => (
+                                <SelectItem key={t._id} value={t._id} className="text-xs">
+                                  {t.taxName} ({t.rate}%)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {taxType === "TCS" && (
+                          <Select value={tcsId} onValueChange={setTcsId}>
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select TCS" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tcsTaxes.map((t) => (
+                                <SelectItem key={t._id} value={t._id} className="text-xs">
+                                  {t.taxName} ({t.rate}%)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </div>
+                    {(taxType === "TDS" || taxType === "TCS") && (
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>{taxType} Amount</span>
+                        <span className="tabular-nums">
+                          {taxType === "TDS" ? "-" : "+"} {totals.taxAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 border-t pt-4 flex items-center justify-between font-semibold">
+                    <span>Total ( ₹ )</span>
+                    <span className="tabular-nums text-lg">₹{totals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>

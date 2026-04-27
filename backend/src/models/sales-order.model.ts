@@ -47,6 +47,11 @@ export interface ISalesOrder extends Document {
   status: SalesOrderStatus;
   invoiceStatus: SalesOrderInvoiceStatus;
   shipmentStatus: SalesOrderShipmentStatus;
+  taxType: "TDS" | "TCS" | "none";
+  tdsId?: Schema.Types.ObjectId | null;
+  tcsId?: Schema.Types.ObjectId | null;
+  taxAmount?: number;
+  tcsAmount?: number;
   invoiceId?: Schema.Types.ObjectId | null;
   isActive: boolean;
   isDeleted: boolean;
@@ -121,6 +126,15 @@ const salesOrderSchema = new Schema<ISalesOrder>(
       enum: ["Pending", "Shipped", "Delivered"],
       default: "Pending",
     },
+    taxType: {
+      type: String,
+      enum: ["TDS", "TCS", "none"],
+      default: "none",
+    },
+    tdsId: { type: Schema.Types.ObjectId, ref: "TdsTax", default: null },
+    tcsId: { type: Schema.Types.ObjectId, ref: "TcsTax", default: null },
+    taxAmount: { type: Number, default: 0 },
+    tcsAmount: { type: Number, default: 0 },
     invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", default: null },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
