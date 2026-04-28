@@ -1412,3 +1412,110 @@ export const voidInvoice = asyncHandler(
     res.json({ success: true, data: invoice, message: "Invoice voided" });
   },
 );
+
+// ─── Clone Invoice ───────────────────────────────────────────────────
+export const cloneInvoice = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const original = await Invoice.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    }).lean();
+
+    if (!original) throw new NotFoundError("Invoice");
+
+    const invoiceNumber = await nextInvoiceNumber(oid);
+    
+    // Create a copy of the original invoice data
+    const cloneData = {
+      ...original,
+      _id: undefined,
+      id: undefined,
+      invoiceNumber,
+      invoiceDate: new Date(),
+      dueDate: original.dueDate ? new Date(original.dueDate) : null,
+      status: "Draft",
+      paymentReceived: false,
+      balanceDue: original.total,
+      sentAt: null,
+      paidAt: null,
+      journalEntries: [],
+      attachments: [],
+      createdAt: undefined,
+      updatedAt: undefined,
+    };
+
+    const clone = new Invoice(cloneData);
+    attachUser(clone, req);
+    await clone.save();
+
+    res.status(201).json({ success: true, data: clone });
+  },
+);
+
+// ─── Convert to Recurring ─────────────────────────────────────────────
+export const convertToRecurring = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const invoice = await Invoice.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    }).lean();
+
+    if (!invoice) throw new NotFoundError("Invoice");
+
+    // RecurringInvoice profile structure
+    const profileData = {
+      organizationId: oid,
+      profileName: `Recurring Profile for ${invoice.invoiceNumber}`,
+      customerId: invoice.customerId,
+      startDate: new Date(),
+      frequency: "monthly",
+      neverExpires: true,
+      paymentTermsId: invoice.paymentTermsId,
+      salesPersonId: invoice.salesPersonId,
+      subject: invoice.subject,
+      items: invoice.items,
+      subTotal: invoice.subTotal,
+      discountType: invoice.discountType,
+      discountValue: invoice.discountValue,
+      discountAmount: invoice.discountAmount,
+      taxType: invoice.taxType,
+      taxId: invoice.taxId,
+      taxAmount: invoice.taxAmount,
+      adjustmentLabel: invoice.adjustmentLabel,
+      adjustmentAmount: invoice.adjustmentAmount,
+      total: invoice.total,
+      customerNotes: invoice.customerNotes,
+      termsAndConditions: invoice.termsAndConditions,
+      status: "active",
+    };
+
+    const RecurringInvoice = require("../models/recurring-invoice.model").default;
+    const profile = new RecurringInvoice(profileData);
+    attachUser(profile, req);
+    await profile.save();
+
+    res.status(201).json({ success: true, data: profile });
+  },
+);
+
+// ─── Get Journal Entries ──────────────────────────────────────────────
+export const getJournalEntries = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const GlEntry = require("../models/gl-entry.model").default;
+    
+    const entries = await GlEntry.find({
+      organizationId: oid,
+      voucherId: invoiceVoucherId({ _id: req.params.id }),
+    })
+      .populate("accountId", "name code")
+      .sort({ postingDate: 1, createdAt: 1 })
+      .lean();
+
+    res.json({ success: true, data: entries });
+  },
+);

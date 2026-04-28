@@ -7,6 +7,9 @@ import InventoryAdjustment, {
 import SalesOrder from "../models/sales-order.model";
 import Invoice from "../models/invoice.model";
 import Bill from "../models/bill.model";
+import Package from "../models/package.model";
+import PurchaseOrder from "../models/purchase-order.model";
+import PurchaseReceive from "../models/purchase-receive.model";
 import { attachUser } from "../plugins";
 
 import {
@@ -89,31 +92,61 @@ async function resolveAdjustmentOffsetAccountId(params: {
 
 export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = getOrgId(req);
+  const period = String(req.query.period || "month").toLowerCase();
+
+  // 1. Calculate Date Range
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let startDate = new Date(now.getFullYear(), now.getMonth(), 1); // Default: Month
+
+  if (period === "day") {
+    startDate = startOfToday;
+  } else if (period === "week") {
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    startDate = new Date(now.getFullYear(), now.getMonth(), diff);
+    startDate.setHours(0, 0, 0, 0);
+  } else if (period === "year") {
+    startDate = new Date(now.getFullYear(), 0, 1);
+  }
+
   const baseFilter = {
     organizationId,
     isDeleted: false,
     inventoryTracked: true,
   } as const;
 
-  const lowStockFilter: Record<string, unknown> = {
-    ...baseFilter,
-    reorderPoint: { $gt: 0 },
-    $expr: { $lte: ["$stockOnHand", "$reorderPoint"] },
+  const dateFilter = {
+    organizationId,
+    isDeleted: false,
+    createdAt: { $gte: startDate },
   };
 
+  // 2. Fetch Metrics in Parallel
   const [
-    trackedItems,
-    outOfStockItems,
-    lowStockItemsCount,
-    stockTotals,
-    committedStockTotals,
-    openSalesOrders,
+    trackedItemsCount,
+    outOfStockCount,
+    lowStockCount,
+    stockValueAgg,
+    pendingActions,
+    topSellingItems,
+    salesByChannel,
+    salesOrderSummary,
+    topVendors,
+    receiveHistory,
     lowStockItems,
-    recentAdjustments,
+    categoryDistribution,
   ] = await Promise.all([
+    // A. Basic Counts
     Item.countDocuments(baseFilter),
     Item.countDocuments({ ...baseFilter, stockOnHand: { $lte: 0 } }),
-    Item.countDocuments(lowStockFilter),
+    Item.countDocuments({
+      ...baseFilter,
+      reorderPoint: { $gt: 0 },
+      $expr: { $lte: ["$stockOnHand", "$reorderPoint"] },
+    }),
+
+    // B. Total Stock Value & Quantity
     Item.aggregate([
       { $match: baseFilter },
       {
@@ -124,84 +157,212 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
         },
       },
     ]),
-    SalesOrder.aggregate([
+
+    // C. Pending Actions (Sidebar)
+    (async () => {
+      const [
+        toPack,
+        toShip,
+        toDeliver,
+        toInvoice,
+        toBeReceived,
+        receiveInProgress,
+        belowReorder,
+      ] = await Promise.all([
+        SalesOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "APPROVED", shipmentStatus: "Pending" }),
+        Package.countDocuments({ organizationId: organizationId as any, isDeleted: false }), // Simplification: count all active packages for now
+        SalesOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, shipmentStatus: "Shipped" }),
+        SalesOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "PARTIALLY_INVOICED" }),
+        PurchaseOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "Open" }),
+        PurchaseReceive.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "Draft" }), // Assuming Draft means in progress
+        Item.countDocuments({
+          ...baseFilter,
+          organizationId: organizationId as any,
+          reorderPoint: { $gt: 0 },
+          $expr: { $lte: ["$stockOnHand", "$reorderPoint"] },
+        } as any),
+      ]);
+      return {
+        sales: { toPack, toShip, toDeliver, toInvoice },
+        purchases: { toBeReceived, receiveInProgress },
+        inventory: { belowReorder },
+      };
+    })(),
+
+    // D. Top Selling Items
+    Invoice.aggregate([
+      { $match: { organizationId: organizationId as any, isDeleted: false, createdAt: { $gte: startDate } } },
+      { $unwind: "$items" },
       {
-        $match: {
-          organizationId,
-          isDeleted: false,
-          status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+        $group: {
+          _id: "$items.itemId",
+          quantity: { $sum: "$items.quantity" },
+          revenue: { $sum: "$items.amount" },
         },
       },
-      { $unwind: "$lineItems" },
+      { $sort: { quantity: -1 } },
+      { $limit: 5 },
       {
         $lookup: {
           from: "items",
-          let: { itemId: "$lineItems.itemId" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$_id", "$$itemId"] },
-                    { $eq: ["$organizationId", organizationId] },
-                    { $eq: ["$isDeleted", false] },
-                    { $eq: ["$inventoryTracked", true] },
-                  ],
-                },
-              },
-            },
-            { $project: { _id: 1 } },
-          ],
-          as: "inventoryItem",
+          localField: "_id",
+          foreignField: "_id",
+          as: "item",
         },
       },
-      { $match: { "inventoryItem.0": { $exists: true } } },
+      { $unwind: "$item" },
       {
-        $group: {
-          _id: null,
-          committedQuantity: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
+        $project: {
+          name: "$item.name",
+          sku: "$item.sku",
+          quantity: 1,
+          revenue: 1,
         },
       },
     ]),
-    SalesOrder.countDocuments({
-      organizationId,
-      isDeleted: false,
-      status: { $in: SALES_ORDER_OPEN_STATUSES },
-    } as any),
-    Item.find(lowStockFilter)
-      .select("name sku stockOnHand reorderPoint averageCost inventoryValue")
-      .sort({ stockOnHand: 1, name: 1 })
-      .limit(12)
+
+    // E. Sales By Channel
+    SalesOrder.aggregate([
+      { $match: { organizationId: organizationId as any, isDeleted: false, createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: { $ifNull: ["$deliveryMethod", "Direct Sales"] },
+          totalSales: { $sum: "$total" },
+        },
+      },
+      { $sort: { totalSales: -1 } },
+    ]),
+
+    // F. Sales Order Summary (Chart Data)
+    SalesOrder.aggregate([
+      { $match: { organizationId: organizationId as any, isDeleted: false, createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: period === "year" ? "%Y-%m" : "%Y-%m-%d",
+              date: "$createdAt",
+            },
+          },
+          quantity: { $sum: { $reduce: { input: "$lineItems", initialValue: 0, in: { $add: ["$$value", "$$this.quantity"] } } } },
+          value: { $sum: "$total" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+
+    // G. Top Vendors
+    Bill.aggregate([
+      { $match: { organizationId: organizationId as any, isDeleted: false, createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: "$vendorId",
+          totalPurchases: { $sum: "$total" },
+          quantity: { $sum: { $reduce: { input: "$lineItems", initialValue: 0, in: { $add: ["$$value", { $ifNull: ["$$this.quantity", 0] }] } } } },
+        },
+      },
+      { $sort: { totalPurchases: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: "contacts",
+          localField: "_id",
+          foreignField: "_id",
+          as: "vendor",
+        },
+      },
+      { $unwind: { path: "$vendor", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          name: { $ifNull: ["$vendor.displayName", "Unknown Vendor"] },
+          totalPurchases: 1,
+          quantity: 1,
+        },
+      },
+    ]),
+
+    // H. Receive History
+    PurchaseReceive.find({ organizationId: organizationId as any, isDeleted: false })
+      .populate("vendorId", "displayName")
+      .sort({ receivedDate: -1 })
+      .limit(5)
       .lean(),
-    InventoryAdjustment.find({ organizationId })
-      .populate("itemId", "name sku")
-      .populate("warehouseId", "name")
-      .sort({ adjustedAt: -1, createdAt: -1 })
-      .limit(10)
+
+    // I. Low Stock Items (for widget)
+    Item.find({
+      ...baseFilter,
+      reorderPoint: { $gt: 0 },
+      $expr: { $lte: ["$stockOnHand", "$reorderPoint"] },
+    })
+      .select("name sku stockOnHand reorderPoint inventoryValue")
+      .sort({ stockOnHand: 1 })
+      .limit(5)
       .lean(),
+
+    // J. Category Distribution
+    Item.aggregate([
+      { $match: baseFilter },
+      {
+        $group: {
+          _id: { $ifNull: ["$category", "Uncategorized"] },
+          count: { $sum: 1 },
+          value: { $sum: { $ifNull: ["$inventoryValue", 0] } },
+        },
+      },
+      { $sort: { value: -1 } },
+    ]),
   ]);
 
-  const totalsRow = stockTotals[0] || { totalQuantity: 0, totalValue: 0 };
-  const committedRow = committedStockTotals[0] || { committedQuantity: 0 };
-  const totalQuantity = round2(Number(totalsRow.totalQuantity || 0));
-  const committedQuantity = round2(Number(committedRow.committedQuantity || 0));
-  const availableQuantity = round2(Math.max(totalQuantity - committedQuantity, 0));
+  const stockValueTotals = stockValueAgg[0] || { totalQuantity: 0, totalValue: 0 };
+
+  // Calculate Top Stocked Items (Quantity & Value)
+  const topStockedItemsByQuantity = await Item.find(baseFilter)
+    .sort({ stockOnHand: -1 })
+    .limit(5)
+    .select("name stockOnHand inventoryValue")
+    .lean();
+
+  const topStockedItemsByValue = await Item.find(baseFilter)
+    .sort({ inventoryValue: -1 })
+    .limit(5)
+    .select("name stockOnHand inventoryValue")
+    .lean();
 
   res.json({
     success: true,
     data: {
+      period,
       summary: {
-        trackedItems,
-        outOfStockItems,
-        lowStockItems: lowStockItemsCount,
-        totalQuantity,
-        committedQuantity,
-        availableQuantity,
-        openSalesOrders,
-        totalValue: round2(Number(totalsRow.totalValue || 0)),
+        trackedItems: trackedItemsCount,
+        outOfStockItems: outOfStockCount,
+        lowStockItems: lowStockCount,
+        totalQuantity: round2(stockValueTotals.totalQuantity),
+        totalValue: round2(stockValueTotals.totalValue),
       },
-      lowStock: lowStockItems,
-      recentAdjustments,
+      pendingActions,
+      topSellingItems,
+      salesByChannel: salesByChannel.map(c => ({
+        channel: c._id || "Direct Sales",
+        amount: round2(c.totalSales),
+      })),
+      salesOrderSummary,
+      topStockedItems: {
+        byQuantity: topStockedItemsByQuantity,
+        byValue: topStockedItemsByValue,
+      },
+      topVendors,
+      receiveHistory: receiveHistory.map((r: any) => ({
+        date: r.receivedDate,
+        receiveNumber: r.purchaseReceiveNumber,
+        vendor: r.vendorId?.displayName || "Unknown",
+        quantity: r.totalQuantityReceived,
+      })),
+      lowStockItems,
+      categoryDistribution: categoryDistribution.map((c: any) => ({
+        category: c._id,
+        count: c.count,
+        value: round2(c.value),
+      })),
     },
   });
 });

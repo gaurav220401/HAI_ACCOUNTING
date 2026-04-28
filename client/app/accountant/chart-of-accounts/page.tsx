@@ -411,6 +411,7 @@ export default function ChartOfAccountsPage() {
   const [detailReportOpen, setDetailReportOpen] = useState(false);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   // ─── Auth guards ─────────────────────────────────────────────────────
@@ -623,11 +624,23 @@ export default function ChartOfAccountsPage() {
 
   const displayed = useMemo(() => {
     return accounts.filter((a) => {
-      if (viewFilter === "Active") return a.isActive !== false;
-      if (viewFilter === "Inactive") return a.isActive === false;
+      // Filter by status
+      if (viewFilter === "Active" && a.isActive === false) return false;
+      if (viewFilter === "Inactive" && a.isActive !== false) return false;
+      
+      // Filter by search term
+      if (searchTerm) {
+        const s = searchTerm.toLowerCase();
+        return (
+          a.name.toLowerCase().includes(s) ||
+          (a.code && a.code.toLowerCase().includes(s)) ||
+          a.accountType.toLowerCase().includes(s)
+        );
+      }
+      
       return true;
     });
-  }, [accounts, viewFilter]);
+  }, [accounts, viewFilter, searchTerm]);
 
   const panelOpen = Boolean(selectedAccountId);
 
@@ -668,7 +681,7 @@ export default function ChartOfAccountsPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="h-svh overflow-hidden flex flex-col">
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
@@ -686,7 +699,7 @@ export default function ChartOfAccountsPage() {
           }
         />
 
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {accounts.length === 0 ? (
             /* ── Empty state ─────────────────────────────────────── */
             <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
@@ -704,12 +717,13 @@ export default function ChartOfAccountsPage() {
             </div>
           ) : (
             /* ── Table layout ────────────────────────────────────── */
-            <div className="flex h-full min-h-0 overflow-hidden">
+            <div className="flex flex-1 min-h-0 overflow-hidden">
               <div
-                className={`flex min-h-0 flex-col overflow-hidden transition-all duration-200 ${panelOpen ? "flex-1 lg:w-[320px] lg:flex-none lg:shrink-0 lg:border-r" : "flex-1"}`}
+                className={`flex flex-col min-h-0 overflow-hidden transition-all duration-200 ${panelOpen ? "flex-1 lg:w-[350px] lg:flex-none lg:shrink-0 lg:border-r" : "flex-1"}`}
               >
 
               {/* Bulk selection toolbar — replaces sub-header when items selected */}
+              {/* Top Bar: Either Bulk Actions or the Standard Header */}
               {!panelOpen && selectedIds.size > 0 ? (
                 <BulkActionToolbar
                   count={selectedIds.size}
@@ -718,8 +732,8 @@ export default function ChartOfAccountsPage() {
                   onDelete={() => setBulkDeleteOpen(true)}
                   onClear={clearSelection}
                 />
-              ) : (
-                /* Sub-header — view filter + actions */
+              ) : !panelOpen ? (
+                /* Sub-header — view filter + actions when no panel is open */
                 <div className="flex items-center justify-between px-6 py-3 border-b bg-background">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -760,31 +774,82 @@ export default function ChartOfAccountsPage() {
                     </DropdownMenu>
                   </div>
                 </div>
-              )}
+              ) : null}
 
+              {/* Main Content: Split View or Full Table */}
               {panelOpen ? (
-                <div className="flex-1 overflow-y-auto divide-y">
-                  {displayed.length === 0 ? (
-                    <div className="px-4 py-10 text-sm text-muted-foreground">No {viewFilter.toLowerCase()} accounts found.</div>
-                  ) : (
-                    displayed.map((account) => (
-                      <button
-                        key={account._id}
-                        className={`w-full border-l-2 px-4 py-3 text-left transition-colors hover:bg-muted/20 ${selectedAccountId === account._id ? "border-l-primary bg-primary/10" : "border-l-transparent"}`}
-                        onClick={() => openDetails(account)}
-                      >
-                        <p className={`text-sm font-medium ${selectedAccountId === account._id ? "text-primary" : "text-foreground"}`}>
-                          {account.name}
-                          {account.code ? ` (${account.code})` : ""}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{account.accountType}</p>
-                        {!account.isActive && <p className="mt-0.5 text-[11px] text-muted-foreground">Inactive</p>}
-                      </button>
-                    ))
-                  )}
+                <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-background">
+                  {/* Side-panel Header with Filter Dropdown */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex items-center gap-1.5 font-bold text-sm uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors">
+                          {viewFilter} Accounts
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-48">
+                        {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
+                          <DropdownMenuItem
+                            key={f}
+                            className={`text-xs ${viewFilter === f ? "font-semibold bg-muted" : ""}`}
+                            onClick={() => setViewFilter(f)}
+                          >
+                            {f} Accounts
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={openCreate}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* Fixed Search Bar */}
+                  <div className="p-3 border-b bg-slate-50/50">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Filter accounts..."
+                        className="pl-8 h-9 text-xs bg-background border-slate-200 focus-visible:ring-1 focus-visible:ring-primary shadow-none"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Scrollable Account List */}
+                  <div className="flex-1 overflow-y-auto divide-y scrollbar-thin scrollbar-thumb-slate-200">
+                    {displayed.length === 0 ? (
+                      <div className="px-4 py-10 text-sm text-muted-foreground text-center">No accounts found.</div>
+                    ) : (
+                      displayed.map((account) => (
+                        <button
+                          key={account._id}
+                          className={`w-full border-l-4 px-4 py-3 text-left transition-colors hover:bg-muted/30 ${selectedAccountId === account._id ? "border-l-primary bg-primary/5" : "border-l-transparent"}`}
+                          onClick={() => openDetails(account)}
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <p className={`text-sm font-semibold truncate ${selectedAccountId === account._id ? "text-primary" : "text-foreground"}`}>
+                              {account.name}
+                            </p>
+                            {account.code && <span className="text-[10px] bg-muted px-1 rounded text-muted-foreground shrink-0">{account.code}</span>}
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground uppercase tracking-tight">{account.accountType}</p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  {/* Side-panel Footer */}
+                  <div className="px-4 py-2 border-t bg-slate-50/50">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Total: {displayed.length} Accounts
+                    </p>
+                  </div>
                 </div>
               ) : (
-                <div className="flex-1 overflow-auto">
+                <div className="flex-1 overflow-auto scrollbar-thin">
                   <table className="w-full border-collapse text-sm">
                     <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
                       <tr className="border-b">
@@ -869,7 +934,7 @@ export default function ChartOfAccountsPage() {
               </div>
 
               {panelOpen && (
-                <div className="hidden min-h-0 flex-1 lg:block">
+                <div className="hidden min-h-0 flex-1 lg:block h-full border-l">
                   <AccountDetailsPanel
                     details={detailsData}
                     loading={detailsLoading}

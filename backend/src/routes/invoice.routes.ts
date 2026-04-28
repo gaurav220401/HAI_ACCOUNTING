@@ -14,6 +14,9 @@ import {
   markAsSent,
   recordPayment,
   voidInvoice,
+  cloneInvoice,
+  convertToRecurring,
+  getJournalEntries,
 } from "../controllers/invoice.controller";
 
 const router = Router();
@@ -38,5 +41,8 @@ router.post("/:id/send-email", upload.array("files", 10), sendInvoiceEmail);
 router.post("/:id/mark-sent", markAsSent);
 router.post("/:id/record-payment", recordPayment);
 router.post("/:id/void", voidInvoice);
+router.post("/:id/clone", cloneInvoice);
+router.post("/:id/recurring", convertToRecurring);
+router.get("/:id/journal-entries", getJournalEntries);
 
 export default router;

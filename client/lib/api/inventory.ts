@@ -42,18 +42,34 @@ export interface InventoryLowStockRow {
 }
 
 export interface InventoryOverviewResponse {
+  period: string;
   summary: {
     trackedItems: number;
     outOfStockItems: number;
     lowStockItems: number;
     totalQuantity: number;
-    committedQuantity: number;
-    availableQuantity: number;
-    openSalesOrders: number;
     totalValue: number;
   };
-  lowStock: InventoryLowStockRow[];
-  recentAdjustments: InventoryAdjustment[];
+  categoryDistribution: {
+    category: string;
+    count: number;
+    value: number;
+  }[];
+  pendingActions: {
+    sales: { toPack: number; toShip: number; toDeliver: number; toInvoice: number };
+    purchases: { toBeReceived: number; receiveInProgress: number };
+    inventory: { belowReorder: number };
+  };
+  topSellingItems: Array<{ _id: string; name: string; sku: string; quantity: number; revenue: number }>;
+  salesByChannel: Array<{ channel: string; amount: number }>;
+  salesOrderSummary: Array<{ _id: string; quantity: number; value: number }>;
+  topStockedItems: {
+    byQuantity: Array<{ name: string; stockOnHand: number; inventoryValue: number }>;
+    byValue: Array<{ name: string; stockOnHand: number; inventoryValue: number }>;
+  };
+  topVendors: Array<{ name: string; totalPurchases: number; quantity: number }>;
+  receiveHistory: Array<{ date: string; receiveNumber: string; vendor: string; quantity: number }>;
+  lowStockItems: InventoryLowStockRow[];
 }
 
 export interface CreateInventoryAdjustmentInput {
@@ -76,7 +92,7 @@ export interface InventoryAdjustmentListParams extends ListParams {
 }
 
 export const inventoryApi = {
-  getOverview: () => apiFetch<{ data: InventoryOverviewResponse }>("/inventory/overview"),
+  getOverview: (period?: string) => apiFetch<{ data: InventoryOverviewResponse }>(`/inventory/overview${period ? `?period=${period}` : ""}`),
 
   listAdjustments: (params?: InventoryAdjustmentListParams) =>
     apiFetch<PaginatedResponse<InventoryAdjustment>>(
