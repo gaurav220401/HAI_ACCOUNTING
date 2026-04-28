@@ -29,6 +29,7 @@ import {
   reverseVoucher,
 } from "../services/gl-posting.service";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
+import { createPaymentReceivedEntry } from "./payment-received.controller";
 
 /** Parse a field that may arrive as a JS array (JSON body) or a JSON string (FormData). */
 function parseStringArray(val: unknown): string[] {
@@ -71,29 +72,67 @@ async function syncSalesOrderStatusByOrderNumber(params: {
 
   if (!order) return;
 
-  const activeInvoiceCount = await Invoice.countDocuments({
-    organizationId: params.organizationId,
-    orderNumber,
-    isDeleted: false,
-    status: { $ne: "Void" },
-  } as any);
+  const [activeInvoiceCount, latestActiveInvoice] = await Promise.all([
+    Invoice.countDocuments({
+      organizationId: params.organizationId,
+      orderNumber,
+      isDeleted: false,
+      status: { $ne: "Void" },
+    }),
+    Invoice.findOne({
+      organizationId: params.organizationId,
+      orderNumber,
+      isDeleted: false,
+      status: { $ne: "Void" },
+    })
+      .sort({ invoiceDate: -1, createdAt: -1, _id: -1 })
+      .select("_id")
+      .lean(),
+  ]);
 
   const current = String((order as any).status || "");
-  let target: "APPROVED" | "INVOICED" | "PARTIALLY_INVOICED" | null = null;
+  if (current === "VOID") return;
+  const shipmentStatus = String((order as any).shipmentStatus || "");
+  const invoiceStatus =
+    activeInvoiceCount > 0 ? "Invoiced" : "Not Invoiced";
+  const linkedInvoiceId = latestActiveInvoice?._id || null;
+
+  let target: "APPROVED" | "INVOICED" | "PARTIALLY_INVOICED" | "CLOSED" | null = null;
 
   if (activeInvoiceCount <= 0) {
-    if (["INVOICED", "PARTIALLY_INVOICED"].includes(current)) {
+    if (
+      ["INVOICED", "PARTIALLY_INVOICED", "CLOSED"].includes(current)
+    ) {
       target = "APPROVED";
     }
+  } else if (shipmentStatus === "Delivered") {
+    target = "CLOSED";
   } else if (activeInvoiceCount === 1) {
     target = "INVOICED";
   } else {
     target = "PARTIALLY_INVOICED";
   }
 
-  if (!target || current === target) return;
+  let changed = false;
+  if (target && current !== target) {
+    (order as any).status = target;
+    changed = true;
+  }
 
-  (order as any).status = target;
+  if (String((order as any).invoiceStatus || "") !== invoiceStatus) {
+    (order as any).invoiceStatus = invoiceStatus;
+    changed = true;
+  }
+
+  const currentInvoiceId = String((order as any).invoiceId || "");
+  const nextInvoiceId = String(linkedInvoiceId || "");
+  if (currentInvoiceId !== nextInvoiceId) {
+    (order as any).invoiceId = linkedInvoiceId;
+    changed = true;
+  }
+
+  if (!changed) return;
+
   attachUser(order as any, params.req);
   await order.save();
 }
@@ -195,6 +234,14 @@ function summarizeTotals(
     (sum, item) => sum + item.quantity * item.rate,
     0,
   );
+  const lineItemsTotal = items.reduce(
+    (sum, item) =>
+      sum +
+      (Number.isFinite(Number(item.amount)) ?
+        Number(item.amount)
+      : Number(item.quantity || 0) * Number(item.rate || 0)),
+    0,
+  );
   const discountAmount =
     discountType === "percent" ?
       (subTotal * discountValue) / 100
@@ -204,7 +251,8 @@ function summarizeTotals(
     taxType === "TCS" ? normalizedTaxAmount
     : taxType === "TDS" ? -normalizedTaxAmount
     : 0;
-  const total = subTotal - discountAmount + taxImpact + adjustmentAmount;
+  const total =
+    lineItemsTotal - discountAmount + taxImpact + adjustmentAmount;
   return { subTotal, discountAmount, total };
 }
 
@@ -567,6 +615,116 @@ export const getOne = asyncHandler(
 );
 
 // ─── Create Invoice ────────────────────────────────────────────────────
+// GET /api/invoices/:id/pdf
+export const downloadPdf = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const invoice = await Invoice.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    })
+      .populate("customerId", "displayName companyName email billingAddress")
+      .populate("paymentTermsId", "name netDays")
+      .populate("items.itemId", "name sku hsnSacCode")
+      .lean();
+
+    if (!invoice) throw new NotFoundError("Invoice");
+
+    const org = await Organization.findById(oid).lean();
+    if (!org) throw new NotFoundError("Organization");
+
+    const customer = invoice.customerId as any;
+    const customerName =
+      (typeof customer === "object" &&
+        (customer?.displayName || customer?.companyName)) ||
+      "Customer";
+    const customerAddress = [
+      customer?.billingAddress?.street,
+      customer?.billingAddress?.street2,
+      customer?.billingAddress?.city,
+      customer?.billingAddress?.state,
+      customer?.billingAddress?.zip,
+      customer?.billingAddress?.country,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const paymentTerms = invoice.paymentTermsId as any;
+
+    const pdfBuffer = await generateInvoicePdf({
+      orgName: org.name,
+      orgAddress: org.address as any,
+      orgEmail:
+        (org as any).smtpSettings?.fromEmail ||
+        (org as any).smtpSettings?.user ||
+        undefined,
+      orgTaxId: (org as any).taxId,
+
+      customerName,
+      customerAddress: customerAddress || undefined,
+      customerEmail: customer?.email,
+
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: (invoice.invoiceDate as any)?.toISOString
+        ? (invoice.invoiceDate as any).toISOString()
+        : String(invoice.invoiceDate),
+      dueDate:
+        (invoice.dueDate as any)?.toISOString ?
+          (invoice.dueDate as any).toISOString()
+        : invoice.dueDate ? String(invoice.dueDate)
+        : undefined,
+      paymentTerms: paymentTerms?.name || undefined,
+      orderNumber: invoice.orderNumber,
+      subject: invoice.subject,
+
+      items: (invoice.items as any[]).map((item) => ({
+        name:
+          (typeof item.itemId === "object" && item.itemId?.name) ||
+          item.name ||
+          "Item",
+        description: item.description,
+        hsnSacCode:
+          item.hsnSacCode ||
+          (typeof item.itemId === "object" ? item.itemId?.hsnSacCode : ""),
+        quantity: Number(item.quantity || 0),
+        rate: Number(item.rate || 0),
+        discountPercent: Number(item.discountPercent || 0),
+        discountAmount: Number(item.discountAmount || 0),
+        taxPercent: Number(item.taxPercent || 0),
+        taxAmount: Number(item.taxAmount || 0),
+        amount: Number(item.amount || 0),
+      })),
+
+      subTotal: Number(invoice.subTotal || 0),
+      discountType: invoice.discountType,
+      discountValue: Number(invoice.discountValue || 0),
+      discountAmount: Number(invoice.discountAmount || 0),
+      taxType: invoice.taxType,
+      taxAmount: Number(invoice.taxAmount || 0),
+      adjustmentLabel: invoice.adjustmentLabel,
+      adjustmentAmount: Number(invoice.adjustmentAmount || 0),
+      total: Number(invoice.total || 0),
+      balanceDue: Number(invoice.balanceDue ?? invoice.total ?? 0),
+
+      customerNotes: invoice.customerNotes,
+      termsAndConditions: invoice.termsAndConditions,
+      currencySymbol: org.baseCurrency === "INR" ? "₹" : org.baseCurrency,
+    });
+
+    const safeInvoiceNumber = String(invoice.invoiceNumber || "invoice")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
+      .slice(0, 120);
+    const isPreview = req.query.preview === "true";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `${isPreview ? "inline" : "attachment"}; filename="Invoice-${safeInvoiceNumber}.pdf"`,
+    );
+    res.send(pdfBuffer);
+  },
+);
+
+// Create Invoice
 export const create = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const oid = orgId(req);
@@ -745,24 +903,17 @@ export const update = asyncHandler(
       );
     }
 
-    invoice.subTotal = invoice.items.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.rate,
-      0,
+    const totals = summarizeTotals(
+      invoice.items,
+      invoice.discountType,
+      Number(invoice.discountValue) || 0,
+      invoice.taxType,
+      Number(invoice.taxAmount) || 0,
+      Number(invoice.adjustmentAmount) || 0,
     );
-    invoice.discountAmount =
-      invoice.discountType === "percent" ?
-        (invoice.subTotal * invoice.discountValue) / 100
-      : invoice.discountValue;
-    const normalizedTaxAmount = Number(invoice.taxAmount) || 0;
-    const taxImpact =
-      invoice.taxType === "TCS" ? normalizedTaxAmount
-      : invoice.taxType === "TDS" ? -normalizedTaxAmount
-      : 0;
-    invoice.total =
-      invoice.subTotal -
-      invoice.discountAmount +
-      taxImpact +
-      (invoice.adjustmentAmount || 0);
+    invoice.subTotal = totals.subTotal;
+    invoice.discountAmount = totals.discountAmount;
+    invoice.total = totals.total;
 
     if (req.body.balanceDue !== undefined) {
       invoice.balanceDue = Math.max(0, Number(req.body.balanceDue));
@@ -1061,6 +1212,7 @@ export const sendInvoiceEmail = asyncHandler(
         discountType: invoice.discountType,
         discountValue: invoice.discountValue,
         discountAmount: invoice.discountAmount,
+        taxType: invoice.taxType,
         taxAmount: invoice.taxAmount,
         adjustmentLabel: invoice.adjustmentLabel,
         adjustmentAmount: invoice.adjustmentAmount,
@@ -1135,6 +1287,10 @@ export const sendInvoiceEmail = asyncHandler(
 export const recordPayment = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const invoice = await requireInvoice(req);
+    if (invoice.status === "Void") {
+      throw new ValidationError("Cannot record payment for a void invoice");
+    }
+
     const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
 
     const amount = Number(req.body.amount);
@@ -1142,39 +1298,72 @@ export const recordPayment = asyncHandler(
       throw new ValidationError("Payment amount must be greater than zero");
     }
 
-    const currentBalance = invoice.balanceDue ?? invoice.total;
-    invoice.balanceDue = Math.max(0, currentBalance - amount);
-    if (invoice.balanceDue === 0) {
-      invoice.paymentReceived = true;
-      invoice.status = "Paid";
-      invoice.paidAt =
-        req.body.paymentDate ? new Date(req.body.paymentDate) : new Date();
-    } else {
-      invoice.paymentReceived = false;
-      invoice.status = "Partially Paid";
+    const currentBalance = Number(invoice.balanceDue ?? invoice.total ?? 0);
+    if (amount > currentBalance + 0.0001) {
+      throw new ValidationError("Payment amount cannot exceed invoice balance due");
     }
 
-    attachUser(invoice, req);
-    await invoice.save();
+    const payment = await createPaymentReceivedEntry({
+      req,
+      organization_id: orgId(req) as any,
+      payload: {
+        customer_id: String(invoice.customerId),
+        status: "PAID",
+        total_amount_received: amount,
+        payment_date: req.body.paymentDate || req.body.payment_date || new Date(),
+        payment_mode:
+          req.body.paymentMode ||
+          req.body.payment_mode ||
+          req.body.paymentModeId ||
+          "Bank Transfer",
+        deposited_to_account:
+          req.body.depositedToAccount || req.body.deposited_to_account || null,
+        reference_number:
+          req.body.referenceNumber || req.body.reference_number || "",
+        notes: req.body.notes || "",
+        invoice_applications: [
+          {
+            invoice_id: String(invoice._id),
+            applied_amount: amount,
+          },
+        ],
+      },
+      idempotencyScope: `invoices:record-payment:${String(invoice._id)}`,
+    });
 
-    const nowPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+    const refreshedInvoice = await Invoice.findOne({
+      _id: invoice._id,
+      organizationId: orgId(req),
+      isDeleted: false,
+    });
+    if (!refreshedInvoice) throw new NotFoundError("Invoice");
+
+    const nowPosted = isPostedInvoiceStatus(String(refreshedInvoice.status || ""));
     if (!wasPosted && nowPosted) {
       await applyStockDeltas({
-        organizationId: invoice.organizationId as any,
-        deltas: collectInvoiceStockDeltas(invoice.items as any[]),
+        organizationId: refreshedInvoice.organizationId as any,
+        deltas: collectInvoiceStockDeltas(refreshedInvoice.items as any[]),
         req,
       });
 
-      await postInvoiceLedger(invoice, req);
+      await postInvoiceLedger(refreshedInvoice, req);
     }
 
-    await recomputeContactOutstanding({
-      organizationId: invoice.organizationId as any,
-      contactId: invoice.customerId as any,
+    await syncSalesOrderStatusByOrderNumber({
+      organizationId: refreshedInvoice.organizationId as any,
+      orderNumber: String((refreshedInvoice as any).orderNumber || ""),
       req,
     });
 
-    res.json({ success: true, data: invoice, message: "Payment recorded" });
+    res.json({
+      success: true,
+      data: refreshedInvoice,
+      message: "Payment recorded",
+      meta: {
+        paymentReceivedId: (payment as any)._id,
+        paymentNumber: (payment as any).payment_number,
+      },
+    });
   },
 );
 

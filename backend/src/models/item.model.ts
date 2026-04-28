@@ -44,6 +44,7 @@ const itemSchema = new Schema<IItem>(
     },
     inventoryTracked: { type: Boolean, default: false },
     stockOnHand: { type: Number, default: 0 },
+    committedStock: { type: Number, default: 0 },
     inventoryValue: { type: Number, default: 0 },
     averageCost: { type: Number, default: 0 },
     reorderPoint: { type: Number, default: 0 },

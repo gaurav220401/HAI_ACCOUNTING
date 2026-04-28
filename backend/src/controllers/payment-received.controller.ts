@@ -314,6 +314,145 @@ function parseApplyItems(body: Record<string, unknown>): ApplyItem[] {
   return out.filter((i) => i.invoice_id && i.applied_amount > 0);
 }
 
+export async function createPaymentReceivedEntry(params: {
+  req: AuthenticatedRequest;
+  organization_id: Types.ObjectId;
+  payload: Record<string, unknown>;
+  idempotencyScope?: string;
+}): Promise<IPaymentReceived> {
+  const { req, organization_id, payload, idempotencyScope } = params;
+
+  const customer_id = String(payload.customer_id || payload.customerId || "");
+  if (!customer_id) throw new ValidationError("customer_id is required");
+
+  const status = (String(payload.status || "PAID").toUpperCase() as "DRAFT" | "PAID" | "VOID");
+  if (!["DRAFT", "PAID", "VOID"].includes(status)) {
+    throw new ValidationError("Invalid status");
+  }
+  if (status === "VOID") {
+    throw new ValidationError("Cannot create a payment directly in VOID status");
+  }
+
+  const total_amount_received = round2(
+    toNum(payload.total_amount_received ?? payload.totalAmountReceived),
+  );
+  if (total_amount_received <= 0) {
+    throw new ValidationError("total_amount_received must be greater than zero");
+  }
+
+  const rawPaymentDate = payload.payment_date ?? payload.paymentDate;
+  let payment_date: Date;
+  if (rawPaymentDate instanceof Date) {
+    payment_date = rawPaymentDate;
+  } else if (
+    typeof rawPaymentDate === "string" ||
+    typeof rawPaymentDate === "number"
+  ) {
+    payment_date = new Date(rawPaymentDate);
+  } else {
+    payment_date = new Date();
+  }
+  if (Number.isNaN(payment_date.getTime())) {
+    throw new ValidationError("Invalid payment_date");
+  }
+
+  const invoiceItems = parseApplyItems(payload);
+  if (status === "DRAFT" && invoiceItems.length > 0) {
+    throw new ValidationError(
+      "Cannot apply invoices while payment status is DRAFT",
+    );
+  }
+
+  const uniqueInvoiceIds = new Set(invoiceItems.map((i) => i.invoice_id));
+  if (uniqueInvoiceIds.size !== invoiceItems.length) {
+    throw new ValidationError("Duplicate invoice application in request");
+  }
+
+  const requestedNumber = String(
+    payload.payment_number || payload.paymentNumber || "",
+  ).trim();
+  const payment_number = requestedNumber || (await nextPaymentNumber(organization_id));
+  const payment_id = String(
+    payload.payment_id || payload.paymentId || `PR-${payment_number.padStart(5, "0")}`,
+  );
+
+  const result = await runRequiredTransaction(async (session: ClientSession) => {
+    if (idempotencyScope) {
+      await reserveIdempotencyKey({
+        req,
+        organization_id,
+        scope: idempotencyScope,
+        session,
+      });
+    }
+
+    const payment = new PaymentReceived({
+      organization_id,
+      payment_id,
+      payment_number,
+      customer_id,
+      payment_date,
+      payment_mode: String(payload.payment_mode || payload.paymentMode || "Cash"),
+      deposited_to_account: payload.deposited_to_account || payload.depositedToAccount || null,
+      reference_number: String(payload.reference_number || payload.referenceNumber || ""),
+      notes: String(payload.notes || ""),
+      status,
+      total_amount_received,
+      amount_used_for_invoices: 0,
+      amount_refunded: 0,
+      amount_in_excess: total_amount_received,
+      audit_log: [
+        {
+          action: "CREATE",
+          details: `Payment received with amount ${total_amount_received.toLocaleString("en-IN")}`,
+          amount: total_amount_received,
+          at: new Date(),
+          by: req.user?.email || req.user?.name || "System",
+        },
+      ],
+      is_deleted: false,
+      deleted_at: null,
+    });
+
+    attachUser(payment, req);
+    await payment.save({ session });
+
+    if (status === "PAID" && invoiceItems.length > 0) {
+      for (const item of invoiceItems) {
+        await applyAgainstInvoice(
+          payment,
+          item.invoice_id,
+          item.applied_amount,
+          req,
+          session,
+        );
+      }
+    }
+
+    recomputeExcess(payment);
+    attachUser(payment, req);
+    await payment.save({ session });
+
+    return payment;
+  });
+
+  await recomputeContactOutstanding({
+    organizationId: (result as any).organization_id,
+    contactId: (result as any).customer_id,
+    req,
+  });
+
+  if (String((result as any).status) === "PAID") {
+    await postPaymentReceivedEvent({
+      payment: result as any,
+      req,
+      event: "create",
+    });
+  }
+
+  return result;
+}
+
 async function applyAgainstInvoice(
   payment: IPaymentReceived,
   invoice_id: string,
@@ -484,98 +623,12 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organization_id = orgId(req);
-  const customer_id = String(req.body.customer_id || req.body.customerId || "");
-  if (!customer_id) throw new ValidationError("customer_id is required");
-
-  const status = (String(req.body.status || "PAID").toUpperCase() as "DRAFT" | "PAID" | "VOID");
-  if (!["DRAFT", "PAID", "VOID"].includes(status)) {
-    throw new ValidationError("Invalid status");
-  }
-  if (status === "VOID") throw new ValidationError("Cannot create a payment directly in VOID status");
-
-  const total_amount_received = round2(toNum(req.body.total_amount_received ?? req.body.totalAmountReceived));
-  if (total_amount_received <= 0) throw new ValidationError("total_amount_received must be greater than zero");
-
-  const requestedNumber = String(req.body.payment_number || req.body.paymentNumber || "").trim();
-  const payment_number = requestedNumber || (await nextPaymentNumber(organization_id));
-  const payment_id = String(req.body.payment_id || req.body.paymentId || `PR-${payment_number.padStart(5, "0")}`);
-  const payment_date = new Date(req.body.payment_date || req.body.paymentDate || new Date());
-  if (Number.isNaN(payment_date.getTime())) throw new ValidationError("Invalid payment_date");
-
-  const invoiceItems = parseApplyItems(req.body as Record<string, unknown>);
-  if (status === "DRAFT" && invoiceItems.length > 0) {
-    throw new ValidationError("Cannot apply invoices while payment status is DRAFT");
-  }
-  const uniqueInvoiceIds = new Set(invoiceItems.map((i) => i.invoice_id));
-  if (uniqueInvoiceIds.size !== invoiceItems.length) {
-    throw new ValidationError("Duplicate invoice application in request");
-  }
-
-  const result = await runRequiredTransaction(async (session: ClientSession) => {
-    await reserveIdempotencyKey({
-      req,
-      organization_id,
-      scope: "payments-received:create",
-      session,
-    });
-
-    const payment = new PaymentReceived({
-      organization_id,
-      payment_id,
-      payment_number,
-      customer_id,
-      payment_date,
-      payment_mode: String(req.body.payment_mode || req.body.paymentMode || "Cash"),
-      deposited_to_account: req.body.deposited_to_account || req.body.depositedToAccount || null,
-      reference_number: String(req.body.reference_number || req.body.referenceNumber || ""),
-      notes: String(req.body.notes || ""),
-      status,
-      total_amount_received,
-      amount_used_for_invoices: 0,
-      amount_refunded: 0,
-      amount_in_excess: total_amount_received,
-      audit_log: [
-        {
-          action: "CREATE",
-          details: `Payment received with amount ${total_amount_received.toLocaleString("en-IN")}`,
-          amount: total_amount_received,
-          at: new Date(),
-          by: req.user?.email || req.user?.name || "System",
-        },
-      ],
-      is_deleted: false,
-      deleted_at: null,
-    });
-
-    attachUser(payment, req);
-    await payment.save({ session });
-
-    if (status === "PAID" && invoiceItems.length > 0) {
-      for (const item of invoiceItems) {
-        await applyAgainstInvoice(payment, item.invoice_id, item.applied_amount, req, session);
-      }
-    }
-
-    recomputeExcess(payment);
-    attachUser(payment, req);
-    await payment.save({ session });
-
-    return payment;
-  });
-
-  await recomputeContactOutstanding({
-    organizationId: (result as any).organization_id,
-    contactId: (result as any).customer_id,
+  const result = await createPaymentReceivedEntry({
     req,
+    organization_id,
+    payload: req.body as Record<string, unknown>,
+    idempotencyScope: "payments-received:create",
   });
-
-  if (String((result as any).status) === "PAID") {
-    await postPaymentReceivedEvent({
-      payment: result as any,
-      req,
-      event: "create",
-    });
-  }
 
   res.status(201).json({ success: true, data: result });
 });

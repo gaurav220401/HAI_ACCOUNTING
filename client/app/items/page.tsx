@@ -973,16 +973,57 @@ export default function ItemsPage() {
                           {detail.inventoryTracked && (
                             <>
                               <Separator />
-                              <div className="space-y-1">
-                                <p className="text-sm font-semibold mb-3">Inventory Information</p>
-                                <DetailRow label="Stock On Hand" value={formatQuantity(stockOnHandValue)} />
-                                <DetailRow label="Average Cost" value={formatCurrency(detail.averageCost)} />
-                                <DetailRow label="Inventory Value" value={formatCurrency(detail.inventoryValue)} />
-                                <DetailRow label="Reorder Point" value={detail.reorderPoint != null ? formatQuantity(detail.reorderPoint) : "—"} />
-                                <DetailRow label="Valuation" value={detail.valuationMethod || "MovingAverage"} />
-                                <DetailRow label="Inventory Account" value={accountName(detail.inventoryAccountId as PopulatedAccount | string | null)} />
-                                <DetailRow label="Dimensions" value={dimensionsDisplay(detail)} />
-                                <DetailRow label="Weight" value={weightDisplay(detail)} />
+                              <div className="space-y-4">
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-sm font-bold text-gray-800">Inventory Details</p>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4 mt-2 mb-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                    <div>
+                                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Accounting Stock</p>
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between">
+                                          <span className="text-sm text-gray-600">Stock on Hand</span>
+                                          <span className="text-sm font-medium">{formatQuantity(stockOnHandValue)}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-sm text-gray-600">Committed Stock</span>
+                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(detail.committedStock || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t pt-1 mt-1">
+                                          <span className="text-sm font-medium text-gray-800">Available for Sale</span>
+                                          <span className="text-sm font-bold text-green-600">{formatQuantity(stockOnHandValue - (detail.committedStock || 0))}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Physical Stock</p>
+                                      <div className="space-y-2">
+                                        <div className="flex justify-between">
+                                          <span className="text-sm text-gray-600">Stock on Hand</span>
+                                          <span className="text-sm font-medium">{formatQuantity(stockOnHandValue)}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-sm text-gray-600">Committed Stock</span>
+                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(detail.committedStock || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t pt-1 mt-1">
+                                          <span className="text-sm font-medium text-gray-800">Available for Sale</span>
+                                          <span className="text-sm font-bold text-green-600">{formatQuantity(stockOnHandValue - (detail.committedStock || 0))}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <DetailRow label="Average Cost" value={formatCurrency(detail.averageCost)} />
+                                  <DetailRow label="Inventory Value" value={formatCurrency(detail.inventoryValue)} />
+                                  <DetailRow label="Reorder Point" value={detail.reorderPoint != null ? formatQuantity(detail.reorderPoint) : "—"} />
+                                  <DetailRow label="Valuation" value={detail.valuationMethod || "MovingAverage"} />
+                                  <DetailRow label="Inventory Account" value={accountName(detail.inventoryAccountId as PopulatedAccount | string | null)} />
+                                  <DetailRow label="Dimensions" value={dimensionsDisplay(detail)} />
+                                  <DetailRow label="Weight" value={weightDisplay(detail)} />
+                                </div>
                               </div>
                             </>
                           )}

@@ -34,6 +34,7 @@ import { accountApi, type Account } from "@/lib/api/accounts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
 import { purchaseOrderApi, type CreatePurchaseOrderInput, type DiscountLevel } from "@/lib/api/purchase-orders";
+import { salesOrderApi, type SalesOrderPurchaseOrderDraftResponse } from "@/lib/api/sales-orders";
 import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/lib/api/tds-taxes";
 import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { cn } from "@/lib/utils";
@@ -91,6 +92,11 @@ const DEFAULT_TDS_TAXES: TdsTax[] = [
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
+const inputDate = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+};
 const fmt = (v: number) =>
   new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 const fmtQty = (v: number) =>
@@ -774,6 +780,7 @@ export default function NewPurchaseOrderPage() {
   const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
   // Form fields
+  const [sourceSalesOrderId, setSourceSalesOrderId] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [vendorSearch, setVendorSearch] = useState("");
   const [showVendorDD, setShowVendorDD] = useState(false);
@@ -812,6 +819,7 @@ export default function NewPurchaseOrderPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [paymentTermsList, setPaymentTermsList] = useState<PaymentTerms[]>([]);
   const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // UI state
   const [showBulkAdd, setShowBulkAdd] = useState(false);
@@ -820,6 +828,8 @@ export default function NewPurchaseOrderPage() {
   const [showTaxDD, setShowTaxDD] = useState(false);
   const [itemSelectorRow, setItemSelectorRow] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [sourceDraftApplied, setSourceDraftApplied] = useState(false);
   const [draggingRowId, setDraggingRowId] = useState<string | null>(null);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [showReportingTagsDialog, setShowReportingTagsDialog] = useState(false);
@@ -880,17 +890,125 @@ export default function NewPurchaseOrderPage() {
       const tcsData = tcsRes.data ?? [];
       setTcsTaxes(tcsData.length > 0 ? tcsData : DEFAULT_TCS_TAXES);
       setPoNumber(numRes.data.purchaseOrderNumber ?? "PO-00001");
-    } catch { /* noop */ }
+    } catch { /* noop */ } finally { setDataLoaded(true); }
   }, [firebaseUser, loading, activeOrganization?._id]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const vId = new URLSearchParams(window.location.search).get("vendorId");
+      const params = new URLSearchParams(window.location.search);
+      const vId = params.get("vendorId");
+      const sourceId = params.get("sourceSalesOrderId") || params.get("salesOrderId");
       if (vId) setVendorId(vId);
+      if (sourceId) setSourceSalesOrderId(sourceId);
     }
   }, []);
+
+  useEffect(() => {
+    if (!sourceSalesOrderId || !activeOrganization?._id || !dataLoaded || sourceDraftApplied) return;
+
+    let cancelled = false;
+
+    async function loadSourceSalesOrderDraft() {
+      setDraftLoading(true);
+      try {
+        const res = await salesOrderApi.purchaseOrderDraft(sourceSalesOrderId);
+        if (cancelled) return;
+
+        const draft = res.data as SalesOrderPurchaseOrderDraftResponse;
+        const draftVendor = (draft as any).vendor;
+        const draftVendorId = String(draft.vendorId || draftVendor?._id || "");
+
+        if (draftVendor?._id) {
+          setVendors((prev) => (
+            prev.some((vendor) => vendor._id === draftVendor._id) ? prev : [draftVendor as Contact, ...prev]
+          ));
+        }
+
+        const nextDiscountLevel = draft.discountLevel || "line_item";
+        const nextRows = (draft.lineItems || [])
+          .map((line) => {
+            const raw = line as any;
+            const itemId =
+              typeof raw.itemId === "object" ? String(raw.itemId?._id || "") : String(raw.itemId || "");
+            const item = items.find((entry) => entry._id === itemId);
+            const accountRaw = raw.accountId || item?.purchaseAccountId || "";
+            const accountId =
+              typeof accountRaw === "object" ? String(accountRaw?._id || "") : String(accountRaw || "");
+            const account = accounts.find((entry) => entry._id === accountId);
+
+            return calcRow(
+              {
+                ...newRow(),
+                itemId,
+                itemName: raw.name || item?.name || "Item",
+                accountId,
+                accountName: account?.name || "",
+                description: raw.description || "",
+                unit: itemUnitLabel(item),
+                quantity: Number(raw.quantity || 1),
+                rate: Number(raw.rate || 0),
+                discountPercent: Number(raw.discountPercent || 0),
+                discountAmount: Number(raw.discountAmount || 0),
+              },
+              nextDiscountLevel,
+            );
+          })
+          .filter((row) => row.itemId && row.quantity > 0);
+
+        setVendorId(draftVendorId);
+        setVendorSearch(getName(draftVendor));
+        setDeliveryAddrType(draft.deliveryAddressType || "Organization");
+        setCustomerDeliveryId(String(draft.deliveryCustomerId || ""));
+        setPoNumber(draft.purchaseOrderNumber || poNumber);
+        setReferenceNumber(draft.referenceNumber || "");
+        setPoDate(inputDate(draft.purchaseOrderDate) || today());
+        setDeliveryDate(inputDate(draft.deliveryDate));
+        setPaymentTermsId(String(draft.paymentTermsId || ""));
+        setShipmentPreference(draft.shipmentPreference || "");
+        setDiscountLevel(nextDiscountLevel);
+        setRows(nextRows.length > 0 ? nextRows : [newRow()]);
+        setDiscountType("%");
+        setDiscountPercent(Number(draft.discountPercent || 0));
+        setTaxType(draft.taxType === "TDS" || draft.taxType === "TCS" ? draft.taxType : "none");
+        setTdsId(String(draft.tdsId || ""));
+        setTcsId(String(draft.tcsId || ""));
+        setTaxAmount(Number(draft.taxAmount || 0));
+        setAdjustmentLabel(draft.adjustmentLabel || "Adjustment");
+        setAdjustmentAmount(Number(draft.adjustmentAmount || 0));
+        setNotes(draft.notes || "");
+        setTerms(draft.termsAndConditions || "");
+        setSourceDraftApplied(true);
+
+        toast.success(
+          draft.sourceSalesOrderNumber ?
+            `Sales Order ${draft.sourceSalesOrderNumber} loaded`
+          : "Sales order loaded",
+        );
+      } catch (e: any) {
+        if (!cancelled) {
+          toast.error(e?.message || "Failed to load sales order details");
+        }
+      } finally {
+        if (!cancelled) setDraftLoading(false);
+      }
+    }
+
+    void loadSourceSalesOrderDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accounts,
+    activeOrganization?._id,
+    dataLoaded,
+    items,
+    poNumber,
+    sourceDraftApplied,
+    sourceSalesOrderId,
+  ]);
 
   // Initialize saved addresses from org billing address
   useEffect(() => {
@@ -1883,13 +2001,13 @@ export default function NewPurchaseOrderPage() {
             {/* ── Bottom buttons ─────────────────────────────────────── */}
             <div className="border-t pt-4 mt-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleSave("Draft")} disabled={saving}>
+                <Button variant="outline" size="sm" onClick={() => handleSave("Draft")} disabled={saving || draftLoading}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   Save as Draft
                 </Button>
-                <Button size="sm" onClick={() => handleSave("Open")} disabled={saving}>
-                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                  Save and Send
+                <Button size="sm" onClick={() => handleSave("Open")} disabled={saving || draftLoading}>
+                  {(saving || draftLoading) ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  {draftLoading ? "Loading..." : "Save and Send"}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => router.back()}>Cancel</Button>
               </div>

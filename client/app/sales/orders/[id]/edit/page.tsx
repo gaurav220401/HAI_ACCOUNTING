@@ -67,6 +67,8 @@ type LineItemUi = {
   id: string;
   itemId: string;
   description: string;
+  hsnSacCode: string;
+  taxPercent: string;
   quantity: string;
   rate: string;
   discount: string;
@@ -135,6 +137,8 @@ export default function EditSalesOrderPage() {
       id: "1",
       itemId: "",
       description: "",
+      hsnSacCode: "",
+      taxPercent: "0",
       quantity: "1",
       rate: "0",
       discount: "0",
@@ -201,6 +205,8 @@ export default function EditSalesOrderPage() {
             id: String(idx + 1),
             itemId: getRefId(li.itemId),
             description: li.description || "",
+            hsnSacCode: li.hsnSacCode || "",
+            taxPercent: String(li.taxPercent || 0),
             quantity: String(li.quantity || 1),
             rate: String(li.rate || 0),
             discount: String(li.discount || 0),
@@ -214,6 +220,8 @@ export default function EditSalesOrderPage() {
                   id: "1",
                   itemId: "",
                   description: "",
+                  hsnSacCode: "",
+                  taxPercent: "0",
                   quantity: "1",
                   rate: "0",
                   discount: "0",
@@ -257,6 +265,8 @@ export default function EditSalesOrderPage() {
         id: newId,
         itemId: "",
         description: "",
+        hsnSacCode: "",
+        taxPercent: "0",
         quantity: "1",
         rate: "0",
         discount: "0",
@@ -299,10 +309,13 @@ export default function EditSalesOrderPage() {
           .filter((li) => li.itemId && li.quantity && li.rate)
           .map((li) => ({
             itemId: li.itemId,
+            name: itemsById.get(li.itemId)?.name || undefined,
             description: li.description || undefined,
+            hsnSacCode: li.hsnSacCode || undefined,
             quantity: Number(li.quantity),
             rate: Number(li.rate),
             discount: Number(li.discount) || undefined,
+            taxPercent: Number(li.taxPercent) || 0,
             amount: li.amount,
           })),
         shippingCharges: Number(formData.shippingCharges) || 0,
@@ -610,6 +623,7 @@ export default function EditSalesOrderPage() {
                   <TableRow>
                     <TableHead>Item</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead className="w-28">HSN/SAC</TableHead>
                     <TableHead className="w-24">Quantity</TableHead>
                     <TableHead className="w-24 text-right">Stock</TableHead>
                     <TableHead className="w-24">Rate</TableHead>
@@ -640,6 +654,7 @@ export default function EditSalesOrderPage() {
                                 updateLineItem(li.id, {
                                   itemId: v,
                                   description: selected?.description || li.description,
+                                  hsnSacCode: selected?.hsnSacCode || li.hsnSacCode,
                                   rate:
                                     selected?.sellingPrice != null ?
                                       String(selected.sellingPrice)
@@ -682,6 +697,15 @@ export default function EditSalesOrderPage() {
                               updateLineItem(li.id, { description: e.target.value })
                             }
                             placeholder="Description"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={li.hsnSacCode}
+                            onChange={(e) =>
+                              updateLineItem(li.id, { hsnSacCode: e.target.value })
+                            }
+                            placeholder="HSN/SAC"
                           />
                         </TableCell>
                         <TableCell>

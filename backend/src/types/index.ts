@@ -485,6 +485,7 @@ export interface IItem extends Document {
   valuationMethod: "MovingAverage" | "FIFO";
   inventoryTracked: boolean;
   stockOnHand: number;
+  committedStock: number;
   inventoryValue: number;
   averageCost: number;
   reorderPoint?: number;

@@ -1,5 +1,6 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
+import type { CreatePurchaseOrderInput } from "./purchase-orders";
 
 export type SalesOrderStatus =
   | "DRAFT"
@@ -7,26 +8,38 @@ export type SalesOrderStatus =
   | "INVOICED"
   | "PARTIALLY_INVOICED"
   | "CLOSED"
-  | "OVERDUE";
+  | "OVERDUE"
+  | "VOID";
+
+export type SalesOrderInvoiceStatus = "Not Invoiced" | "Invoiced";
+export type SalesOrderShipmentStatus = "Pending" | "Shipped" | "Delivered";
 
 export interface SalesOrderLineItemInput {
   itemId: string;
+  name?: string;
   description?: string;
+  hsnSacCode?: string;
   quantity: number;
   rate: number;
   discount?: number;
   taxId?: string | null;
+  taxPercent?: number;
+  taxAmount?: number;
   amount: number;
 }
 
 export interface SalesOrderLineItem {
   _id?: string;
-  itemId?: string | { _id: string; name: string; sku?: string } | null;
+  itemId?: string | { _id: string; name: string; sku?: string; hsnSacCode?: string } | null;
+  name?: string;
   description?: string;
+  hsnSacCode?: string;
   quantity: number;
   rate: number;
   discount?: number;
   taxId?: string | { _id: string; name: string; rate?: number } | null;
+  taxPercent?: number;
+  taxAmount?: number;
   amount: number;
 }
 
@@ -59,6 +72,9 @@ export interface SalesOrder {
   notes?: string;
   terms?: string;
   status: SalesOrderStatus;
+  invoiceStatus: SalesOrderInvoiceStatus;
+  shipmentStatus: SalesOrderShipmentStatus;
+  invoiceId?: string | { _id: string; invoiceNumber?: string } | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -89,9 +105,29 @@ export interface SalesOrderConvertToInvoiceResponse {
   invoiceNumber?: string;
 }
 
+export interface SalesOrderConvertToPurchaseOrderResponse {
+  _id?: string;
+  purchaseOrderId?: string;
+  purchaseOrderNumber?: string;
+}
+
+export interface SalesOrderPurchaseOrderDraftResponse extends CreatePurchaseOrderInput {
+  vendor?: any;
+  sourceSalesOrderId?: string;
+  sourceSalesOrderNumber?: string;
+}
+
 export interface SalesOrderListParams extends ListParams {
   status?: SalesOrderStatus;
   customerId?: string;
+}
+
+export interface SendSalesOrderEmailInput {
+  to: string[];
+  cc?: string[];
+  subject: string;
+  body: string;
+  attachPdf?: boolean;
 }
 
 export const salesOrderApi = {
@@ -126,4 +162,80 @@ export const salesOrderApi = {
         body: JSON.stringify(dueDate ? { dueDate } : {}),
       },
     ),
+
+  instantInvoice: (id: string) =>
+    apiFetch<{ data: SalesOrderConvertToInvoiceResponse }>(
+      `/sales-orders/${id}/instant-invoice`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    ),
+
+  purchaseOrderDraft: (id: string) =>
+    apiFetch<{ data: SalesOrderPurchaseOrderDraftResponse }>(
+      `/sales-orders/${id}/purchase-order-draft`,
+    ),
+
+  convertToPurchaseOrder: (
+    id: string,
+    options?: { vendorId?: string; copyDescriptions?: boolean },
+  ) =>
+    apiFetch<{ data: SalesOrderConvertToPurchaseOrderResponse }>(
+      `/sales-orders/${id}/convert-to-purchase-order`,
+      {
+        method: "POST",
+        body: JSON.stringify(options || {}),
+      },
+    ),
+
+  sendEmail: (id: string, data: SendSalesOrderEmailInput) =>
+    apiFetch<{ success: boolean; message: string }>(
+      `/sales-orders/${id}/send-email`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
+
+  downloadPdf: (id: string) => apiFetchBlob(`/sales-orders/${id}/pdf`),
+
+  updateShipment: (id: string, shipmentStatus: SalesOrderShipmentStatus) =>
+    apiFetch<{ data: SalesOrder }>(
+      `/sales-orders/${id}/update-shipment`,
+      {
+        method: "POST",
+        body: JSON.stringify({ shipmentStatus }),
+      },
+    ),
+
+  markShipmentFulfilled: (id: string) =>
+    apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}/mark-shipment-fulfilled`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  dropship: (id: string) =>
+    apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}/dropship`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  cancelItems: (id: string) =>
+    apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}/cancel-items`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  voidOrder: (id: string) =>
+    apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}/void`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  clone: (id: string) =>
+    apiFetch<{ data: SalesOrder }>(`/sales-orders/${id}/clone`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
 };

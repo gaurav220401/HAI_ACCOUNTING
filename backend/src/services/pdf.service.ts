@@ -48,6 +48,7 @@ export interface InvoicePdfData {
   discountType?: string;
   discountValue?: number;
   discountAmount?: number;
+  taxType?: string;
   taxAmount?: number;
   adjustmentLabel?: string;
   adjustmentAmount?: number;
@@ -584,6 +585,14 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     const wordsW = dividerX - left - 10;
 
     const sectionStartY = y;
+    const lineItemDiscountAmount = data.items.reduce(
+      (sum, item) => sum + (Number(item.discountAmount) || 0),
+      0,
+    );
+    const lineItemTaxAmount = data.items.reduce(
+      (sum, item) => sum + (Number(item.taxAmount) || 0),
+      0,
+    );
 
     // Total in words - left side
     doc
@@ -617,6 +626,12 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     };
 
     addTotalRow("Sub Total", fmtNum(data.subTotal));
+    if (lineItemDiscountAmount > 0) {
+      addTotalRow("Line Item Discount", `- ${fmtNum(lineItemDiscountAmount)}`);
+    }
+    if (lineItemTaxAmount > 0) {
+      addTotalRow("Line Item Tax", `+ ${fmtNum(lineItemTaxAmount)}`);
+    }
     if (data.discountAmount && data.discountAmount !== 0) {
       const discLabel =
         data.discountType === "percent" ?
@@ -625,7 +640,10 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
       addTotalRow(discLabel, `- ${fmtNum(data.discountAmount)}`);
     }
     if (data.taxAmount && data.taxAmount !== 0) {
-      addTotalRow("Tax", fmtNum(data.taxAmount));
+      const taxLabel =
+        data.taxType && data.taxType !== "none" ? data.taxType : "Tax";
+      const prefix = data.taxType === "TDS" ? "- " : "+ ";
+      addTotalRow(taxLabel, `${prefix}${fmtNum(data.taxAmount)}`);
     }
     if (data.adjustmentAmount && data.adjustmentAmount !== 0) {
       addTotalRow(
@@ -1349,4 +1367,53 @@ export function generateCreditNotePdf(
 
     doc.end();
   });
+}
+
+/**
+ * Generate a Sales Order PDF and return it as a Buffer.
+ * Uses a simplified version of the invoice PDF layout.
+ */
+export function generateSalesOrderPdf(params: {
+  order: any;
+  organization: any;
+}): Promise<Buffer> {
+  const { order, organization } = params;
+
+  const data: InvoicePdfData = {
+    orgName: organization?.name || "HAI",
+    orgAddress: organization?.address || {},
+    orgEmail: organization?.email || "",
+    orgTaxId: organization?.gstin || "",
+    customerName:
+      typeof order.customerId === "object"
+        ? order.customerId?.displayName || order.customerId?.companyName || ""
+        : "",
+    invoiceNumber: order.salesOrderNumber || "",
+    invoiceDate: order.orderDate
+      ? new Date(order.orderDate).toISOString()
+      : new Date().toISOString(),
+    items: (order.lineItems || []).map((li: any) => {
+      const itemRef = typeof li.itemId === "object" ? li.itemId : null;
+      return {
+        name: itemRef?.name || li.name || li.description || "Item",
+        description: li.description || "",
+        hsnSacCode: itemRef?.hsnSacCode || li.hsnSacCode || "",
+        quantity: Number(li.quantity) || 0,
+        rate: Number(li.rate) || 0,
+        amount: Number(li.amount) || 0,
+      };
+    }),
+    subTotal: Number(order.subTotal) || 0,
+    adjustmentLabel: "Shipping & Adjustment",
+    adjustmentAmount:
+      (Number(order.shippingCharges) || 0) + (Number(order.adjustment) || 0),
+    total: Number(order.total) || 0,
+    balanceDue: Number(order.total) || 0,
+    customerNotes: order.notes || "",
+    termsAndConditions: order.terms || "",
+  };
+
+  // Reuse the invoice PDF generator with "SALES ORDER" title
+  // For now, just generate with the existing invoice format
+  return generateInvoicePdf(data);
 }

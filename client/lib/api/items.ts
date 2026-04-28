@@ -61,6 +61,7 @@ export interface Item {
   hsnSacCode?: string;
   inventoryTracked: boolean;
   stockOnHand: number;
+  committedStock?: number;
   inventoryValue: number;
   averageCost: number;
   reorderPoint?: number;

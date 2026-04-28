@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -13,6 +14,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -52,6 +54,7 @@ function statusBadgeVariant(status: SalesOrderStatus) {
   if (status === "DRAFT") return "secondary" as const;
   if (status === "APPROVED") return "outline" as const;
   if (status === "OVERDUE") return "destructive" as const;
+  if (status === "VOID") return "destructive" as const;
   return "default" as const;
 }
 
@@ -63,6 +66,8 @@ export default function SalesOrdersPage() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkRunning, setBulkRunning] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -106,6 +111,62 @@ export default function SalesOrdersPage() {
       );
     });
   }, [orders, search]);
+
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const allFilteredIds = useMemo(() => filtered.map((o) => o._id), [filtered]);
+  const allFilteredSelected =
+    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedSet.has(id));
+
+  function toggleRowSelection(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return Array.from(next);
+    });
+  }
+
+  function toggleAllFiltered(checked: boolean) {
+    setSelectedIds((prev) => {
+      if (checked) {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.add(id));
+        return Array.from(next);
+      }
+      const remove = new Set(allFilteredIds);
+      return prev.filter((id) => !remove.has(id));
+    });
+  }
+
+  async function runBulkAction(
+    label: string,
+    fn: (id: string) => Promise<unknown>,
+  ) {
+    if (selectedIds.length === 0) {
+      toast.error("Select at least one sales order");
+      return;
+    }
+
+    setBulkRunning(true);
+    try {
+      const results = await Promise.allSettled(selectedIds.map((id) => fn(id)));
+      const success = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - success;
+
+      if (success > 0 && failed === 0) {
+        toast.success(`${label} completed for ${success} sales order(s)`);
+      } else if (success > 0 && failed > 0) {
+        toast.warning(`${label}: ${success} succeeded, ${failed} failed`);
+      } else {
+        toast.error(`${label} failed for selected sales orders`);
+      }
+
+      await fetchOrders();
+      setSelectedIds([]);
+    } finally {
+      setBulkRunning(false);
+    }
+  }
 
   if (loading || orgLoading || !firebaseUser) {
     return (
@@ -166,10 +227,71 @@ export default function SalesOrdersPage() {
             </p>
           </div>
 
+          {selectedIds.length > 0 && (
+            <div className="rounded-lg border bg-muted/40 px-3 py-2 flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">{selectedIds.length} selected</span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bulkRunning}
+                onClick={() => runBulkAction("Mark shipment fulfilled", salesOrderApi.markShipmentFulfilled)}
+              >
+                Mark shipment as fulfilled
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bulkRunning}
+                onClick={() => runBulkAction("Instant invoice", salesOrderApi.instantInvoice)}
+              >
+                Instant Invoice
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bulkRunning}
+                onClick={() => runBulkAction("Dropship", salesOrderApi.dropship)}
+              >
+                Dropship
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bulkRunning}
+                onClick={() => runBulkAction("Void", salesOrderApi.voidOrder)}
+              >
+                Void
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={bulkRunning}
+                onClick={() => runBulkAction("Delete", salesOrderApi.remove)}
+              >
+                Delete
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={bulkRunning}
+                onClick={() => setSelectedIds([])}
+              >
+                Clear
+              </Button>
+            </div>
+          )}
+
           <div className="rounded-lg border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allFilteredSelected}
+                      onCheckedChange={(checked) => toggleAllFiltered(Boolean(checked))}
+                      aria-label="Select all sales orders"
+                    />
+                  </TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Sales Order#</TableHead>
                   <TableHead>Reference#</TableHead>
@@ -187,6 +309,13 @@ export default function SalesOrdersPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => router.push(`/sales/orders/${o._id}`)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedSet.has(o._id)}
+                        onCheckedChange={(checked) => toggleRowSelection(o._id, Boolean(checked))}
+                        aria-label={`Select ${o.salesOrderNumber}`}
+                      />
+                    </TableCell>
                     <TableCell className="text-sm">
                       {formatDate(o.orderDate)}
                     </TableCell>
@@ -230,7 +359,7 @@ export default function SalesOrdersPage() {
                 {filtered.length === 0 ?
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No sales orders found.
