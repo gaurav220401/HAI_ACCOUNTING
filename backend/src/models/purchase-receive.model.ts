@@ -26,6 +26,7 @@ export interface IPurchaseReceive extends Document {
   lineItems: IPurchaseReceiveLineItem[];
   totalQuantityReceived: number;
   status: PurchaseReceiveStatus;
+  putawayStatus: "Pending" | "Partially Putaway" | "Completed";
   linkedBillIds: Types.ObjectId[];
   isDeleted: boolean;
   deletedAt: Date | null;
@@ -65,6 +66,11 @@ const purchaseReceiveSchema = new Schema<IPurchaseReceive>(
       type: String,
       enum: ["Draft", "Received"],
       default: "Received",
+    },
+    putawayStatus: {
+      type: String,
+      enum: ["Pending", "Partially Putaway", "Completed"],
+      default: "Pending",
     },
     linkedBillIds: [{ type: Schema.Types.ObjectId, ref: "Bill" }],
     isDeleted: { type: Boolean, default: false },

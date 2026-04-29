@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Settings, ScanLine, Plus, UploadCloud, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,25 +16,99 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { putawayApi } from "@/lib/api/putaways";
+import { purchaseReceiveApi, type PurchaseReceive } from "@/lib/api/purchase-receives";
+import { warehouseApi, type Warehouse } from "@/lib/api/warehouses";
 
-export default function NewPutawayPage() {
+function NewPutawayContent() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState([{ id: 1, name: "", quantity: "0.00" }]);
+  const searchParams = useSearchParams();
+  const receiveId = searchParams.get("receiveId");
 
-  const handleAddItem = () => {
-    setItems([...items, { id: Date.now(), name: "", quantity: "0.00" }]);
-  };
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [putawayNumber, setPutawayNumber] = useState("");
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState("");
+  const [receiveData, setReceiveData] = useState<PurchaseReceive | null>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    void loadInitialData();
+  }, [receiveId]);
+
+  async function loadInitialData() {
+    setFetching(true);
+    try {
+      const [numRes, whRes] = await Promise.all([
+        putawayApi.getNextNumber(),
+        warehouseApi.list(),
+      ]);
+      setPutawayNumber(numRes.data.putawayNumber);
+      setWarehouses(whRes.data || []);
+      
+      // Select primary warehouse by default if available
+      const primary = whRes.data.find(w => w.isPrimary);
+      if (primary) setSelectedWarehouse(primary._id);
+      else if (whRes.data.length > 0) setSelectedWarehouse(whRes.data[0]._id);
+
+      if (receiveId) {
+        const recRes = await purchaseReceiveApi.getOne(receiveId);
+        const rd = recRes.data;
+        setReceiveData(rd);
+        setItems(rd.lineItems.map(li => ({
+          itemId: li.itemId?._id || li.itemId,
+          name: li.name,
+          quantityReceived: li.quantityReceived,
+          quantityPutaway: li.quantityReceived, // Default to full putaway
+          remainingQuantity: 0,
+        })));
+      }
+    } catch (err) {
+      toast.error("Failed to load initial data");
+    } finally {
+      setFetching(false);
+    }
+  }
 
   const handleGenerate = async () => {
+    if (!selectedWarehouse) {
+      toast.error("Please select a warehouse");
+      return;
+    }
+    if (!receiveId) {
+      toast.error("No purchase receive linked");
+      return;
+    }
+
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("Putaway generated successfully!");
+    try {
+      await putawayApi.create({
+        putawayNumber,
+        purchaseReceiveId: receiveId,
+        warehouseId: selectedWarehouse,
+        lineItems: items,
+        notes,
+        date,
+      });
+      toast.success("Putaway completed successfully!");
       router.push("/inventory/putaways");
-    }, 1000);
-  };
+    } catch (err) {
+      toast.error("Failed to create putaway");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (fetching) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white relative max-w-5xl mx-auto border-x border-b shadow-sm min-h-screen">
@@ -56,7 +130,8 @@ export default function NewPutawayPage() {
             <Label className="text-rose-600 font-medium text-sm">Putaway#*</Label>
             <div className="relative">
               <Input 
-                defaultValue="PA-00001" 
+                value={putawayNumber}
+                onChange={(e) => setPutawayNumber(e.target.value)}
                 className="pr-10 bg-blue-50/30 border-blue-200 focus-visible:ring-blue-500" 
               />
               <Button 
@@ -69,20 +144,28 @@ export default function NewPutawayPage() {
             </div>
           </div>
 
+          {receiveData && (
+            <div className="grid grid-cols-[160px_1fr] items-center gap-4 text-sm">
+              <Label className="font-medium text-slate-700">Source Receive</Label>
+              <div className="font-medium text-blue-600">{receiveData.purchaseReceiveNumber} (PO: {receiveData.purchaseOrderNumber})</div>
+            </div>
+          )}
+
           <div className="grid grid-cols-[160px_1fr] items-center gap-4">
             <Label className="font-medium text-slate-700 text-sm">Date</Label>
-            <Input type="date" defaultValue="2026-04-28" />
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
           </div>
 
           <div className="grid grid-cols-[160px_1fr] items-center gap-4">
             <Label className="text-rose-600 font-medium text-sm">Warehouse Name*</Label>
-            <Select>
+            <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a warehouse" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="wh-1">Main Warehouse</SelectItem>
-                <SelectItem value="wh-2">Secondary Storage</SelectItem>
+                {warehouses.map(w => (
+                  <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -91,6 +174,8 @@ export default function NewPutawayPage() {
             <Label className="font-medium text-slate-700 text-sm pt-2">Internal Notes</Label>
             <Textarea 
               rows={4} 
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
               placeholder="Add internal notes here..." 
               className="resize-none"
             />
@@ -99,7 +184,8 @@ export default function NewPutawayPage() {
 
         {/* Item Details */}
         <div className="space-y-4 pt-4 border-t border-slate-100">
-          <div className="flex justify-end mb-2">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Item Details</h3>
             <Button variant="ghost" className="text-blue-500 hover:text-blue-600 hover:bg-blue-50">
               <ScanLine className="h-4 w-4 mr-2" />
               Scan Item
@@ -107,69 +193,65 @@ export default function NewPutawayPage() {
           </div>
           
           <div className="border rounded-md overflow-hidden bg-slate-50/50">
-            <div className="grid grid-cols-[1fr_200px] gap-4 p-3 bg-slate-50 border-b text-sm font-medium text-slate-500">
+            <div className="grid grid-cols-[1fr_150px_150px] gap-4 p-3 bg-slate-50 border-b text-xs font-semibold text-slate-500 uppercase">
               <div>Item Details</div>
-              <div className="text-right">Quantity transferred</div>
+              <div className="text-right">Qty Received</div>
+              <div className="text-right">Qty to Store</div>
             </div>
             
             <div className="p-2 space-y-2">
               {items.map((item, index) => (
-                <div key={item.id} className="grid grid-cols-[1fr_200px] gap-4 items-center p-1">
-                  <Input 
-                    placeholder="Type or click to select an item." 
-                    className="bg-white border-slate-200"
-                  />
+                <div key={item.itemId} className="grid grid-cols-[1fr_150px_150px] gap-4 items-center p-1">
+                  <div className="text-sm font-medium text-slate-700">{item.name}</div>
+                  <div className="text-right text-sm text-slate-500 pr-2">{item.quantityReceived}</div>
                   <Input 
                     type="number" 
-                    defaultValue={item.quantity}
+                    value={item.quantityPutaway}
+                    onChange={(e) => {
+                      const newItems = [...items];
+                      newItems[index].quantityPutaway = Number(e.target.value);
+                      setItems(newItems);
+                    }}
                     className="bg-white border-slate-200 text-right" 
                   />
                 </div>
               ))}
+              {items.length === 0 && (
+                <div className="py-8 text-center text-slate-400 text-sm">
+                  {receiveId ? "No items found in this receive" : "Please select a purchase receive to load items"}
+                </div>
+              )}
             </div>
-          </div>
-          
-          <div>
-            <Button 
-              variant="ghost" 
-              onClick={handleAddItem}
-              className="text-blue-500 hover:text-blue-600 hover:bg-blue-50 -ml-4"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Items
-            </Button>
-          </div>
-        </div>
-
-        {/* Attach Files */}
-        <div className="space-y-4 pt-4 border-t border-slate-100">
-          <h3 className="text-sm font-medium text-slate-700">Attach File(s) to Putaway</h3>
-          <div className="flex items-center gap-4">
-            <Button variant="outline" className="text-slate-600 border-slate-300 border-dashed">
-              <UploadCloud className="h-4 w-4 mr-2" />
-              Upload File
-            </Button>
-            <span className="text-xs text-slate-400">
-              You can upload a maximum of 10 files, 10MB each
-            </span>
           </div>
         </div>
       </div>
 
       {/* Footer Actions */}
-      <div className="sticky bottom-0 bg-slate-50 border-t p-4 flex gap-3 px-6">
+      <div className="sticky bottom-0 bg-slate-50 border-t p-4 flex gap-3 px-6 mt-auto">
         <Button 
           className="bg-blue-500 hover:bg-blue-600 text-white min-w-[140px]" 
           onClick={handleGenerate}
-          disabled={loading}
+          disabled={loading || items.length === 0}
         >
           {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-          Generate putaway
+          Complete Putaway
         </Button>
         <Button variant="outline" asChild>
           <Link href="/inventory/putaways">Cancel</Link>
         </Button>
       </div>
     </div>
+  );
+}
+
+export default function NewPutawayPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    }>
+      <NewPutawayContent />
+    </Suspense>
   );
 }

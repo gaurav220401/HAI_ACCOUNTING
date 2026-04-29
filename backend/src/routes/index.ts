@@ -38,6 +38,8 @@ import inventoryRoutes from "./inventory.routes";
 import fixedAssetRoutes from "./fixed-asset.routes";
 import packageRoutes from "./package.routes";
 import moveOrderRoutes from "./move-order.routes";
+import putawayRoutes from "./putaway.routes";
+import warehouseRoutes from "./warehouse.routes";
 
 const router = Router();
 
@@ -80,5 +82,7 @@ router.use("/inventory", inventoryRoutes);
 router.use("/fixed-assets", fixedAssetRoutes);
 router.use("/packages", packageRoutes);
 router.use("/move-orders", moveOrderRoutes);
+router.use("/putaways", putawayRoutes);
+router.use("/warehouses", warehouseRoutes);
 
 export default router;

@@ -167,6 +167,7 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
         toInvoice,
         toBeReceived,
         receiveInProgress,
+        pendingPutaways,
         belowReorder,
       ] = await Promise.all([
         SalesOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "APPROVED", shipmentStatus: "Pending" }),
@@ -174,7 +175,8 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
         SalesOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, shipmentStatus: "Shipped" }),
         SalesOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "PARTIALLY_INVOICED" }),
         PurchaseOrder.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "Open" }),
-        PurchaseReceive.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "Draft" }), // Assuming Draft means in progress
+        PurchaseReceive.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "Draft" }), 
+        PurchaseReceive.countDocuments({ organizationId: organizationId as any, isDeleted: false, status: "Received", putawayStatus: "Pending" }),
         Item.countDocuments({
           ...baseFilter,
           organizationId: organizationId as any,
@@ -184,7 +186,7 @@ export const overview = asyncHandler(async (req: AuthenticatedRequest, res: Resp
       ]);
       return {
         sales: { toPack, toShip, toDeliver, toInvoice },
-        purchases: { toBeReceived, receiveInProgress },
+        purchases: { toBeReceived, receiveInProgress, pendingPutaways },
         inventory: { belowReorder },
       };
     })(),

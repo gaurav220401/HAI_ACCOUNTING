@@ -57,7 +57,7 @@ export interface InventoryOverviewResponse {
   }[];
   pendingActions: {
     sales: { toPack: number; toShip: number; toDeliver: number; toInvoice: number };
-    purchases: { toBeReceived: number; receiveInProgress: number };
+    purchases: { toBeReceived: number; receiveInProgress: number; pendingPutaways: number };
     inventory: { belowReorder: number };
   };
   topSellingItems: Array<{ _id: string; name: string; sku: string; quantity: number; revenue: number }>;

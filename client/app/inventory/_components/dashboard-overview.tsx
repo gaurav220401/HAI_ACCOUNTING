@@ -330,8 +330,18 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                   {[
                     { label: "To Be Received", count: data.pendingActions.purchases.toBeReceived, color: "bg-blue-600" },
                     { label: "In Progress", count: data.pendingActions.purchases.receiveInProgress, color: "bg-orange-600" },
+                    { 
+                      label: "Pending Putaways", 
+                      count: data.pendingActions.purchases.pendingPutaways, 
+                      color: "bg-amber-600",
+                      url: "/purchases/receives"
+                    },
                   ].map((item, i) => (
-                    <button key={i} className="w-full group flex items-center justify-between py-2 hover:translate-x-1 transition-transform">
+                    <button 
+                      key={i} 
+                      className="w-full group flex items-center justify-between py-2 hover:translate-x-1 transition-transform"
+                      onClick={() => item.url && (window.location.href = item.url)}
+                    >
                       <div className="flex items-center gap-3">
                         <div className={`h-1.5 w-1.5 rounded-full ${item.color}`} />
                         <span className="text-xs text-slate-600 font-medium group-hover:text-slate-900">{item.label}</span>
