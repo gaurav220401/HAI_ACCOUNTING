@@ -32,28 +32,25 @@ import {
 } from "@/lib/api/move-orders";
 import {
   settingsApi,
-  type SalesPerson,
   type Warehouse,
 } from "@/lib/api/settings";
 import {
-  listLocalMoveOrders,
   saveLocalMoveOrder,
 } from "@/app/inventory/move-orders/_lib/local-move-orders";
 
 interface MoveOrderLineDraft {
   id: string;
   itemId: string;
-  quantityTransferred: string;
+  quantity: string;
 }
 
 interface MoveOrderFormState {
-  moveOrderNumber: string;
-  moveDate: string;
-  sourceWarehouseId: string;
-  destinationWarehouseId: string;
-  assigneeId: string;
-  assigneeName: string;
-  internalNotes: string;
+  orderNumber: string;
+  date: string;
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  notes: string;
+  referenceNumber: string;
 }
 
 function todayIsoDate(): string {
@@ -69,12 +66,12 @@ function buildMoveOrderNumber(serial: number): string {
   return `MO-${datePart}-${String(Math.max(1, serial)).padStart(3, "0")}`;
 }
 
-function availableForWarehouse(item: Item, sourceWarehouseId: string): number {
-  if (!sourceWarehouseId) {
+function availableForWarehouse(item: Item, fromWarehouseId: string): number {
+  if (!fromWarehouseId) {
     return Number(item.stockOnHand || 0);
   }
 
-  if (!item.warehouseId || item.warehouseId === sourceWarehouseId) {
+  if (!item.warehouseId || item.warehouseId === fromWarehouseId) {
     return Number(item.stockOnHand || 0);
   }
 
@@ -89,20 +86,18 @@ export default function NewInventoryMoveOrderPage() {
 
   const [items, setItems] = useState<Item[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [salesPersons, setSalesPersons] = useState<SalesPerson[]>([]);
 
   const [form, setForm] = useState<MoveOrderFormState>({
-    moveOrderNumber: "",
-    moveDate: todayIsoDate(),
-    sourceWarehouseId: "",
-    destinationWarehouseId: "",
-    assigneeId: "",
-    assigneeName: "",
-    internalNotes: "",
+    orderNumber: "",
+    date: todayIsoDate(),
+    fromWarehouseId: "",
+    toWarehouseId: "",
+    notes: "",
+    referenceNumber: "",
   });
 
   const [lines, setLines] = useState<MoveOrderLineDraft[]>([
-    { id: makeLineId(), itemId: "", quantityTransferred: "" },
+    { id: makeLineId(), itemId: "", quantity: "" },
   ]);
 
   const trackedItems = useMemo(
@@ -116,9 +111,9 @@ export default function NewInventoryMoveOrderPage() {
   const destinationWarehouses = useMemo(
     () =>
       warehouses.filter(
-        (warehouse) => warehouse._id !== form.sourceWarehouseId,
+        (warehouse) => warehouse._id !== form.fromWarehouseId,
       ),
-    [warehouses, form.sourceWarehouseId],
+    [warehouses, form.fromWarehouseId],
   );
 
   const itemMap = useMemo(() => {
@@ -134,8 +129,8 @@ export default function NewInventoryMoveOrderPage() {
       lines.reduce(
         (sum, row) =>
           sum +
-          (Number.isFinite(Number(row.quantityTransferred)) ?
-            Number(row.quantityTransferred)
+          (Number.isFinite(Number(row.quantity)) ?
+            Number(row.quantity)
           : 0),
         0,
       ),
@@ -145,21 +140,15 @@ export default function NewInventoryMoveOrderPage() {
   const loadBootData = useCallback(async () => {
     setBootLoading(true);
     try {
-      const [itemsRes, warehousesRes, salesPersonsRes] = await Promise.all([
+      const [itemsRes, warehousesRes] = await Promise.all([
         itemApi.list({ page: 1, limit: 1000 }),
         settingsApi.warehouses.list(),
-        settingsApi.salesPersons.list(),
       ]);
 
       setItems(itemsRes.data || []);
       setWarehouses(
         (warehousesRes.data || []).filter((warehouse) => warehouse.isActive),
       );
-      setSalesPersons(
-        (salesPersonsRes.data || []).filter((person) => person.isActive),
-      );
-
-      const localOrders = listLocalMoveOrders();
 
       let remoteOrders: MoveOrder[] = [];
       try {
@@ -169,12 +158,12 @@ export default function NewInventoryMoveOrderPage() {
         remoteOrders = [];
       }
 
-      const nextSerial = Math.max(localOrders.length, remoteOrders.length) + 1;
+      const nextSerial = remoteOrders.length + 1;
 
       setForm((prev) => ({
         ...prev,
-        moveOrderNumber:
-          prev.moveOrderNumber || buildMoveOrderNumber(nextSerial),
+        orderNumber:
+          prev.orderNumber || buildMoveOrderNumber(nextSerial),
       }));
     } catch {
       toast.error("Failed to load move order setup data");
@@ -189,12 +178,12 @@ export default function NewInventoryMoveOrderPage() {
 
   useEffect(() => {
     if (
-      form.sourceWarehouseId &&
-      form.destinationWarehouseId === form.sourceWarehouseId
+      form.fromWarehouseId &&
+      form.toWarehouseId === form.fromWarehouseId
     ) {
-      setForm((prev) => ({ ...prev, destinationWarehouseId: "" }));
+      setForm((prev) => ({ ...prev, toWarehouseId: "" }));
     }
-  }, [form.sourceWarehouseId, form.destinationWarehouseId]);
+  }, [form.fromWarehouseId, form.toWarehouseId]);
 
   function updateLine(id: string, patch: Partial<MoveOrderLineDraft>) {
     setLines((prev) =>
@@ -205,47 +194,47 @@ export default function NewInventoryMoveOrderPage() {
   function addLine() {
     setLines((prev) => [
       ...prev,
-      { id: makeLineId(), itemId: "", quantityTransferred: "" },
+      { id: makeLineId(), itemId: "", quantity: "" },
     ]);
   }
 
   function removeLine(id: string) {
     setLines((prev) => {
       if (prev.length <= 1) {
-        return [{ ...prev[0], itemId: "", quantityTransferred: "" }];
+        return [{ ...prev[0], itemId: "", quantity: "" }];
       }
       return prev.filter((line) => line.id !== id);
     });
   }
 
   async function handleSave(status: MoveOrderStatus) {
-    if (!form.moveOrderNumber.trim()) {
-      toast.error("Move Order# is required");
+    if (!form.orderNumber.trim()) {
+      toast.error("Order# is required");
       return;
     }
 
-    if (!form.moveDate) {
+    if (!form.date) {
       toast.error("Date is required");
       return;
     }
 
-    if (!form.sourceWarehouseId) {
+    if (!form.fromWarehouseId) {
       toast.error("Source warehouse is required");
       return;
     }
 
-    if (!form.destinationWarehouseId) {
+    if (!form.toWarehouseId) {
       toast.error("Destination warehouse is required");
       return;
     }
 
-    if (form.sourceWarehouseId === form.destinationWarehouseId) {
+    if (form.fromWarehouseId === form.toWarehouseId) {
       toast.error("Source and destination warehouse cannot be the same");
       return;
     }
 
     const filledRows = lines.filter(
-      (line) => line.itemId || line.quantityTransferred.trim(),
+      (line) => line.itemId || line.quantity.trim(),
     );
 
     if (filledRows.length === 0) {
@@ -253,7 +242,7 @@ export default function NewInventoryMoveOrderPage() {
       return;
     }
 
-    const preparedItems: CreateMoveOrderInput["lineItems"] = [];
+    const preparedItems: CreateMoveOrderInput["items"] = [];
 
     for (const row of filledRows) {
       if (!row.itemId) {
@@ -261,7 +250,7 @@ export default function NewInventoryMoveOrderPage() {
         return;
       }
 
-      const qty = Number(row.quantityTransferred);
+      const qty = Number(row.quantity);
       if (!Number.isFinite(qty) || qty <= 0) {
         toast.error("Transferred quantity must be a positive number");
         return;
@@ -275,51 +264,19 @@ export default function NewInventoryMoveOrderPage() {
 
       preparedItems.push({
         itemId: row.itemId,
-        itemName: item.name,
-        sku: item.sku,
-        quantityTransferred: qty,
+        quantity: qty,
       });
     }
 
-    const overdrawnItems = preparedItems
-      .map((line) => {
-        const item = itemMap.get(line.itemId);
-        if (!item) return null;
-
-        const available = availableForWarehouse(item, form.sourceWarehouseId);
-        if (line.quantityTransferred > available) {
-          return `${item.name} (${line.quantityTransferred} > ${available})`;
-        }
-
-        return null;
-      })
-      .filter(Boolean) as string[];
-
-    if (overdrawnItems.length > 0) {
-      const confirmed = window.confirm(
-        `Some lines exceed available stock in source warehouse: ${overdrawnItems.join(
-          ", ",
-        )}. Do you want to continue?`,
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
-
-    const assigneeById = salesPersons.find(
-      (person) => person._id === form.assigneeId,
-    );
-
     const payload: CreateMoveOrderInput = {
-      moveOrderNumber: form.moveOrderNumber.trim(),
-      moveDate: form.moveDate,
-      sourceWarehouseId: form.sourceWarehouseId,
-      destinationWarehouseId: form.destinationWarehouseId,
-      assigneeId: form.assigneeId || undefined,
-      assigneeName: form.assigneeName.trim() || assigneeById?.name || undefined,
-      internalNotes: form.internalNotes.trim() || undefined,
+      orderNumber: form.orderNumber.trim(),
+      date: form.date,
+      fromWarehouseId: form.fromWarehouseId,
+      toWarehouseId: form.toWarehouseId,
+      notes: form.notes.trim() || undefined,
+      referenceNumber: form.referenceNumber.trim() || undefined,
       status,
-      lineItems: preparedItems,
+      items: preparedItems,
     };
 
     setSaving(true);
@@ -331,7 +288,7 @@ export default function NewInventoryMoveOrderPage() {
     } catch {
       saveLocalMoveOrder(payload, status);
       toast.success(
-        "Move order saved locally. Backend endpoint can be connected later without UI changes.",
+        "Move order saved locally as fallback.",
       );
       router.push("/inventory/move-orders");
     } finally {
@@ -359,8 +316,7 @@ export default function NewInventoryMoveOrderPage() {
           <CardHeader className="pb-3">
             <CardTitle>Create Move Order</CardTitle>
             <CardDescription>
-              Transfer inventory between warehouses with complete, editable
-              fields.
+              Transfer inventory between warehouses.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -373,13 +329,13 @@ export default function NewInventoryMoveOrderPage() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-1.5">
-                <Label>Move Order#</Label>
+                <Label>Order#</Label>
                 <Input
-                  value={form.moveOrderNumber}
+                  value={form.orderNumber}
                   onChange={(e) =>
                     setForm((prev) => ({
                       ...prev,
-                      moveOrderNumber: e.target.value,
+                      orderNumber: e.target.value,
                     }))
                   }
                   placeholder="MO-YYYYMMDD-001"
@@ -390,45 +346,19 @@ export default function NewInventoryMoveOrderPage() {
                 <Label>Date</Label>
                 <Input
                   type="date"
-                  value={form.moveDate}
+                  value={form.date}
                   onChange={(e) =>
-                    setForm((prev) => ({ ...prev, moveDate: e.target.value }))
+                    setForm((prev) => ({ ...prev, date: e.target.value }))
                   }
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label>Assignee</Label>
-                <Select
-                  value={form.assigneeId}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, assigneeId: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {salesPersons.length === 0 ?
-                      <SelectItem value="__none" disabled>
-                        No users configured
-                      </SelectItem>
-                    : salesPersons.map((person) => (
-                        <SelectItem key={person._id} value={person._id}>
-                          {person.name}
-                        </SelectItem>
-                      ))
-                    }
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
                 <Label>Source Warehouse</Label>
                 <Select
-                  value={form.sourceWarehouseId}
+                  value={form.fromWarehouseId}
                   onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, sourceWarehouseId: value }))
+                    setForm((prev) => ({ ...prev, fromWarehouseId: value }))
                   }
                 >
                   <SelectTrigger>
@@ -452,11 +382,11 @@ export default function NewInventoryMoveOrderPage() {
               <div className="space-y-1.5">
                 <Label>Destination Warehouse</Label>
                 <Select
-                  value={form.destinationWarehouseId}
+                  value={form.toWarehouseId}
                   onValueChange={(value) =>
                     setForm((prev) => ({
                       ...prev,
-                      destinationWarehouseId: value,
+                      toWarehouseId: value,
                     }))
                   }
                 >
@@ -481,28 +411,27 @@ export default function NewInventoryMoveOrderPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Assignee Name (optional)</Label>
+                <Label>Reference Number (optional)</Label>
                 <Input
-                  value={form.assigneeName}
+                  value={form.referenceNumber}
                   onChange={(e) =>
                     setForm((prev) => ({
                       ...prev,
-                      assigneeName: e.target.value,
+                      referenceNumber: e.target.value,
                     }))
                   }
-                  placeholder="Type a custom assignee name"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label>Internal Notes</Label>
+              <Label>Notes</Label>
               <Textarea
-                value={form.internalNotes}
+                value={form.notes}
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
-                    internalNotes: e.target.value,
+                    notes: e.target.value,
                   }))
                 }
                 rows={2}
@@ -516,7 +445,7 @@ export default function NewInventoryMoveOrderPage() {
           <CardHeader className="pb-3">
             <CardTitle>Item Details</CardTitle>
             <CardDescription>
-              Add one or more items to transfer. All row fields are editable.
+              Add one or more items to transfer.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -539,7 +468,7 @@ export default function NewInventoryMoveOrderPage() {
                       selectedItem ?
                         availableForWarehouse(
                           selectedItem,
-                          form.sourceWarehouseId,
+                          form.fromWarehouseId,
                         )
                       : 0;
 
@@ -580,10 +509,10 @@ export default function NewInventoryMoveOrderPage() {
                             type="number"
                             min={0}
                             step="0.01"
-                            value={line.quantityTransferred}
+                            value={line.quantity}
                             onChange={(e) =>
                               updateLine(line.id, {
-                                quantityTransferred: e.target.value,
+                                quantity: e.target.value,
                               })
                             }
                             className="ml-auto w-32 text-right"
@@ -649,13 +578,13 @@ export default function NewInventoryMoveOrderPage() {
           </Button>
           <Button
             type="button"
-            onClick={() => void handleSave("Completed")}
+            onClick={() => void handleSave("Sent")}
             disabled={saving}
           >
             {saving ?
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             : null}
-            Save as Completed
+            Save and Send
           </Button>
         </div>
       </div>

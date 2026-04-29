@@ -48,8 +48,8 @@ function localId(): string {
 export function listLocalMoveOrders(): MoveOrder[] {
   return readRaw().sort(
     (a, b) =>
-      new Date(b.createdAt || b.moveDate).getTime() -
-      new Date(a.createdAt || a.moveDate).getTime(),
+      new Date(b.createdAt || b.date).getTime() -
+      new Date(a.createdAt || a.date).getTime(),
   );
 }
 
@@ -63,20 +63,17 @@ export function saveLocalMoveOrder(
   const created: MoveOrder = {
     _id: localId(),
     organizationId: "local",
-    moveOrderNumber: input.moveOrderNumber,
-    moveDate: input.moveDate,
-    sourceWarehouseId: input.sourceWarehouseId,
-    destinationWarehouseId: input.destinationWarehouseId,
-    assigneeId: input.assigneeId || null,
-    assigneeName: input.assigneeName,
-    internalNotes: input.internalNotes,
+    orderNumber: input.orderNumber,
+    date: input.date,
+    fromWarehouseId: input.fromWarehouseId,
+    toWarehouseId: input.toWarehouseId,
     status: statusOverride || input.status || "Draft",
-    lineItems: input.lineItems.map((row) => ({
+    items: input.items.map((row) => ({
       itemId: row.itemId,
-      itemName: row.itemName,
-      sku: row.sku,
-      quantityTransferred: Number(row.quantityTransferred || 0),
+      quantity: Number(row.quantity || 0),
     })),
+    referenceNumber: input.referenceNumber,
+    notes: input.notes,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
