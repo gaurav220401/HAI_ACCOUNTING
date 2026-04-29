@@ -86,6 +86,21 @@ export interface SendPurchaseOrderEmailOptions {
   rawBody?: boolean;
 }
 
+export interface SendQuoteEmailOptions {
+  organizationId: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  quoteNumber: string;
+  quoteTotal: number;
+  quoteDate: string;
+  expiryDate?: string;
+  customerName: string;
+  attachments?: EmailAttachment[];
+}
+
 function buildInvoiceHtml(opts: SendInvoiceEmailOptions): string {
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-IN", {
@@ -493,6 +508,137 @@ export async function sendSalesOrderEmail(
       subject: opts.subject,
       html: buildSalesOrderHtml(opts),
       attachments,
+    });
+  } catch (err: any) {
+    throw new Error(translateSmtpError(err));
+  }
+}
+
+// ─── Quote Email ─────────────────────────────────────────────────────
+
+function buildQuoteHtml(opts: SendQuoteEmailOptions): string {
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 2,
+    }).format(n);
+
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+
+  const bodyHtml = opts.body
+    ? `<p style="margin:0 0 16px;font-size:14px;color:#374151;">${opts.body.replace(/\n/g, "<br/>")}</p>`
+    : `<p>Dear ${opts.customerName},</p>
+       <p>Please find the quote details below.</p>`;
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quote ${opts.quoteNumber}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+          <tr>
+            <td style="background:#4b5563;padding:24px 32px;text-align:center;">
+              <h1 style="color:#fff;margin:0;font-size:20px;">Quote #${opts.quoteNumber}</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              ${bodyHtml}
+              <table width="100%" cellpadding="0" cellspacing="0"
+                style="margin-top:24px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb;overflow:hidden;">
+                <tr>
+                  <td style="padding:20px;text-align:center;">
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;">Quote Amount</div>
+                    <div style="font-size:28px;font-weight:800;color:#111827;margin:8px 0;">${fmt(opts.quoteTotal)}</div>
+                    <table width="240" cellpadding="4" cellspacing="0" align="center" style="font-size:12px;">
+                      <tr>
+                        <td style="color:#6b7280;">Quote #</td>
+                        <td align="right" style="font-weight:600;">${opts.quoteNumber}</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#6b7280;">Quote Date</td>
+                        <td align="right" style="font-weight:600;">${fmtDate(opts.quoteDate)}</td>
+                      </tr>
+                      ${
+                        opts.expiryDate ?
+                          `<tr>
+                        <td style="color:#6b7280;">Expiry Date</td>
+                        <td align="right" style="font-weight:600;">${fmtDate(opts.expiryDate)}</td>
+                      </tr>`
+                        : ""
+                      }
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f9fafb;padding:16px 32px;text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;">
+              This email was sent automatically by HAI Accounting.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+export async function sendQuoteEmail(
+  opts: SendQuoteEmailOptions,
+): Promise<void> {
+  const org = await Organization.findById(opts.organizationId).lean();
+  if (!org) throw new Error("Organization not found");
+
+  const smtp = org.smtpSettings;
+  if (!smtp?.host || !smtp?.user || !smtp?.pass) {
+    throw new Error(
+      "SMTP is not configured. Please set up your email settings in Settings → Email.",
+    );
+  }
+
+  const transporter: Transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port ?? 587,
+    secure: smtp.secure ?? false,
+    auth: {
+      user: smtp.user,
+      pass: smtp.pass,
+    },
+  });
+
+  const fromName = smtp.fromName || org.name;
+  const fromEmail = smtp.fromEmail || smtp.user;
+
+  try {
+    await transporter.sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to: opts.to.join(", "),
+      cc: opts.cc?.join(", "),
+      bcc: opts.bcc?.join(", "),
+      subject: opts.subject,
+      html: buildQuoteHtml(opts),
+      attachments: opts.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        path: a.path,
+        contentType: a.contentType,
+      })),
     });
   } catch (err: any) {
     throw new Error(translateSmtpError(err));

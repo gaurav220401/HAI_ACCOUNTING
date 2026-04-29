@@ -748,8 +748,10 @@ export interface IQuote extends Document {
   customerNotes: string;
   termsAndConditions: string;
   status: QuoteStatus;
+  placeOfSupply?: string;
   emailContacts: string[];
   attachments: string[];
+  invoiceId?: Types.ObjectId | null;
   isDeleted: boolean;
   deletedAt?: Date;
   createdBy: Types.ObjectId;
@@ -828,6 +830,7 @@ export interface IInvoice extends Document {
   status: InvoiceStatus;
   emailContacts: string[];
   attachments: string[];
+  quoteId?: Types.ObjectId | null;
   paymentReceived: boolean;
   isRecurring: boolean;
   recurringProfileId?: Types.ObjectId | null;

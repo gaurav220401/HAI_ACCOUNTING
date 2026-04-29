@@ -1,4 +1,4 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -61,8 +61,15 @@ export interface Quote {
   customerNotes: string;
   termsAndConditions: string;
   status: QuoteStatus;
+  placeOfSupply?: string;
   emailContacts: string[];
   attachments: string[];
+  activityLog?: {
+    timestamp: string;
+    userId: { _id: string; displayName: string; email: string } | null;
+    action: "created" | "updated" | "deleted" | "restored";
+    changes: Record<string, { before: any; after: any }>;
+  }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -88,6 +95,7 @@ export interface CreateQuoteInput {
   status?: "Draft" | "Sent";
   emailContacts?: string[];
   attachments?: string[];
+  placeOfSupply?: string;
 }
 
 export type UpdateQuoteInput = Partial<CreateQuoteInput>;
@@ -97,6 +105,15 @@ export interface QuoteListParams extends ListParams {
   customerId?: string;
 }
 
+export interface SendQuoteEmailInput {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  attachQuotePdf?: boolean;
+}
+
 // ─── API ────────────────────────────────────────────────────────────────
 
 export const quoteApi = {
@@ -104,6 +121,9 @@ export const quoteApi = {
     apiFetch<PaginatedResponse<Quote>>(`/quotes${buildQuery(params || {})}`),
 
   getById: (id: string) => apiFetch<{ data: Quote }>(`/quotes/${id}`),
+
+  downloadPdf: (id: string, preview = false) =>
+    apiFetchBlob(`/quotes/${id}/pdf${preview ? "?preview=true" : ""}`),
 
   create: (data: CreateQuoteInput) =>
     apiFetch<{ data: Quote }>("/quotes", {
@@ -123,6 +143,22 @@ export const quoteApi = {
   getNextNumber: () =>
     apiFetch<{ data: { quoteNumber: string } }>("/quotes/next-number"),
 
+  /** Send email with optional file attachments via multipart/form-data. */
+  sendEmailWithFiles: (id: string, data: SendQuoteEmailInput, files: File[]) => {
+    const form = new FormData();
+    form.append("to", JSON.stringify(data.to));
+    if (data.cc?.length) form.append("cc", JSON.stringify(data.cc));
+    if (data.bcc?.length) form.append("bcc", JSON.stringify(data.bcc));
+    form.append("subject", data.subject);
+    form.append("body", data.body ?? "");
+    form.append("attachQuotePdf", data.attachQuotePdf ? "true" : "false");
+    files.forEach((file) => form.append("files", file));
+    return apiFetch<{ data: Quote }>(`/quotes/${id}/send-email`, {
+      method: "POST",
+      body: form,
+    });
+  },
+
   // Status transitions
   send: (id: string) =>
     apiFetch<{ data: Quote }>(`/quotes/${id}/send`, { method: "POST" }),
@@ -132,4 +168,9 @@ export const quoteApi = {
 
   reject: (id: string) =>
     apiFetch<{ data: Quote }>(`/quotes/${id}/reject`, { method: "POST" }),
+
+  convertToInvoice: (id: string) =>
+    apiFetch<{ data: any }>(`/quotes/${id}/convert-to-invoice`, {
+      method: "POST",
+    }),
 };

@@ -9,6 +9,10 @@ import {
   ForbiddenError,
 } from "../utils/errors";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
+import { generateQuotePdf } from "../services/quote-pdf.service";
+import { sendQuoteEmail as sendQuoteEmailService } from "../services/email.service";
+import Organization from "../models/organization.model";
+import Invoice from "../models/invoice.model";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -48,6 +52,21 @@ async function normalizeQuoteItems(
       amount: afterDiscount + taxAmt,
     };
   });
+}
+
+/** Parse a field that may arrive as a JS array (JSON body) or a JSON string (FormData). */
+function parseStringArray(val: unknown): string[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return (val as string[]).filter(Boolean);
+  if (typeof val === "string") {
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [parsed];
+    } catch {
+      return [val];
+    }
+  }
+  return [];
 }
 
 /** Generate next quote number like QT-000001 */
@@ -134,7 +153,9 @@ export const getOne = asyncHandler(
       .populate("salesPersonId")
       .populate("items.itemId", "name sku")
       .populate("items.taxId", "name rate")
-      .populate("taxId", "name rate");
+      .populate("taxId", "name rate")
+      .select("+activityLog")
+      .populate("activityLog.userId", "displayName email");
 
     if (!quote) throw new NotFoundError("Quote");
     res.json({ success: true, data: quote });
@@ -344,6 +365,274 @@ export const sendQuote = asyncHandler(
     attachUser(quote, req);
     await quote.save();
     res.json({ success: true, data: quote, message: "Quote marked as sent" });
+  },
+);
+
+/** GET /api/quotes/:id/pdf */
+export const downloadPdf = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const quote = await Quote.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    })
+      .populate("customerId")
+      .populate("salesPersonId", "name")
+      .populate("items.itemId", "name sku")
+      .populate("items.taxId", "name rate")
+      .lean();
+
+    if (!quote) throw new NotFoundError("Quote");
+
+    const org = await Organization.findById(oid).lean();
+    if (!org) throw new NotFoundError("Organization");
+
+    const customer = quote.customerId as any;
+    const customerName =
+      (typeof customer === "object" &&
+        (customer?.displayName || customer?.companyName)) ||
+      "Customer";
+
+    const pdfBuffer = await generateQuotePdf({
+      orgName: org.name,
+      orgAddress: org.address as any,
+      orgEmail:
+        org.smtpSettings?.fromEmail || org.smtpSettings?.user || undefined,
+      orgTaxId: org.taxId,
+
+      customerName,
+      customerAddress: [
+        customer?.billingAddress?.street,
+        customer?.billingAddress?.city,
+        customer?.billingAddress?.state,
+        customer?.billingAddress?.zip,
+        customer?.billingAddress?.country,
+      ]
+        .filter(Boolean)
+        .join(", "),
+      customerEmail: customer?.email,
+
+      quoteNumber: quote.quoteNumber,
+      quoteDate: quote.quoteDate.toISOString(),
+      expiryDate: quote.expiryDate ? quote.expiryDate.toISOString() : undefined,
+      salesPersonName: (quote.salesPersonId as any)?.name,
+      subject: quote.subject,
+
+      items: (quote.items as any[]).map((item) => ({
+        name: item.name || (item.itemId as any)?.name || "Item",
+        description: item.description,
+        hsnSacCode: item.hsnSacCode,
+        quantity: item.quantity,
+        rate: item.rate,
+        discountPercent: item.discountPercent,
+        discountAmount: item.discountAmount,
+        taxPercent: item.taxPercent,
+        taxAmount: item.taxAmount,
+        amount: item.amount,
+      })),
+
+      subTotal: quote.subTotal,
+      discountType: quote.discountType,
+      discountValue: quote.discountValue,
+      discountAmount: quote.discountAmount,
+      taxType: quote.taxType,
+      taxAmount: quote.taxAmount,
+      adjustmentLabel: quote.adjustmentLabel,
+      adjustmentAmount: quote.adjustmentAmount,
+      total: quote.total,
+
+      customerNotes: quote.customerNotes,
+      termsAndConditions: quote.termsAndConditions,
+      currencySymbol: org?.baseCurrency === "INR" ? "₹" : org?.baseCurrency,
+      placeOfSupply: (quote as any).placeOfSupply || (quote.customerId as any)?.billingAddress?.state,
+      isIntraState: true, // Default for split CGST/SGST view as per image
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=Quote-${quote.quoteNumber}.pdf`,
+    );
+    res.send(pdfBuffer);
+  },
+);
+
+/** POST /api/quotes/:id/send-email */
+export const sendQuoteEmail = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const quote = await Quote.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    }).populate("customerId");
+
+    if (!quote) throw new NotFoundError("Quote");
+
+    const to = parseStringArray(req.body.to);
+    const cc = parseStringArray(req.body.cc);
+    const bcc = parseStringArray(req.body.bcc);
+    const subject = req.body.subject || `Quote ${quote.quoteNumber}`;
+    const body = req.body.body || "";
+    const attachQuotePdf =
+      req.body.attachQuotePdf === true || req.body.attachQuotePdf === "true";
+
+    if (to.length === 0) {
+      throw new ValidationError("At least one recipient (to) is required");
+    }
+
+    const attachments: any[] = [];
+    if (attachQuotePdf) {
+      const org = await Organization.findById(oid).lean();
+      const customer = quote.customerId as any;
+      const customerName =
+        (typeof customer === "object" &&
+          (customer?.displayName || customer?.companyName)) ||
+        "Customer";
+
+      const pdfBuffer = await generateQuotePdf({
+        orgName: org?.name || "HAI",
+        orgAddress: org?.address as any,
+        orgEmail: org?.smtpSettings?.fromEmail || org?.smtpSettings?.user || undefined,
+        orgTaxId: org?.taxId,
+        customerName: (quote.customerId as any)?.displayName || "Customer",
+        customerAddress: [
+          (quote.customerId as any)?.billingAddress?.street,
+          (quote.customerId as any)?.billingAddress?.city,
+          (quote.customerId as any)?.billingAddress?.state,
+          (quote.customerId as any)?.billingAddress?.zip,
+        ].filter(Boolean).join(", "),
+        customerEmail: (quote.customerId as any)?.email,
+
+        quoteNumber: quote.quoteNumber,
+        quoteDate: quote.quoteDate.toISOString(),
+        expiryDate: quote.expiryDate ? quote.expiryDate.toISOString() : undefined,
+        items: (quote.items as any[]).map((item) => ({
+          name: item.name || "Item",
+          description: item.description,
+          hsnSacCode: item.hsnSacCode,
+          quantity: item.quantity,
+          rate: item.rate,
+          taxPercent: item.taxPercent,
+          taxAmount: item.taxAmount,
+          amount: item.amount,
+        })),
+
+        subTotal: quote.subTotal,
+        discountType: quote.discountType,
+        discountValue: quote.discountValue,
+        discountAmount: quote.discountAmount,
+        taxType: quote.taxType,
+        taxAmount: quote.taxAmount,
+        adjustmentLabel: quote.adjustmentLabel,
+        adjustmentAmount: quote.adjustmentAmount,
+        total: quote.total,
+
+        customerNotes: quote.customerNotes,
+        termsAndConditions: quote.termsAndConditions,
+        currencySymbol: org?.baseCurrency === "INR" ? "₹" : org?.baseCurrency,
+        placeOfSupply: quote.placeOfSupply || (quote.customerId as any)?.billingAddress?.state,
+        isIntraState: true,
+      });
+
+      attachments.push({
+        filename: `Quote-${quote.quoteNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      });
+    }
+
+    // Support user uploaded files
+    const uploadedFiles =
+      (req.files as Express.Multer.File[] | undefined) ?? [];
+    uploadedFiles.forEach((f) => {
+      attachments.push({
+        filename: f.originalname,
+        content: f.buffer,
+        contentType: f.mimetype,
+      });
+    });
+
+    await sendQuoteEmailService({
+      organizationId: oid.toString(),
+      to,
+      cc,
+      bcc,
+      subject,
+      body,
+      quoteNumber: quote.quoteNumber,
+      quoteTotal: quote.total,
+      quoteDate: quote.quoteDate.toISOString(),
+      expiryDate: quote.expiryDate ? quote.expiryDate.toISOString() : undefined,
+      customerName: (quote.customerId as any)?.displayName || "Customer",
+      attachments: attachments.length > 0 ? attachments : undefined,
+    });
+
+    quote.status = "Sent";
+    attachUser(quote, req);
+    await quote.save();
+
+    res.json({ success: true, message: "Quote emailed successfully" });
+  },
+);
+
+/** POST /api/quotes/:id/convert-to-invoice */
+export const convertToInvoice = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const quote = await Quote.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    });
+
+    if (!quote) throw new NotFoundError("Quote");
+
+    // Check if already converted? (optional: you could add a field `invoiceId` to Quote)
+
+    const InvoiceModel = require("../models/invoice.model").default;
+    const nextNum = await require("./invoice.controller").nextInvoiceNumber(
+      oid,
+    );
+
+    const invoice = new InvoiceModel({
+      organizationId: oid,
+      invoiceNumber: nextNum,
+      customerId: quote.customerId,
+      invoiceDate: new Date(),
+      dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // Default 15 days
+      subject: quote.subject,
+      items: quote.items,
+      subTotal: quote.subTotal,
+      discountType: quote.discountType,
+      discountValue: quote.discountValue,
+      discountAmount: quote.discountAmount,
+      taxType: quote.taxType,
+      taxId: quote.taxId,
+      taxAmount: quote.taxAmount,
+      adjustmentLabel: quote.adjustmentLabel,
+      adjustmentAmount: quote.adjustmentAmount,
+      total: quote.total,
+      balanceDue: quote.total,
+      customerNotes: quote.customerNotes,
+      termsAndConditions: quote.termsAndConditions,
+      status: "Draft",
+      quoteId: quote._id,
+    });
+
+    attachUser(invoice, req);
+    await invoice.save();
+
+    quote.status = "Invoiced"; // Mark as Invoiced specifically
+    quote.invoiceId = invoice._id;
+    await quote.save();
+
+    res.status(201).json({
+      success: true,
+      data: invoice,
+      message: "Quote converted to invoice",
+    });
   },
 );
 

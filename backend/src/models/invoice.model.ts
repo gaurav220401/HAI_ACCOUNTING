@@ -93,6 +93,7 @@ const invoiceSchema = new Schema<IInvoice>(
     },
     emailContacts: [{ type: String }],
     attachments: [{ type: String }],
+    quoteId: { type: Schema.Types.ObjectId, ref: "Quote", default: null },
     paymentReceived: { type: Boolean, default: false },
     isRecurring: { type: Boolean, default: false },
     recurringProfileId: {

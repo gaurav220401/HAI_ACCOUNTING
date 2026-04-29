@@ -2,7 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, Trash2, Settings } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Plus,
+  Trash2,
+  Settings,
+  Mail,
+} from "lucide-react";
+import { toast } from "sonner";
+import { SendEmailModal } from "../../_components/send-email-modal";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -121,6 +130,8 @@ export default function EditQuotePage() {
 
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Redirects
   useEffect(() => {
@@ -283,9 +294,9 @@ export default function EditQuotePage() {
   const total = subTotal - discountAmount + taxSignedAmount + adjustmentAmount;
 
   // Submit
-  async function handleSave() {
+  async function handleSave(status?: string) {
     if (!customerId) {
-      alert("Please select a customer");
+      toast.error("Please select a customer");
       return;
     }
     setSaving(true);
@@ -321,13 +332,39 @@ export default function EditQuotePage() {
         customerNotes,
         termsAndConditions,
       };
+
+      if (status) payload.status = status as any;
+
       await quoteApi.update(id, payload);
+      
+      if (status === "Sent") {
+        setShowEmailModal(true);
+        setSaving(false);
+        return;
+      }
+
+      toast.success("Quote updated successfully");
       router.push(`/sales/quotes/${id}`);
     } catch (error: unknown) {
-      alert(getErrorMessage(error, "Failed to save quote"));
+      toast.error(getErrorMessage(error, "Failed to save quote"));
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSendEmail(data: any) {
+    await quoteApi.sendEmailWithFiles(
+      id,
+      {
+        to: data.to,
+        cc: data.cc,
+        bcc: data.bcc,
+        subject: data.subject,
+        body: data.body,
+        attachQuotePdf: data.attachQuotePdf,
+      },
+      data.files || [],
+    );
   }
 
   if (loading || orgLoading || !firebaseUser || fetching) {
@@ -470,6 +507,7 @@ export default function EditQuotePage() {
                     <TableHead className="w-25 text-right">
                       DISCOUNT %
                     </TableHead>
+                    <TableHead className="w-30 text-right">TAX</TableHead>
                     <TableHead className="w-30 text-right">AMOUNT</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
@@ -563,6 +601,36 @@ export default function EditQuotePage() {
                               )
                             }
                           />
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={line.taxId || "__none"}
+                            onValueChange={(v) => {
+                              const tax = taxes.find((t) => t._id === v);
+                              updateLine(
+                                line.key,
+                                "taxId",
+                                v === "__none" ? "" : v,
+                              );
+                              updateLine(
+                                line.key,
+                                "taxPercent",
+                                tax ? tax.rate : 0,
+                              );
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-right text-sm">
+                              <SelectValue placeholder="Select Tax" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none">None</SelectItem>
+                              {taxes.map((t) => (
+                                <SelectItem key={t._id} value={t._id}>
+                                  {t.name} ({t.rate}%)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
                           {amount.toFixed(2)}
@@ -738,9 +806,17 @@ export default function EditQuotePage() {
 
           {/* ═══ Actions ═══ */}
           <div className="flex items-center gap-3 pb-8">
-            <Button disabled={saving} onClick={handleSave}>
+            <Button
+              variant="outline"
+              disabled={saving}
+              onClick={() => handleSave()}
+            >
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Save
+            </Button>
+            <Button disabled={saving} onClick={() => handleSave("Sent")}>
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Save and Send
             </Button>
             <Button
               variant="ghost"
@@ -750,6 +826,17 @@ export default function EditQuotePage() {
             </Button>
           </div>
         </div>
+
+        <SendEmailModal
+          isOpen={showEmailModal}
+          onClose={() => {
+            setShowEmailModal(false);
+            router.push(`/sales/quotes/${id}`);
+          }}
+          quoteNumber={quoteNumber}
+          defaultRecipient={selectedCustomer?.email || ""}
+          onSend={handleSendEmail}
+        />
       </SidebarInset>
     </SidebarProvider>
   );

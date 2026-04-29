@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, Trash2, Settings } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2, Settings, X, Upload, Mail } from "lucide-react";
+import { SendEmailModal } from "../_components/send-email-modal";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -27,6 +28,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
@@ -34,6 +43,7 @@ import {
   quoteApi,
   type CreateQuoteInput,
   type QuoteItem,
+  type SendQuoteEmailInput,
 } from "@/lib/api/quotes";
 import { settingsApi, type SalesPerson, type Tax } from "@/lib/api/settings";
 
@@ -116,6 +126,11 @@ export default function NewQuotePage() {
   const [termsAndConditions, setTermsAndConditions] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [placeOfSupply, setPlaceOfSupply] = useState("");
 
   // Load master data
   useEffect(() => {
@@ -225,6 +240,12 @@ export default function NewQuotePage() {
     });
   }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
+  useEffect(() => {
+    if (selectedCustomer?.billingAddress?.state) {
+      setPlaceOfSupply(selectedCustomer.billingAddress.state);
+    }
+  }, [customerId, selectedCustomer]);
+
   // ─── Calculations ────────────────────────────────────────────────
 
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
@@ -287,14 +308,43 @@ export default function NewQuotePage() {
         customerNotes,
         termsAndConditions,
         status,
+        placeOfSupply,
       };
-      await quoteApi.create(payload);
+      const res = await quoteApi.create(payload);
+      
+      if (status === "Sent") {
+        setSavedQuoteId(res.data._id);
+        setShowEmailModal(true);
+        setSaving(false);
+        return;
+      }
+
+      toast.success("Quote saved successfully");
       router.push("/sales/quotes");
     } catch (e: any) {
-      alert(e.message || "Failed to save quote");
+      toast.error(e.message || "Failed to save quote");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSendEmail(data: any) {
+    if (!savedQuoteId) {
+      toast.error("Quote was not saved — please close and try again.");
+      return;
+    }
+    await quoteApi.sendEmailWithFiles(
+      savedQuoteId,
+      {
+        to: data.to,
+        cc: data.cc,
+        bcc: data.bcc,
+        subject: data.subject,
+        body: data.body,
+        attachQuotePdf: data.attachQuotePdf,
+      },
+      data.files || [],
+    );
   }
 
   if (loading || orgLoading || !firebaseUser) {
@@ -453,6 +503,15 @@ export default function NewQuotePage() {
               </Select>
             </div>
 
+            <div className="space-y-1.5">
+              <Label>Place Of Supply</Label>
+              <Input
+                placeholder="e.g. Chhattisgarh (22)"
+                value={placeOfSupply}
+                onChange={(e) => setPlaceOfSupply(e.target.value)}
+              />
+            </div>
+
             {/* Spacer */}
             <div />
           </div>
@@ -490,6 +549,9 @@ export default function NewQuotePage() {
                     <TableHead className="w-[120px] text-right">RATE</TableHead>
                     <TableHead className="w-[100px] text-right">
                       DISCOUNT %
+                    </TableHead>
+                    <TableHead className="w-[150px] text-right">
+                      TAX
                     </TableHead>
                     <TableHead className="w-[120px] text-right">
                       AMOUNT
@@ -587,6 +649,28 @@ export default function NewQuotePage() {
                               )
                             }
                           />
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={line.taxId || "__none"}
+                            onValueChange={(v) => {
+                              const tax = taxes.find((t) => t._id === v);
+                              updateLine(line.key, "taxId", v === "__none" ? "" : v);
+                              updateLine(line.key, "taxPercent", tax ? tax.rate : 0);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-right text-sm">
+                              <SelectValue placeholder="Select Tax" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none">None</SelectItem>
+                              {taxes.map((t) => (
+                                <SelectItem key={t._id} value={t._id}>
+                                  {t.name} ({t.rate}%)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
                           {amount.toFixed(2)}
@@ -795,7 +879,19 @@ export default function NewQuotePage() {
             </Button>
           </div>
         </div>
+        
+        <SendEmailModal
+          isOpen={showEmailModal}
+          onClose={() => {
+            setShowEmailModal(false);
+            router.push(`/sales/quotes/${savedQuoteId}`);
+          }}
+          quoteNumber={quoteNumber}
+          defaultRecipient={selectedCustomer?.email || ""}
+          onSend={handleSendEmail}
+        />
       </SidebarInset>
     </SidebarProvider>
   );
 }
+

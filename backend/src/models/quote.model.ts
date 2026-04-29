@@ -1,6 +1,6 @@
 import { Schema, model } from "mongoose";
 import { IQuote } from "../types";
-import { auditTrailPlugin, softDeletePlugin } from "../plugins";
+import { auditTrailPlugin, softDeletePlugin, activityLogPlugin } from "../plugins";
 
 const quoteItemSchema = new Schema(
   {
@@ -69,15 +69,18 @@ const quoteSchema = new Schema<IQuote>(
       enum: ["Draft", "Sent", "Accepted", "Rejected", "Invoiced", "Expired"],
       default: "Draft",
     },
+    placeOfSupply: { type: String, default: "" },
     // Email communications
     emailContacts: [{ type: String }],
     attachments: [{ type: String }],
+    invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", default: null },
   },
   { timestamps: true },
 );
 
 quoteSchema.plugin(auditTrailPlugin);
 quoteSchema.plugin(softDeletePlugin);
+quoteSchema.plugin(activityLogPlugin);
 quoteSchema.index({ organizationId: 1, quoteNumber: 1 }, { unique: true });
 quoteSchema.index({ organizationId: 1, customerId: 1 });
 quoteSchema.index({ organizationId: 1, status: 1 });
