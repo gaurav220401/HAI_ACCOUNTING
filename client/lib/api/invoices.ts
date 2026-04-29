@@ -214,4 +214,13 @@ export const invoiceApi = {
 
   voidInvoice: (id: string) =>
     apiFetch<{ data: Invoice }>(`/invoices/${id}/void`, { method: "POST" }),
+
+  clone: (id: string) =>
+    apiFetch<{ data: Invoice }>(`/invoices/${id}/clone`, { method: "POST" }),
+
+  convertToRecurring: (id: string) =>
+    apiFetch<{ data: any }>(`/invoices/${id}/recurring`, { method: "POST" }),
+
+  getJournalEntries: (id: string) =>
+    apiFetch<{ data: any[] }>(`/invoices/${id}/journal-entries`),
 };

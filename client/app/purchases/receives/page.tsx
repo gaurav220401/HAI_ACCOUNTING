@@ -92,13 +92,14 @@ export default function PurchaseReceivesPage() {
           </div>
 
           <div className="rounded border overflow-hidden bg-white">
-            <div className="grid text-xs uppercase tracking-wide text-muted-foreground bg-muted/30" style={{ gridTemplateColumns: "180px 180px 1fr 140px 140px 120px" }}>
+            <div className="grid text-xs uppercase tracking-wide text-muted-foreground bg-muted/30" style={{ gridTemplateColumns: "150px 150px 1fr 120px 100px 100px 120px" }}>
               <div className="px-3 py-2">Receive #</div>
               <div className="px-3 py-2">Order #</div>
               <div className="px-3 py-2">Vendor</div>
-              <div className="px-3 py-2">Received Date</div>
-              <div className="px-3 py-2 text-right">Total Qty</div>
-              <div className="px-3 py-2">Status</div>
+              <div className="px-3 py-2">Date</div>
+              <div className="px-3 py-2 text-right">Qty</div>
+              <div className="px-3 py-2 text-center">Putaway</div>
+              <div className="px-3 py-2 text-right">Actions</div>
             </div>
 
             {fetching ? (
@@ -110,14 +111,32 @@ export default function PurchaseReceivesPage() {
                 No purchase receives found.
               </div>
             ) : (
-              filtered.map((row) => (
-                <div key={row._id} className="grid border-t text-sm hover:bg-muted/20" style={{ gridTemplateColumns: "180px 180px 1fr 140px 140px 120px" }}>
+              filtered.map((row: any) => (
+                <div key={row._id} className="grid border-t text-sm hover:bg-muted/20" style={{ gridTemplateColumns: "150px 150px 1fr 120px 100px 100px 120px" }}>
                   <div className="px-3 py-2.5 font-medium text-primary">{row.purchaseReceiveNumber}</div>
                   <div className="px-3 py-2.5">{row.purchaseOrderNumber}</div>
                   <div className="px-3 py-2.5">{getName(row.vendorId) || "-"}</div>
                   <div className="px-3 py-2.5">{new Date(row.receivedDate).toLocaleDateString("en-IN")}</div>
                   <div className="px-3 py-2.5 text-right">{row.totalQuantityReceived}</div>
-                  <div className="px-3 py-2.5">{row.status}</div>
+                  <div className="px-3 py-2.5 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      row.putawayStatus === "Completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                    }`}>
+                      {row.putawayStatus || "Pending"}
+                    </span>
+                  </div>
+                  <div className="px-3 py-2.5 text-right">
+                    {row.status === "Received" && row.putawayStatus !== "Completed" && (
+                      <Button 
+                        size="xs" 
+                        variant="outline" 
+                        className="h-7 text-blue-600 border-blue-200 hover:bg-blue-50"
+                        onClick={() => router.push(`/inventory/putaways/new?receiveId=${row._id}`)}
+                      >
+                        Putaway
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))
             )}

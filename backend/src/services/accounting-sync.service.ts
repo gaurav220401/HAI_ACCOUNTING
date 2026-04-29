@@ -160,9 +160,83 @@ export async function applyStockDeltas(params: {
     if (req) attachUser(item, req);
 
     if (session) await item.save({ session });
+
     else await item.save();
   }
 }
+
+export async function applyCommittedStockDeltas(params: {
+  organizationId: Types.ObjectId | string;
+  deltas: StockDeltaMap;
+  req?: AuthenticatedRequest;
+  session?: ClientSession;
+}): Promise<void> {
+  const { organizationId, deltas, req, session } = params;
+  const oid = toObjectId(organizationId);
+
+  for (const [itemId, delta] of Object.entries(deltas || {})) {
+    if (Math.abs(delta) < 0.0001 || !Types.ObjectId.isValid(itemId)) continue;
+
+    const query = Item.findOne({
+      _id: itemId,
+      organizationId: oid,
+      isDeleted: false,
+      inventoryTracked: true,
+    });
+    if (session) query.session(session);
+
+    const item = await query;
+    if (!item) continue;
+
+    const currentCommitted = normalizeQuantity((item as any).committedStock);
+    (item as any).committedStock = round2(Math.max(0, currentCommitted + delta));
+
+    if (req) attachUser(item, req);
+
+    if (session) await item.save({ session });
+    else await item.save();
+  }
+}
+
+/**
+ * Decreases stock on hand and committed stock simultaneously. 
+ * Used during shipments or invoicing from a Sales Order.
+ */
+export async function applyStockAndCommitmentDeltas(params: {
+  organizationId: Types.ObjectId | string;
+  deltas: StockDeltaMap; // These should be negative for decreases
+  req?: AuthenticatedRequest;
+  session?: ClientSession;
+}): Promise<void> {
+  const { organizationId, deltas, req, session } = params;
+  const oid = toObjectId(organizationId);
+
+  for (const [itemId, delta] of Object.entries(deltas || {})) {
+    if (Math.abs(delta) < 0.0001 || !Types.ObjectId.isValid(itemId)) continue;
+
+    const query = Item.findOne({
+      _id: itemId,
+      organizationId: oid,
+      isDeleted: false,
+      inventoryTracked: true,
+    });
+    if (session) query.session(session);
+
+    const item = await query;
+    if (!item) continue;
+
+    // Decrease both
+    item.stockOnHand = round2(normalizeQuantity(item.stockOnHand) + delta);
+    const currentCommitted = normalizeQuantity((item as any).committedStock);
+    (item as any).committedStock = round2(Math.max(0, currentCommitted + delta));
+
+    if (req) attachUser(item, req);
+
+    if (session) await item.save({ session });
+    else await item.save();
+  }
+}
+
 
 export async function applyInventoryValueDeltas(params: {
   organizationId: Types.ObjectId | string;

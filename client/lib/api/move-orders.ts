@@ -1,4 +1,13 @@
 import { apiFetch, buildQuery } from "./client";
+<<<<<<< HEAD
+import type { PaginatedResponse, ListParams } from "./client";
+
+export type MoveOrderStatus = "Draft" | "Sent" | "In Transit" | "Received" | "Cancelled";
+
+export interface MoveOrderLine {
+  itemId: string | { _id: string; name: string; sku?: string };
+  quantity: number;
+=======
 import type { ListParams, PaginatedResponse } from "./client";
 
 export type MoveOrderStatus = "Draft" | "Completed" | "Cancelled";
@@ -19,11 +28,22 @@ export interface MoveOrderLineItem {
   itemName?: string;
   sku?: string;
   quantityTransferred: number;
+>>>>>>> suraj
 }
 
 export interface MoveOrder {
   _id: string;
   organizationId: string;
+<<<<<<< HEAD
+  orderNumber: string;
+  date: string;
+  fromWarehouseId: string | { _id: string; name: string };
+  toWarehouseId: string | { _id: string; name: string };
+  status: MoveOrderStatus;
+  items: MoveOrderLine[];
+  referenceNumber?: string;
+  notes?: string;
+=======
   moveOrderNumber: string;
   moveDate: string;
   sourceWarehouseId: MoveOrderWarehouseRef | string;
@@ -33,10 +53,30 @@ export interface MoveOrder {
   internalNotes?: string;
   status: MoveOrderStatus;
   lineItems: MoveOrderLineItem[];
+>>>>>>> suraj
   createdAt: string;
   updatedAt: string;
 }
 
+<<<<<<< HEAD
+export interface CreateMoveOrderInput {
+  orderNumber: string;
+  date: string;
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  status?: MoveOrderStatus;
+  items: Array<{ itemId: string; quantity: number }>;
+  referenceNumber?: string;
+  notes?: string;
+}
+
+export const moveOrderApi = {
+  list: (params?: ListParams) =>
+    apiFetch<PaginatedResponse<MoveOrder>>(`/move-orders${buildQuery(params || {})}`),
+
+  getById: (id: string) =>
+    apiFetch<{ data: MoveOrder }>(`/move-orders/${id}`),
+=======
 export interface CreateMoveOrderLineItemInput {
   itemId: string;
   itemName?: string;
@@ -71,6 +111,7 @@ export const moveOrderApi = {
     ),
 
   getById: (id: string) => apiFetch<{ data: MoveOrder }>(`/move-orders/${id}`),
+>>>>>>> suraj
 
   create: (data: CreateMoveOrderInput) =>
     apiFetch<{ data: MoveOrder }>("/move-orders", {
@@ -78,14 +119,29 @@ export const moveOrderApi = {
       body: JSON.stringify(data),
     }),
 
+<<<<<<< HEAD
+  update: (id: string, data: Partial<CreateMoveOrderInput>) =>
+=======
   update: (id: string, data: UpdateMoveOrderInput) =>
+>>>>>>> suraj
     apiFetch<{ data: MoveOrder }>(`/move-orders/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
 
+<<<<<<< HEAD
+  updateStatus: (id: string, status: MoveOrderStatus) =>
+    apiFetch<{ data: MoveOrder }>(`/move-orders/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+
+  remove: (id: string) =>
+    apiFetch<{ success: boolean }>(`/move-orders/${id}`, { method: "DELETE" }),
+=======
   remove: (id: string) =>
     apiFetch<{ success: boolean }>(`/move-orders/${id}`, {
       method: "DELETE",
     }),
+>>>>>>> suraj
 };

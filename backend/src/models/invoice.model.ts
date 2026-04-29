@@ -68,7 +68,10 @@ const invoiceSchema = new Schema<IInvoice>(
       default: "none",
     },
     taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
+    tdsId: { type: Schema.Types.ObjectId, ref: "TdsTax", default: null },
+    tcsId: { type: Schema.Types.ObjectId, ref: "TcsTax", default: null },
     taxAmount: { type: Number, default: 0 },
+    tcsAmount: { type: Number, default: 0 },
     adjustmentLabel: { type: String, default: "Adjustment" },
     adjustmentAmount: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
@@ -90,6 +93,7 @@ const invoiceSchema = new Schema<IInvoice>(
     },
     emailContacts: [{ type: String }],
     attachments: [{ type: String }],
+    quoteId: { type: Schema.Types.ObjectId, ref: "Quote", default: null },
     paymentReceived: { type: Boolean, default: false },
     isRecurring: { type: Boolean, default: false },
     recurringProfileId: {

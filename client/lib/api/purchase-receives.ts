@@ -5,7 +5,7 @@ export type PurchaseReceiveStatus = "Draft" | "Received";
 
 export interface PurchaseReceiveLineItem {
   purchaseOrderLineItemId?: string | null;
-  itemId?: string | null;
+  itemId?: any | null;
   name: string;
   description?: string;
   quantityToReceive: number;
@@ -26,6 +26,7 @@ export interface PurchaseReceive {
   lineItems: PurchaseReceiveLineItem[];
   totalQuantityReceived: number;
   status: PurchaseReceiveStatus;
+  putawayStatus?: "Pending" | "Partially Putaway" | "Completed";
   linkedBillIds?: any[];
   createdAt: string;
   updatedAt: string;

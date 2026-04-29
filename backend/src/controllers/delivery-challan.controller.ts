@@ -5,6 +5,7 @@ import SalesOrder from "../models/sales-order.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
+import { syncSalesOrderStatus } from "../services/status-sync.service";
 import {
   ForbiddenError,
   NotFoundError,
@@ -121,23 +122,13 @@ async function nextInvoiceNumber(organizationId: any): Promise<string> {
 async function syncLinkedSalesOrderStatus(params: {
   organizationId: any;
   salesOrderNumber: string;
-  status: "INVOICED" | "APPROVED";
   req: AuthenticatedRequest;
 }) {
-  if (!params.salesOrderNumber) return;
-
-  const order = await SalesOrder.findOne({
+  await syncSalesOrderStatus({
     organizationId: params.organizationId,
     salesOrderNumber: params.salesOrderNumber,
-    isDeleted: false,
-  } as any);
-
-  if (!order) return;
-  if ((order as any).status === params.status) return;
-
-  (order as any).status = params.status;
-  attachUser(order as any, params.req);
-  await order.save();
+    req: params.req,
+  });
 }
 
 // ─── List Delivery Challans ────────────────────────────────────────────
@@ -266,6 +257,14 @@ export const create = asyncHandler(
     attachUser(challan, req);
     await challan.save();
 
+    if (challan.status === "Delivered") {
+       await syncLinkedSalesOrderStatus({
+         organizationId: oid,
+         salesOrderNumber: challan.salesOrderNumber || "",
+         req,
+       });
+    }
+
     res.status(201).json({ success: true, data: challan });
   },
 );
@@ -351,6 +350,12 @@ export const update = asyncHandler(
     attachUser(challan, req);
     await challan.save();
 
+    await syncLinkedSalesOrderStatus({
+      organizationId: challan.organizationId,
+      salesOrderNumber: challan.salesOrderNumber || "",
+      req,
+    });
+
     res.json({ success: true, data: challan });
   },
 );
@@ -415,6 +420,13 @@ export const markAsDelivered = asyncHandler(
     challan.status = "Delivered";
     attachUser(challan, req);
     await challan.save();
+
+    await syncLinkedSalesOrderStatus({
+      organizationId: challan.organizationId,
+      salesOrderNumber: (challan as any).salesOrderNumber,
+      req,
+    });
+
     res.json({
       success: true,
       data: challan,
@@ -599,7 +611,6 @@ export const convertToInvoice = asyncHandler(
     await syncLinkedSalesOrderStatus({
       organizationId: oid,
       salesOrderNumber,
-      status: "INVOICED",
       req,
     });
 

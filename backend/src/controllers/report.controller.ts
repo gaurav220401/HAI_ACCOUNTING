@@ -1,4 +1,4 @@
-﻿import { Response } from "express";
+import { Response } from "express";
 import { Types } from "mongoose";
 import Account from "../models/account.model";
 import Bill from "../models/bill.model";
@@ -9,6 +9,7 @@ import Invoice from "../models/invoice.model";
 import InventoryAdjustment from "../models/inventory-adjustment.model";
 import Item from "../models/item.model";
 import PaymentMade from "../models/payment-made.model";
+import PaymentInvoiceMap from "../models/payment-invoice-map.model";
 import PaymentReceived from "../models/payment-received.model";
 import PurchaseOrder from "../models/purchase-order.model";
 import SalesOrder from "../models/sales-order.model";
@@ -2435,7 +2436,7 @@ export const salesByCustomer = asyncHandler(async (req: AuthenticatedRequest, re
         _id: "$customerId",
         invoiceCount: { $sum: 1 },
         totalSales: { $sum: { $ifNull: ["$total", 0] } },
-        totalWithTax: { $sum: { $add: [{ $ifNull: ["$total", 0] }, { $ifNull: ["$taxAmount", 0] }] } },
+        totalWithTax: { $sum: { $ifNull: ["$total", 0] } },
       },
     },
     { $sort: { totalSales: -1 } },
@@ -2526,21 +2527,46 @@ export const paymentsReceivedReport = asyncHandler(async (req: AuthenticatedRequ
     .sort({ payment_date: -1 })
     .lean();
 
-  const rows = payments.map((p: any) => ({
-    paymentId: String(p._id),
-    paymentNumber: p.payment_number,
-    paymentDate: p.payment_date,
-    customerName: p.customer_id?.displayName || p.customer_id?.companyName || "Unknown",
-    paymentMode: p.payment_mode,
-    totalReceived: round2(toNum(p.total_amount_received)),
-    usedForInvoices: round2(toNum(p.amount_used_for_invoices)),
-    excess: round2(toNum(p.amount_in_excess)),
-    status: p.status,
-  }));
+  const paymentIds = payments.map((payment: any) => payment._id).filter(Boolean);
+  const applications = paymentIds.length > 0
+    ? await PaymentInvoiceMap.find({
+        organization_id: organizationId,
+        payment_id: { $in: paymentIds },
+        is_deleted: false,
+      })
+        .populate("invoice_id", "invoiceNumber invoiceDate total balanceDue status")
+        .lean()
+    : [];
+  const applicationsByPayment = new Map<string, any[]>();
+  for (const application of applications as any[]) {
+    const key = String(application.payment_id || "");
+    if (!applicationsByPayment.has(key)) applicationsByPayment.set(key, []);
+    applicationsByPayment.get(key)!.push(application);
+  }
+
+  const rows = payments.map((p: any) => {
+    const paymentApplications = applicationsByPayment.get(String(p._id)) || [];
+    return {
+      paymentId: String(p._id),
+      paymentNumber: p.payment_number,
+      paymentDate: p.payment_date,
+      customerName: p.customer_id?.displayName || p.customer_id?.companyName || "Unknown",
+      paymentMode: p.payment_mode,
+      invoiceNumbers: paymentApplications
+        .map((application: any) => application.invoice_id?.invoiceNumber || "")
+        .filter(Boolean),
+      totalReceived: round2(toNum(p.total_amount_received)),
+      usedForInvoices: round2(toNum(p.amount_used_for_invoices)),
+      refunded: round2(toNum(p.amount_refunded)),
+      excess: round2(toNum(p.amount_in_excess)),
+      status: p.status,
+    };
+  });
 
   const totals = {
     totalReceived: round2(rows.reduce((s, r) => s + r.totalReceived, 0)),
     totalUsed: round2(rows.reduce((s, r) => s + r.usedForInvoices, 0)),
+    totalRefunded: round2(rows.reduce((s, r) => s + r.refunded, 0)),
     totalExcess: round2(rows.reduce((s, r) => s + r.excess, 0)),
   };
 
@@ -3104,4 +3130,206 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
     },
   });
 });
+
+export const salesByItemDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  const itemId = req.query.itemId as string | undefined;
+
+  const filter: any = {
+    organizationId, isDeleted: false,
+    status: { $nin: ["Draft", "Void"] },
+    invoiceDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  };
+  
+  if (itemId && Types.ObjectId.isValid(itemId)) {
+    filter["items.itemId"] = new Types.ObjectId(itemId);
+  }
+
+  const invoices = await Invoice.find(filter)
+    .populate("customerId", "displayName companyName")
+    .sort({ invoiceDate: -1 })
+    .lean();
+
+  const rows: any[] = [];
+  for (const inv of invoices as any[]) {
+    for (const item of inv.items || []) {
+      if (itemId && Types.ObjectId.isValid(itemId) && String(item.itemId) !== itemId) continue;
+      
+      rows.push({
+        invoiceId: String(inv._id),
+        invoiceNumber: inv.invoiceNumber,
+        invoiceDate: inv.invoiceDate,
+        customerName: inv.customerId?.displayName || inv.customerId?.companyName || "Unknown",
+        itemId: String(item.itemId || ""),
+        itemName: item.name || "Unknown Item",
+        quantity: round2(toNum(item.quantity)),
+        rate: round2(toNum(item.rate)),
+        amount: round2(toNum(item.amount)),
+        status: inv.status,
+      });
+    }
+  }
+
+  const totals = {
+    totalQuantity: round2(rows.reduce((s, r) => s + r.quantity, 0)),
+    totalAmount: round2(rows.reduce((s, r) => s + r.amount, 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const purchasesByItemDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  const itemId = req.query.itemId as string | undefined;
+
+  const filter: any = {
+    organizationId, isDeleted: false,
+    status: { $nin: ["Draft", "Void"] },
+    billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  };
+
+  if (itemId && Types.ObjectId.isValid(itemId)) {
+    filter["lineItems.itemId"] = new Types.ObjectId(itemId);
+  }
+
+  const bills = await Bill.find(filter)
+    .populate("vendorId", "displayName companyName")
+    .sort({ billDate: -1 })
+    .lean();
+
+  const rows: any[] = [];
+  for (const bill of bills as any[]) {
+    for (const item of bill.lineItems || []) {
+      if (item.isHeader) continue;
+      if (itemId && Types.ObjectId.isValid(itemId) && String(item.itemId) !== itemId) continue;
+
+      rows.push({
+        billId: String(bill._id),
+        billNumber: bill.billNumber,
+        billDate: bill.billDate,
+        vendorName: bill.vendorId?.displayName || bill.vendorId?.companyName || "Unknown",
+        itemId: String(item.itemId || ""),
+        itemName: item.name || "Unknown Item",
+        quantity: round2(toNum(item.quantity)),
+        rate: round2(toNum(item.rate)),
+        amount: round2(toNum(item.amount)),
+        status: bill.status,
+      });
+    }
+  }
+
+  const totals = {
+    totalQuantity: round2(rows.reduce((s, r) => s + r.quantity, 0)),
+    totalAmount: round2(rows.reduce((s, r) => s + r.amount, 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals, count: rows.length } });
+});
+
+export const itemTransactionHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  const itemId = req.query.itemId as string | undefined;
+
+  if (!itemId || !Types.ObjectId.isValid(itemId)) {
+    throw new ValidationError("Valid Item ID is required for transaction history");
+  }
+
+  const [invoices, bills, adjustments] = await Promise.all([
+    Invoice.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      invoiceDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+      "items.itemId": itemId,
+    }).populate("customerId", "displayName companyName").lean(),
+    
+    Bill.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+      "lineItems.itemId": itemId,
+    }).populate("vendorId", "displayName companyName").lean(),
+    
+    InventoryAdjustment.find({
+      organizationId,
+      itemId,
+      adjustedAt: { $gte: startOfDay(from), $lte: endOfDay(to) },
+    }).lean(),
+  ]);
+
+  const rows: any[] = [];
+
+  // Sales (Quantity Out)
+  for (const inv of invoices as any[]) {
+    for (const item of inv.items || []) {
+      if (String(item.itemId) === itemId) {
+        rows.push({
+          date: inv.invoiceDate,
+          type: "Sale",
+          reference: inv.invoiceNumber,
+          party: inv.customerId?.displayName || inv.customerId?.companyName || "Unknown",
+          quantityIn: 0,
+          quantityOut: round2(toNum(item.quantity)),
+          rate: round2(toNum(item.rate)),
+          amount: round2(toNum(item.amount)),
+          docId: String(inv._id),
+        });
+      }
+    }
+  }
+
+  // Purchases (Quantity In)
+  for (const bill of bills as any[]) {
+    for (const item of bill.lineItems || []) {
+      if (String(item.itemId) === itemId && !item.isHeader) {
+        rows.push({
+          date: bill.billDate,
+          type: "Purchase",
+          reference: bill.billNumber,
+          party: bill.vendorId?.displayName || bill.vendorId?.companyName || "Unknown",
+          quantityIn: round2(toNum(item.quantity)),
+          quantityOut: 0,
+          rate: round2(toNum(item.rate)),
+          amount: round2(toNum(item.amount)),
+          docId: String(bill._id),
+        });
+      }
+    }
+  }
+
+  // Adjustments
+  for (const adj of adjustments as any[]) {
+    const isIncrease = adj.direction === "Increase";
+    const qty = Math.abs(round2(toNum(adj.quantityDelta)));
+    
+    // Check if it's a move order based on reference number or notes
+    const isTransfer = String(adj.referenceNumber || "").startsWith("MO-") || 
+                       String(adj.notes || "").includes("Transfer");
+    
+    rows.push({
+      date: adj.adjustedAt,
+      type: isTransfer ? "Transfer" : "Adjustment",
+      reference: adj.referenceNumber || "ADJ",
+      party: adj.notes || adj.reason || "Manual Adjustment",
+      quantityIn: isIncrease ? qty : 0,
+      quantityOut: !isIncrease ? qty : 0,
+      rate: round2(toNum(adj.unitCost || 0)),
+      amount: round2(toNum(adj.valueDelta || 0)),
+      docId: String(adj._id),
+    });
+  }
+
+  rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  res.json({ success: true, data: { from, to, rows, count: rows.length } });
+});
+
+
 

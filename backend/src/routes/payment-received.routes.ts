@@ -14,5 +14,6 @@ router.post("/:id/apply", paymentReceivedController.applyToInvoice);
 router.post("/:id/unapply", paymentReceivedController.unapplyFromInvoice);
 router.post("/:id/refund", paymentReceivedController.recordRefund);
 router.post("/:id/void", paymentReceivedController.voidPayment);
+router.delete("/:id", paymentReceivedController.deletePayment);
 
 export default router;

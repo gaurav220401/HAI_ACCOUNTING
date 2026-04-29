@@ -11,13 +11,35 @@ import {
   Trash2,
   Loader2,
   FileText,
+  Download,
+  Mail,
+  Receipt,
+  FileSearch,
+  Search,
+  MoreHorizontal,
+  RefreshCw,
+  Plus,
+  Share2,
+  Printer,
+  ChevronDown,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import { SendEmailModal } from "../_components/send-email-modal";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -75,8 +97,14 @@ export default function QuoteDetailPage() {
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [tab, setTab] = useState("details");
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -88,11 +116,24 @@ export default function QuoteDetailPage() {
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
-    if (firebaseUser && !loading && id) fetchQuote();
+    if (firebaseUser && !loading) {
+      fetchQuote();
+      fetchQuotes();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, id]);
 
+  useEffect(() => {
+    if (quote?._id) {
+        loadPdfPreview();
+    }
+    return () => {
+        if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+  }, [quote?._id]);
+
   async function fetchQuote() {
+    if (!id) return;
     setFetching(true);
     try {
       const res = await quoteApi.getById(id);
@@ -104,25 +145,99 @@ export default function QuoteDetailPage() {
     }
   }
 
+  async function fetchQuotes() {
+    setListLoading(true);
+    try {
+      const res = await quoteApi.list({ limit: 100 });
+      setQuotes(res.data || []);
+    } catch {
+      // noop
+    } finally {
+      setListLoading(false);
+    }
+  }
+
+  async function loadPdfPreview() {
+    if (!id) return;
+    try {
+      const blob = await quoteApi.downloadPdf(id);
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+    } catch (e) {
+      console.error("PDF preview error", e);
+    }
+  }
+
   async function handleAction(action: "send" | "accept" | "reject" | "delete") {
     if (!quote) return;
     if (action === "delete" && !confirm("Delete this quote?")) return;
     setActionLoading(true);
     try {
-      if (action === "send") await quoteApi.send(quote._id);
-      else if (action === "accept") await quoteApi.accept(quote._id);
-      else if (action === "reject") await quoteApi.reject(quote._id);
-      else if (action === "delete") {
+      if (action === "send") {
+        setIsEmailModalOpen(true);
+      } else if (action === "accept") {
+        await quoteApi.accept(quote._id);
+        toast.success("Quote accepted");
+        fetchQuote();
+      } else if (action === "reject") {
+        await quoteApi.reject(quote._id);
+        toast.success("Quote rejected");
+        fetchQuote();
+      } else if (action === "delete") {
         await quoteApi.remove(quote._id);
+        toast.success("Quote deleted");
         router.push("/sales/quotes");
         return;
       }
-      fetchQuote();
     } catch (e: any) {
-      alert(e.message || "Action failed");
+      toast.error(e.message || "Action failed");
     } finally {
       setActionLoading(false);
     }
+  }
+
+  async function handleDownloadPdf() {
+    if (!quote) return;
+    try {
+      const blob = await quoteApi.downloadPdf(quote._id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Quote-${quote.quoteNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("PDF downloaded");
+    } catch (error: any) {
+      toast.error("Failed to download PDF");
+    }
+  }
+
+  async function handleConvertToInvoice() {
+    if (!quote) return;
+    if (!confirm("Convert this quote to a draft invoice?")) return;
+    
+    setActionLoading(true);
+    try {
+      const res = await quoteApi.convertToInvoice(quote._id);
+      toast.success("Converted to Invoice");
+      if (res.data?._id) {
+        router.push(`/sales/invoices/${res.data._id}`);
+      } else {
+        fetchQuote();
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to convert to invoice");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function onSendEmail(data: any) {
+    if (!quote) return;
+    await quoteApi.sendEmailWithFiles(quote._id, data, data.files);
+    fetchQuote();
   }
 
   if (loading || orgLoading || !firebaseUser || fetching) {
@@ -133,18 +248,12 @@ export default function QuoteDetailPage() {
     );
   }
 
-  if (!quote) {
-    return (
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <div className="flex flex-1 items-center justify-center">
-            <p>Quote not found.</p>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    );
-  }
+  const filteredQuotes = quotes.filter((q) => {
+    const qnum = q.quoteNumber.toLowerCase();
+    const cname = customerName(q.customerId).toLowerCase();
+    const s = search.toLowerCase();
+    return qnum.includes(s) || cname.includes(s);
+  });
 
   return (
     <SidebarProvider>
@@ -162,244 +271,317 @@ export default function QuoteDetailPage() {
               </button>
               <span className="mx-1">/</span>
               <span className="font-medium text-foreground">
-                {quote.quoteNumber}
+                {quote?.quoteNumber || "Quote Details"}
               </span>
             </span>
           }
           actions={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/sales/quotes")}
-            >
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
-            </Button>
+            <>
+              <div className="relative w-56">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search in Quotes..."
+                  className="pl-8 h-8 text-sm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  fetchQuotes();
+                  fetchQuote();
+                }}
+                disabled={fetching || listLoading}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${(fetching || listLoading) ? "animate-spin" : ""}`}
+                />
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => router.push("/sales/quotes/new")}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                New
+              </Button>
+            </>
           }
         />
 
-        <div className="flex flex-1 flex-col p-6 gap-6 max-w-5xl">
-          {/* ═══ Header ═══ */}
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-xl font-bold">{quote.quoteNumber}</h1>
-                <Badge variant="outline" className={statusColor[quote.status]}>
-                  {quote.status}
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {customerName(quote.customerId)}
-              </p>
+        <div className="flex flex-1 min-h-[calc(100svh-3.5rem)]">
+          {/* ─── Left Sidebar ─── */}
+          <aside className="w-80 border-r bg-background">
+            <div className="p-3 border-b">
+              <div className="text-sm font-medium">All Quotations</div>
             </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              {["Draft", "Sent"].includes(quote.status) && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => router.push(`/sales/quotes/${quote._id}/edit`)}
-                >
-                  <Pencil className="h-3.5 w-3.5 mr-1" />
-                  Edit
-                </Button>
-              )}
-              {quote.status === "Draft" && (
-                <Button
-                  size="sm"
-                  disabled={actionLoading}
-                  onClick={() => handleAction("send")}
-                >
-                  {actionLoading ?
-                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                  : <Send className="h-3.5 w-3.5 mr-1" />}
-                  Mark as Sent
-                </Button>
-              )}
-              {["Draft", "Sent"].includes(quote.status) && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-green-600 border-green-300 hover:bg-green-50"
-                    disabled={actionLoading}
-                    onClick={() => handleAction("accept")}
+            <div className="max-h-[calc(100svh-3.5rem-3rem)] overflow-auto">
+              {filteredQuotes.map((q) => {
+                const isActive = q._id === id;
+                return (
+                  <button
+                    key={q._id}
+                    type="button"
+                    onClick={() => router.push(`/sales/quotes/${q._id}`)}
+                    className={
+                      "w-full text-left px-3 py-3 border-b hover:bg-muted/50 transition-colors " +
+                      (isActive ? "bg-muted shadow-inner" : "")
+                    }
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    Accept
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-red-600 border-red-300 hover:bg-red-50"
-                    disabled={actionLoading}
-                    onClick={() => handleAction("reject")}
-                  >
-                    <XCircle className="h-3.5 w-3.5 mr-1" />
-                    Reject
-                  </Button>
-                </>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-bold truncate">
+                        {customerName(q.customerId)}
+                      </div>
+                      <div className="text-xs font-medium tabular-nums">
+                        {fmt(q.total)}
+                      </div>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>{q.quoteNumber} • {fmtDate(q.quoteDate)}</span>
+                      <span className={"uppercase " + (statusColor[q.status].split(" ")[1])}>
+                        {q.status}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredQuotes.length === 0 && !listLoading && (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  No quotes found.
+                </div>
               )}
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive"
-                disabled={actionLoading}
-                onClick={() => handleAction("delete")}
-              >
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                Delete
-              </Button>
             </div>
-          </div>
+          </aside>
 
-          <Separator />
+          {/* ─── Right Content ─── */}
+          <main className="flex-1 bg-muted/10 overflow-auto">
+            {!quote && fetching ? (
+               <div className="flex items-center justify-center h-64">
+                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+               </div>
+            ) : !quote ? (
+               <div className="p-12 text-center">
+                 <p className="text-muted-foreground">Select a quote to view details.</p>
+               </div>
+            ) : (
+              <div className="flex flex-col min-h-full">
+                {/* ═══ Header Actions ═══ */}
+                <div className="bg-background border-b px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => router.push(`/sales/quotes/${quote._id}/edit`)}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      Edit
+                    </Button>
 
-          {/* ═══ Details Grid ═══ */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-y-4 gap-x-8 text-sm">
-            <div>
-              <span className="text-muted-foreground block">Quote Date</span>
-              <span className="font-medium">{fmtDate(quote.quoteDate)}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block">Expiry Date</span>
-              <span className="font-medium">
-                {quote.expiryDate ? fmtDate(quote.expiryDate) : "—"}
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block">Reference#</span>
-              <span className="font-medium">
-                {quote.referenceNumber || "—"}
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block">Salesperson</span>
-              <span className="font-medium">
-                {salesPersonName(quote.salesPersonId)}
-              </span>
-            </div>
-            {quote.subject && (
-              <div className="col-span-4">
-                <span className="text-muted-foreground block">Subject</span>
-                <span className="font-medium">{quote.subject}</span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <Mail className="h-3.5 w-3.5 mr-1" />
+                          Send
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => handleAction("send")}>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Email Quote
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => toast.info("Link copied")}>
+                          <Share2 className="h-4 w-4 mr-2" />
+                          Share Link
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Button variant="ghost" size="sm" onClick={() => toast.info("Share UI coming soon")}>
+                      <Share2 className="h-3.5 w-3.5 mr-1" />
+                      Share
+                    </Button>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <Printer className="h-3.5 w-3.5 mr-1" />
+                          PDF/Print
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={handleDownloadPdf}>
+                          <Download className="h-4 w-4 mr-2" />
+                          Download PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.print()}>
+                          <Printer className="h-4 w-4 mr-2" />
+                          Print
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                          Convert
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={handleConvertToInvoice}>
+                          <Receipt className="h-4 w-4 mr-2" />
+                          To Invoice
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => toast.info("Sales Order conversion coming soon")}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          To Sales Order
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleAction("accept")}>
+                          <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
+                          Mark as Accepted
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleAction("reject")}>
+                          <XCircle className="h-4 w-4 mr-2 text-red-600" />
+                          Mark as Rejected
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" onClick={() => handleAction("delete")}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Quote
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* ═══ What's Next ═══ */}
+                  {["Draft", "Sent", "Accepted"].includes(quote.status) && (
+                    <div className="bg-white border rounded-lg p-4 shadow-sm flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                         <div className="h-8 w-8 rounded-full bg-indigo-50 flex items-center justify-center">
+                            <Plus className="h-4 w-4 text-indigo-600" />
+                         </div>
+                         <div>
+                           <div className="text-sm font-semibold">WHAT'S NEXT?</div>
+                           <div className="text-xs text-muted-foreground">Convert this quote to an invoice or a sales order to proceed.</div>
+                         </div>
+                       </div>
+                       <div className="flex gap-2">
+                         <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleConvertToInvoice}>
+                            Convert <ChevronDown className="ml-1 h-3 w-3" />
+                         </Button>
+                         <Button size="sm" variant="outline">
+                            Create Project
+                         </Button>
+                       </div>
+                    </div>
+                  )}
+
+                  <Tabs defaultValue="details" className="w-full" onValueChange={setTab}>
+                    <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0 mb-6">
+                       <TabsTrigger value="details" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent pb-2 pt-0 px-4 font-semibold text-sm">
+                         Quote Details
+                       </TabsTrigger>
+                       <TabsTrigger value="activity" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent pb-2 pt-0 px-4 font-semibold text-sm text-muted-foreground">
+                         Activity Logs
+                       </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="details" className="mt-0">
+                       <div className="bg-white border rounded-lg shadow-lg overflow-hidden min-h-[1000px] flex flex-col items-center p-8 bg-slate-50">
+                          {pdfUrl ? (
+                            <iframe 
+                              src={`${pdfUrl}#toolbar=0`} 
+                              className="w-full max-w-[800px] h-[1000px] border shadow-2xl rounded"
+                              title="PDF Preview"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-24">
+                               <Loader2 className="h-10 w-10 animate-spin text-blue-200 mb-4" />
+                               <p className="text-muted-foreground italic">Rendering preview...</p>
+                            </div>
+                          )}
+                       </div>
+                    </TabsContent>
+
+                    <TabsContent value="activity">
+                       <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+                          <div className="p-4 border-b bg-muted/30">
+                             <h3 className="text-sm font-semibold">Timeline</h3>
+                          </div>
+                          <div className="divide-y max-h-[600px] overflow-auto">
+                             {quote.activityLog && quote.activityLog.length > 0 ? (
+                               [...quote.activityLog].reverse().map((log, i) => (
+                                 <div key={i} className="p-4 hover:bg-muted/10 transition-colors">
+                                   <div className="flex items-start justify-between gap-4">
+                                     <div className="flex gap-3">
+                                       <div className="mt-1 h-8 w-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0 border border-blue-100">
+                                          {log.action === "created" ? <Plus className="h-4 w-4 text-blue-600" /> : <RefreshCw className="h-4 w-4 text-blue-600" />}
+                                       </div>
+                                       <div>
+                                         <p className="text-sm font-medium">
+                                           Quote {log.action}{" "}
+                                           <span className="text-muted-foreground font-normal">by</span>{" "}
+                                           {log.userId?.displayName || "System"}
+                                         </p>
+                                         <p className="text-[11px] text-muted-foreground mt-0.5">
+                                           {new Date(log.timestamp).toLocaleString()}
+                                         </p>
+                                         
+                                         {Object.keys(log.changes || {}).length > 0 && (
+                                           <div className="mt-3 space-y-2">
+                                              {Object.entries(log.changes).map(([field, delta]: [string, any]) => (
+                                                <div key={field} className="text-[11px] border rounded p-1.5 bg-slate-50">
+                                                   <span className="font-semibold capitalize text-slate-700">{field.replace(/([A-Z])/g, ' $1')}:</span>
+                                                   <div className="flex items-center gap-2 mt-1">
+                                                      <span className="line-through text-red-500">{JSON.stringify(delta.before)}</span>
+                                                      <ArrowLeft className="h-2 w-2 rotate-180 text-muted-foreground" />
+                                                      <span className="text-green-600 font-medium">{JSON.stringify(delta.after)}</span>
+                                                   </div>
+                                                </div>
+                                              ))}
+                                           </div>
+                                         )}
+                                       </div>
+                                     </div>
+                                   </div>
+                                 </div>
+                               ))
+                             ) : (
+                               <div className="p-12 text-center text-sm text-muted-foreground italic">
+                                 No activity logs found for this quote.
+                               </div>
+                             )}
+                          </div>
+                       </div>
+                    </TabsContent>
+                  </Tabs>
+                </div>
               </div>
             )}
-          </div>
-
-          <Separator />
-
-          {/* ═══ Items Table ═══ */}
-          <div className="rounded-lg border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">#</TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right w-24">Qty</TableHead>
-                  <TableHead className="text-right w-28">Rate</TableHead>
-                  <TableHead className="text-right w-28">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {quote.items.map((item, idx) => (
-                  <TableRow key={item._id || idx}>
-                    <TableCell className="text-muted-foreground">
-                      {idx + 1}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{item.name}</div>
-                      {item.description && (
-                        <div className="text-xs text-muted-foreground">
-                          {item.description}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {item.quantity}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {fmt(item.rate)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {fmt(item.amount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* ═══ Totals ═══ */}
-          <div className="flex justify-end">
-            <div className="w-72 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Sub Total</span>
-                <span className="tabular-nums">{fmt(quote.subTotal)}</span>
-              </div>
-              {quote.discountAmount > 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>
-                    Discount
-                    {quote.discountType === "percent" ?
-                      ` (${quote.discountValue}%)`
-                    : ""}
-                  </span>
-                  <span className="tabular-nums">
-                    - {fmt(quote.discountAmount)}
-                  </span>
-                </div>
-              )}
-              {quote.taxAmount > 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>{quote.taxType}</span>
-                  <span className="tabular-nums">- {fmt(quote.taxAmount)}</span>
-                </div>
-              )}
-              {quote.adjustmentAmount !== 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>{quote.adjustmentLabel}</span>
-                  <span className="tabular-nums">
-                    {fmt(quote.adjustmentAmount)}
-                  </span>
-                </div>
-              )}
-              <Separator />
-              <div className="flex justify-between font-bold text-base">
-                <span>Total ( ₹ )</span>
-                <span className="tabular-nums">{fmt(quote.total)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ═══ Notes ═══ */}
-          {(quote.customerNotes || quote.termsAndConditions) && (
-            <>
-              <Separator />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                {quote.customerNotes && (
-                  <div>
-                    <span className="text-muted-foreground font-medium block mb-1">
-                      Customer Notes
-                    </span>
-                    <p className="whitespace-pre-wrap">{quote.customerNotes}</p>
-                  </div>
-                )}
-                {quote.termsAndConditions && (
-                  <div>
-                    <span className="text-muted-foreground font-medium block mb-1">
-                      Terms & Conditions
-                    </span>
-                    <p className="whitespace-pre-wrap">
-                      {quote.termsAndConditions}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+          </main>
         </div>
+
+        {quote && (
+          <SendEmailModal
+            isOpen={isEmailModalOpen}
+            onClose={() => setIsEmailModalOpen(false)}
+            onSend={onSendEmail}
+            quoteNumber={quote.quoteNumber}
+            defaultRecipient={(quote.customerId as any)?.email}
+          />
+        )}
       </SidebarInset>
     </SidebarProvider>
   );

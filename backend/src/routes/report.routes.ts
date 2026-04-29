@@ -33,6 +33,9 @@ import {
   inventoryTurnoverByAmount,
   salesByCustomer,
   salesByItem,
+  salesByItemDetails,
+  purchasesByItemDetails,
+  itemTransactionHistory,
   paymentsReceivedReport,
   dashboardSummary,
 } from "../controllers/report.controller";
@@ -66,6 +69,8 @@ router.get("/receivable-summary", receivableSummary);
 router.get("/expense-details", expenseDetails);
 router.get("/expenses-by-category", expensesByCategory);
 router.get("/purchases-by-item", purchasesByItem);
+router.get("/purchases-by-item-details", purchasesByItemDetails);
+router.get("/item-transaction-history", itemTransactionHistory);
 
 // Inventory
 router.get("/inventory-summary", inventorySummary);
@@ -87,6 +92,7 @@ router.get("/inventory-turnover-by-amount", inventoryTurnoverByAmount);
 // Sales
 router.get("/sales-by-customer", salesByCustomer);
 router.get("/sales-by-item", salesByItem);
+router.get("/sales-by-item-details", salesByItemDetails);
 
 // Payments Received
 router.get("/payments-received", paymentsReceivedReport);

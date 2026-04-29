@@ -303,6 +303,15 @@ export const reportApi = {
   salesByItem: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/sales-by-item${buildQuery(params || {})}`),
 
+  salesByItemDetails: (params?: { from?: string; to?: string; itemId?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/sales-by-item-details${buildQuery(params || {})}`),
+
+  purchasesByItemDetails: (params?: { from?: string; to?: string; itemId?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/purchases-by-item-details${buildQuery(params || {})}`),
+
+  itemTransactionHistory: (params?: { from?: string; to?: string; itemId?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/item-transaction-history${buildQuery(params || {})}`),
+
   // Payments Received
   paymentsReceived: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payments-received${buildQuery(params || {})}`),

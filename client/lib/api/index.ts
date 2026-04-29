@@ -174,3 +174,11 @@ export type {
   CreateFixedAssetTypeInput,
   UpdateFixedAssetTypeInput,
 } from "./fixed-assets";
+
+export { moveOrderApi } from "./move-orders";
+export type {
+  MoveOrder,
+  MoveOrderLine,
+  MoveOrderStatus,
+  CreateMoveOrderInput,
+} from "./move-orders";

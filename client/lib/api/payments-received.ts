@@ -37,6 +37,8 @@ export interface PaymentReceived {
   amount_used_for_invoices: number;
   amount_refunded: number;
   amount_in_excess: number;
+  invoice_applications?: PaymentInvoiceMap[];
+  invoice_numbers?: string[];
   createdAt: string;
   updatedAt: string;
   audit_log?: Array<{
@@ -69,6 +71,8 @@ export interface PaymentInvoiceMap {
 export interface PaymentReceivedListParams extends ListParams {
   customer_id?: string;
   customerId?: string;
+  invoiceId?: string;
+  invoice_id?: string;
   status?: string;
 }
 
@@ -180,6 +184,14 @@ export const paymentReceivedApi = {
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": makeIdempotencyKey(`payments-received-void-${id}`),
+      },
+    }),
+
+  remove: (id: string) =>
+    apiFetch<{ success: boolean; data: PaymentReceived }>(`/payments-received/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Idempotency-Key": makeIdempotencyKey(`payments-received-delete-${id}`),
       },
     }),
 };

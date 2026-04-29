@@ -12,6 +12,9 @@ import {
   ChevronDown,
   ScanBarcode,
   RefreshCw,
+  Save,
+  Send,
+  Info,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -21,6 +24,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -43,6 +47,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
@@ -134,6 +144,7 @@ export default function EditInvoicePage() {
   // Form state
   const [customerId, setCustomerId] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [referenceNumber, setReferenceNumber] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -187,6 +198,7 @@ export default function EditInvoicePage() {
         // Populate form
         setCustomerId(getRefId(inv.customerId));
         setInvoiceNumber(inv.invoiceNumber);
+        setReferenceNumber(inv.referenceNumber || "");
         setOrderNumber(inv.orderNumber || "");
         setInvoiceDate(inv.invoiceDate?.slice(0, 10) || "");
         setDueDate(inv.dueDate?.slice(0, 10) || "");
@@ -342,7 +354,7 @@ export default function EditInvoicePage() {
   const total =
     lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
 
-  async function handleUpdate() {
+  async function handleUpdate(shouldSend = false) {
     if (!customerId) {
       toast.error("Please select a customer");
       return;
@@ -351,6 +363,7 @@ export default function EditInvoicePage() {
     try {
       const payload: UpdateInvoiceInput = {
         invoiceNumber,
+        referenceNumber,
         orderNumber,
         customerId,
         invoiceDate,
@@ -387,6 +400,14 @@ export default function EditInvoicePage() {
         termsAndConditions,
       };
       await invoiceApi.update(id, payload);
+      
+      if (shouldSend) {
+        await invoiceApi.send(id);
+        toast.success("Invoice updated and sent successfully");
+      } else {
+        toast.success("Invoice updated successfully");
+      }
+      
       router.push(`/sales/invoices/${id}`);
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Failed to update invoice"));
@@ -398,7 +419,7 @@ export default function EditInvoicePage() {
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -422,516 +443,400 @@ export default function EditInvoicePage() {
       <SidebarInset>
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Sales <span className="mx-1">/</span>
-              <button
-                className="hover:underline"
-                onClick={() => router.push("/sales/invoices")}
-              >
-                Invoices
-              </button>
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">
-                Edit {invoice.invoiceNumber}
-              </span>
-            </span>
+            <div className="flex items-center gap-2">
+               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(`/sales/invoices/${id}`)}>
+                 <ArrowLeft className="h-4 w-4" />
+               </Button>
+               <span className="text-sm text-muted-foreground">Invoices</span>
+               <span className="text-sm text-muted-foreground">/</span>
+               <span className="font-semibold text-foreground">Edit {invoice.invoiceNumber}</span>
+            </div>
           }
           actions={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push(`/sales/invoices/${id}`)}
-            >
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
-            </Button>
+            <div className="flex items-center gap-2">
+               <Button variant="outline" size="sm" onClick={() => router.push(`/sales/invoices/${id}`)}>
+                  Cancel
+               </Button>
+               <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => handleUpdate(false)} disabled={saving}>
+                  {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />} Save
+               </Button>
+               <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleUpdate(true)} disabled={saving}>
+                  <Send className="h-4 w-4 mr-2" /> Save and Send
+               </Button>
+            </div>
           }
         />
 
-        <div className="flex flex-1 flex-col p-6 gap-6 max-w-6xl">
-          <h1 className="text-xl font-bold">Edit Invoice</h1>
-
-          {/* ═══ Header Fields ═══ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5">
-            <div className="space-y-1.5">
-              <Label className="text-red-600">
-                Customer Name<span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={customerId || undefined}
-                onValueChange={(v) => {
-                  if (v === "__add_new") {
-                    router.push("/sales/customers/new");
-                    return;
-                  }
-                  setCustomerId(v);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__add_new">
-                    <span className="text-blue-600 font-medium">
-                      + Add a customer
-                    </span>
-                  </SelectItem>
-                  {customers.length === 0 && (
-                    <SelectItem value="__empty" disabled>
-                      No customers found
-                    </SelectItem>
-                  )}
-                  {customers.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      {c.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div />
-            <div className="space-y-1.5">
-              <Label>
-                Invoice#<span className="text-red-500">*</span>
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                />
-                <Button variant="outline" size="icon" className="shrink-0">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Order Number</Label>
-              <Input
-                value={orderNumber}
-                onChange={(e) => setOrderNumber(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-red-600">
-                Invoice Date<span className="text-red-500">*</span>
-              </Label>
-              <Input
-                type="date"
-                value={invoiceDate}
-                onChange={(e) => setInvoiceDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Due Date</Label>
-              <Input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Salesperson</Label>
-              <Select
-                value={salesPersonId || undefined}
-                onValueChange={setSalesPersonId}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Salesperson" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">None</SelectItem>
-                  {salesPersons.map((sp) => (
-                    <SelectItem key={sp._id} value={sp._id}>
-                      {sp.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div />
-          </div>
-
-          <Separator />
-
-          <div className="space-y-1.5 max-w-xl">
-            <Label>Subject</Label>
-            <Input
-              placeholder="Let your customer know what this Invoice is for"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-            />
-          </div>
-
-          <Separator />
-
-          {/* ═══ Item Table ═══ */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Item Table</h2>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="text-xs">
-                  <ScanBarcode className="h-3.5 w-3.5 mr-1" />
-                  Scan Item
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="text-xs">
-                      <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                      Bulk Actions
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem>Bulk Update Line Items</DropdownMenuItem>
-                    <DropdownMenuItem>
-                      Hide All Additional Information
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-
-            <div className="rounded-lg border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-60">ITEM DETAILS</TableHead>
-                    <TableHead className="w-25 text-right">QTY</TableHead>
-                    <TableHead className="w-30 text-right">RATE</TableHead>
-                    <TableHead className="w-25 text-right">DISC %</TableHead>
-                    <TableHead className="w-36 text-right">TAX</TableHead>
-                    <TableHead className="w-30 text-right">AMOUNT</TableHead>
-                    <TableHead className="w-10" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lines.map((line) => {
-                    const { amount } = calcLineAmount(line);
-                    return (
-                      <TableRow key={line.key}>
-                        <TableCell>
-                          <Select
-                            value={line.itemId || undefined}
-                            onValueChange={(v) => {
-                              handleItemSelect(line.key, v);
-                            }}
-                          >
-                            <SelectTrigger className="h-8 w-full text-sm">
-                              <SelectValue placeholder="Select an item" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {items.length === 0 && (
-                                <SelectItem value="__empty" disabled>
-                                  No items found
-                                </SelectItem>
-                              )}
-                              {items.map((it) => (
-                                <SelectItem key={it._id} value={it._id}>
-                                  {it.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {!line.itemId && (
-                            <Input
-                              className="mt-1 h-7 text-xs"
-                              placeholder="Or type a custom item name"
-                              value={line.name}
-                              onChange={(e) =>
-                                updateLine(line.key, "name", e.target.value)
-                              }
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            className="h-8 text-right text-sm"
-                            value={line.quantity}
-                            onChange={(e) =>
-                              updateLine(
-                                line.key,
-                                "quantity",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            className="h-8 text-right text-sm"
-                            value={line.rate}
-                            onChange={(e) =>
-                              updateLine(
-                                line.key,
-                                "rate",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            className="h-8 text-right text-sm"
-                            value={line.discountPercent}
-                            onChange={(e) =>
-                              updateLine(
-                                line.key,
-                                "discountPercent",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={line.taxId || "__none"}
-                            onValueChange={(value) =>
-                              updateLineTax(
-                                line.key,
-                                value === "__none" ? "" : value,
-                              )
-                            }
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Tax" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none">No Tax</SelectItem>
-                              {taxes.map((tax) => (
-                                <SelectItem key={tax._id} value={tax._id}>
-                                  {tax.name} ({tax.rate}%)
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {amount.toFixed(2)}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => removeLine(line.key)}
-                          >
-                            <X className="h-3.5 w-3.5 text-red-500" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLines((prev) => [...prev, newLine()])}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              Add New Row
-            </Button>
-          </div>
-
-          <Separator />
-
-          {/* ═══ Totals Section ═══ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-5">
-              <div className="space-y-1.5">
-                <Label>Customer Notes</Label>
-                <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-20 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                  value={customerNotes}
-                  onChange={(e) => setCustomerNotes(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Terms &amp; Conditions</Label>
-                <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-25 resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Enter terms and conditions"
-                  value={termsAndConditions}
-                  onChange={(e) => setTermsAndConditions(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Sub Total</span>
-                <span className="font-medium tabular-nums">
-                  {subTotal.toFixed(2)}
-                </span>
-              </div>
-              {lineDiscountAmount > 0 && (
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Line Item Discount</span>
-                  <span className="tabular-nums">
-                    - {lineDiscountAmount.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {lineTaxAmount > 0 && (
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Line Item Tax</span>
-                  <span className="tabular-nums">
-                    + {lineTaxAmount.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm">Discount</span>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    className="h-8 w-20 text-right text-sm"
-                    value={discountValue}
-                    onChange={(e) =>
-                      setDiscountValue(parseFloat(e.target.value) || 0)
-                    }
-                  />
+        <div className="flex flex-1 flex-col p-8 gap-8 max-w-7xl mx-auto bg-white/50 min-h-full">
+          <div className="bg-white rounded-xl border shadow-sm p-8 space-y-10">
+            {/* ═══ Header Section ═══ */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-8">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                    Customer Name <span className="text-red-500">*</span>
+                  </Label>
                   <Select
-                    value={discountType}
-                    onValueChange={(v: "percent" | "amount") =>
-                      setDiscountType(v)
-                    }
-                  >
-                    <SelectTrigger className="h-8 w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="percent">%</SelectItem>
-                      <SelectItem value="amount">&#8377;</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-sm tabular-nums w-20 text-right">
-                    {discountAmount.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1 text-sm">
-                    <input
-                      type="radio"
-                      name="editTaxType"
-                      value="none"
-                      checked={taxType === "none"}
-                      onChange={() => setTaxType("none")}
-                      className="accent-primary"
-                    />
-                    None
-                  </label>
-                  <label className="flex items-center gap-1 text-sm">
-                    <input
-                      type="radio"
-                      name="editTaxType"
-                      value="TDS"
-                      checked={taxType === "TDS"}
-                      onChange={() => setTaxType("TDS")}
-                      className="accent-primary"
-                    />
-                    TDS
-                  </label>
-                  <label className="flex items-center gap-1 text-sm">
-                    <input
-                      type="radio"
-                      name="editTaxType"
-                      value="TCS"
-                      checked={taxType === "TCS"}
-                      onChange={() => setTaxType("TCS")}
-                      className="accent-primary"
-                    />
-                    TCS
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={totalTaxId || undefined}
-                    onValueChange={(value) => {
-                      if (value === "__none") {
-                        setTotalTaxId("");
-                        setTaxType("none");
+                    value={customerId || undefined}
+                    onValueChange={(v) => {
+                      if (v === "__add_new") {
+                        router.push("/sales/customers/new");
                         return;
                       }
-                      setTotalTaxId(value);
-                      if (taxType === "none") setTaxType("TDS");
+                      setCustomerId(v);
                     }}
                   >
-                    <SelectTrigger className="h-8 w-44">
-                      <SelectValue placeholder="Select a Tax" />
+                    <SelectTrigger className="w-full h-11 border-slate-200 focus:ring-blue-500">
+                      <SelectValue placeholder="Select a customer" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none">None</SelectItem>
-                      {taxes.map((t) => (
-                        <SelectItem key={t._id} value={t._id}>
-                          {t.name} ({t.rate}%)
+                      <SelectItem value="__add_new">
+                        <span className="text-blue-600 font-bold">+ Add New Customer</span>
+                      </SelectItem>
+                      {customers.map((c) => (
+                        <SelectItem key={c._id} value={c._id}>
+                          {c.displayName}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-sm tabular-nums w-20 text-right">
-                    {taxType === "TCS" ? "+" : taxType === "TDS" ? "-" : ""}{" "}
-                    {taxAmount.toFixed(2)}
-                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-700">Invoice# <span className="text-red-500">*</span></Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={invoiceNumber}
+                        onChange={(e) => setInvoiceNumber(e.target.value)}
+                        className="h-11 border-slate-200 focus:ring-blue-500 font-mono"
+                      />
+                      <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 border-slate-200">
+                        <Settings className="h-4 w-4 text-slate-400" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-700">Order Number</Label>
+                    <Input
+                      value={orderNumber}
+                      onChange={(e) => setOrderNumber(e.target.value)}
+                      className="h-11 border-slate-200 focus:ring-blue-500"
+                      placeholder="e.g. SO-00001"
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <Input
-                  className="h-8 w-32 text-sm"
-                  value={adjustmentLabel}
-                  onChange={(e) => setAdjustmentLabel(e.target.value)}
-                />
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    className="h-8 w-24 text-right text-sm"
-                    value={adjustmentAmount}
-                    onChange={(e) =>
-                      setAdjustmentAmount(parseFloat(e.target.value) || 0)
-                    }
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-700">Invoice Date <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="date"
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      className="h-11 border-slate-200 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-700">Due Date</Label>
+                    <Input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="h-11 border-slate-200 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-700">Salesperson</Label>
+                    <Select value={salesPersonId || undefined} onValueChange={setSalesPersonId}>
+                      <SelectTrigger className="w-full h-11 border-slate-200 focus:ring-blue-500">
+                        <SelectValue placeholder="Select Salesperson" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">None</SelectItem>
+                        {salesPersons.map((sp) => (
+                          <SelectItem key={sp._id} value={sp._id}>{sp.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-bold text-slate-700">Reference#</Label>
+                    <Input
+                      value={referenceNumber}
+                      onChange={(e) => setReferenceNumber(e.target.value)}
+                      className="h-11 border-slate-200 focus:ring-blue-500"
+                      placeholder="Reference Number"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="bg-slate-100" />
+
+            <div className="space-y-2 max-w-2xl">
+              <Label className="text-sm font-bold text-slate-700">Subject</Label>
+              <Input
+                placeholder="Briefly describe the purpose of this invoice"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="h-11 border-slate-200 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* ═══ Item Table ═══ */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-900">Line Items</h2>
+                <div className="flex items-center gap-3">
+                  <Button variant="ghost" size="sm" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                    <ScanBarcode className="h-4 w-4 mr-1.5" /> Barcode Scanning
+                  </Button>
+                  <Separator orientation="vertical" className="h-4" />
+                  <Button variant="ghost" size="sm" className="text-xs font-bold text-slate-600">
+                    <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh Prices
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <Table>
+                  <TableHeader className="bg-slate-50/80">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="min-w-[300px] py-4 font-bold text-slate-600">ITEM DETAILS</TableHead>
+                      <TableHead className="w-[100px] text-right font-bold text-slate-600">QTY</TableHead>
+                      <TableHead className="w-[140px] text-right font-bold text-slate-600">RATE</TableHead>
+                      <TableHead className="w-[100px] text-right font-bold text-slate-600">DISC %</TableHead>
+                      <TableHead className="w-[180px] text-right font-bold text-slate-600">TAX</TableHead>
+                      <TableHead className="w-[140px] text-right font-bold text-slate-600">AMOUNT</TableHead>
+                      <TableHead className="w-[50px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lines.map((line) => {
+                      const { amount } = calcLineAmount(line);
+                      return (
+                        <TableRow key={line.key} className="group hover:bg-slate-50/50 transition-colors">
+                          <TableCell className="py-5">
+                            <div className="space-y-2">
+                               <Select
+                                 value={line.itemId || undefined}
+                                 onValueChange={(v) => handleItemSelect(line.key, v)}
+                               >
+                                 <SelectTrigger className="h-10 border-slate-200 group-hover:border-slate-300">
+                                   <SelectValue placeholder="Select an item" />
+                                 </SelectTrigger>
+                                 <SelectContent>
+                                   {items.map((it) => (
+                                     <SelectItem key={it._id} value={it._id}>{it.name}</SelectItem>
+                                   ))}
+                                 </SelectContent>
+                               </Select>
+                               <Input
+                                 className="h-8 text-xs bg-slate-50 border-slate-100 italic"
+                                 placeholder="Add a description or note for this item"
+                                 value={line.description}
+                                 onChange={(e) => updateLine(line.key, "description", e.target.value)}
+                               />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="h-10 text-right font-medium border-slate-200"
+                              value={line.quantity}
+                              onChange={(e) => updateLine(line.key, "quantity", parseFloat(e.target.value) || 0)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              className="h-10 text-right font-medium border-slate-200"
+                              value={line.rate}
+                              onChange={(e) => updateLine(line.key, "rate", parseFloat(e.target.value) || 0)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              className="h-10 text-right font-medium border-slate-200"
+                              value={line.discountPercent}
+                              onChange={(e) => updateLine(line.key, "discountPercent", parseFloat(e.target.value) || 0)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={line.taxId || "__none"}
+                              onValueChange={(v) => updateLineTax(line.key, v === "__none" ? "" : v)}
+                            >
+                              <SelectTrigger className="h-10 border-slate-200">
+                                <SelectValue placeholder="Tax" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none">Non-Taxable</SelectItem>
+                                {taxes.map((tax) => (
+                                  <SelectItem key={tax._id} value={tax._id}>{tax.name} ({tax.rate}%)</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-right py-5 pr-4">
+                            <div className="font-bold text-slate-900 tabular-nums">
+                               {amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 text-slate-300 hover:text-red-600 hover:bg-red-50 transition-all rounded-full"
+                              onClick={() => removeLine(line.key)}
+                            >
+                              <Trash2 className="h-4.5 w-4.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex gap-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="font-bold border-dashed border-2 hover:bg-slate-50 h-10 px-6 border-slate-200"
+                  onClick={() => setLines((prev) => [...prev, newLine()])}
+                >
+                  <Plus className="h-4 w-4 mr-2 text-blue-600" /> Add New Row
+                </Button>
+                <Button variant="ghost" size="sm" className="font-bold text-slate-500 h-10">
+                   Add Multiple Items
+                </Button>
+              </div>
+            </div>
+
+            <Separator className="bg-slate-100" />
+
+            {/* ═══ Footer Section ═══ */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-16">
+              <div className="space-y-8">
+                <div className="space-y-3">
+                  <Label className="text-sm font-bold text-slate-700">Customer Notes</Label>
+                  <textarea
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    placeholder="Notes added here will be visible on the invoice"
+                    value={customerNotes}
+                    onChange={(e) => setCustomerNotes(e.target.value)}
                   />
-                  <span className="text-sm tabular-nums w-20 text-right">
-                    {adjustmentAmount.toFixed(2)}
-                  </span>
+                </div>
+                <div className="space-y-3">
+                  <Label className="text-sm font-bold text-slate-700">Terms & Conditions</Label>
+                  <textarea
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    placeholder="Enter the terms and conditions of your business"
+                    value={termsAndConditions}
+                    onChange={(e) => setTermsAndConditions(e.target.value)}
+                  />
                 </div>
               </div>
-              <Separator />
-              <div className="flex items-center justify-between text-base font-bold">
-                <span>Total ( &#8377; )</span>
-                <span className="tabular-nums">{total.toFixed(2)}</span>
+
+              <div className="bg-slate-50/50 rounded-2xl p-8 border border-slate-100 space-y-5 h-fit">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500 font-medium">Sub Total</span>
+                  <span className="font-bold tabular-nums text-slate-900">{subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                </div>
+                
+                {lineDiscountAmount > 0 && (
+                  <div className="flex items-center justify-between text-sm text-green-600 font-medium">
+                    <span>Line Item Discount</span>
+                    <span className="tabular-nums">- {lineDiscountAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-6 py-2">
+                   <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-500">Discount</span>
+                      <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
+                         <SelectTrigger className="h-7 w-16 text-[10px] py-0">
+                            <SelectValue />
+                         </SelectTrigger>
+                         <SelectContent>
+                            <SelectItem value="percent">%</SelectItem>
+                            <SelectItem value="amount">₹</SelectItem>
+                         </SelectContent>
+                      </Select>
+                   </div>
+                   <Input
+                      type="number"
+                      className="h-9 w-24 text-right font-bold border-slate-200"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                   />
+                </div>
+
+                <div className="flex items-center justify-between gap-6 py-2">
+                   <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-500">Adjustment</span>
+                      <TooltipProvider>
+                         <Tooltip>
+                            <TooltipTrigger asChild><Info className="h-3.5 w-3.5 text-slate-300 cursor-help" /></TooltipTrigger>
+                            <TooltipContent>Add or subtract a small amount for rounding or other purposes</TooltipContent>
+                         </Tooltip>
+                      </TooltipProvider>
+                   </div>
+                   <Input
+                      type="number"
+                      className="h-9 w-24 text-right font-bold border-slate-200"
+                      value={adjustmentAmount}
+                      onChange={(e) => setAdjustmentAmount(parseFloat(e.target.value) || 0)}
+                   />
+                </div>
+
+                <Separator className="bg-slate-200" />
+
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-lg font-bold text-slate-900">Total ( ₹ )</span>
+                  <span className="text-2xl font-black text-slate-900 tabular-nums">
+                    {total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                
+                <div className="bg-white border rounded-xl p-4 mt-6 space-y-2">
+                   <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Post-update Status</div>
+                   <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-100 font-bold px-3 py-1">
+                         {invoice.status}
+                      </Badge>
+                      {total > 0 && <span className="text-[10px] text-slate-400">Syncs to Ledger & Stock</span>}
+                   </div>
+                </div>
               </div>
             </div>
           </div>
-
-          <Separator />
-
-          {/* ═══ Actions ═══ */}
-          <div className="flex items-center gap-3 pb-8">
-            <Button disabled={saving} onClick={handleUpdate}>
-              {saving ?
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              : null}
-              Save
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => router.push(`/sales/invoices/${id}`)}
-            >
-              Cancel
-            </Button>
+          
+          <div className="flex justify-end gap-4 pb-20">
+             <Button variant="outline" className="px-8 font-bold border-slate-200" onClick={() => router.push(`/sales/invoices/${id}`)}>
+                Discard
+             </Button>
+             <Button className="px-8 font-bold bg-slate-900 hover:bg-slate-800" onClick={() => handleUpdate(false)} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : "Save Changes"}
+             </Button>
+             <Button className="px-8 font-bold bg-blue-600 hover:bg-blue-700" onClick={() => handleUpdate(true)} disabled={saving}>
+                <Send className="h-4 w-4 mr-2" /> Update and Send
+             </Button>
           </div>
         </div>
       </SidebarInset>

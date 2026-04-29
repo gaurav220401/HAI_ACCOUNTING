@@ -74,7 +74,40 @@ export interface SalesOrder {
   status: SalesOrderStatus;
   invoiceStatus: SalesOrderInvoiceStatus;
   shipmentStatus: SalesOrderShipmentStatus;
+  taxType: "TDS" | "TCS" | "none";
+  tdsId?: string | { _id: string; taxName: string; rate: number } | null;
+  tcsId?: string | { _id: string; taxName: string; rate: number } | null;
+  taxAmount?: number;
+  tcsAmount?: number;
   invoiceId?: string | { _id: string; invoiceNumber?: string } | null;
+  linkedDocuments?: {
+    invoices: Array<{
+      _id: string;
+      invoiceNumber: string;
+      status: string;
+      total: number;
+      balanceDue: number;
+      invoiceDate: string;
+    }>;
+    packages: Array<{
+      _id: string;
+      packageSlipNumber: string;
+      date: string;
+      status: string;
+    }>;
+    deliveryChallans: Array<{
+      _id: string;
+      challanNumber: string;
+      challanDate: string;
+      status: string;
+    }>;
+    moveOrders: Array<{
+      _id: string;
+      orderNumber: string;
+      date: string;
+      status: string;
+    }>;
+  };
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -95,6 +128,11 @@ export interface CreateSalesOrderInput {
   notes?: string;
   terms?: string;
   status?: SalesOrderStatus;
+  taxType?: "TDS" | "TCS" | "none";
+  tdsId?: string | null;
+  tcsId?: string | null;
+  taxAmount?: number;
+  tcsAmount?: number;
 }
 
 export type UpdateSalesOrderInput = Partial<CreateSalesOrderInput>;
@@ -125,6 +163,7 @@ export interface SalesOrderListParams extends ListParams {
 export interface SendSalesOrderEmailInput {
   to: string[];
   cc?: string[];
+  bcc?: string[];
   subject: string;
   body: string;
   attachPdf?: boolean;

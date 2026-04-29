@@ -25,6 +25,11 @@ function refId(value: unknown): string {
   return "";
 }
 
+function normalizeTaxSelection(value: unknown): string {
+  const taxId = refId(value);
+  return taxId && taxId.toLowerCase() !== "none" ? taxId : "";
+}
+
 function normalizeState(value: unknown): string {
   return String(value || "")
     .trim()
@@ -156,7 +161,7 @@ export async function applyItemTaxLinkageToItems(
 
   const allTaxIds = new Set<string>();
   for (const line of linkedItems) {
-    const lineTaxId = refId((line as any)?.taxId);
+    const lineTaxId = normalizeTaxSelection((line as any)?.taxId);
     if (lineTaxId) allTaxIds.add(lineTaxId);
 
     const item = itemById.get(refId((line as any)?.itemId));
@@ -184,7 +189,8 @@ export async function applyItemTaxLinkageToItems(
 
   return linkedItems.map((line) => {
     const item = itemById.get(refId((line as any)?.itemId));
-    const lineTaxId = refId((line as any)?.taxId);
+    const rawLineTaxId = refId((line as any)?.taxId);
+    const lineTaxId = normalizeTaxSelection((line as any)?.taxId);
     const lineTaxPercent = Number((line as any)?.taxPercent || 0);
 
     if (!item) {
@@ -193,11 +199,24 @@ export async function applyItemTaxLinkageToItems(
         if (!lineTaxPercent) {
           (line as any).taxPercent = Number(taxRateById.get(lineTaxId) || 0);
         }
+      } else if (rawLineTaxId.toLowerCase() === "none") {
+        (line as any).taxId = null;
+        if ((line as any).taxPercent !== undefined) {
+          (line as any).taxPercent = 0;
+        }
       }
       return line;
     }
 
     if ((item as any).taxPreference && (item as any).taxPreference !== "Taxable") {
+      (line as any).taxId = null;
+      if ((line as any).taxPercent !== undefined) {
+        (line as any).taxPercent = 0;
+      }
+      return line;
+    }
+
+    if (rawLineTaxId.toLowerCase() === "none") {
       (line as any).taxId = null;
       if ((line as any).taxPercent !== undefined) {
         (line as any).taxPercent = 0;

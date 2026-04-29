@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, Plus, Trash2, Send } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
+import { cn } from "@/lib/utils";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
@@ -31,12 +32,14 @@ import {
 
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
-import { settingsApi, type PaymentTerms } from "@/lib/api/settings";
+import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
 import {
   salesOrderApi,
   type CreateSalesOrderInput,
   type SalesOrderStatus,
 } from "@/lib/api/sales-orders";
+import { tdsTaxApi, type TdsTax } from "@/lib/api/tds-taxes";
+import { tcsTaxApi, type TcsTax } from "@/lib/api/tcs-taxes";
 
 // Status is now set automatically based on save action
 
@@ -48,6 +51,7 @@ type LineItemUi = {
   quantity: string;
   rate: string;
   discount: string;
+  taxId: string | null;
   taxPercent: string;
   amount: number;
 };
@@ -81,6 +85,12 @@ export default function NewSalesOrderPage() {
   const [expectedShipmentDate, setExpectedShipmentDate] = useState("");
   const [paymentTermsId, setPaymentTermsId] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
+  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("none");
+  const [tdsId, setTdsId] = useState("");
+  const [tcsId, setTcsId] = useState("");
+  const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
+  const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
+  const [allTaxes, setAllTaxes] = useState<Tax[]>([]);
   const [sendAfterSave, setSendAfterSave] = useState(false);
 
   const [notes, setNotes] = useState("");
@@ -98,10 +108,25 @@ export default function NewSalesOrderPage() {
       quantity: "1",
       rate: "0",
       discount: "0",
+      taxId: "",
       taxPercent: "0",
       amount: 0,
     },
   ]);
+
+  // Set default tax for initial line once taxes are loaded
+  useEffect(() => {
+    if (allTaxes.length > 0 && lineItems.length === 1 && !lineItems[0].itemId && !lineItems[0].taxId) {
+      const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
+      if (gst18) {
+        setLineItems([{
+          ...lineItems[0],
+          taxId: gst18._id,
+          taxPercent: String(gst18.rate)
+        }]);
+      }
+    }
+  }, [allTaxes]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>("");
@@ -136,21 +161,77 @@ export default function NewSalesOrderPage() {
       .list()
       .then((res) => setPaymentTerms(res.data ?? []))
       .catch(() => setPaymentTerms([]));
+
+    tdsTaxApi.list().then(res => setTdsTaxes(res.data ?? []));
+    tcsTaxApi.list().then(res => setTcsTaxes(res.data ?? []));
+    settingsApi.taxes.list().then(res => setAllTaxes(res.data ?? []));
   }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   const totals = useMemo(() => {
-    const subTotal = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+    const subTotal = lineItems.reduce((sum, li) => {
+      const q = Number(li.quantity) || 0;
+      const r = Number(li.rate) || 0;
+      const d = Number(li.discount) || 0;
+      return sum + (q * r - d);
+    }, 0);
+
+    const taxBreakdown: Array<{ name: string; amount: number; rate: number }> = [];
+    const breakdownMap = new Map<string, { name: string; amount: number; rate: number }>();
+    
+    lineItems.forEach((li) => {
+      const q = Number(li.quantity) || 0;
+      const r = Number(li.rate) || 0;
+      const d = Number(li.discount) || 0;
+      const amountBeforeTax = q * r - d;
+      const taxP = Number(li.taxPercent) || 0;
+
+      if (taxP > 0) {
+        const selectedTax = allTaxes.find((t) => t._id === li.taxId);
+        if (selectedTax && selectedTax.components && selectedTax.components.length > 0) {
+          selectedTax.components.forEach((comp) => {
+            const compAmount = (amountBeforeTax * comp.rate) / 100;
+            const compTax = allTaxes.find(t => t._id === comp.taxId);
+            const compName = compTax?.name || (comp as any).name || `Tax ${comp.rate}%`;
+            const existing = breakdownMap.get(compName) || { name: compName, amount: 0, rate: comp.rate };
+            existing.amount += compAmount;
+            breakdownMap.set(compName, existing);
+          });
+        } else {
+          const amount = (amountBeforeTax * taxP) / 100;
+          const name = selectedTax?.name || `Tax ${taxP}%`;
+          const existing = breakdownMap.get(name) || { name, amount: 0, rate: taxP };
+          existing.amount += amount;
+          breakdownMap.set(name, existing);
+        }
+      }
+    });
+
+    breakdownMap.forEach((v) => taxBreakdown.push(v));
+    const itemTaxes = taxBreakdown.reduce((sum, b) => sum + b.amount, 0);
+
     const shipping = shippingCharges.trim() ? Number(shippingCharges) : 0;
     const adj = adjustment.trim() ? Number(adjustment) : 0;
-    const total = subTotal + shipping + adj;
-    return { subTotal, shipping, adj, total };
-  }, [lineItems, shippingCharges, adjustment]);
+
+    let taxAmount = 0;
+    if (taxType === "TDS") {
+      const selected = tdsTaxes.find((t) => t._id === tdsId);
+      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+    } else if (taxType === "TCS") {
+      const selected = tcsTaxes.find((t) => t._id === tcsId);
+      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+    }
+
+    const total = subTotal + itemTaxes + shipping + adj + (taxType === "TCS" ? taxAmount : -taxAmount);
+    return { subTotal, itemTaxes, taxBreakdown, shipping, adj, taxAmount, total };
+  }, [lineItems, allTaxes, shippingCharges, adjustment, taxType, tdsId, tcsId, tdsTaxes, tcsTaxes]);
 
   function recalcLine(item: LineItemUi): LineItemUi {
     const qty = Number(item.quantity) || 0;
     const rate = Number(item.rate) || 0;
     const disc = Number(item.discount) || 0;
-    const amount = Math.max(0, qty * rate - disc);
+    const taxP = Number(item.taxPercent) || 0;
+    const amountBeforeTax = qty * rate - disc;
+    const amount = amountBeforeTax + (amountBeforeTax * taxP) / 100;
     return { ...item, amount };
   }
 
@@ -159,9 +240,10 @@ export default function NewSalesOrderPage() {
   }
 
   function addLine() {
+    const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
     setLineItems((prev) => [
       ...prev,
-      {
+      recalcLine({
         id: crypto.randomUUID(),
         itemId: "",
         description: "",
@@ -169,9 +251,10 @@ export default function NewSalesOrderPage() {
         quantity: "1",
         rate: "0",
         discount: "0",
-        taxPercent: "0",
+        taxId: gst18?._id || "",
+        taxPercent: gst18 ? String(gst18.rate) : "0",
         amount: 0,
-      },
+      }),
     ]);
   }
 
@@ -190,6 +273,7 @@ export default function NewSalesOrderPage() {
         const rate = Number(li.rate);
         const disc = Number(li.discount) || 0;
         const selectedItem = itemsById.get(li.itemId);
+        const taxId = li.taxId && li.taxId !== "none" ? li.taxId : null;
         return {
           itemId: li.itemId,
           name: selectedItem?.name || "",
@@ -198,8 +282,9 @@ export default function NewSalesOrderPage() {
           quantity: Number.isFinite(qty) ? qty : 0,
           rate: Number.isFinite(rate) ? rate : 0,
           discount: disc,
-          taxId: null,
+          taxId,
           taxPercent: Number(li.taxPercent) || 0,
+          taxAmount: ((Number(li.quantity) * Number(li.rate) - (Number(li.discount) || 0)) * (Number(li.taxPercent) || 0)) / 100,
           amount: Number(li.amount) || 0,
         };
       })
@@ -218,6 +303,11 @@ export default function NewSalesOrderPage() {
       lineItems: cleanedLines,
       shippingCharges: totals.shipping,
       adjustment: totals.adj,
+      taxType,
+      tdsId: taxType === "TDS" ? tdsId : undefined,
+      tcsId: taxType === "TCS" ? tcsId : undefined,
+      taxAmount: taxType === "TDS" ? totals.taxAmount : 0,
+      tcsAmount: taxType === "TCS" ? totals.taxAmount : 0,
       notes: notes.trim() || undefined,
       terms: terms.trim() || undefined,
       status: saveStatus,
@@ -423,6 +513,7 @@ export default function NewSalesOrderPage() {
                       <TableHead className="w-24 text-right">Stock</TableHead>
                       <TableHead className="w-24 text-right">Rate</TableHead>
                       <TableHead className="w-24 text-right">Discount</TableHead>
+                      <TableHead className="w-40 text-right">Tax</TableHead>
                       <TableHead className="w-24 text-right">Amount</TableHead>
                       <TableHead className="w-12" />
                     </TableRow>
@@ -446,11 +537,14 @@ export default function NewSalesOrderPage() {
                                 value={li.itemId}
                                 onValueChange={(v) => {
                                   const selected = itemsById.get(v);
+                                  const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
                                   updateLine(li.id, {
                                     itemId: v,
                                     description: selected?.description || "",
                                     hsnSacCode: selected?.hsnSacCode || "",
                                     rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
+                                    taxId: li.taxId || gst18?._id || "",
+                                    taxPercent: li.taxId ? li.taxPercent : (gst18 ? String(gst18.rate) : "0"),
                                   });
                                 }}
                               >
@@ -518,6 +612,30 @@ export default function NewSalesOrderPage() {
                               className="text-right"
                             />
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Select
+                              value={li.taxId || "none"}
+                              onValueChange={(val) => {
+                                const selectedTax = allTaxes.find(t => t._id === val);
+                                updateLine(li.id, { 
+                                  taxId: val === "none" ? null : val, 
+                                  taxPercent: selectedTax ? String(selectedTax.rate) : "0" 
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="h-9 text-xs">
+                                <SelectValue placeholder="Select Tax" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Non-Taxable</SelectItem>
+                                {allTaxes.map((t) => (
+                                  <SelectItem key={t._id} value={t._id} className="text-xs">
+                                    {t.name} ({t.rate}%)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">
                             {li.amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
@@ -545,39 +663,111 @@ export default function NewSalesOrderPage() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Sub Total</span>
-                    <span className="tabular-nums">{totals.subTotal.toFixed(2)}</span>
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground">Shipping Charges</span>
-                    <div className="w-40">
-                      <Input
-                        value={shippingCharges}
-                        onChange={(e) => setShippingCharges(e.target.value)}
-                        className="text-right"
-                        placeholder="0"
-                      />
+                <div className="bg-muted/30 rounded-xl border p-6 shadow-sm">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Sub Total</span>
+                      <span className="tabular-nums font-medium">₹{totals.subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                     </div>
-                  </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground">Adjustment</span>
-                    <div className="w-40">
-                      <Input
-                        value={adjustment}
-                        onChange={(e) => setAdjustment(e.target.value)}
-                        className="text-right"
-                        placeholder="0"
-                      />
+                    {totals.taxBreakdown.length > 0 && (
+                      <div className="py-2 border-y border-dashed space-y-2">
+                        {totals.taxBreakdown.map((b, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+                              {b.name} <span className="text-[10px] opacity-70">[{b.rate}%]</span>
+                            </span>
+                            <span className="tabular-nums font-medium">₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-4 pt-1">
+                      <span className="text-muted-foreground text-sm">Shipping Charges</span>
+                      <div className="w-32 relative group">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                        <Input
+                          value={shippingCharges}
+                          onChange={(e) => setShippingCharges(e.target.value)}
+                          className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                          placeholder="0.00"
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="mt-4 border-t pt-4 flex items-center justify-between">
-                    <span className="font-medium">Total (₹)</span>
-                    <span className="font-semibold tabular-nums">{totals.total.toFixed(2)}</span>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground text-sm">Adjustment</span>
+                      <div className="w-32 relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                        <Input
+                          value={adjustment}
+                          onChange={(e) => setAdjustment(e.target.value)}
+                          className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 mt-2 border-t">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {["none", "TDS", "TCS"].map((t) => (
+                            <label key={t} className={cn(
+                              "flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors border",
+                              taxType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input hover:bg-muted"
+                            )}>
+                              <input
+                                type="radio"
+                                name="taxType"
+                                value={t}
+                                checked={taxType === t}
+                                onChange={() => setTaxType(t as any)}
+                                className="sr-only"
+                              />
+                              {t.toUpperCase()}
+                            </label>
+                          ))}
+                        </div>
+                        
+                        {taxType !== "none" && (
+                          <div className="w-32">
+                            <Select value={taxType === "TDS" ? tdsId : tcsId} onValueChange={taxType === "TDS" ? setTdsId : setTcsId}>
+                              <SelectTrigger className="h-7 text-[10px]">
+                                <SelectValue placeholder={`Select ${taxType}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(taxType === "TDS" ? tdsTaxes : tcsTaxes).map((t) => (
+                                  <SelectItem key={t._id} value={t._id} className="text-xs">
+                                    {t.taxName} ({t.rate}%)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </div>
+
+                      {taxType !== "none" && (
+                        <div className="flex items-center justify-between text-xs py-1 text-muted-foreground bg-muted/50 px-2 rounded mb-3">
+                          <span>{taxType} Amount</span>
+                          <span className="tabular-nums font-medium">
+                            {taxType === "TDS" ? "-" : "+"} ₹{totals.taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-2">
+                        <span className="text-base font-bold text-foreground">Total</span>
+                        <div className="text-right">
+                          <span className="text-xl font-bold text-primary tabular-nums">
+                            ₹{totals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </span>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Indian Rupee</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
