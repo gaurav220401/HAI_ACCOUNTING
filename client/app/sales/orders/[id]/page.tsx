@@ -177,6 +177,8 @@ Thanks for your business. Please find our sales order (${order.salesOrderNumber}
 Order Summary:
 - Number: ${order.salesOrderNumber}
 - Date: ${formatDate(order.orderDate)}
+- Sub Total: ₹${Number(order.subTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+${(order.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) > 0) ? `- CGST: ₹${Number(order.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}\n- SGST: ₹${Number(order.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : ""}${(order.shippingCharges + order.adjustment !== 0) ? `\n- Shipping & Adj: ₹${Number(order.shippingCharges + order.adjustment).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : ""}
 - Total Amount: ₹${Number(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
 
 Assuring you of our best services at all times.
@@ -1025,6 +1027,9 @@ export default function SalesOrderDetailsPage() {
                                  <th className="px-4 py-2.5 text-left font-semibold">HSN/SAC</th>
                                  <th className="px-4 py-2.5 text-right font-semibold">Qty</th>
                                  <th className="px-4 py-2.5 text-right font-semibold">Rate</th>
+                                 <th className="px-4 py-2.5 text-right font-semibold">GST%</th>
+                                 <th className="px-4 py-2.5 text-right font-semibold">CGST</th>
+                                 <th className="px-4 py-2.5 text-right font-semibold">SGST</th>
                                  <th className="px-4 py-2.5 text-right font-semibold">Amount</th>
                                </tr>
                              </thead>
@@ -1041,6 +1046,9 @@ export default function SalesOrderDetailsPage() {
                                       {li.quantity} <span className="text-gray-500 text-xs">Number</span>
                                    </td>
                                    <td className="px-4 py-3 text-right text-gray-900 align-top">{Number(li.rate).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                   <td className="px-4 py-3 text-right text-gray-700 align-top">{li.taxPercent || 0}%</td>
+                                   <td className="px-4 py-3 text-right text-gray-900 align-top">{Number((li.taxAmount || 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                   <td className="px-4 py-3 text-right text-gray-900 align-top">{Number((li.taxAmount || 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                                    <td className="px-4 py-3 text-right text-gray-900 align-top font-medium">{Number(li.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                                  </tr>
                                ))}
@@ -1067,10 +1075,16 @@ export default function SalesOrderDetailsPage() {
                                )}
                                {/* Display taxes if any */}
                                {active.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) > 0 && (
-                                 <div className="flex justify-between py-1.5">
-                                   <div className="text-gray-600">Tax Amount</div>
-                                   <div className="font-medium text-gray-900">{Number(active.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0)).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
-                                 </div>
+                                 <>
+                                   <div className="flex justify-between py-1.5">
+                                     <div className="text-gray-600">CGST</div>
+                                     <div className="font-medium text-gray-900">{Number(active.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                                   </div>
+                                   <div className="flex justify-between py-1.5">
+                                     <div className="text-gray-600">SGST</div>
+                                     <div className="font-medium text-gray-900">{Number(active.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                                   </div>
+                                 </>
                                )}
                                <div className="flex justify-between py-3 border-t border-b border-gray-200 mt-2 bg-gray-50 px-2 rounded">
                                  <div className="font-bold text-gray-900">Total</div>
@@ -1164,6 +1178,8 @@ export default function SalesOrderDetailsPage() {
                                       <th className="text-left py-2">Item</th>
                                       <th className="text-left py-2">HSN/SAC</th>
                                       <th className="text-right py-2">Qty</th>
+                                      <th className="text-right py-2">To Invoice</th>
+                                      <th className="text-right py-2">To Ship</th>
                                       <th className="text-right py-2">Rate</th>
                                       <th className="text-right py-2">Amount</th>
                                     </tr>
@@ -1177,6 +1193,16 @@ export default function SalesOrderDetailsPage() {
                                         </td>
                                         <td className="py-2">{li.hsnSacCode || "-"}</td>
                                         <td className="py-2 text-right">{Number(li.quantity || 0).toLocaleString("en-IN")}</td>
+                                        <td className="py-2 text-right">
+                                           <span className={(li as any).qtyToBeInvoiced === 0 ? "text-xs font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700" : "text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700"}>
+                                             {(li as any).qtyToBeInvoiced ?? li.quantity}
+                                           </span>
+                                        </td>
+                                        <td className="py-2 text-right">
+                                           <span className={(li as any).qtyToBeShipped === 0 ? "text-xs font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700" : "text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700"}>
+                                             {(li as any).qtyToBeShipped ?? li.quantity}
+                                           </span>
+                                        </td>
                                         <td className="py-2 text-right">₹{Number(li.rate || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                                         <td className="py-2 text-right font-medium">₹{Number(li.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                                       </tr>

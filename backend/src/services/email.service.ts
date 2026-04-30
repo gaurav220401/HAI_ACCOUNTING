@@ -438,8 +438,38 @@ function buildSalesOrderHtml(opts: SendSalesOrderEmailOptions): string {
                         <td align="right" style="font-weight:600;">${fmtDate(opts.order?.orderDate)}</td>
                       </tr>
                       <tr>
-                        <td style="color:#6b7280;">Amount</td>
-                        <td align="right" style="font-weight:600;">${fmt(opts.order?.total || 0)}</td>
+                        <td style="color:#6b7280; border-top: 1px solid #eee; padding-top: 8px;">Sub Total</td>
+                        <td align="right" style="font-weight:600; border-top: 1px solid #eee; padding-top: 8px;">${fmt(opts.order?.subTotal || 0)}</td>
+                      </tr>
+                      ${
+                        (() => {
+                          const taxAmt = Number(opts.order?.lineItems?.reduce((acc: number, curr: any) => acc + (curr.taxAmount || 0), 0) || 0);
+                          if (taxAmt > 0) {
+                            return `
+                              <tr>
+                                <td style="color:#6b7280;">CGST</td>
+                                <td align="right" style="font-weight:600;">${fmt(taxAmt / 2)}</td>
+                              </tr>
+                              <tr>
+                                <td style="color:#6b7280;">SGST</td>
+                                <td align="right" style="font-weight:600;">${fmt(taxAmt / 2)}</td>
+                              </tr>
+                            `;
+                          }
+                          return "";
+                        })()
+                      }
+                      ${
+                        (Number(opts.order?.shippingCharges || 0) + Number(opts.order?.adjustment || 0)) !== 0 ?
+                          `<tr>
+                            <td style="color:#6b7280;">Shipping & Adj.</td>
+                            <td align="right" style="font-weight:600;">${fmt(Number(opts.order?.shippingCharges || 0) + Number(opts.order?.adjustment || 0))}</td>
+                          </tr>`
+                        : ""
+                      }
+                      <tr>
+                        <td style="color:#7c3aed; font-weight:700; border-top: 2px solid #7c3aed; padding-top: 8px;">Total Amount</td>
+                        <td align="right" style="color:#7c3aed; font-weight:700; border-top: 2px solid #7c3aed; padding-top: 8px;">${fmt(opts.order?.total || 0)}</td>
                       </tr>
                     </table>
                   </td>

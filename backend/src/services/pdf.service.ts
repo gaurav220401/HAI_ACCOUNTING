@@ -1,4 +1,4 @@
-import PDFDocument from "pdfkit";
+﻿import PDFDocument from "pdfkit";
 import * as fs from "fs";
 
 export interface InvoiceItemRow {
@@ -1437,12 +1437,22 @@ export function generateSalesOrderPdf(params: {
       : new Date().toISOString(),
     items: (order.lineItems || []).map((li: any) => {
       const itemRef = typeof li.itemId === "object" ? li.itemId : null;
+      const quantity = Number(li.quantity) || 0;
+      const rate = Number(li.rate) || 0;
+      const taxPercent = Number(li.taxPercent) || 0;
+      const storedTaxAmt = Number(li.taxAmount) || 0;
+      const computedTaxAmt = storedTaxAmt > 0 ? storedTaxAmt
+        : (taxPercent > 0 ? Math.round(quantity * rate * taxPercent) / 100 : 0);
       return {
         name: itemRef?.name || li.name || li.description || "Item",
         description: li.description || "",
         hsnSacCode: itemRef?.hsnSacCode || li.hsnSacCode || "",
-        quantity: Number(li.quantity) || 0,
-        rate: Number(li.rate) || 0,
+        quantity,
+        rate,
+        discountPercent: Number(li.discountPercent) || 0,
+        discountAmount: Number(li.discountAmount ?? li.discount) || 0,
+        taxPercent,
+        taxAmount: computedTaxAmt,
         amount: Number(li.amount) || 0,
       };
     }),
