@@ -1,4 +1,4 @@
-﻿import PDFDocument from "pdfkit";
+import PDFDocument from "pdfkit";
 import * as fs from "fs";
 
 export interface InvoiceItemRow {

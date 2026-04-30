@@ -85,5 +85,11 @@ export const deletePackage = asyncHandler(async (req: AuthenticatedRequest, res:
   pkg.deletedAt = new Date();
   await pkg.save();
 
+  await syncSalesOrderStatus({
+    organizationId: oid,
+    salesOrderId: String(pkg.salesOrderId),
+    req,
+  });
+
   res.json({ success: true, message: "Package deleted successfully" });
 });

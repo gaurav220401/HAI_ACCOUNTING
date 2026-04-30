@@ -96,6 +96,10 @@ function formatDate(d?: string | null) {
   }
 }
 
+function formatQty(value: number | null | undefined) {
+  return Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
 function statusVariant(status: SalesOrderStatus) {
   if (status === "DRAFT") return "secondary" as const;
   if (status === "OVERDUE") return "destructive" as const;
@@ -1178,8 +1182,8 @@ export default function SalesOrderDetailsPage() {
                                       <th className="text-left py-2">Item</th>
                                       <th className="text-left py-2">HSN/SAC</th>
                                       <th className="text-right py-2">Qty</th>
-                                      <th className="text-right py-2">To Invoice</th>
-                                      <th className="text-right py-2">To Ship</th>
+                                      <th className="text-right py-2">To be Invoiced</th>
+                                      <th className="text-right py-2">To be Shipped</th>
                                       <th className="text-right py-2">Rate</th>
                                       <th className="text-right py-2">Amount</th>
                                     </tr>
@@ -1192,15 +1196,15 @@ export default function SalesOrderDetailsPage() {
                                           {li.description ? <div className="text-xs text-muted-foreground">{li.description}</div> : null}
                                         </td>
                                         <td className="py-2">{li.hsnSacCode || "-"}</td>
-                                        <td className="py-2 text-right">{Number(li.quantity || 0).toLocaleString("en-IN")}</td>
+                                        <td className="py-2 text-right">{formatQty(li.quantity)}</td>
                                         <td className="py-2 text-right">
-                                           <span className={(li as any).qtyToBeInvoiced === 0 ? "text-xs font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700" : "text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700"}>
-                                             {(li as any).qtyToBeInvoiced ?? li.quantity}
+                                           <span className={Number(li.qtyToBeInvoiced ?? li.quantity) === 0 ? "text-xs font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700" : "text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700"}>
+                                             {formatQty(li.qtyToBeInvoiced ?? li.quantity)}
                                            </span>
                                         </td>
                                         <td className="py-2 text-right">
-                                           <span className={(li as any).qtyToBeShipped === 0 ? "text-xs font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700" : "text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700"}>
-                                             {(li as any).qtyToBeShipped ?? li.quantity}
+                                           <span className={Number(li.qtyToBeShipped ?? li.quantity) === 0 ? "text-xs font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700" : "text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700"}>
+                                             {formatQty(li.qtyToBeShipped ?? li.quantity)}
                                            </span>
                                         </td>
                                         <td className="py-2 text-right">₹{Number(li.rate || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>

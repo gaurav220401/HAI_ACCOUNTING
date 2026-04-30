@@ -257,7 +257,7 @@ export const create = asyncHandler(
     attachUser(challan, req);
     await challan.save();
 
-    if (challan.status === "Delivered") {
+    if (challan.status !== "Draft") {
        await syncLinkedSalesOrderStatus({
          organizationId: oid,
          salesOrderNumber: challan.salesOrderNumber || "",
@@ -405,6 +405,13 @@ export const convertToOpen = asyncHandler(
     challan.status = "Open";
     attachUser(challan, req);
     await challan.save();
+
+    await syncLinkedSalesOrderStatus({
+      organizationId: challan.organizationId,
+      salesOrderNumber: (challan as any).salesOrderNumber,
+      req,
+    });
+
     res.json({ success: true, data: challan, message: "Challan is now Open" });
   },
 );
@@ -444,6 +451,13 @@ export const markAsReturned = asyncHandler(
     challan.status = "Returned";
     attachUser(challan, req);
     await challan.save();
+
+    await syncLinkedSalesOrderStatus({
+      organizationId: challan.organizationId,
+      salesOrderNumber: (challan as any).salesOrderNumber,
+      req,
+    });
+
     res.json({
       success: true,
       data: challan,

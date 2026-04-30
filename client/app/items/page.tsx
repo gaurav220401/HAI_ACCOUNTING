@@ -101,7 +101,6 @@ export default function ItemsPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "history">("overview");
   const [itemTransactions, setItemTransactions] = useState<any[]>([]);
   const [itemTransactionsLoading, setItemTransactionsLoading] = useState(false);
-  const [syncActioning, setSyncActioning] = useState(false);
 
   // Action states
   const [toDelete, setToDelete] = useState<Item | null>(null);
@@ -237,20 +236,6 @@ export default function ItemsPage() {
       setLedgerLoading(false);
     }
   }, []);
-
-  async function handleSyncStock() {
-    if (!detail) return;
-    setSyncActioning(true);
-    try {
-      await inventoryApi.syncStock(detail._id);
-      toast.success("Inventory data synchronized successfully");
-      await refreshSelectedItem(detail._id);
-    } catch (e) {
-      toast.error((e as Error).message || "Sync failed");
-    } finally {
-      setSyncActioning(false);
-    }
-  }
 
   const refreshSelectedItem = useCallback(async (id: string) => {
     await Promise.all([
@@ -1073,11 +1058,11 @@ export default function ItemsPage() {
                                         </div>
                                         <div className="flex justify-between">
                                           <span className="text-sm text-gray-600">Committed Stock</span>
-                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(detail.committedStock || 0)}</span>
+                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(committedStockValue)}</span>
                                         </div>
                                         <div className="flex justify-between border-t pt-1 mt-1">
                                           <span className="text-sm font-medium text-gray-800">Available for Sale</span>
-                                          <span className="text-sm font-bold text-green-600">{formatQuantity(stockOnHandValue - (detail.committedStock || 0))}</span>
+                                          <span className="text-sm font-bold text-green-600">{formatQuantity(availableForSaleValue)}</span>
                                         </div>
                                       </div>
                                     </div>
@@ -1086,15 +1071,15 @@ export default function ItemsPage() {
                                       <div className="space-y-2">
                                         <div className="flex justify-between">
                                           <span className="text-sm text-gray-600">Stock on Hand</span>
-                                          <span className="text-sm font-medium">{formatQuantity(stockOnHandValue)}</span>
+                                          <span className="text-sm font-medium">{formatQuantity(physicalStockOnHandValue)}</span>
                                         </div>
                                         <div className="flex justify-between">
                                           <span className="text-sm text-gray-600">Committed Stock</span>
-                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(detail.committedStock || 0)}</span>
+                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(physicalCommittedStockValue)}</span>
                                         </div>
                                         <div className="flex justify-between border-t pt-1 mt-1">
                                           <span className="text-sm font-medium text-gray-800">Available for Sale</span>
-                                          <span className="text-sm font-bold text-green-600">{formatQuantity(stockOnHandValue - (detail.committedStock || 0))}</span>
+                                          <span className="text-sm font-bold text-green-600">{formatQuantity(physicalAvailableForSaleValue)}</span>
                                         </div>
                                       </div>
                                     </div>
@@ -1149,16 +1134,6 @@ export default function ItemsPage() {
                                 />
                                 <div className="flex items-center gap-3">
                                   {metricsLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-8 gap-1.5" 
-                                    onClick={handleSyncStock} 
-                                    disabled={syncActioning}
-                                  >
-                                    <RefreshCw className={`h-3.5 w-3.5 ${syncActioning ? "animate-spin" : ""}`} />
-                                    Sync Data
-                                  </Button>
                                   <Button variant="link" size="sm" className="h-auto p-0" onClick={openOpeningStockDialog}>Edit</Button>
                                 </div>
                               </div>
