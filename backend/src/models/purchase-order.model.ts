@@ -1,7 +1,7 @@
 import { Schema, model, Document, Types } from "mongoose";
 import { auditTrailPlugin, softDeletePlugin } from "../plugins";
 
-export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed" | "Canceled";
+export type PurchaseOrderStatus = "Draft" | "Open" | "Received" | "Billed" | "Closed" | "Canceled";
 export type DiscountLevel = "transaction" | "line_item";
 
 export interface IPurchaseOrderLineItem {
@@ -17,6 +17,8 @@ export interface IPurchaseOrderLineItem {
   discountPercent?: number;
   discountAmount?: number;
   amount: number;
+  qtyReceived?: number;
+  receivedDate?: Date | null;
 }
 
 export interface IPurchaseOrderComment {
@@ -74,6 +76,8 @@ const lineItemSchema = new Schema<IPurchaseOrderLineItem>(
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
     amount: { type: Number, default: 0 },
+    qtyReceived: { type: Number, default: 0 },
+    receivedDate: { type: Date, default: null },
   },
   { _id: true },
 );
@@ -134,7 +138,7 @@ const purchaseOrderSchema = new Schema<IPurchaseOrder>(
     ],
     status: {
       type: String,
-      enum: ["Draft", "Open", "Billed", "Closed", "Canceled"],
+      enum: ["Draft", "Open", "Received", "Billed", "Closed", "Canceled"],
       default: "Draft",
     },
     isActive: { type: Boolean, default: true },

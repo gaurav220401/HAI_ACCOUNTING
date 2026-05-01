@@ -1,4 +1,5 @@
 import { AuthenticatedRequest } from "../types";
+import PurchaseOrder from "../models/purchase-order.model";
 import {
   applyInventoryValueDeltas,
   applyStockDeltas,
@@ -25,6 +26,24 @@ function round2(value: number): number {
 
 function billVoucherId(bill: any): string {
   return `bill:${String(bill._id)}`;
+}
+
+async function shouldApplyBillStockSync(bill: any): Promise<boolean> {
+  const orderNumber = String(bill?.orderNumber || "").trim();
+  if (!orderNumber) return true;
+
+  const filter: any = {
+    organizationId: bill.organizationId,
+    purchaseOrderNumber: orderNumber,
+    isDeleted: false,
+  };
+
+  if (bill.vendorId) {
+    filter.vendorId = bill.vendorId;
+  }
+
+  const linkedPurchaseOrder = await PurchaseOrder.findOne(filter).select("_id").lean();
+  return !linkedPurchaseOrder;
 }
 
 export function isPostedBillStatus(status: string): boolean {
@@ -171,11 +190,14 @@ export async function syncBillCreationAccounting(params: {
   const { bill, req } = params;
 
   if (isPostedBillStatus(String(bill.status || ""))) {
-    await applyStockDeltas({
-      organizationId: bill.organizationId as any,
-      deltas: collectBillStockDeltas(bill.lineItems as any[]),
-      req,
-    });
+    const shouldApplyStock = await shouldApplyBillStockSync(bill);
+    if (shouldApplyStock) {
+      await applyStockDeltas({
+        organizationId: bill.organizationId as any,
+        deltas: collectBillStockDeltas(bill.lineItems as any[]),
+        req,
+      });
+    }
 
     await postBillLedger(bill, req);
   }
