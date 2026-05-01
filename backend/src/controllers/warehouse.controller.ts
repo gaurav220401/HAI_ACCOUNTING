@@ -11,9 +11,16 @@ function orgId(req: AuthenticatedRequest) {
 }
 
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const data = await Warehouse.find({
+  const includeInactive = String(req.query.includeInactive || "false") === "true";
+  const filter: any = {
     organizationId: orgId(req),
-    isDeleted: false,
+  };
+  if (!includeInactive) {
+    filter.isActive = true;
+  }
+
+  const data = await Warehouse.find({
+    ...filter,
   }).sort({ name: 1 });
   res.json({ success: true, data });
 });

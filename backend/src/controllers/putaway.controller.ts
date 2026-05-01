@@ -1,5 +1,4 @@
 import { Response } from "express";
-import { Types } from "mongoose";
 import Putaway from "../models/putaway.model";
 import PurchaseReceive from "../models/purchase-receive.model";
 import Item from "../models/item.model";
@@ -12,6 +11,12 @@ function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
   if (!id) throw new ForbiddenError("No active organization");
   return id;
+}
+
+function toNum(val: unknown, fallback = 0): number {
+  if (val === undefined || val === null || val === "") return fallback;
+  const n = Number(val);
+  return Number.isNaN(n) ? fallback : n;
 }
 
 async function nextPutawayNumber(organizationId: any): Promise<string> {
@@ -69,6 +74,79 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const receive = await PurchaseReceive.findOne({ _id: purchaseReceiveId, organizationId: oid, isDeleted: false });
   if (!receive) throw new NotFoundError("Purchase Receive");
 
+  if (receive.status !== "Received") {
+    throw new ValidationError("Putaway can only be done for received purchase receives");
+  }
+
+  if (!Array.isArray(lineItems) || lineItems.length === 0) {
+    throw new ValidationError("At least one putaway line item is required");
+  }
+
+  const existingPutaways = await Putaway.find({
+    organizationId: oid,
+    purchaseReceiveId: receive._id,
+    isDeleted: false,
+    status: { $ne: "Cancelled" },
+  })
+    .select("lineItems")
+    .lean();
+
+  const alreadyPutawayByKey = new Map<string, number>();
+  for (const pa of existingPutaways) {
+    for (const li of pa.lineItems || []) {
+      const key = String(li.itemId || li.name || "");
+      if (!key) continue;
+      alreadyPutawayByKey.set(key, (alreadyPutawayByKey.get(key) || 0) + toNum(li.quantityPutaway));
+    }
+  }
+
+  const receiveByKey = new Map<string, { quantityReceived: number; name: string; itemId?: any }>();
+  for (const li of receive.lineItems || []) {
+    const key = String(li.itemId || li.name || "");
+    if (!key) continue;
+    receiveByKey.set(key, {
+      quantityReceived: toNum(li.quantityReceived),
+      name: String(li.name || ""),
+      itemId: li.itemId,
+    });
+  }
+
+  let hasAnyPutawayQty = false;
+  const normalizedLineItems = lineItems.map((li: any) => {
+    const key = String(li.itemId || li.name || "");
+    if (!key) {
+      throw new ValidationError("Each putaway line must have itemId or name");
+    }
+
+    const receiveLine = receiveByKey.get(key);
+    if (!receiveLine) {
+      throw new ValidationError(`Item not found in purchase receive: ${String(li.name || key)}`);
+    }
+
+    const alreadyPutaway = toNum(alreadyPutawayByKey.get(key) || 0);
+    const remaining = Math.max(0, toNum(receiveLine.quantityReceived) - alreadyPutaway);
+    const requestedPutaway = Math.max(0, toNum(li.quantityPutaway));
+
+    if (requestedPutaway > remaining) {
+      throw new ValidationError(`Putaway quantity exceeds remaining quantity for item ${receiveLine.name || key}`);
+    }
+
+    if (requestedPutaway > 0) hasAnyPutawayQty = true;
+
+    return {
+      itemId: li.itemId || receiveLine.itemId || null,
+      name: String(li.name || receiveLine.name || "").trim(),
+      quantityReceived: toNum(li.quantityReceived, receiveLine.quantityReceived),
+      quantityPutaway: requestedPutaway,
+      remainingQuantity: Math.max(0, remaining - requestedPutaway),
+      warehouseId: li.warehouseId || warehouseId,
+    };
+  });
+
+  if (!hasAnyPutawayQty) {
+    throw new ValidationError("At least one line must have quantityPutaway > 0");
+  }
+
   const putawayNumber = req.body.putawayNumber || (await nextPutawayNumber(oid));
 
   const newPutaway = new Putaway({
@@ -78,7 +156,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     purchaseReceiveNumber: receive.purchaseReceiveNumber,
     date: date ? new Date(date) : new Date(),
     warehouseId,
-    lineItems,
+    lineItems: normalizedLineItems,
     notes,
     status: "Completed",
   });
@@ -86,12 +164,45 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   attachUser(newPutaway, req);
   await newPutaway.save();
 
-  // Update Purchase Receive Status
-  receive.putawayStatus = "Completed"; // Simplifying to Completed for now
+  // Update Purchase Receive putaway status based on cumulative putaway quantities.
+  const allPutaways = await Putaway.find({
+    organizationId: oid,
+    purchaseReceiveId: receive._id,
+    isDeleted: false,
+    status: { $ne: "Cancelled" },
+  })
+    .select("lineItems")
+    .lean();
+
+  const totalPutawayByKey = new Map<string, number>();
+  for (const pa of allPutaways) {
+    for (const li of pa.lineItems || []) {
+      const key = String(li.itemId || li.name || "");
+      if (!key) continue;
+      totalPutawayByKey.set(key, (totalPutawayByKey.get(key) || 0) + toNum(li.quantityPutaway));
+    }
+  }
+
+  let totalReceivedQty = 0;
+  let totalPutawayQty = 0;
+  for (const li of receive.lineItems || []) {
+    const key = String(li.itemId || li.name || "");
+    const receivedQty = Math.max(0, toNum(li.quantityReceived));
+    totalReceivedQty += receivedQty;
+    if (key) totalPutawayQty += Math.max(0, toNum(totalPutawayByKey.get(key) || 0));
+  }
+
+  if (totalPutawayQty <= 0) {
+    receive.putawayStatus = "Pending";
+  } else if (totalPutawayQty + 0.0001 >= totalReceivedQty) {
+    receive.putawayStatus = "Completed";
+  } else {
+    receive.putawayStatus = "Partially Putaway";
+  }
   await receive.save();
 
   // Optionally update item warehouses if they are not set
-  for (const li of lineItems) {
+  for (const li of normalizedLineItems) {
     if (li.itemId) {
        await Item.updateOne(
          { _id: li.itemId, organizationId: oid, warehouseId: null },
@@ -109,7 +220,7 @@ export const getPending = asyncHandler(async (req: AuthenticatedRequest, res: Re
   const pending = await PurchaseReceive.find({
     organizationId: oid,
     status: "Received",
-    putawayStatus: "Pending",
+    putawayStatus: { $in: ["Pending", "Partially Putaway"] },
     isDeleted: false,
   })
     .populate("vendorId", "displayName")
