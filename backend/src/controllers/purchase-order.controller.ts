@@ -12,6 +12,7 @@ import { sendPurchaseOrderEmail as sendPurchaseOrderEmailService } from "../serv
 import { generatePurchaseOrderPdf } from "../services/pdf.service";
 import { findAccountIdByName } from "../services/gl-posting.service";
 import { syncBillCreationAccounting } from "../services/bill-accounting.service";
+import { applyStockDeltas } from "../services/accounting-sync.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -550,14 +551,88 @@ export const clone = asyncHandler(async (req: AuthenticatedRequest, res: Respons
   res.status(201).json({ success: true, data: po });
 });
 
+/** POST /api/purchase-orders/:id/mark-as-received */
+export const markAsReceived = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const oid = orgId(req);
+  const po = await PurchaseOrder.findOne({ _id: req.params.id, organizationId: oid, isDeleted: false });
+  if (!po) throw new NotFoundError("Purchase Order");
+  
+  if (po.status !== "Open") {
+    throw new ValidationError("Only open purchase orders can be marked as received");
+  }
+
+  // req.body.lineItemUpdates: { [lineItemId]: { qtyReceived: number } }
+  const lineItemUpdates = req.body.lineItemUpdates || {};
+  const receivedDate = new Date();
+
+  // Prepare stock deltas for inventory update
+  const stockDeltas: { [itemId: string]: number } = {};
+
+  // Update line items with received quantities
+  po.lineItems.forEach((lineItem: any) => {
+    const update = lineItemUpdates[String(lineItem._id)];
+    if (update && update.qtyReceived !== undefined) {
+      const nextQtyReceived = Math.max(0, toNum(update.qtyReceived));
+      const orderedQty = Math.max(0, toNum(lineItem.quantity));
+      if (nextQtyReceived > orderedQty) {
+        throw new ValidationError(`Received quantity cannot exceed ordered quantity for item ${lineItem.name || ""}`.trim());
+      }
+
+      const previousQtyReceived = Math.max(0, toNum(lineItem.qtyReceived));
+      const receiveDelta = nextQtyReceived - previousQtyReceived;
+
+      lineItem.qtyReceived = nextQtyReceived;
+      lineItem.receivedDate = receivedDate;
+
+      // Collect stock deltas for items that are being received
+      if (receiveDelta > 0 && lineItem.itemId && !lineItem.isHeader) {
+        const itemId = String(lineItem.itemId);
+        stockDeltas[itemId] = (stockDeltas[itemId] || 0) + receiveDelta;
+      }
+    }
+  });
+
+  // Update PO status to Received
+  po.status = "Received";
+  po.comments.push({
+    author: "System",
+    text: `Marked as Received. Inventory updated for ${Object.keys(stockDeltas).length} item(s)`,
+    time: new Date(),
+    isSystem: true,
+  });
+
+  attachUser(po, req);
+  await po.save();
+
+  // Apply stock deltas to update inventory
+  if (Object.keys(stockDeltas).length > 0) {
+    await applyStockDeltas({
+      organizationId: oid,
+      deltas: stockDeltas,
+    });
+  }
+
+  res.json({
+    success: true,
+    message: "Purchase order marked as received and inventory updated",
+    data: po,
+  });
+});
+
 /** POST /api/purchase-orders/:id/convert-to-bill */
 export const convertToBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const oid = orgId(req);
   const po = await PurchaseOrder.findOne({ _id: req.params.id, organizationId: oid, isDeleted: false });
   if (!po) throw new NotFoundError("Purchase Order");
   
-  if (po.status === "Billed") {
-    throw new ValidationError("This purchase order has already been converted to a bill.");
+  if (po.status === "Billed" || po.status === "Closed" || po.status === "Canceled") {
+    throw new ValidationError(`Cannot convert a ${po.status} purchase order to a bill.`);
+  }
+
+  // Allow conversion from Draft, Open, or Received states
+  const allowedStatuses = ["Draft", "Open", "Received"];
+  if (!allowedStatuses.includes(po.status)) {
+    throw new ValidationError(`Invalid purchase order status for bill conversion: ${po.status}`);
   }
 
   const billNumber = await nextBillNumber(oid);

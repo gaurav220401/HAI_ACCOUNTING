@@ -1,7 +1,7 @@
 import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
-export type PurchaseOrderStatus = "Draft" | "Open" | "Billed" | "Closed" | "Canceled";
+export type PurchaseOrderStatus = "Draft" | "Open" | "Received" | "Billed" | "Closed" | "Canceled";
 export type DiscountLevel = "transaction" | "line_item";
 
 export interface PurchaseOrderLineItem {
@@ -17,6 +17,8 @@ export interface PurchaseOrderLineItem {
   discountPercent?: number;
   discountAmount?: number;
   amount: number;
+  qtyReceived?: number;
+  receivedDate?: string | null;
 }
 
 export interface PurchaseOrder {
@@ -152,6 +154,13 @@ export const purchaseOrderApi = {
 
   clone: (id: string) =>
     apiFetch<{ data: PurchaseOrder }>(`/purchase-orders/${id}/clone`, { method: "POST" }),
+
+  markAsReceived: (id: string, data: { lineItemUpdates: { [lineItemId: string]: { qtyReceived: number } } }) =>
+    apiFetch<{ success: boolean; message: string; data: PurchaseOrder }>(`/purchase-orders/${id}/mark-as-received`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Content-Type": "application/json" },
+    }),
 
   convertToBill: (id: string) =>
     apiFetch<{ data: PurchaseOrder }>(`/purchase-orders/${id}/convert-to-bill`, { method: "POST" }),

@@ -10,6 +10,7 @@ import {
 	sendPurchaseOrderEmail,
 	downloadPdf,
 	clone,
+	markAsReceived,
 	convertToBill,
 	addComment,
 } from "../controllers/purchase-order.controller";
@@ -26,6 +27,7 @@ router.delete("/:id", remove);
 router.get("/:id/pdf", downloadPdf);
 router.post("/:id/send-email", sendPurchaseOrderEmail);
 router.post("/:id/clone", clone);
+router.post("/:id/mark-as-received", markAsReceived);
 router.post("/:id/convert-to-bill", convertToBill);
 router.post("/:id/comments", addComment);
 

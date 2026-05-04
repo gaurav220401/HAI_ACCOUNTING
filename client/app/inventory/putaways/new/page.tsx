@@ -10,6 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -19,6 +28,7 @@ import {
 import { putawayApi } from "@/lib/api/putaways";
 import { purchaseReceiveApi, type PurchaseReceive } from "@/lib/api/purchase-receives";
 import { warehouseApi, type Warehouse } from "@/lib/api/warehouses";
+import { settingsApi } from "@/lib/api/settings";
 
 function NewPutawayContent() {
   const router = useRouter();
@@ -34,6 +44,9 @@ function NewPutawayContent() {
   const [items, setItems] = useState<any[]>([]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
+  const [isCreateWarehouseOpen, setIsCreateWarehouseOpen] = useState(false);
+  const [newWarehouseName, setNewWarehouseName] = useState("");
+  const [creatingWarehouse, setCreatingWarehouse] = useState(false);
 
   useEffect(() => {
     void loadInitialData();
@@ -47,12 +60,13 @@ function NewPutawayContent() {
         warehouseApi.list(),
       ]);
       setPutawayNumber(numRes.data.putawayNumber);
-      setWarehouses(whRes.data || []);
+      const activeWarehouses = (whRes.data || []).filter((w) => w.isActive !== false);
+      setWarehouses(activeWarehouses);
       
       // Select primary warehouse by default if available
-      const primary = whRes.data.find(w => w.isPrimary);
+      const primary = activeWarehouses.find(w => w.isPrimary);
       if (primary) setSelectedWarehouse(primary._id);
-      else if (whRes.data.length > 0) setSelectedWarehouse(whRes.data[0]._id);
+      else if (activeWarehouses.length > 0) setSelectedWarehouse(activeWarehouses[0]._id);
 
       if (receiveId) {
         const recRes = await purchaseReceiveApi.getOne(receiveId);
@@ -70,6 +84,38 @@ function NewPutawayContent() {
       toast.error("Failed to load initial data");
     } finally {
       setFetching(false);
+    }
+  }
+
+  async function handleCreateWarehouse() {
+    const name = newWarehouseName.trim();
+    if (!name) {
+      toast.error("Warehouse name is required");
+      return;
+    }
+
+    setCreatingWarehouse(true);
+    try {
+      const created = await settingsApi.warehouses.create({
+        name,
+        isPrimary: warehouses.length === 0,
+        isActive: true,
+      });
+      const nextWarehouse = created.data;
+      setWarehouses((prev) => [...prev, nextWarehouse].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedWarehouse(nextWarehouse._id);
+      setNewWarehouseName("");
+      setIsCreateWarehouseOpen(false);
+      toast.success("Warehouse created");
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to create warehouse";
+      toast.error(msg);
+    } finally {
+      setCreatingWarehouse(false);
     }
   }
 
@@ -95,8 +141,13 @@ function NewPutawayContent() {
       });
       toast.success("Putaway completed successfully!");
       router.push("/inventory/putaways");
-    } catch (err) {
-      toast.error("Failed to create putaway");
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to create putaway";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -158,16 +209,63 @@ function NewPutawayContent() {
 
           <div className="grid grid-cols-[160px_1fr] items-center gap-4">
             <Label className="text-rose-600 font-medium text-sm">Warehouse Name*</Label>
-            <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a warehouse" />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.map(w => (
-                  <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a warehouse" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {warehouses.map((w) => (
+                      <SelectItem key={w._id} value={w._id}>{w.name}</SelectItem>
+                    ))}
+                    {warehouses.length === 0 ? (
+                      <SelectItem value="__empty" disabled>
+                        No active warehouses found.
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Dialog open={isCreateWarehouseOpen} onOpenChange={setIsCreateWarehouseOpen}>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline" className="shrink-0">
+                    <Plus className="h-4 w-4 mr-2" />
+                    New
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create Warehouse</DialogTitle>
+                    <DialogDescription>
+                      Add a warehouse now so you can complete this putaway without leaving the page.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-2 py-2">
+                    <Label htmlFor="warehouse-name">Warehouse name</Label>
+                    <Input
+                      id="warehouse-name"
+                      value={newWarehouseName}
+                      onChange={(e) => setNewWarehouseName(e.target.value)}
+                      placeholder="e.g. Main Warehouse"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCreateWarehouseOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleCreateWarehouse} disabled={creatingWarehouse}>
+                      {creatingWarehouse ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                      Create and Select
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           <div className="grid grid-cols-[160px_1fr] items-start gap-4">

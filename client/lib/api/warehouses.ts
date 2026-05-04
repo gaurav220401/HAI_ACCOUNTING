@@ -10,6 +10,7 @@ export interface Warehouse {
   zipCode?: string;
   country?: string;
   isPrimary: boolean;
+  isActive?: boolean;
 }
 
 export const warehouseApi = {

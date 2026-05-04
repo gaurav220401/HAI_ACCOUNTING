@@ -100,6 +100,29 @@ function normalizeOrderNumber(value: unknown): string {
   return String(value || "").trim();
 }
 
+async function shouldApplyBillStockSync(params: {
+  organizationId: any;
+  orderNumber: unknown;
+  vendorId?: unknown;
+}): Promise<boolean> {
+  const purchaseOrderNumber = normalizeOrderNumber(params.orderNumber);
+  if (!purchaseOrderNumber) return true;
+
+  const filter: any = {
+    organizationId: params.organizationId,
+    purchaseOrderNumber,
+    isDeleted: false,
+  };
+
+  const vendorId = normalizeObjectId(params.vendorId);
+  if (vendorId) {
+    filter.vendorId = vendorId;
+  }
+
+  const linkedPurchaseOrder = await PurchaseOrder.findOne(filter).select("_id").lean();
+  return !linkedPurchaseOrder;
+}
+
 async function syncPurchaseOrderStatusFromBills(params: {
   organizationId: any;
   purchaseOrderNumber: string;
@@ -815,7 +838,12 @@ export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Resp
   if (bill.amountPaid > 0) throw new ValidationError("Cannot void a bill with recorded payments");
 
   const wasPosted = isPostedBillStatus(String(bill.status || ""));
-  const previousStockDeltas = wasPosted
+  const shouldApplyStock = await shouldApplyBillStockSync({
+    organizationId: bill.organizationId,
+    orderNumber: bill.orderNumber,
+    vendorId: bill.vendorId,
+  });
+  const previousStockDeltas = wasPosted && shouldApplyStock
     ? collectBillStockDeltas(bill.lineItems as any[])
     : {};
 
@@ -923,7 +951,12 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const previousOrderNumber = normalizeOrderNumber(bill.orderNumber);
   const previousVendorId = String(bill.vendorId || "");
   const previousPosted = isPostedBillStatus(String(bill.status || ""));
-  const previousStockDeltas = previousPosted
+  const previousShouldApplyStock = await shouldApplyBillStockSync({
+    organizationId: bill.organizationId,
+    orderNumber: bill.orderNumber,
+    vendorId: bill.vendorId,
+  });
+  const previousStockDeltas = previousPosted && previousShouldApplyStock
     ? collectBillStockDeltas(bill.lineItems as any[])
     : {};
 
@@ -1028,7 +1061,12 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   await bill.save();
 
   const nextPosted = isPostedBillStatus(String(bill.status || ""));
-  const nextStockDeltas = nextPosted
+  const nextShouldApplyStock = await shouldApplyBillStockSync({
+    organizationId: bill.organizationId,
+    orderNumber: bill.orderNumber,
+    vendorId: bill.vendorId,
+  });
+  const nextStockDeltas = nextPosted && nextShouldApplyStock
     ? collectBillStockDeltas(bill.lineItems as any[])
     : {};
   const stockDeltaDiff = diffStockDeltas(previousStockDeltas, nextStockDeltas);
@@ -1106,7 +1144,12 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   const vendorId = bill.vendorId;
   const wasPosted = isPostedBillStatus(String(bill.status || ""));
-  const previousStockDeltas = wasPosted
+  const shouldApplyStock = await shouldApplyBillStockSync({
+    organizationId: bill.organizationId,
+    orderNumber: bill.orderNumber,
+    vendorId: bill.vendorId,
+  });
+  const previousStockDeltas = wasPosted && shouldApplyStock
     ? collectBillStockDeltas(bill.lineItems as any[])
     : {};
 

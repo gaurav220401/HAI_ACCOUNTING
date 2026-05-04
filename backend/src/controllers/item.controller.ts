@@ -5,6 +5,10 @@ import ItemGroup from "../models/item-group.model";
 import SalesOrder from "../models/sales-order.model";
 import PurchaseOrder from "../models/purchase-order.model";
 import Invoice from "../models/invoice.model";
+import Bill from "../models/bill.model";
+import DeliveryChallan from "../models/delivery-challan.model";
+import Package from "../models/package.model";
+import PurchaseReceive from "../models/purchase-receive.model";
 import UnitOfMeasurement from "../models/unit.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
@@ -38,20 +42,10 @@ function toFiniteNumber(value: unknown): number {
   return n;
 }
 
-type QuantityAggregateRow = {
-  _id: null;
-  totalQty?: number;
-};
-
 type SalesSeriesAggregateRow = {
   _id: string;
   totalAmount?: number;
 };
-
-function getAggregateQuantity(rows: QuantityAggregateRow[]): number {
-  if (rows.length === 0) return 0;
-  return round2(Math.max(0, toFiniteNumber(rows[0].totalQty)));
-}
 
 function formatDateKey(date: Date): string {
   const year = date.getUTCFullYear();
@@ -97,15 +91,9 @@ function buildDateSeries(start: Date, end: Date): string[] {
   return keys;
 }
 
-const SALES_ORDER_COMMITTED_STATUSES: ReadonlyArray<string> = [
-  "APPROVED",
-  "PARTIALLY_INVOICED",
-  "OVERDUE",
-];
-
 const SALES_ORDER_TO_INVOICE_STATUSES: ReadonlyArray<string> = [
-  "DRAFT",
   "APPROVED",
+  "INVOICED",
   "PARTIALLY_INVOICED",
   "OVERDUE",
 ];
@@ -113,7 +101,25 @@ const SALES_ORDER_TO_INVOICE_STATUSES: ReadonlyArray<string> = [
 const PURCHASE_ORDER_PENDING_STATUSES: ReadonlyArray<string> = [
   "Draft",
   "Open",
+  "Billed",
 ];
+
+const POSTED_INVOICE_STATUSES: ReadonlyArray<string> = [
+  "Sent",
+  "Viewed",
+  "Overdue",
+  "Partially Paid",
+  "Paid",
+];
+
+const POSTED_BILL_STATUSES: ReadonlyArray<string> = [
+  "Open",
+  "Overdue",
+  "Partially Paid",
+  "Paid",
+];
+
+const SHIPPED_CHALLAN_STATUSES: ReadonlyArray<string> = ["Open", "Delivered"];
 
 type InventoryAccountSnapshot = {
   inventoryTracked: boolean;
@@ -156,6 +162,21 @@ function uniqueValidObjectIdStrings(input: unknown): string[] {
     unique.add(raw);
   }
   return Array.from(unique);
+}
+
+function addQuantity(map: Map<string, number>, key: string, quantity: unknown): void {
+  if (!key) return;
+  const qty = round2(Math.max(0, toFiniteNumber(quantity)));
+  if (qty <= 0) return;
+  map.set(key, round2((map.get(key) || 0) + qty));
+}
+
+function getOrderScopedKey(orderKey: string, itemId: string): string {
+  return `${orderKey}::${itemId}`;
+}
+
+function getLineItemId(value: unknown): string {
+  return toObjectIdString(value);
 }
 
 function computeInventoryAccountDelta(
@@ -309,73 +330,32 @@ export const getInventoryMetrics = asyncHandler(async (req: AuthenticatedRequest
   const { start: monthStart, end: monthEnd } = getCurrentMonthRange();
 
   const [
-    committedQtyRows,
-    toBeInvoicedQtyRows,
-    purchasePendingQtyRows,
+    salesOrders,
+    purchaseOrders,
     salesSeriesRows,
   ] = await Promise.all([
-    SalesOrder.aggregate<QuantityAggregateRow>([
-      {
-        $match: {
-          organizationId,
-          isDeleted: false,
-          status: { $in: SALES_ORDER_COMMITTED_STATUSES },
-        },
-      },
-      { $unwind: "$lineItems" },
-      { $match: { "lineItems.itemId": itemId } },
-      {
-        $group: {
-          _id: null,
-          totalQty: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
-        },
-      },
-    ]),
-    SalesOrder.aggregate<QuantityAggregateRow>([
-      {
-        $match: {
-          organizationId,
-          isDeleted: false,
-          status: { $in: SALES_ORDER_TO_INVOICE_STATUSES },
-        },
-      },
-      { $unwind: "$lineItems" },
-      { $match: { "lineItems.itemId": itemId } },
-      {
-        $group: {
-          _id: null,
-          totalQty: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
-        },
-      },
-    ]),
-    PurchaseOrder.aggregate<QuantityAggregateRow>([
-      {
-        $match: {
-          organizationId,
-          isDeleted: false,
-          status: { $in: PURCHASE_ORDER_PENDING_STATUSES },
-        },
-      },
-      { $unwind: "$lineItems" },
-      {
-        $match: {
-          "lineItems.isHeader": { $ne: true },
-          "lineItems.itemId": itemId,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalQty: { $sum: { $ifNull: ["$lineItems.quantity", 0] } },
-        },
-      },
-    ]),
+    SalesOrder.find({
+      organizationId,
+      isDeleted: false,
+      status: { $in: SALES_ORDER_TO_INVOICE_STATUSES },
+      "lineItems.itemId": itemId,
+    } as any)
+      .select("_id salesOrderNumber status shipmentStatus lineItems.itemId lineItems.quantity")
+      .lean(),
+    PurchaseOrder.find({
+      organizationId,
+      isDeleted: false,
+      status: { $in: PURCHASE_ORDER_PENDING_STATUSES },
+      "lineItems.itemId": itemId,
+    } as any)
+      .select("_id purchaseOrderNumber status lineItems._id lineItems.itemId lineItems.quantity lineItems.isHeader")
+      .lean(),
     Invoice.aggregate<SalesSeriesAggregateRow>([
       {
         $match: {
           organizationId,
           isDeleted: false,
-          status: { $ne: "Void" },
+          status: { $in: POSTED_INVOICE_STATUSES },
           invoiceDate: {
             $gte: monthStart,
             $lte: monthEnd,
@@ -400,11 +380,177 @@ export const getInventoryMetrics = asyncHandler(async (req: AuthenticatedRequest
     ]),
   ]);
 
+  const salesOrderNumbers = (salesOrders as any[])
+    .map((order) => String(order.salesOrderNumber || "").trim())
+    .filter(Boolean);
+  const salesOrderIds = (salesOrders as any[]).map((order) => order._id);
+  const purchaseOrderNumbers = (purchaseOrders as any[])
+    .map((order) => String(order.purchaseOrderNumber || "").trim())
+    .filter(Boolean);
+  const purchaseOrderIds = (purchaseOrders as any[]).map((order) => order._id);
+  const itemIdString = String(itemId);
+
+  const [
+    postedInvoices,
+    packages,
+    challans,
+    purchaseReceives,
+    postedBills,
+  ] = await Promise.all([
+    Invoice.find({
+      organizationId,
+      isDeleted: false,
+      status: { $in: POSTED_INVOICE_STATUSES },
+      orderNumber: { $in: salesOrderNumbers },
+      "items.itemId": itemId,
+    } as any)
+      .select("orderNumber items.itemId items.quantity")
+      .lean(),
+    Package.find({
+      organizationId,
+      isDeleted: false,
+      salesOrderId: { $in: salesOrderIds },
+      "lineItems.itemId": itemId,
+    } as any)
+      .select("salesOrderId lineItems.itemId lineItems.quantityToPack")
+      .lean(),
+    DeliveryChallan.find({
+      organizationId,
+      isDeleted: false,
+      salesOrderNumber: { $in: salesOrderNumbers },
+      status: { $in: SHIPPED_CHALLAN_STATUSES },
+      "items.itemId": itemId,
+    } as any)
+      .select("salesOrderNumber items.itemId items.quantity")
+      .lean(),
+    PurchaseReceive.find({
+      organizationId,
+      isDeleted: false,
+      status: "Received",
+      purchaseOrderId: { $in: purchaseOrderIds },
+      "lineItems.itemId": itemId,
+    } as any)
+      .select("purchaseOrderId lineItems.itemId lineItems.quantityReceived")
+      .lean(),
+    Bill.find({
+      organizationId,
+      isDeleted: false,
+      status: { $in: POSTED_BILL_STATUSES },
+      orderNumber: { $in: purchaseOrderNumbers },
+      "lineItems.itemId": itemId,
+    } as any)
+      .select("orderNumber lineItems.itemId lineItems.quantity lineItems.isHeader")
+      .lean(),
+  ]);
+
+  const invoicedByOrderItem = new Map<string, number>();
+  for (const invoice of postedInvoices as any[]) {
+    const orderNumber = String(invoice.orderNumber || "").trim();
+    for (const line of invoice.items || []) {
+      if (getLineItemId(line.itemId) !== itemIdString) continue;
+      addQuantity(invoicedByOrderItem, getOrderScopedKey(orderNumber, itemIdString), line.quantity);
+    }
+  }
+
+  const packedByOrderItem = new Map<string, number>();
+  for (const pkg of packages as any[]) {
+    const orderId = String(pkg.salesOrderId || "");
+    for (const line of pkg.lineItems || []) {
+      if (getLineItemId(line.itemId) !== itemIdString) continue;
+      addQuantity(packedByOrderItem, getOrderScopedKey(orderId, itemIdString), line.quantityToPack);
+    }
+  }
+
+  const challanShippedByOrderItem = new Map<string, number>();
+  for (const challan of challans as any[]) {
+    const orderNumber = String(challan.salesOrderNumber || "").trim();
+    for (const line of challan.items || []) {
+      if (getLineItemId(line.itemId) !== itemIdString) continue;
+      addQuantity(challanShippedByOrderItem, getOrderScopedKey(orderNumber, itemIdString), line.quantity);
+    }
+  }
+
+  let toBeInvoiced = 0;
+  let toBeShipped = 0;
+  let accountingCommittedStock = 0;
+  let physicalCommittedStock = 0;
+  let invoicedNotShipped = 0;
+
+  for (const order of salesOrders as any[]) {
+    const orderNumber = String(order.salesOrderNumber || "").trim();
+    const orderId = String(order._id || "");
+    const orderedQty = round2((order.lineItems || []).reduce((sum: number, line: any) => {
+      if (getLineItemId(line.itemId) !== itemIdString) return sum;
+      return sum + toFiniteNumber(line.quantity);
+    }, 0));
+
+    if (orderedQty <= 0) continue;
+
+    const invoicedQty = round2(Math.min(
+      orderedQty,
+      invoicedByOrderItem.get(getOrderScopedKey(orderNumber, itemIdString)) || 0,
+    ));
+    const packedQty = packedByOrderItem.get(getOrderScopedKey(orderId, itemIdString)) || 0;
+    const challanQty = challanShippedByOrderItem.get(getOrderScopedKey(orderNumber, itemIdString)) || 0;
+    let shippedQty = round2(Math.min(orderedQty, Math.max(packedQty, challanQty)));
+    if (shippedQty <= 0 && ["Shipped", "Delivered"].includes(String(order.shipmentStatus || ""))) {
+      shippedQty = orderedQty;
+    }
+
+    toBeInvoiced = round2(toBeInvoiced + Math.max(0, orderedQty - invoicedQty));
+    toBeShipped = round2(toBeShipped + Math.max(0, orderedQty - shippedQty));
+    accountingCommittedStock = round2(accountingCommittedStock + Math.max(0, orderedQty - Math.max(invoicedQty, shippedQty)));
+    physicalCommittedStock = round2(physicalCommittedStock + Math.max(0, orderedQty - shippedQty));
+    invoicedNotShipped = round2(invoicedNotShipped + Math.max(0, Math.min(orderedQty, invoicedQty) - shippedQty));
+  }
+
+  const receivedByOrderItem = new Map<string, number>();
+  for (const receive of purchaseReceives as any[]) {
+    const purchaseOrderId = String(receive.purchaseOrderId || "");
+    for (const line of receive.lineItems || []) {
+      if (getLineItemId(line.itemId) !== itemIdString) continue;
+      addQuantity(receivedByOrderItem, getOrderScopedKey(purchaseOrderId, itemIdString), line.quantityReceived);
+    }
+  }
+
+  const billedByOrderItem = new Map<string, number>();
+  for (const bill of postedBills as any[]) {
+    const orderNumber = String(bill.orderNumber || "").trim();
+    for (const line of bill.lineItems || []) {
+      if (line.isHeader || getLineItemId(line.itemId) !== itemIdString) continue;
+      addQuantity(billedByOrderItem, getOrderScopedKey(orderNumber, itemIdString), line.quantity);
+    }
+  }
+
+  let purchasePending = 0;
+  let toBeBilled = 0;
+  for (const order of purchaseOrders as any[]) {
+    const purchaseOrderId = String(order._id || "");
+    const purchaseOrderNumber = String(order.purchaseOrderNumber || "").trim();
+    const orderedQty = round2((order.lineItems || []).reduce((sum: number, line: any) => {
+      if (line.isHeader || getLineItemId(line.itemId) !== itemIdString) return sum;
+      return sum + toFiniteNumber(line.quantity);
+    }, 0));
+
+    if (orderedQty <= 0) continue;
+
+    const receivedQty = round2(Math.min(
+      orderedQty,
+      receivedByOrderItem.get(getOrderScopedKey(purchaseOrderId, itemIdString)) || 0,
+    ));
+    const billedQty = round2(Math.min(
+      orderedQty,
+      billedByOrderItem.get(getOrderScopedKey(purchaseOrderNumber, itemIdString)) || 0,
+    ));
+
+    purchasePending = round2(purchasePending + Math.max(0, orderedQty - receivedQty));
+    toBeBilled = round2(toBeBilled + Math.max(0, orderedQty - billedQty));
+  }
+
   const stockOnHand = round2(toFiniteNumber((item as { stockOnHand?: unknown }).stockOnHand));
-  const committedStock = getAggregateQuantity(committedQtyRows);
-  const availableForSale = round2(Math.max(stockOnHand - committedStock, 0));
-  const toBeInvoiced = getAggregateQuantity(toBeInvoicedQtyRows);
-  const purchasePending = getAggregateQuantity(purchasePendingQtyRows);
+  const physicalStockOnHand = round2(stockOnHand + invoicedNotShipped);
+  const availableForSale = round2(Math.max(stockOnHand - accountingCommittedStock, 0));
+  const physicalAvailableForSale = round2(Math.max(physicalStockOnHand - physicalCommittedStock, 0));
 
   const salesByDate = new Map<string, number>();
   for (const row of salesSeriesRows) {
@@ -424,19 +570,19 @@ export const getInventoryMetrics = asyncHandler(async (req: AuthenticatedRequest
       openingStock: stockOnHand,
       accountingStock: {
         stockOnHand,
-        committedStock,
+        committedStock: accountingCommittedStock,
         availableForSale,
       },
       physicalStock: {
-        stockOnHand,
-        committedStock,
-        availableForSale,
+        stockOnHand: physicalStockOnHand,
+        committedStock: physicalCommittedStock,
+        availableForSale: physicalAvailableForSale,
       },
       fulfillment: {
-        toBeShipped: committedStock,
+        toBeShipped,
         toBeReceived: purchasePending,
         toBeInvoiced,
-        toBeBilled: purchasePending,
+        toBeBilled,
       },
       salesSummary: {
         period: "THIS_MONTH",

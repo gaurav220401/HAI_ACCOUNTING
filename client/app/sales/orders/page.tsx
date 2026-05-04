@@ -299,6 +299,7 @@ export default function SalesOrdersPage() {
                   <TableHead>Customer Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-center">Shipping</TableHead>
                   <TableHead className="text-center">Invoiced</TableHead>
                   <TableHead className="text-center">Payment</TableHead>
                 </TableRow>
@@ -342,6 +343,18 @@ export default function SalesOrdersPage() {
                     <TableCell className="text-center">
                       <span
                         className={`inline-block h-2 w-2 rounded-full ${
+                          o.shipmentStatus === "Delivered" ?
+                            "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                          : o.shipmentStatus === "Shipped" ?
+                            "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"
+                          : "bg-muted-foreground/30"
+                        }`}
+                        title={o.shipmentStatus}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
                           o.status === "INVOICED" || o.status === "CLOSED" ?
                             "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
                           : o.status === "PARTIALLY_INVOICED" ?
@@ -367,7 +380,7 @@ export default function SalesOrdersPage() {
                 {filtered.length === 0 ?
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No sales orders found.

@@ -40,6 +40,10 @@ export interface SalesOrderLineItem {
   taxId?: string | { _id: string; name: string; rate?: number } | null;
   taxPercent?: number;
   taxAmount?: number;
+  qtyInvoiced?: number;
+  qtyShipped?: number;
+  qtyToBeInvoiced?: number;
+  qtyToBeShipped?: number;
   amount: number;
 }
 

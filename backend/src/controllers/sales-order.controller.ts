@@ -15,6 +15,7 @@ import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors"
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 import { sendSalesOrderEmail as sendSalesOrderEmailService } from "../services/email.service";
 import { generateSalesOrderPdf } from "../services/pdf.service";
+import { syncSalesOrderByInvoice } from "../services/status-sync.service";
 import { Types } from "mongoose";
 
 const VALID_SALES_ORDER_STATUSES = new Set<SalesOrderStatus>([
@@ -31,6 +32,16 @@ const INVOICE_LINKED_STATUSES = new Set<SalesOrderStatus>([
   "INVOICED",
   "PARTIALLY_INVOICED",
 ]);
+
+const POSTED_INVOICE_STATUSES = [
+  "Sent",
+  "Viewed",
+  "Overdue",
+  "Partially Paid",
+  "Paid",
+];
+
+const SHIPPED_CHALLAN_STATUSES = ["Open", "Delivered"];
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -78,6 +89,111 @@ function normalizeExpectedShipmentDate(value: unknown): unknown {
   return value;
 }
 
+function getObjectIdString(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "_id" in (value as Record<string, unknown>)) {
+    return String((value as { _id?: unknown })._id || "");
+  }
+  return String(value || "");
+}
+
+function addQuantity(map: Map<string, number>, key: string, quantity: unknown): void {
+  if (!key) return;
+  const qty = round2(Math.max(0, toNum(quantity)));
+  if (qty <= 0) return;
+  map.set(key, round2((map.get(key) || 0) + qty));
+}
+
+function consumeQuantity(map: Map<string, number>, key: string, requested: unknown): number {
+  if (!key) return 0;
+  const needed = round2(Math.max(0, toNum(requested)));
+  if (needed <= 0) return 0;
+  const available = round2(Math.max(0, map.get(key) || 0));
+  const used = round2(Math.min(needed, available));
+  map.set(key, round2(Math.max(0, available - used)));
+  return used;
+}
+
+function buildPostedInvoiceQuantityMap(invoices: any[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const invoice of invoices || []) {
+    if (!POSTED_INVOICE_STATUSES.includes(String(invoice.status || ""))) continue;
+    for (const line of invoice.items || []) {
+      addQuantity(out, getObjectIdString(line.itemId), line.quantity);
+    }
+  }
+  return out;
+}
+
+function buildPackageQuantityMap(packages: any[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const pkg of packages || []) {
+    for (const line of pkg.lineItems || []) {
+      addQuantity(out, getObjectIdString(line.itemId), line.quantityToPack);
+    }
+  }
+  return out;
+}
+
+function buildChallanQuantityMap(challans: any[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const challan of challans || []) {
+    if (!SHIPPED_CHALLAN_STATUSES.includes(String(challan.status || ""))) continue;
+    for (const line of challan.items || []) {
+      addQuantity(out, getObjectIdString(line.itemId), line.quantity);
+    }
+  }
+  return out;
+}
+
+function maxQuantityMaps(left: Map<string, number>, right: Map<string, number>): Map<string, number> {
+  const out = new Map<string, number>();
+  const keys = new Set([...left.keys(), ...right.keys()]);
+  for (const key of keys) {
+    out.set(key, round2(Math.max(left.get(key) || 0, right.get(key) || 0)));
+  }
+  return out;
+}
+
+function withLineFulfillmentQuantities(
+  lineItems: any[],
+  linkedInvoices: any[],
+  linkedPackages: any[],
+  linkedChallans: any[],
+  shipmentStatus?: string,
+): any[] {
+  const invoiceQtyByItem = buildPostedInvoiceQuantityMap(linkedInvoices);
+  const hasShipmentDocuments =
+    (linkedPackages || []).some((pkg) => (pkg.lineItems || []).length > 0)
+    || (linkedChallans || []).some((challan) =>
+      SHIPPED_CHALLAN_STATUSES.includes(String(challan.status || "")) && (challan.items || []).length > 0,
+    );
+  const useShipmentStatusFallback =
+    !hasShipmentDocuments && ["Shipped", "Delivered"].includes(String(shipmentStatus || ""));
+  const shippedQtyByItem = maxQuantityMaps(
+    buildPackageQuantityMap(linkedPackages),
+    buildChallanQuantityMap(linkedChallans),
+  );
+
+  return (lineItems || []).map((line) => {
+    const itemKey = getObjectIdString(line.itemId);
+    const orderedQty = round2(Math.max(0, toNum(line.quantity)));
+    const qtyInvoiced = consumeQuantity(invoiceQtyByItem, itemKey, orderedQty);
+    const qtyShipped = useShipmentStatusFallback
+      ? orderedQty
+      : consumeQuantity(shippedQtyByItem, itemKey, orderedQty);
+
+    return {
+      ...line,
+      qtyInvoiced,
+      qtyShipped,
+      qtyToBeInvoiced: round2(Math.max(0, orderedQty - qtyInvoiced)),
+      qtyToBeShipped: round2(Math.max(0, orderedQty - qtyShipped)),
+    };
+  });
+}
+
 async function hasLinkedInvoice(
   organizationId: any,
   salesOrderNumber: string,
@@ -89,6 +205,21 @@ async function hasLinkedInvoice(
     orderNumber: salesOrderNumber,
     isDeleted: false,
     status: { $ne: "Void" },
+  });
+  return Boolean(linked);
+}
+
+async function hasPostedInvoice(
+  organizationId: any,
+  salesOrderNumber: string,
+): Promise<boolean> {
+  if (!salesOrderNumber) return false;
+
+  const linked = await Invoice.exists({
+    organizationId,
+    orderNumber: salesOrderNumber,
+    isDeleted: false,
+    status: { $in: POSTED_INVOICE_STATUSES },
   });
   return Boolean(linked);
 }
@@ -596,8 +727,13 @@ async function transitionShipmentStatus(params: {
 
   (order as any).shipmentStatus = shipmentStatus;
 
-  // Delivered transition issues stock physically; reverting restores it.
-  if (oldStatus !== "Delivered" && shipmentStatus === "Delivered") {
+  const postedInvoiceExists = await hasPostedInvoice(
+    (order as any).organizationId,
+    String((order as any).salesOrderNumber || ""),
+  );
+
+  // Delivered transition moves stock only when a posted invoice has not already moved it.
+  if (!postedInvoiceExists && oldStatus !== "Delivered" && shipmentStatus === "Delivered") {
     const lineItems = (order as any).lineItems || [];
     for (const li of lineItems) {
       const itemId = typeof li.itemId === "object" ? li.itemId?._id : li.itemId;
@@ -612,7 +748,7 @@ async function transitionShipmentStatus(params: {
       item.committedStock = Math.max(0, (item.committedStock || 0) - qty);
       await item.save();
     }
-  } else if (oldStatus === "Delivered" && shipmentStatus !== "Delivered") {
+  } else if (!postedInvoiceExists && oldStatus === "Delivered" && shipmentStatus !== "Delivered") {
     const lineItems = (order as any).lineItems || [];
     for (const li of lineItems) {
       const itemId = typeof li.itemId === "object" ? li.itemId?._id : li.itemId;
@@ -703,23 +839,32 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const salesOrderNumber = normalizedOrder.salesOrderNumber;
   const [linkedInvoices, linkedPackages, linkedChallans, linkedMoveOrders] = await Promise.all([
     Invoice.find({ organizationId: oid, orderNumber: salesOrderNumber, isDeleted: false } as any)
-      .select("invoiceNumber status total balanceDue invoiceDate")
+      .select("invoiceNumber status total balanceDue invoiceDate items.itemId items.quantity createdAt")
       .lean(),
     Package.find({ organizationId: oid, salesOrderId: order._id, isDeleted: false } as any)
-      .select("packageSlipNumber date")
+      .select("packageSlipNumber date lineItems.itemId lineItems.quantityToPack")
       .lean(),
     DeliveryChallan.find({ organizationId: oid, salesOrderNumber: salesOrderNumber, isDeleted: false } as any)
-      .select("challanNumber challanDate status")
+      .select("challanNumber challanDate status items.itemId items.quantity")
       .lean(),
     MoveOrder.find({ organizationId: oid, salesOrderId: order._id, isDeleted: false } as any)
       .select("orderNumber date status")
       .lean(),
   ]);
 
+  const lineItems = withLineFulfillmentQuantities(
+    normalizedOrder.lineItems || [],
+    linkedInvoices,
+    linkedPackages,
+    linkedChallans,
+    normalizedOrder.shipmentStatus,
+  );
+
   res.json({ 
     success: true, 
     data: { 
       ...normalizedOrder,
+      lineItems,
       linkedDocuments: {
         invoices: linkedInvoices,
         packages: linkedPackages,
@@ -1041,13 +1186,14 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
     .lean();
 
   if (existingInvoice) {
-    if ((order as any).status !== "INVOICED") {
-      (order as any).status = "INVOICED";
-      (order as any).invoiceStatus = "Invoiced";
-      (order as any).invoiceId = existingInvoice._id;
-      attachUser(order as any, req);
-      await order.save();
-    }
+    await syncSalesOrderByInvoice({
+      organizationId: oid,
+      invoice: {
+        _id: existingInvoice._id,
+        orderNumber: (order as any).salesOrderNumber,
+      },
+      req,
+    });
     const invoiceId = String(existingInvoice._id);
     res.json({
       success: true,
@@ -1167,15 +1313,11 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
   attachUser(invoice as any, req);
   await invoice.save();
 
-  (order as any).status = "INVOICED";
-  (order as any).invoiceStatus = "Invoiced";
-  (order as any).invoiceId = invoice._id;
-
-  // Release committed stock (invoice creation handles stock reduction)
-  await updateCommittedStock((order as any).lineItems, "release");
-
-  attachUser(order as any, req);
-  await order.save();
+  await syncSalesOrderByInvoice({
+    organizationId: oid,
+    invoice,
+    req,
+  });
 
   res.status(201).json({
     success: true,

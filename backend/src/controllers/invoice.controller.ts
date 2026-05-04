@@ -1088,6 +1088,17 @@ export const sendInvoice = asyncHandler(
       req,
     });
 
+    await syncSalesOrderByInvoice({
+      organizationId: invoice.organizationId as any,
+      invoice,
+      req,
+    });
+
+    await syncDeliveryChallanLinkForInvoice({
+      invoice,
+      req,
+    });
+
     res.json({
       success: true,
       data: invoice,
@@ -1272,6 +1283,17 @@ export const sendInvoiceEmail = asyncHandler(
     await recomputeContactOutstanding({
       organizationId: invoice.organizationId as any,
       contactId: invoice.customerId as any,
+      req,
+    });
+
+    await syncSalesOrderByInvoice({
+      organizationId: invoice.organizationId as any,
+      invoice,
+      req,
+    });
+
+    await syncDeliveryChallanLinkForInvoice({
+      invoice,
       req,
     });
 
