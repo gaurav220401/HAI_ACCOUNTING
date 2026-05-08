@@ -2,6 +2,7 @@ import { apiFetch } from "./client";
 
 export interface Warehouse {
   _id: string;
+  orgId?: string;
   name: string;
   code?: string;
   address?: string;
@@ -10,7 +11,9 @@ export interface Warehouse {
   zipCode?: string;
   country?: string;
   isPrimary: boolean;
-  isActive?: boolean;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const warehouseApi = {

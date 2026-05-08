@@ -1,4 +1,7 @@
 import { apiFetch } from "./client";
+import type { Warehouse } from "./warehouses";
+
+export type { Warehouse };
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -33,15 +36,6 @@ export interface PaymentTerms {
   createdAt: string;
 }
 
-export interface Warehouse {
-  _id: string;
-  orgId: string;
-  name: string;
-  address?: string;
-  isPrimary?: boolean;
-  isActive: boolean;
-  createdAt: string;
-}
 
 export interface SalesPerson {
   _id: string;

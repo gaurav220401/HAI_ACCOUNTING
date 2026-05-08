@@ -54,6 +54,7 @@ const fmtCur = (v: number) =>
 const statusColor: Record<PurchaseOrderStatus, string> = {
   Draft:  "text-gray-500",
   Open:   "text-blue-600",
+  Received: "text-purple-600",
   Billed: "text-green-600",
   Closed: "text-slate-500",
   Canceled: "text-red-600",
@@ -62,6 +63,7 @@ const statusColor: Record<PurchaseOrderStatus, string> = {
 const statusBadge: Record<PurchaseOrderStatus, string> = {
   Draft: "bg-slate-100 text-slate-700 border-slate-200",
   Open: "bg-blue-50 text-blue-700 border-blue-200",
+  Received: "bg-purple-50 text-purple-700 border-purple-200",
   Billed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   Closed: "bg-zinc-100 text-zinc-700 border-zinc-200",
   Canceled: "bg-rose-50 text-rose-700 border-rose-200",
@@ -849,6 +851,11 @@ function OrderDetailPanel({
       label: "Billed",
       message: "This purchase order has already been converted to a bill and is now linked to payables.",
       tone: "bg-emerald-50 border-emerald-200 text-emerald-900",
+    },
+    Received: {
+      label: "Received",
+      message: "The goods for this purchase order have been received. You can now convert it to a bill.",
+      tone: "bg-purple-50 border-purple-200 text-purple-900",
     },
     Closed: {
       label: "Closed",
