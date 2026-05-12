@@ -1297,7 +1297,11 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       };
       if (form.hasInventoryInfo) {
         const stockOnHand = Math.max(0, parseFloat(form.stockOnHand) || 0);
-        const averageCost = Math.max(0, parseFloat(form.averageCost) || 0);
+        const parsedAvgCost = parseFloat(form.averageCost);
+        const parsedCostPrice = parseFloat(form.costPrice);
+        const fallbackCost = !isNaN(parsedCostPrice) && parsedCostPrice > 0 ? parsedCostPrice : 0;
+        const averageCost = !isNaN(parsedAvgCost) && parsedAvgCost > 0 ? parsedAvgCost : fallbackCost;
+
         payload.inventoryTracked = true;
         payload.inventoryAccountId = form.inventoryAccountId || undefined;
         payload.warehouseId = form.warehouseId || undefined;
