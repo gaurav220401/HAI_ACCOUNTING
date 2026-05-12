@@ -611,12 +611,12 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (payload.returnableItem === undefined) payload.returnableItem = true;
   if (payload.inventoryTracked) {
     const stockOnHand = Number(payload.stockOnHand || 0);
-    const averageCost = Number(payload.averageCost ?? payload.costPrice ?? 0);
+    const averageCost = Number(payload.averageCost || payload.costPrice || 0);
     payload.valuationMethod = payload.valuationMethod || "MovingAverage";
     payload.stockOnHand = round2(stockOnHand);
     payload.averageCost = round2(Math.max(0, averageCost));
     payload.inventoryValue = round2(
-      Number(payload.inventoryValue ?? payload.stockOnHand * payload.averageCost) || 0,
+      payload.stockOnHand * payload.averageCost,
     );
   } else {
     payload.inventoryAccountId = null;
@@ -702,7 +702,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     item.stockOnHand = round2(Number(item.stockOnHand || 0));
     (item as any).valuationMethod = (item as any).valuationMethod || "MovingAverage";
     (item as any).averageCost = round2(Number((item as any).averageCost || item.costPrice || 0));
-    (item as any).inventoryValue = round2(Number((item as any).inventoryValue || 0));
+    (item as any).inventoryValue = round2(Number((item as any).inventoryValue || item.stockOnHand * (item as any).averageCost || 0));
 
     if (req.body.averageCost !== undefined && req.body.inventoryValue === undefined) {
       (item as any).inventoryValue = round2(item.stockOnHand * (item as any).averageCost);
