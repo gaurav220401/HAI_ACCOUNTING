@@ -349,7 +349,11 @@ export default function SalesOrdersPage() {
                             "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"
                           : "bg-muted-foreground/30"
                         }`}
-                        title={o.shipmentStatus}
+                        title={
+                          o.shipmentStatus === "Delivered" ? "Fully Delivered" :
+                          o.shipmentStatus === "Shipped" ? "Shipped" :
+                          "Pending"
+                        }
                       />
                     </TableCell>
                     <TableCell className="text-center">
@@ -361,17 +365,27 @@ export default function SalesOrdersPage() {
                             "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
                           : "bg-muted-foreground/30"
                         }`}
-                        title={o.status}
+                        title={
+                          o.status === "INVOICED" || o.status === "CLOSED" ? "Fully Invoiced" :
+                          o.status === "PARTIALLY_INVOICED" ? "Partially Invoiced" :
+                          "Not Invoiced"
+                        }
                       />
                     </TableCell>
                     <TableCell className="text-center">
                       <span
                         className={`inline-block h-2 w-2 rounded-full ${
-                          o.status === "CLOSED" ?
+                          o.invoicePaymentStatus === "Paid" || o.invoicePaymentReceived || o.status === "CLOSED" ?
                             "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                          : o.invoicePaymentStatus === "Partially Paid" ?
+                            "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
                           : "bg-muted-foreground/30"
                         }`}
-                        title={o.status === "CLOSED" ? "Fully Paid" : "Unpaid"}
+                        title={
+                          o.invoicePaymentStatus === "Paid" || o.invoicePaymentReceived || o.status === "CLOSED" ? "Fully Paid" :
+                          o.invoicePaymentStatus === "Partially Paid" ? "Partially Paid" :
+                          "Unpaid"
+                        }
                       />
                     </TableCell>
                   </TableRow>

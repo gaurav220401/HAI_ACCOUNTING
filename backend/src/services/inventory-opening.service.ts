@@ -231,21 +231,48 @@ export async function reconcileInventoryOpeningBalances(params: {
     comparableAccountIds.add(fallbackInventoryAccountId);
   }
 
-  const expectedByAccount = new Map<string, number>();
-  for (const item of activeTrackedItems as any[]) {
-    let accountId = toObjectIdString(item?.inventoryAccountId);
-    if (!accountId || !comparableAccountIds.has(accountId)) {
-      accountId = fallbackInventoryAccountId;
-    }
-    if (!accountId) continue;
+  // Aggressive Consolidation Logic: 
+  // We want to ensure ALL items point to the SAME primary inventory account.
+  // We prioritize: 1. Account with code '1008' (Standard), 2. Fallback account, 3. First existing account.
+  const allInventoryAccounts = await Account.find({
+    organizationId,
+    isDeleted: false,
+    name: { $in: INVENTORY_ASSET_ACCOUNT_NAMES },
+    isGroup: false
+  }).select("_id code").lean();
 
-    const currentTotal = toFinite(expectedByAccount.get(accountId) || 0);
+  const primaryAccount = allInventoryAccounts.find(a => a.code === "1008") 
+    || allInventoryAccounts.find(a => String(a._id) === fallbackInventoryAccountId)
+    || allInventoryAccounts[0];
+
+  const primaryInventoryAccountId = primaryAccount ? String(primaryAccount._id) : fallbackInventoryAccountId;
+
+  const expectedByAccount = new Map<string, number>();
+  const itemUpdates: any[] = [];
+
+  for (const item of activeTrackedItems as any[]) {
+    const targetAccountId = primaryInventoryAccountId;
+    
+    if (targetAccountId && toObjectIdString(item.inventoryAccountId) !== targetAccountId) {
+      itemUpdates.push({
+        updateOne: {
+          filter: { _id: item._id },
+          update: { $set: { inventoryAccountId: new Types.ObjectId(targetAccountId) } }
+        }
+      });
+    }
+
+    if (!targetAccountId) continue;
+
+    const currentTotal = toFinite(expectedByAccount.get(targetAccountId) || 0);
     const inventoryValue = toFinite(item?.inventoryValue);
-    expectedByAccount.set(accountId, round2(currentTotal + inventoryValue));
+    expectedByAccount.set(targetAccountId, round2(currentTotal + inventoryValue));
+    comparableAccountIds.add(targetAccountId);
   }
 
-  for (const accountId of expectedByAccount.keys()) {
-    comparableAccountIds.add(accountId);
+  // Execute item reassignments to consolidate
+  if (itemUpdates.length > 0) {
+    await Item.bulkWrite(itemUpdates);
   }
 
   let result: { touched: number; netDelta: number } = { touched: 0, netDelta: 0 };

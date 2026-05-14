@@ -11,6 +11,51 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import Invoice from "../models/invoice.model";
+import Bill from "../models/bill.model";
+import SalesOrder from "../models/sales-order.model";
+import PurchaseOrder from "../models/purchase-order.model";
+import Quote from "../models/quote.model";
+import DeliveryChallan from "../models/delivery-challan.model";
+import CreditNote from "../models/credit-note.model";
+import VendorCredit from "../models/vendor-credit.model";
+import PaymentReceived from "../models/payment-received.model";
+import PaymentMade from "../models/payment-made.model";
+import Expense from "../models/expense.model";
+import GlEntry from "../models/gl-entry.model";
+import Item from "../models/item.model";
+import Contact from "../models/contact.model";
+import Account from "../models/account.model";
+import { Counter } from "../models/counter.model";
+import Package from "../models/package.model";
+import PurchaseReceive from "../models/purchase-receive.model";
+import InventoryAdjustment from "../models/inventory-adjustment.model";
+import Journal from "../models/journal.model";
+import RetainerInvoice from "../models/retainer-invoice.model";
+import RecurringInvoice from "../models/recurring-invoice.model";
+import RecurringBill from "../models/recurring-bill.model";
+import RecurringExpense from "../models/recurring-expense.model";
+import FixedAsset from "../models/fixed-asset.model";
+import Putaway from "../models/putaway.model";
+import MoveOrder from "../models/move-order.model";
+import PaymentInvoiceMap from "../models/payment-invoice-map.model";
+import PaymentBillMap from "../models/payment-bill-map.model";
+import CreditNoteApplication from "../models/credit-note-application.model";
+import VendorCreditApplication from "../models/vendor-credit-application.model";
+import Project from "../models/Project";
+import TimeLog from "../models/TimeLog";
+import TimesheetEntry from "../models/TimesheetEntry";
+import Document from "../models/document.model";
+import DocumentFolder from "../models/document-folder.model";
+import CurrencyAdjustment from "../models/currency-adjustment.model";
+import Unit from "../models/unit.model";
+import TdsTax from "../models/tds-tax.model";
+import TcsTax from "../models/tcs-tax.model";
+import ItemGroup from "../models/item-group.model";
+import FixedAssetType from "../models/fixed-asset-type.model";
+import ExchangeRate from "../models/exchange-rate.model";
+import JournalNumberingPreference from "../models/journal-numbering-preference.model";
+import IdempotencyKey from "../models/idempotency-key.model";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -391,3 +436,83 @@ export const reportingTagCRUD = makeCRUD(ReportingTag, "Reporting Tag", [
 export const priceListCRUD = makeCRUD(PriceList, "Price List", [
   "name", "priceListType", "currency", "items", "effectiveFrom", "effectiveTo", "isActive",
 ]);
+
+// ─── Reset Organization Data ───────────────────────────────────────────────
+
+export const resetOrganizationData = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+
+  // Security Check: Only allow if explicitly requested with a 'confirm' flag
+  // or if in a development-like environment (check for a header or similar if needed)
+  if (req.body.confirmReset !== "RESET_ALL_DATA") {
+    throw new ValidationError("Please provide the correct confirmation code to reset all data.");
+  }
+
+  const query = { organizationId } as any;
+
+  // 1. Transactions & Operational Data
+  await Promise.all([
+    Invoice.deleteMany(query),
+    Bill.deleteMany(query),
+    SalesOrder.deleteMany(query),
+    PurchaseOrder.deleteMany(query),
+    Quote.deleteMany(query),
+    DeliveryChallan.deleteMany(query),
+    CreditNote.deleteMany(query),
+    VendorCredit.deleteMany(query),
+    PaymentReceived.deleteMany(query),
+    PaymentMade.deleteMany(query),
+    Expense.deleteMany(query),
+    RetainerInvoice.deleteMany(query),
+    RecurringInvoice.deleteMany(query),
+    RecurringBill.deleteMany(query),
+    RecurringExpense.deleteMany(query),
+    Journal.deleteMany(query),
+    InventoryAdjustment.deleteMany(query),
+    FixedAsset.deleteMany(query),
+    Package.deleteMany(query),
+    PurchaseReceive.deleteMany(query),
+    Putaway.deleteMany(query),
+    MoveOrder.deleteMany(query),
+    PaymentInvoiceMap.deleteMany({ organization_id: organizationId } as any),
+    PaymentBillMap.deleteMany({ organization_id: organizationId } as any),
+    CreditNoteApplication.deleteMany(query),
+    VendorCreditApplication.deleteMany(query),
+    GlEntry.deleteMany(query),
+    Project.deleteMany(query),
+    TimeLog.deleteMany(query),
+    TimesheetEntry.deleteMany(query),
+    Document.deleteMany(query),
+    DocumentFolder.deleteMany(query),
+    CurrencyAdjustment.deleteMany(query),
+    Unit.deleteMany(query),
+    TdsTax.deleteMany(query),
+    TcsTax.deleteMany(query),
+    ItemGroup.deleteMany(query),
+    FixedAssetType.deleteMany(query),
+    ExchangeRate.deleteMany(query),
+    JournalNumberingPreference.deleteMany(query),
+    IdempotencyKey.deleteMany({ organization_id: organizationId } as any),
+  ]);
+
+  // 2. Master Data & Settings (The "Delete All" part)
+  await Promise.all([
+    Item.deleteMany(query),
+    Contact.deleteMany(query),
+    Account.deleteMany(query), // Deleting the entire Chart of Accounts
+    Tax.deleteMany(query),
+    PaymentTerms.deleteMany(query),
+    Warehouse.deleteMany(query),
+    SalesPerson.deleteMany(query),
+    PaymentMode.deleteMany(query),
+    ExpenseCategory.deleteMany(query),
+    ReportingTag.deleteMany(query),
+    PriceList.deleteMany(query),
+    Counter.deleteMany(query), // Reset all document numbering
+  ]);
+
+  res.json({
+    success: true,
+    message: "Organization data has been fully reset to initial state.",
+  });
+});

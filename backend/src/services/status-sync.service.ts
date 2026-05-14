@@ -5,6 +5,7 @@ import DeliveryChallan from "../models/delivery-challan.model";
 import Package from "../models/package.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
+import { fulfillSalesOrderStock } from "./accounting-sync.service";
 
 /**
  * Centrally manages the linkage and status transitions between Sales Orders,
@@ -244,6 +245,14 @@ export async function syncSalesOrderStatus(params: {
   if (changed) {
     attachUser(order, req);
     await order.save();
+    
+    if (shipmentStatus === "Delivered" && !order.stockDeducted) {
+      await fulfillSalesOrderStock({
+        organizationId,
+        order,
+        req,
+      });
+    }
   }
 }
 

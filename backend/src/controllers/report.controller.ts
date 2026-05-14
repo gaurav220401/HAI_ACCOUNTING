@@ -317,7 +317,7 @@ export const trialBalance = asyncHandler(async (req: AuthenticatedRequest, res: 
   const organizationId = orgId(req);
   const asOf = parseDate(req.query.asOf, "asOf");
 
-  await reconcileInventoryOpeningsSafely(organizationId);
+  // Removed automatic reconciliation to prevent double-deduction after transactions.
 
   const [accountMap, movementMap] = await Promise.all([
     loadAccounts(organizationId),
@@ -427,7 +427,7 @@ export const balanceSheet = asyncHandler(async (req: AuthenticatedRequest, res: 
   const organizationId = orgId(req);
   const asOf = parseDate(req.query.asOf, "asOf") || new Date();
 
-  await reconcileInventoryOpeningsSafely(organizationId);
+  // Removed automatic reconciliation to prevent double-deduction after transactions.
 
   const [accountMap, movementMap] = await Promise.all([
     loadAccounts(organizationId),
@@ -1117,7 +1117,7 @@ export const inventorySummary = asyncHandler(async (req: AuthenticatedRequest, r
   const asOf = parseDate(req.query.asOf, "asOf") || new Date();
   const asOfEnd = endOfDay(asOf);
 
-  await reconcileInventoryOpeningsSafely(organizationId);
+  // Removed automatic reconciliation to prevent double-deduction after transactions.
 
   const [items, committedRows, orderedRows, outgoingRows] = await Promise.all([
     Item.find({
@@ -2001,7 +2001,7 @@ export const inventoryValuationSummary = asyncHandler(async (req: AuthenticatedR
   const organizationId = orgId(req);
   const asOf = parseDate(req.query.asOf, "asOf") || new Date();
 
-  await reconcileInventoryOpeningsSafely(organizationId);
+  // Removed automatic reconciliation to prevent double-deduction after transactions.
 
   const items = await Item.find({
     organizationId,
