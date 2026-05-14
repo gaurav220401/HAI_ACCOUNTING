@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import SetupConfigShell from "@/components/settings/setup-config-shell";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,47 @@ export default function GeneralSettingsPage() {
       toast.error("Failed to save general settings");
     } finally {
       setSaving(false);
+    }
+  }
+
+  const [resetting, setResetting] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+
+  async function handleReset() {
+    if (resetConfirmText !== "RESET_ALL_DATA") {
+      toast.error("Please type the confirmation code correctly");
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
+      const token = await firebaseUser?.getIdToken();
+      
+      const res = await fetch(`${apiBase}/settings/reset-organization`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ confirmReset: "RESET_ALL_DATA" }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Organization data reset successfully");
+        setShowResetConfirm(false);
+        setResetConfirmText("");
+        // Reload the page to reflect changes
+        window.location.reload();
+      } else {
+        toast.error(data.message || "Failed to reset data");
+      }
+    } catch (err) {
+      toast.error("An error occurred while resetting data");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -250,6 +291,58 @@ export default function GeneralSettingsPage() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="mt-12 rounded-lg border border-red-200 bg-red-50 p-6">
+        <div className="flex items-center gap-3 text-red-700">
+          <AlertTriangle className="h-5 w-5" />
+          <h2 className="text-lg font-semibold">Danger Zone</h2>
+        </div>
+        <p className="mt-2 text-sm text-red-600">
+          Resetting your organization will permanently delete all transactions (Invoices, Bills, Sales Orders, etc.), 
+          contacts, items, and reset all account balances. This action cannot be undone.
+        </p>
+        
+        {!showResetConfirm ? (
+          <Button 
+            variant="destructive" 
+            className="mt-4"
+            onClick={() => setShowResetConfirm(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Reset Organization Data
+          </Button>
+        ) : (
+          <div className="mt-4 space-y-4 rounded-md border border-red-300 bg-white p-4">
+            <p className="text-sm font-medium text-gray-900">
+              To confirm, type <span className="font-bold text-red-600">RESET_ALL_DATA</span> below:
+            </p>
+            <Input 
+              value={resetConfirmText}
+              onChange={(e) => setResetConfirmText(e.target.value)}
+              placeholder="Type RESET_ALL_DATA"
+              className="max-w-xs"
+            />
+            <div className="flex gap-2">
+              <Button 
+                variant="destructive" 
+                onClick={handleReset}
+                disabled={resetting || resetConfirmText !== "RESET_ALL_DATA"}
+              >
+                {resetting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Confirm Reset
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => { setShowResetConfirm(false); setResetConfirmText(""); }}
+                disabled={resetting}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </SetupConfigShell>
   );

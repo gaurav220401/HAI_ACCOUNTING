@@ -425,3 +425,62 @@ export async function recomputeContactOutstanding(params: {
   if (session) await contact.save({ session });
   else await contact.save();
 }
+
+/**
+ * Deducts stock for a Sales Order when it is fully shipped/delivered.
+ * Releases committed stock and decreases stock on hand.
+ */
+export async function fulfillSalesOrderStock(params: {
+  organizationId: Types.ObjectId | string;
+  order: any;
+  req?: AuthenticatedRequest;
+  session?: ClientSession;
+}): Promise<void> {
+  const { organizationId, order, req, session } = params;
+  if (order.stockDeducted) return;
+
+  const stockDeltas: StockDeltaMap = {};
+  const valueDeltas: ValueDeltaMap = {};
+
+  for (const line of order.lineItems || []) {
+    const itemId = String(line.itemId?._id || line.itemId || "");
+    const qty = normalizeQuantity(line.quantity);
+    if (qty <= 0 || !itemId) continue;
+
+    // Get current item to find average cost
+    const itemQuery = Item.findOne({ _id: itemId, organizationId: toObjectId(organizationId) });
+    if (session) itemQuery.session(session);
+    const item = await itemQuery;
+    
+    if (item && item.inventoryTracked) {
+      const avgCost = round2(Number((item as any).averageCost || 0));
+      const costAmount = round2(qty * avgCost);
+      
+      addDelta(stockDeltas, itemId, -qty);
+      addValueDelta(valueDeltas, itemId, -costAmount);
+    }
+  }
+
+  if (Object.keys(stockDeltas).length > 0) {
+    await applyStockAndCommitmentDeltas({
+      organizationId,
+      deltas: stockDeltas,
+      req,
+      session,
+    });
+  }
+  
+  if (Object.keys(valueDeltas).length > 0) {
+    await applyInventoryValueDeltas({
+      organizationId,
+      deltas: valueDeltas,
+      req,
+      session,
+    });
+  }
+
+  order.stockDeducted = true;
+  if (req) attachUser(order, req);
+  if (session) await order.save({ session });
+  else await order.save();
+}

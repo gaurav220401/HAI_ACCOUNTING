@@ -9,10 +9,14 @@ import {
   expenseCategoryCRUD, seedExpenseCategories,
   reportingTagCRUD,
   priceListCRUD,
+  resetOrganizationData,
 } from "../controllers/settings.controller";
 
 const router = Router();
 router.use(authenticate);
+
+// ── Reset Organization ──
+router.post("/reset-organization", resetOrganizationData);
 
 // ── Taxes ──
 router.get("/taxes", taxCRUD.list);

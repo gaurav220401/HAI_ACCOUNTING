@@ -96,12 +96,14 @@ const SALES_ORDER_TO_INVOICE_STATUSES: ReadonlyArray<string> = [
   "INVOICED",
   "PARTIALLY_INVOICED",
   "OVERDUE",
+  "CLOSED",
 ];
 
 const PURCHASE_ORDER_PENDING_STATUSES: ReadonlyArray<string> = [
   "Draft",
   "Open",
   "Billed",
+  "Closed",
 ];
 
 const POSTED_INVOICE_STATUSES: ReadonlyArray<string> = [

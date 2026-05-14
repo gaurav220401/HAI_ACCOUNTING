@@ -14,6 +14,10 @@ import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 import { recomputeContactOutstanding } from "../services/accounting-sync.service";
 import { findAccountIdByName, postVoucher, reverseVoucher } from "../services/gl-posting.service";
+import {
+  commitInvoiceAccounting,
+  isPostedInvoiceStatus,
+} from "../services/invoice-accounting.service";
 
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -120,7 +124,7 @@ async function syncSalesOrderStatusByOrderNumber(params: {
     if (["INVOICED", "PARTIALLY_INVOICED", "CLOSED"].includes(current)) {
       target = "APPROVED";
     }
-  } else if (allInvoicesPaid || shipmentStatus === "Delivered") {
+  } else if (allInvoicesPaid && shipmentStatus === "Delivered") {
     target = "CLOSED";
   } else if (activeInvoiceCount === 1) {
     target = "INVOICED";
@@ -571,14 +575,27 @@ async function applyAgainstInvoice(
   const nextPaid = round2(Math.max(0, toNum(invoice.total) - toNum(invoice.balanceDue)) + amount);
   invoice.balanceDue = round2(Math.max(0, toNum(invoice.total) - nextPaid));
   invoice.paymentReceived = invoice.balanceDue <= 0;
+  const previousStatus = String(invoice.status || "");
+  const previousPosted = isPostedInvoiceStatus(previousStatus);
+
   invoice.status = deriveInvoiceStatus(toNum(invoice.total), nextPaid, invoice.dueDate);
   if (invoice.paymentReceived && !invoice.paidAt) {
     invoice.paidAt = new Date();
   }
   attachUser(invoice as any, req);
 
+  const nowPosted = isPostedInvoiceStatus(String(invoice.status || ""));
+
   if (session) await invoice.save({ session });
   else await invoice.save();
+
+  if (!previousPosted && nowPosted) {
+    await commitInvoiceAccounting({
+      invoice,
+      req,
+      session,
+    });
+  }
 
   await syncSalesOrderStatusByOrderNumber({
     organizationId: payment.organization_id,
