@@ -690,7 +690,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
             vendorId: expForm.vendorId || null, invoiceNumber: expForm.invoiceNumber,
             notes: expForm.notes, customerId: expForm.customerId || null,
             isBillable: expForm.isBillable, projectId: expForm.projectId || null,
-            status: "Draft",
+            status: "Approved",
           }
         : {
             expenseType: "Regular", date: expForm.date,
@@ -700,7 +700,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
             vendorId: expForm.vendorId || null, invoiceNumber: expForm.invoiceNumber,
             notes: expForm.notes, customerId: expForm.customerId || null,
             isBillable: expForm.isBillable, projectId: expForm.projectId || null,
-            status: "Draft",
+            status: "Approved",
           };
 
       if (isEdit && expenseNumber) {
@@ -747,7 +747,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
         vendorId: milForm.vendorId || null, invoiceNumber: milForm.invoiceNumber,
         notes: milForm.notes, customerId: milForm.customerId || null,
         isBillable: milForm.isBillable, projectId: milForm.projectId || null,
-        status: "Draft",
+        status: "Approved",
       };
 
       if (isEdit && expenseNumber) {
@@ -781,7 +781,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
         expenseType: "Regular" as const, date: r.date, amount: +r.amount, currency: r.currency,
         expenseAccountId: r.expenseAccountId || null, paidThroughAccountId: r.paidThroughAccountId || null,
         vendorId: r.vendorId || null, customerId: r.customerId || null,
-        isBillable: r.isBillable, status: "Draft" as const,
+        isBillable: r.isBillable, status: "Approved" as const,
       })));
       toast.success(`${filled.length} expenses recorded`);
       router.push("/purchases/expenses");

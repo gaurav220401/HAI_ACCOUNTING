@@ -79,12 +79,14 @@ export function activityLogPlugin(schema: Schema): void {
       }
     }
 
-    doc.activityLog.push({
-      timestamp: new Date(),
-      userId,
-      action,
-      changes,
-    });
+    if (doc.activityLog) {
+      doc.activityLog.push({
+        timestamp: new Date(),
+        userId,
+        action,
+        changes,
+      });
+    }
   });
 }
 

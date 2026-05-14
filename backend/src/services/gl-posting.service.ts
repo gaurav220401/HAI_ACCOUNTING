@@ -121,16 +121,33 @@ export async function postVoucher(input: PostVoucherInput): Promise<{ posted: bo
   const lines = normalizeLines(input.lines || []);
   assertBalanced(lines);
 
-  const existingQuery = GlEntry.find({
+  // Clean up any existing entries (and their reversals) for this voucher to allow clean re-posting.
+  const existingEntries = await GlEntry.find({
     organizationId,
     voucherType: input.voucherType,
     voucherId: input.voucherId,
-    isReversal: false,
-  }).select("_id");
-  if (input.session) existingQuery.session(input.session);
-  const existing = await existingQuery;
-  if (existing.length > 0) {
-    return { posted: false, entryIds: existing.map((e) => String(e._id)) };
+  }).session(input.session || null);
+
+  if (existingEntries.length > 0) {
+    const cleanupDeltas = new Map<string, number>();
+    for (const entry of existingEntries) {
+      const key = String(entry.accountId);
+      // To reverse an existing entry: subtract its debit, add its credit.
+      const delta = round2(normalizeAmount(entry.credit) - normalizeAmount(entry.debit));
+      cleanupDeltas.set(key, round2((cleanupDeltas.get(key) || 0) + delta));
+    }
+    const cleanupOps = Array.from(cleanupDeltas.entries()).map(([accountId, delta]) => ({
+      updateOne: {
+        filter: { _id: accountId, organizationId },
+        update: { $inc: { balance: delta } },
+      },
+    }));
+    if (cleanupOps.length > 0) {
+      await Account.bulkWrite(cleanupOps, { session: input.session });
+    }
+    await GlEntry.deleteMany({
+      _id: { $in: existingEntries.map((e) => e._id) },
+    }).session(input.session || null);
   }
 
   const currency = input.currency || (await resolveCurrency(organizationId, input.session));
