@@ -112,6 +112,8 @@ export interface SalesOrder {
       status: string;
     }>;
   };
+  invoicePaymentReceived?: boolean;
+  invoicePaymentStatus?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

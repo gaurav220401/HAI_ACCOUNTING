@@ -429,6 +429,7 @@ function normalizeLegacyOrderForResponse(order: any) {
 
   if (order.invoiceId && typeof order.invoiceId === 'object') {
     normalized.invoicePaymentReceived = !!order.invoiceId.paymentReceived;
+    normalized.invoicePaymentStatus = order.invoiceId.status;
   }
 
   return normalized;
