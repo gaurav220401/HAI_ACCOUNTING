@@ -174,6 +174,8 @@ export default function ExpenseDetailPage() {
   const [fetching, setFetching] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -275,6 +277,32 @@ export default function ExpenseDetailPage() {
     }
   }
 
+  async function handleApprove() {
+    if (!expense) return;
+    try {
+      const res = await expenseApi.update(expense.expenseNumber, { status: "Approved" });
+      toast.success("Expense approved and posted to ledger");
+      setExpense(res.data);
+    } catch {
+      toast.error("Failed to approve expense");
+    }
+  }
+
+  async function handleReject() {
+    if (!expense) return;
+    setRejecting(true);
+    try {
+      const res = await expenseApi.update(expense.expenseNumber, { status: "Rejected" });
+      toast.success("Expense rejected");
+      setRejectOpen(false);
+      setExpense(res.data);
+    } catch {
+      toast.error("Failed to reject expense");
+    } finally {
+      setRejecting(false);
+    }
+  }
+
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
@@ -323,6 +351,26 @@ export default function ExpenseDetailPage() {
                 >
                   <Edit className="h-3.5 w-3.5" /> Edit
                 </Button>
+                {(expense.status === "Draft" || expense.status === "Submitted" || expense.status === "Rejected") && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="gap-1.5 bg-green-600 hover:bg-green-700"
+                    onClick={handleApprove}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+                  </Button>
+                )}
+                {(expense.status === "Draft" || expense.status === "Submitted" || expense.status === "Approved") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-destructive border-destructive/40 hover:bg-destructive/5"
+                    onClick={() => setRejectOpen(true)}
+                  >
+                    <XCircle className="h-3.5 w-3.5" /> Reject
+                  </Button>
+                )}
                 {expense.isBillable && (
                   <Button
                     variant="outline"
@@ -636,6 +684,30 @@ export default function ExpenseDetailPage() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {deleting ? "Deleting…" : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        {/* Reject confirm */}
+        <AlertDialog open={rejectOpen} onOpenChange={setRejectOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reject Expense?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to reject this expense? This will reverse any entries in your General Ledger and Trial Balance.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={rejecting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={rejecting}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleReject();
+                }}
+              >
+                {rejecting ? "Rejecting..." : "Reject Expense"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

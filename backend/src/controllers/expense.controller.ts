@@ -31,7 +31,7 @@ function expenseVoucherId(expense: any): string {
 }
 
 function isPostedStatus(status: string): boolean {
-  return status !== "Draft";
+  return status === "Approved" || status === "Reimbursed";
 }
 
 /**
@@ -268,7 +268,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     ? { expenseNumber: param.toUpperCase(), organizationId: orgId(req) }
     : { _id: param, organizationId: orgId(req) };
 
-  const expense = await Expense.findOne(query);
+  const expense = await Expense.findOne(query).select("+activityLog");
   if (!expense) throw new NotFoundError("Expense");
 
   const previousPosted = isPostedStatus(String(expense.status || ""));
@@ -333,7 +333,7 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     ? { expenseNumber: param.toUpperCase(), organizationId: orgId(req) }
     : { _id: param, organizationId: orgId(req) };
 
-  const expense = await Expense.findOne(query);
+  const expense = await Expense.findOne(query).select("+activityLog");
   if (!expense) throw new NotFoundError("Expense");
 
   // Reverse GL entries before soft-deleting

@@ -203,6 +203,7 @@ function ExpenseDetailPanel({
   onEdit,
   onConvertToInvoice,
   onShowHistory,
+  onStatusChange,
 }: {
   expense: Expense;
   onClose: () => void;
@@ -211,6 +212,7 @@ function ExpenseDetailPanel({
   onEdit: (e: Expense) => void;
   onConvertToInvoice: (e: Expense) => void;
   onShowHistory: () => void;
+  onStatusChange?: (updated: Expense) => void;
 }) {
   const router = useRouter();
   const [showRecurring, setShowRecurring] = useState(false);
@@ -220,6 +222,8 @@ function ExpenseDetailPanel({
   const [endsOn,        setEndsOn]        = useState("");
   const [neverExpires,  setNeverExpires]  = useState(true);
   const [savingRec,     setSavingRec]     = useState(false);
+  const [rejectOpen,    setRejectOpen]    = useState(false);
+  const [rejecting,     setRejecting]     = useState(false);
 
   async function handleSaveRecurring() {
     if (!profName.trim()) return;
@@ -289,6 +293,34 @@ function ExpenseDetailPanel({
         <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7" onClick={() => onEdit(expense)}>
           <Edit className="h-3.5 w-3.5" /> Edit
         </Button>
+        {(expense.status === "Draft" || expense.status === "Submitted" || expense.status === "Rejected") && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+            onClick={async () => {
+              try {
+                const res = await expenseApi.update(expense.expenseNumber || expense._id, { status: "Approved" });
+                toast.success("Expense approved and posted to ledger");
+                onStatusChange?.(res.data);
+              } catch {
+                toast.error("Failed to approve");
+              }
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Approve
+          </Button>
+        )}
+        {(expense.status === "Draft" || expense.status === "Submitted" || expense.status === "Approved") && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+            onClick={() => setRejectOpen(true)}
+          >
+            <X className="h-3.5 w-3.5" /> Reject
+          </Button>
+        )}
         {expense.isBillable && (
           <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 text-primary" onClick={() => onConvertToInvoice(expense)}>
             <FileText className="h-3.5 w-3.5" /> Convert to Invoice
@@ -583,6 +615,40 @@ function ExpenseDetailPanel({
           </div>
         </div>
       )}
+      {/* Reject confirm */}
+      <AlertDialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Expense?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to reject this expense? This will reverse any entries in your General Ledger and Trial Balance.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={rejecting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={rejecting}
+              onClick={async (e) => {
+                e.preventDefault();
+                setRejecting(true);
+                try {
+                  const res = await expenseApi.update(expense.expenseNumber || expense._id, { status: "Rejected" });
+                  toast.success("Expense rejected");
+                  onStatusChange?.(res.data);
+                  setRejectOpen(false);
+                } catch {
+                  toast.error("Failed to reject");
+                } finally {
+                  setRejecting(false);
+                }
+              }}
+            >
+              {rejecting ? "Rejecting..." : "Reject Expense"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1381,6 +1447,10 @@ export default function ExpensesPage() {
                 onEdit={(e) => router.push(`/purchases/expenses/${e.expenseNumber || e._id}/edit`)}
                 onConvertToInvoice={handleConvertToInvoice}
                 onShowHistory={() => setShowHistoryPanel(true)}
+                onStatusChange={(updated) => {
+                  fetchExpenses();
+                  setSelected(updated);
+                }}
               />
             </div>
           )}
@@ -1496,9 +1566,9 @@ export default function ExpensesPage() {
                             <span className="text-muted-foreground text-[10px]">{new Date(item.timestamp).toLocaleString("en-IN")}</span>
                           </div>
                           <div className="text-muted-foreground mt-1">
-                            {Object.keys(item.changes).map((field) => (
+                            {Object.keys(item.changes || {}).map((field) => (
                               <p key={field} className="leading-snug">
-                                <strong>{field}</strong>: {String(item.changes[field].before)} → {String(item.changes[field].after)}
+                                <strong>{field}</strong>: {String(item.changes?.[field]?.before ?? "—")} → {String(item.changes?.[field]?.after ?? "—")}
                               </p>
                             ))}
                           </div>
