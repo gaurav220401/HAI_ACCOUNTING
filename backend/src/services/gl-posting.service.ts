@@ -33,8 +33,12 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function toObjectId(value: Types.ObjectId | string): Types.ObjectId {
+function toObjectId(value: any): Types.ObjectId {
+  if (!value) return value;
   if (value instanceof Types.ObjectId) return value;
+  if (value && typeof value === 'object' && value._id) {
+    return new Types.ObjectId(String(value._id));
+  }
   return new Types.ObjectId(String(value));
 }
 

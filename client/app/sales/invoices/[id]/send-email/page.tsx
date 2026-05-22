@@ -17,15 +17,15 @@ import RichTextEditor from "@/components/ui/rich-text-editor";
 import { invoiceApi, type Invoice } from "@/lib/api/invoices";
 import { smtpApi } from "@/lib/api/smtp";
 
-function getCustomerName(v: Invoice["customerId"]) {
+function getCustomerName(v?: Invoice["customerId"]) {
   if (!v) return "";
   if (typeof v === "object") {
-    return v.displayName || v.companyName || v.name || "";
+    return (v as any).displayName || (v as any).companyName || (v as any).name || "";
   }
   return String(v);
 }
 
-function getCustomerEmail(v: Invoice["customerId"]) {
+function getCustomerEmail(v?: Invoice["customerId"]) {
   if (!v || typeof v === "string") return "";
   return v.email || "";
 }
@@ -375,6 +375,20 @@ export default function SendInvoiceEmailPage() {
                     <FileText className="h-4 w-4" />
                     <span>{invoice?.invoiceNumber || "INV"}.pdf</span>
                   </div>
+                </div>
+
+                <div className="px-4 py-2 bg-muted/30 border-t border-muted-foreground/10 flex items-center gap-2">
+                  <Checkbox
+                    id="mark-as-sent"
+                    checked={true}
+                    disabled
+                  />
+                  <Label
+                    htmlFor="mark-as-sent"
+                    className="text-sm text-muted-foreground cursor-not-allowed"
+                  >
+                    Mark as Sent (Automatically updated upon success)
+                  </Label>
                 </div>
 
                 {attachPdf && (

@@ -779,6 +779,10 @@ function SendEmailModal({
                 </span>
               )}
             </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+              <Checkbox checked disabled />
+              Mark as Sent (Automatically updated upon success)
+            </label>
           </div>
         </div>
 

@@ -17,6 +17,7 @@ import {
   Trash2,
   X,
   Loader2,
+  Maximize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -629,6 +630,17 @@ export default function InvoicesPage() {
                       Send Email
                     </Button>
 
+                    {selectedInvoice.status === "Draft" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => markAsSent(selectedInvoice)}
+                      >
+                        <FileText className="h-3.5 w-3.5 mr-1" />
+                        Mark as Sent
+                      </Button>
+                    )}
+
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="sm">
@@ -668,6 +680,19 @@ export default function InvoicesPage() {
                         </Button>
                       )}
 
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        router.push(
+                          `/sales/invoices/${selectedInvoice._id}`,
+                        )
+                      }
+                    >
+                      <Maximize2 className="h-3.5 w-3.5 mr-1" />
+                      Open Full Detail
+                    </Button>
+
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -675,15 +700,6 @@ export default function InvoicesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            router.push(
-                              `/sales/invoices/${selectedInvoice._id}`,
-                            )
-                          }
-                        >
-                          Open Full Detail
-                        </DropdownMenuItem>
                         {selectedInvoice.status !== "Void" && (
                           <DropdownMenuItem
                             onClick={() => voidInvoice(selectedInvoice)}

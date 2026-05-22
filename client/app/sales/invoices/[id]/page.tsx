@@ -441,9 +441,11 @@ export default function InvoiceDetailPage() {
                   >
                     <Mail className="h-4 w-4 mr-2" /> Send Email
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAction("send")}>
-                    <FileCheck className="h-4 w-4 mr-2" /> Mark as Sent
-                  </DropdownMenuItem>
+                  {invoice.status === "Draft" && (
+                    <DropdownMenuItem onClick={() => handleAction("send")}>
+                      <FileCheck className="h-4 w-4 mr-2" /> Mark as Sent
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 

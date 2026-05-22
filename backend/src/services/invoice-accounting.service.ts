@@ -121,7 +121,7 @@ export async function commitInvoiceAccounting(params: {
     debit: receivableAmount,
     description: `Invoice ${invoice.invoiceNumber}`,
     contactType: "Customer",
-    contactId: invoice.customerId,
+    contactId: invoice.customerId?._id || invoice.customerId,
   });
 
   // Sales Revenue (Credit)
