@@ -1039,12 +1039,12 @@ function ReportsPageContent() {
               {activeReport?.name}
               {activeReport?.useDateRange && (
                 <span className="text-muted-foreground font-normal ml-2">
-                  � From {fmtDate(from)} To {fmtDate(to)}
+                  • From {fmtDate(from)} To {fmtDate(to)}
                 </span>
               )}
               {(activeReport?.useAsOf || activeReport?.useAgingBuckets) && (
                 <span className="text-muted-foreground font-normal ml-2">
-                  � As of {fmtDate(asOf)}
+                  • As of {fmtDate(asOf)}
                 </span>
               )}
             </h1>
