@@ -479,10 +479,25 @@ function ReportsPageContent() {
 
   useEffect(() => {
     if (activeReportId && firebaseUser && !loading) {
-      void loadReport({ source: "auto" });
+      const timer = setTimeout(() => {
+        void loadReport({ source: "auto" });
+      }, 400);
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeReportId, firebaseUser, loading]);
+  }, [
+    activeReportId,
+    firebaseUser,
+    loading,
+    datePreset,
+    customFrom,
+    customTo,
+    asOf,
+    statusFilter,
+    vendorFilter,
+    customerFilter,
+    reportBasis
+  ]);
 
   const exportPayload = useMemo<ExportPayload | null>(() => {
     if (!activeReport) return null;
