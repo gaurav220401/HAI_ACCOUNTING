@@ -269,6 +269,12 @@ export const reportApi = {
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/purchases-by-item${buildQuery(params || {})}`),
 
   // Inventory
+
+  purchasesByVendor: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/purchases-by-vendor${buildQuery(params || {})}`),
+
+
+
   inventorySummary: (params?: { asOf?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/inventory-summary${buildQuery(params || {})}`),
 

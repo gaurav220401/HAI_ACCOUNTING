@@ -21,6 +21,7 @@ import {
   apAgingSummary,
   expenseDetails,
   expensesByCategory,
+  purchasesByVendor,
   purchasesByItem,
   inventorySummary,
   committedStockDetails,
@@ -76,6 +77,7 @@ router.get("/ar-aging-details", arAgingDetails);
 // Purchases & Expenses
 router.get("/expense-details", expenseDetails);
 router.get("/expenses-by-category", expensesByCategory);
+router.get("/purchases-by-vendor", purchasesByVendor);
 router.get("/purchases-by-item", purchasesByItem);
 router.get("/purchases-by-item-details", purchasesByItemDetails);
 router.get("/item-transaction-history", itemTransactionHistory);

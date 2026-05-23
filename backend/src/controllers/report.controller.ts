@@ -3491,3 +3491,47 @@ export const apAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res
   
   res.json({ success: true, data: { asOf, buckets } });
 });
+
+
+export const purchasesByVendor = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, 'from') || defaultFrom();
+  const to = parseDate(req.query.to, 'to') || defaultTo();
+
+  const bills = await Bill.aggregate([
+    {
+      $match: {
+        organizationId, isDeleted: false,
+        status: { $nin: ['Draft', 'Void'] },
+        billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+      },
+    },
+    {
+      $group: {
+        _id: '$vendorId',
+        billCount: { $sum: 1 },
+        totalPurchases: { $sum: { $ifNull: ['$subTotal', 0] } },
+        totalWithTax: { $sum: { $ifNull: ['$total', 0] } },
+      },
+    },
+  ]);
+
+  const vendorIds = bills.map(b => b._id).filter(Boolean);
+  const vendors = await Contact.find({ _id: { $in: vendorIds } }).select('displayName companyName').lean();
+  const vendorMap = new Map(vendors.map((v: any) => [String(v._id), v.displayName || v.companyName || 'Unknown']));
+
+  const rows = bills.map((b: any) => ({
+    vendorId: String(b._id || ''),
+    vendorName: vendorMap.get(String(b._id)) || 'Unknown Vendor',
+    billCount: b.billCount,
+    totalPurchases: round2(toNum(b.totalPurchases)),
+    totalWithTax: round2(toNum(b.totalWithTax)),
+  })).sort((a, b) => b.totalPurchases - a.totalPurchases);
+
+  const totals = {
+    totalPurchases: round2(rows.reduce((s, r) => s + r.totalPurchases, 0)),
+    totalWithTax: round2(rows.reduce((s, r) => s + r.totalWithTax, 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals } });
+});
