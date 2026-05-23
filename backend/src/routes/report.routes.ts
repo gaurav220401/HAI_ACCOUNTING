@@ -15,6 +15,10 @@ import {
   customerBalanceSummary,
   invoiceDetails,
   receivableSummary,
+  customerBalanceDetails,
+  arAgingSummary,
+  arAgingDetails,
+  apAgingSummary,
   expenseDetails,
   expensesByCategory,
   purchasesByItem,
@@ -59,11 +63,15 @@ router.get("/payments-made", paymentsMadeReport);
 router.get("/vendor-credit-details", vendorCreditDetails);
 router.get("/purchase-order-details", purchaseOrderDetails);
 router.get("/payable-summary", payableSummary);
+router.get("/ap-aging-summary", apAgingSummary);
 
 // Receivables
 router.get("/customer-balance-summary", customerBalanceSummary);
 router.get("/invoice-details", invoiceDetails);
 router.get("/receivable-summary", receivableSummary);
+router.get("/customer-balance-details", customerBalanceDetails);
+router.get("/ar-aging-summary", arAgingSummary);
+router.get("/ar-aging-details", arAgingDetails);
 
 // Purchases & Expenses
 router.get("/expense-details", expenseDetails);

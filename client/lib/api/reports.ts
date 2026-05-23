@@ -235,6 +235,10 @@ export const reportApi = {
   payableSummary: (params?: { asOf?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payable-summary${buildQuery(params || {})}`),
 
+  apAgingSummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/ap-aging-summary${buildQuery(params || {})}`),
+
+
   // Receivables
   customerBalanceSummary: () =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>("/reports/customer-balance-summary"),
@@ -244,6 +248,15 @@ export const reportApi = {
 
   receivableSummary: (params?: { asOf?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/receivable-summary${buildQuery(params || {})}`),
+
+  customerBalanceDetails: (params?: { from?: string; to?: string; customerId?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/customer-balance-details${buildQuery(params || {})}`),
+
+  arAgingSummary: (params?: { asOf?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/ar-aging-summary${buildQuery(params || {})}`),
+
+  arAgingDetails: (params?: { asOf?: string; customerId?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/ar-aging-details${buildQuery(params || {})}`),
 
   // Purchases & Expenses
   expenseDetails: (params?: { from?: string; to?: string }) =>
@@ -313,7 +326,7 @@ export const reportApi = {
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/item-transaction-history${buildQuery(params || {})}`),
 
   // Payments Received
-  paymentsReceived: (params?: { from?: string; to?: string }) =>
+  paymentsReceivedSummary: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payments-received${buildQuery(params || {})}`),
 
   // Dashboard
