@@ -116,7 +116,7 @@ export const REPORTS: ReportDef[] = [
   // Receivables
   {
     id: "customer-balance-summary", name: "Customer Balance Summary", category: "receivables",
-    apiCall: "customerBalanceSummary",
+    apiCall: "customerBalanceSummary", useDateRange: true,
     columns: [
       { key: "customerName", label: "Customer Name" },
       { key: "openingBalance", label: "Opening Balance", align: "right", format: "currency" },
@@ -125,7 +125,7 @@ export const REPORTS: ReportDef[] = [
   },
   {
     id: "customer-balance-details", name: "Customer Balance Details", category: "receivables",
-    apiCall: "customerBalanceDetails",
+    apiCall: "customerBalanceDetails", useDateRange: true,
     columns: [
       { key: "customerName", label: "Customer Name" },
       { key: "transactionDate", label: "Date", format: "date" },

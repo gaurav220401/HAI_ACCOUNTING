@@ -779,6 +779,10 @@ function SendEmailModal({
                 </span>
               )}
             </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+              <Checkbox checked disabled />
+              Mark as Sent (Automatically updated upon success)
+            </label>
           </div>
         </div>
 
@@ -812,7 +816,11 @@ function SendEmailModal({
 export default function NewInvoicePage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   // Master data
   const [customers, setCustomers] = useState<Contact[]>([]);
@@ -1010,65 +1018,16 @@ export default function NewInvoicePage() {
     [items, selectedCustomer, activeOrganization?.address?.state, taxes],
   );
 
-  const handleBulkAdd = useCallback((selectedItems: Item[]) => {
-    const newLines: LineItem[] = selectedItems.map((item) => {
-      const linkedTax = getItemTaxForTransaction({
-        item,
-        contact: selectedCustomer,
-        organizationState: activeOrganization?.address?.state,
-        taxes,
-      });
-      return {
-        key: lineKeyCounter++,
-        itemId: item._id,
-        name: item.name,
-        description: item.description || "",
-        hsnSacCode: (item as any).hsnSacCode || "",
-        quantity: 1,
-        rate: item.sellingPrice || 0,
-        discountPercent: 0,
-        taxId: linkedTax.taxId,
-        taxPercent: linkedTax.taxPercent,
-        accountId: "",
-      };
-    });
-    setLines((prev) => {
-      // Remove empty lines
-      const existing = prev.filter((l) => l.name.trim());
-      return [...existing, ...newLines];
-    });
-  }, [selectedCustomer, activeOrganization?.address?.state, taxes]);
-
-  const handleNewItemCreated = useCallback((item: Item) => {
-    setItems((prev) => [...prev, item]);
-    const linkedTax = getItemTaxForTransaction({
-      item,
-      contact: selectedCustomer,
-      organizationState: activeOrganization?.address?.state,
-      taxes,
-    });
-    // Add to current lines
-    setLines((prev) => {
-      const emptyIdx = prev.findIndex((l) => !l.name.trim());
-      if (emptyIdx >= 0) {
-        return prev.map((l, i) =>
-          i === emptyIdx ?
-            {
-              ...l,
-              itemId: item._id,
-              name: item.name,
-              description: item.description || "",
-              hsnSacCode: (item as any).hsnSacCode || "",
-              rate: item.sellingPrice || 0,
-              taxId: linkedTax.taxId,
-              taxPercent: linkedTax.taxPercent,
-            }
-          : l,
-        );
-      }
-      return [
-        ...prev,
-        {
+  const handleBulkAdd = useCallback(
+    (selectedItems: Item[]) => {
+      const newLines: LineItem[] = selectedItems.map((item) => {
+        const linkedTax = getItemTaxForTransaction({
+          item,
+          contact: selectedCustomer,
+          organizationState: activeOrganization?.address?.state,
+          taxes,
+        });
+        return {
           key: lineKeyCounter++,
           itemId: item._id,
           name: item.name,
@@ -1080,10 +1039,65 @@ export default function NewInvoicePage() {
           taxId: linkedTax.taxId,
           taxPercent: linkedTax.taxPercent,
           accountId: "",
-        },
-      ];
-    });
-  }, [selectedCustomer, activeOrganization?.address?.state, taxes]);
+        };
+      });
+      setLines((prev) => {
+        // Remove empty lines
+        const existing = prev.filter((l) => l.name.trim());
+        return [...existing, ...newLines];
+      });
+    },
+    [selectedCustomer, activeOrganization?.address?.state, taxes],
+  );
+
+  const handleNewItemCreated = useCallback(
+    (item: Item) => {
+      setItems((prev) => [...prev, item]);
+      const linkedTax = getItemTaxForTransaction({
+        item,
+        contact: selectedCustomer,
+        organizationState: activeOrganization?.address?.state,
+        taxes,
+      });
+      // Add to current lines
+      setLines((prev) => {
+        const emptyIdx = prev.findIndex((l) => !l.name.trim());
+        if (emptyIdx >= 0) {
+          return prev.map((l, i) =>
+            i === emptyIdx ?
+              {
+                ...l,
+                itemId: item._id,
+                name: item.name,
+                description: item.description || "",
+                hsnSacCode: (item as any).hsnSacCode || "",
+                rate: item.sellingPrice || 0,
+                taxId: linkedTax.taxId,
+                taxPercent: linkedTax.taxPercent,
+              }
+            : l,
+          );
+        }
+        return [
+          ...prev,
+          {
+            key: lineKeyCounter++,
+            itemId: item._id,
+            name: item.name,
+            description: item.description || "",
+            hsnSacCode: (item as any).hsnSacCode || "",
+            quantity: 1,
+            rate: item.sellingPrice || 0,
+            discountPercent: 0,
+            taxId: linkedTax.taxId,
+            taxPercent: linkedTax.taxPercent,
+            accountId: "",
+          },
+        ];
+      });
+    },
+    [selectedCustomer, activeOrganization?.address?.state, taxes],
+  );
 
   useEffect(() => {
     if (!lines.some((line) => line.itemId)) return;
@@ -1099,7 +1113,10 @@ export default function NewInvoicePage() {
           organizationState: activeOrganization?.address?.state,
           taxes,
         });
-        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+        if (
+          line.taxId === linkedTax.taxId &&
+          Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)
+        ) {
           return line;
         }
         changed = true;
@@ -1111,7 +1128,13 @@ export default function NewInvoicePage() {
       });
       return changed ? next : prev;
     });
-  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
+  }, [
+    customerId,
+    selectedCustomer,
+    activeOrganization?.address?.state,
+    items,
+    taxes,
+  ]);
 
   // ─── Calculations ────────────────────────────────────────────────
 
@@ -1157,8 +1180,12 @@ export default function NewInvoicePage() {
         customerId,
         invoiceDate,
         dueDate: dueDate || null,
-        paymentTermsId: paymentTermsId === "__receipt" || !paymentTermsId ? null : paymentTermsId,
-        salesPersonId: salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
+        paymentTermsId:
+          paymentTermsId === "__receipt" || !paymentTermsId ?
+            null
+          : paymentTermsId,
+        salesPersonId:
+          salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())
@@ -1241,7 +1268,7 @@ export default function NewInvoicePage() {
         attachments, // File[] from the invoice form's file picker
       );
       toast.success("Invoice emailed successfully");
-      router.push(`/sales/invoices/${savedInvoiceId}`);
+      router.push(`/sales/invoices`);
     } catch (e: any) {
       toast.error(e.message || "Failed to send email");
     } finally {
@@ -1520,7 +1547,9 @@ export default function NewInvoicePage() {
                     <TableHead className="w-[100px] text-right">
                       QUANTITY
                     </TableHead>
-                    <TableHead className="w-[110px] text-right">STOCK</TableHead>
+                    <TableHead className="w-[110px] text-right">
+                      STOCK
+                    </TableHead>
                     <TableHead className="w-[120px] text-right">RATE</TableHead>
                     <TableHead className="w-[100px] text-right">
                       DISCOUNT %
@@ -1541,7 +1570,8 @@ export default function NewInvoicePage() {
                         Number(selectedItem.stockOnHand || 0)
                       : null;
                     const exceedsStock =
-                      stockOnHand !== null && Number(line.quantity || 0) > stockOnHand;
+                      stockOnHand !== null &&
+                      Number(line.quantity || 0) > stockOnHand;
 
                     return (
                       <TableRow key={line.key}>
@@ -1613,7 +1643,9 @@ export default function NewInvoicePage() {
                               />
                               {selectedItem ?
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                  {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                  {selectedItem.sku ?
+                                    `SKU ${selectedItem.sku} · `
+                                  : ""}
                                   {selectedItem.inventoryTracked ?
                                     `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
                                   : "Inventory not tracked"}
@@ -1926,7 +1958,11 @@ export default function NewInvoicePage() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm tabular-nums w-20 text-right">
-                    {taxType === "TCS" ? "+" : taxType === "TDS" ? "-" : ""}{" "}
+                    {taxType === "TCS" ?
+                      "+"
+                    : taxType === "TDS" ?
+                      "-"
+                    : ""}{" "}
                     {taxAmount.toFixed(2)}
                   </span>
                 </div>
@@ -2269,7 +2305,7 @@ export default function NewInvoicePage() {
           setShowEmailModal(false);
           if (savedInvoiceId) {
             toast.info("Invoice saved as draft — email was not sent.");
-            router.push(`/sales/invoices/${savedInvoiceId}`);
+            router.push("/sales/invoices");
           } else {
             router.push("/sales/invoices");
           }

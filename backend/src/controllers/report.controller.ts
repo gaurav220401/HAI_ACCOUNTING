@@ -3333,3 +3333,205 @@ export const itemTransactionHistory = asyncHandler(async (req: AuthenticatedRequ
 
 
 
+
+
+export const arAgingDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, 'asOf') || new Date();
+  const invoices = await Invoice.find({
+    organizationId, isDeleted: false,
+    status: { $nin: ["Draft", "Void"] },
+    invoiceDate: { $lte: endOfDay(asOf) },
+    balanceDue: { $gt: 0 },
+  }).populate('customerId', 'displayName companyName').lean();
+  
+  const now = endOfDay(asOf);
+  const rows = invoices.map((i: any) => {
+    const dueDate = i.dueDate ? new Date(i.dueDate) : null;
+    let ageDays = 0;
+    if (dueDate && dueDate < now) {
+      ageDays = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    }
+    return {
+      customerName: i.customerId?.displayName || i.customerId?.companyName || 'Unknown',
+      invoiceNumber: i.invoiceNumber,
+      invoiceDate: i.invoiceDate,
+      dueDate: i.dueDate,
+      ageDays,
+      totalAmount: round2(toNum(i.total)),
+      balanceDue: round2(toNum(i.balanceDue)),
+    };
+  });
+  
+  res.json({ success: true, data: { asOf, rows, count: rows.length } });
+});
+
+export const customerBalanceDetails = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, 'from') || defaultFrom();
+  const to = parseDate(req.query.to, 'to') || defaultTo();
+  
+  const entries = await GlEntry.find({
+    organizationId,
+    postingDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  }).populate('contactId', 'displayName companyName').populate('accountId', 'accountType').lean();
+
+  const arEntries = entries.filter((e: any) => e.accountId?.accountType === 'Accounts Receivable');
+  
+  let balance = 0;
+  const rows = arEntries.map((e: any) => {
+    const debit = round2(toNum(e.debit));
+    const credit = round2(toNum(e.credit));
+    balance = round2(balance + debit - credit);
+    return {
+      customerName: e.contactId?.displayName || e.contactId?.companyName || 'Unknown',
+      transactionDate: e.postingDate,
+      transactionNo: e.voucherNo || e.voucherId || '-',
+      transactionType: e.voucherType || 'System',
+      debit,
+      credit,
+      balance,
+    };
+  });
+  res.json({ success: true, data: { from, to, rows, count: rows.length } });
+});
+
+export const arAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, 'asOf') || new Date();
+  const invoices = await Invoice.find({
+    organizationId, isDeleted: false,
+    status: { $nin: ["Draft", "Void"] },
+    invoiceDate: { $lte: endOfDay(asOf) },
+    balanceDue: { $gt: 0 },
+  }).populate('customerId', 'displayName companyName').lean();
+  
+  const now = endOfDay(asOf);
+  const buckets = {
+    current: { rows: [] as any[], total: 0 },
+    '1-15': { rows: [] as any[], total: 0 },
+    '16-30': { rows: [] as any[], total: 0 },
+    '31-45': { rows: [] as any[], total: 0 },
+    'above-45': { rows: [] as any[], total: 0 },
+  };
+  
+  const customerMap = new Map();
+  for (const inv of invoices) {
+    const i: any = inv;
+    const cid = String(i.customerId?._id || 'unknown');
+    if (!customerMap.has(cid)) customerMap.set(cid, { name: i.customerId?.displayName || i.customerId?.companyName || 'Unknown', current: 0, '1-15': 0, '16-30': 0, '31-45': 0, 'above-45': 0 });
+    const c = customerMap.get(cid);
+    const dueDate = i.dueDate ? new Date(i.dueDate) : null;
+    const due = round2(toNum(i.balanceDue));
+    if (!dueDate || dueDate >= now) c.current += due;
+    else {
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysOverdue <= 15) c['1-15'] += due;
+      else if (daysOverdue <= 30) c['16-30'] += due;
+      else if (daysOverdue <= 45) c['31-45'] += due;
+      else c['above-45'] += due;
+    }
+  }
+  
+  Array.from(customerMap.values()).forEach(c => {
+    if (c.current > 0) { buckets.current.rows.push({ customerName: c.name, totalOutstanding: round2(c.current) }); buckets.current.total += c.current; }
+    if (c['1-15'] > 0) { buckets['1-15'].rows.push({ customerName: c.name, totalOutstanding: round2(c['1-15']) }); buckets['1-15'].total += c['1-15']; }
+    if (c['16-30'] > 0) { buckets['16-30'].rows.push({ customerName: c.name, totalOutstanding: round2(c['16-30']) }); buckets['16-30'].total += c['16-30']; }
+    if (c['31-45'] > 0) { buckets['31-45'].rows.push({ customerName: c.name, totalOutstanding: round2(c['31-45']) }); buckets['31-45'].total += c['31-45']; }
+    if (c['above-45'] > 0) { buckets['above-45'].rows.push({ customerName: c.name, totalOutstanding: round2(c['above-45']) }); buckets['above-45'].total += c['above-45']; }
+  });
+  
+  res.json({ success: true, data: { asOf, buckets } });
+});
+
+export const apAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const asOf = parseDate(req.query.asOf, 'asOf') || new Date();
+  const bills = await Bill.find({
+    organizationId, isDeleted: false,
+    status: { $nin: ["Draft", "Void"] },
+    billDate: { $lte: endOfDay(asOf) },
+    balanceDue: { $gt: 0 },
+  }).populate('vendorId', 'displayName companyName').lean();
+  
+  const now = endOfDay(asOf);
+  const buckets = {
+    current: { rows: [] as any[], total: 0 },
+    '1-15': { rows: [] as any[], total: 0 },
+    '16-30': { rows: [] as any[], total: 0 },
+    '31-45': { rows: [] as any[], total: 0 },
+    'above-45': { rows: [] as any[], total: 0 },
+  };
+  
+  const vendorMap = new Map();
+  for (const bill of bills) {
+    const b: any = bill;
+    const vid = String(b.vendorId?._id || 'unknown');
+    if (!vendorMap.has(vid)) vendorMap.set(vid, { name: b.vendorId?.displayName || b.vendorId?.companyName || 'Unknown', current: 0, '1-15': 0, '16-30': 0, '31-45': 0, 'above-45': 0 });
+    const v = vendorMap.get(vid);
+    const dueDate = b.dueDate ? new Date(b.dueDate) : null;
+    const due = round2(toNum(b.balanceDue));
+    if (!dueDate || dueDate >= now) v.current += due;
+    else {
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysOverdue <= 15) v['1-15'] += due;
+      else if (daysOverdue <= 30) v['16-30'] += due;
+      else if (daysOverdue <= 45) v['31-45'] += due;
+      else v['above-45'] += due;
+    }
+  }
+  
+  Array.from(vendorMap.values()).forEach(v => {
+    if (v.current > 0) { buckets.current.rows.push({ vendorName: v.name, totalOutstanding: round2(v.current) }); buckets.current.total += v.current; }
+    if (v['1-15'] > 0) { buckets['1-15'].rows.push({ vendorName: v.name, totalOutstanding: round2(v['1-15']) }); buckets['1-15'].total += v['1-15']; }
+    if (v['16-30'] > 0) { buckets['16-30'].rows.push({ vendorName: v.name, totalOutstanding: round2(v['16-30']) }); buckets['16-30'].total += v['16-30']; }
+    if (v['31-45'] > 0) { buckets['31-45'].rows.push({ vendorName: v.name, totalOutstanding: round2(v['31-45']) }); buckets['31-45'].total += v['31-45']; }
+    if (v['above-45'] > 0) { buckets['above-45'].rows.push({ vendorName: v.name, totalOutstanding: round2(v['above-45']) }); buckets['above-45'].total += v['above-45']; }
+  });
+  
+  res.json({ success: true, data: { asOf, buckets } });
+});
+
+
+export const purchasesByVendor = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, 'from') || defaultFrom();
+  const to = parseDate(req.query.to, 'to') || defaultTo();
+
+  const bills = await Bill.aggregate([
+    {
+      $match: {
+        organizationId, isDeleted: false,
+        status: { $nin: ['Draft', 'Void'] },
+        billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+      },
+    },
+    {
+      $group: {
+        _id: '$vendorId',
+        billCount: { $sum: 1 },
+        totalPurchases: { $sum: { $ifNull: ['$subTotal', 0] } },
+        totalWithTax: { $sum: { $ifNull: ['$total', 0] } },
+      },
+    },
+  ]);
+
+  const vendorIds = bills.map(b => b._id).filter(Boolean);
+  const vendors = await Contact.find({ _id: { $in: vendorIds } }).select('displayName companyName').lean();
+  const vendorMap = new Map(vendors.map((v: any) => [String(v._id), v.displayName || v.companyName || 'Unknown']));
+
+  const rows = bills.map((b: any) => ({
+    vendorId: String(b._id || ''),
+    vendorName: vendorMap.get(String(b._id)) || 'Unknown Vendor',
+    billCount: b.billCount,
+    totalPurchases: round2(toNum(b.totalPurchases)),
+    totalWithTax: round2(toNum(b.totalWithTax)),
+  })).sort((a, b) => b.totalPurchases - a.totalPurchases);
+
+  const totals = {
+    totalPurchases: round2(rows.reduce((s, r) => s + r.totalPurchases, 0)),
+    totalWithTax: round2(rows.reduce((s, r) => s + r.totalWithTax, 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals } });
+});

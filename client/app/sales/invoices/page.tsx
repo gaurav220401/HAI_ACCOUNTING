@@ -16,6 +16,8 @@ import {
   Send,
   Trash2,
   X,
+  Loader2,
+  Maximize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -181,7 +183,8 @@ export default function InvoicesPage() {
     }
   }, [filtered, selectedId]);
 
-  const selectedInvoice = filtered.find((inv) => inv._id === selectedId) || null;
+  const selectedInvoice =
+    filtered.find((inv) => inv._id === selectedId) || null;
 
   async function fetchInvoices() {
     setFetching(true);
@@ -198,7 +201,7 @@ export default function InvoicesPage() {
       setSelectedId((current) =>
         current && next.some((inv) => inv._id === current) ?
           current
-        : next[0]?._id ?? null,
+        : (next[0]?._id ?? null),
       );
     } catch (e: any) {
       toast.error(e.message || "Failed to load invoices");
@@ -406,9 +409,7 @@ export default function InvoicesPage() {
                           key={inv._id}
                           type="button"
                           className={`block w-full px-4 py-3 text-left transition-colors ${
-                            active ?
-                              "bg-blue-50"
-                            : "bg-white hover:bg-muted/50"
+                            active ? "bg-blue-50" : "bg-white hover:bg-muted/50"
                           }`}
                           onClick={() => setSelectedId(inv._id)}
                         >
@@ -549,6 +550,15 @@ export default function InvoicesPage() {
                                     </DropdownMenuItem>
                                   )}
                                   <DropdownMenuItem
+                                    onClick={() =>
+                                      router.push(
+                                        `/sales/invoices/${inv._id}/send-email`,
+                                      )
+                                    }
+                                  >
+                                    Send Email
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
                                     onClick={() => downloadPdf(inv)}
                                   >
                                     Download PDF
@@ -610,18 +620,26 @@ export default function InvoicesPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={actionId === selectedInvoice._id}
                       onClick={() =>
-                        selectedInvoice.status === "Draft" ?
-                          markAsSent(selectedInvoice)
-                        : router.push(`/sales/invoices/${selectedInvoice._id}`)
+                        router.push(
+                          `/sales/invoices/${selectedInvoice._id}/send-email`,
+                        )
                       }
                     >
                       <Send className="h-3.5 w-3.5 mr-1" />
-                      {selectedInvoice.status === "Draft" ?
-                        "Mark as Sent"
-                      : "Send Email"}
+                      Send Email
                     </Button>
+
+                    {selectedInvoice.status === "Draft" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => markAsSent(selectedInvoice)}
+                      >
+                        <FileText className="h-3.5 w-3.5 mr-1" />
+                        Mark as Sent
+                      </Button>
+                    )}
 
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -662,6 +680,19 @@ export default function InvoicesPage() {
                         </Button>
                       )}
 
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        router.push(
+                          `/sales/invoices/${selectedInvoice._id}`,
+                        )
+                      }
+                    >
+                      <Maximize2 className="h-3.5 w-3.5 mr-1" />
+                      Open Full Detail
+                    </Button>
+
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -669,15 +700,6 @@ export default function InvoicesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            router.push(
-                              `/sales/invoices/${selectedInvoice._id}`,
-                            )
-                          }
-                        >
-                          Open Full Detail
-                        </DropdownMenuItem>
                         {selectedInvoice.status !== "Void" && (
                           <DropdownMenuItem
                             onClick={() => voidInvoice(selectedInvoice)}
@@ -734,7 +756,8 @@ export default function InvoicesPage() {
                               {formatCurrency(selectedInvoice.total)}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              Balance {formatCurrency(selectedInvoice.balanceDue)}
+                              Balance{" "}
+                              {formatCurrency(selectedInvoice.balanceDue)}
                             </div>
                           </div>
                         </div>
@@ -767,8 +790,10 @@ export default function InvoicesPage() {
                               Salesperson
                             </div>
                             <div className="font-medium">
-                              {typeof selectedInvoice.salesPersonId ===
-                              "object" ?
+                              {(
+                                typeof selectedInvoice.salesPersonId ===
+                                "object"
+                              ) ?
                                 selectedInvoice.salesPersonId?.name || "-"
                               : "-"}
                             </div>
@@ -875,9 +900,9 @@ export default function InvoicesPage() {
                                   {selectedInvoice.taxType === "TDS" ?
                                     "- "
                                   : "+ "}
-                                  {Number(selectedInvoice.taxAmount || 0).toFixed(
-                                    2,
-                                  )}
+                                  {Number(
+                                    selectedInvoice.taxAmount || 0,
+                                  ).toFixed(2)}
                                 </span>
                               </div>
                             )}
@@ -889,7 +914,9 @@ export default function InvoicesPage() {
                                     "Adjustment"}
                                 </span>
                                 <span className="tabular-nums">
-                                  {Number(selectedInvoice.adjustmentAmount) > 0 ?
+                                  {(
+                                    Number(selectedInvoice.adjustmentAmount) > 0
+                                  ) ?
                                     "+ "
                                   : ""}
                                   {Number(
@@ -901,7 +928,9 @@ export default function InvoicesPage() {
                             <div className="border-t pt-2">
                               <div className="flex justify-between text-base font-bold">
                                 <span>Total</span>
-                                <span>{formatCurrency(selectedInvoice.total)}</span>
+                                <span>
+                                  {formatCurrency(selectedInvoice.total)}
+                                </span>
                               </div>
                               <div className="mt-1 flex justify-between font-semibold">
                                 <span>Balance Due</span>

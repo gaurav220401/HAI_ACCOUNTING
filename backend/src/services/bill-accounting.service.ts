@@ -1,5 +1,6 @@
 import { AuthenticatedRequest } from "../types";
 import PurchaseOrder from "../models/purchase-order.model";
+import Item from "../models/item.model";
 import {
   applyInventoryValueDeltas,
   applyStockDeltas,
@@ -73,12 +74,28 @@ export async function postBillLedger(bill: any, req?: AuthenticatedRequest) {
     accountType: "Expense",
   });
 
+  const inventoryAssetId = await findAccountIdByName({
+    organizationId,
+    names: ["Inventory Asset", "Inventory", "Stock", "Stock-in-Hand"],
+    rootType: "Asset",
+    accountType: "Stock",
+  }).catch(() => defaultExpenseId);
+
+  const itemIds = (bill.lineItems || []).map((l: any) => l.itemId).filter(Boolean);
+  const items = itemIds.length > 0 ? await Item.find({ _id: { $in: itemIds }, organizationId }).select("inventoryTracked").lean() : [];
+  const inventoryTrackedItemIds = new Set(items.filter((i: any) => i.inventoryTracked).map((i: any) => String(i._id)));
+
   const debitMap = new Map<string, number>();
   for (const line of bill.lineItems || []) {
     if (!line || line.isHeader) continue;
     const amount = round2(toNum(line.amount));
     if (amount <= 0) continue;
-    const accountId = String(line.accountId || defaultExpenseId);
+    
+    let accountId = String(line.accountId || defaultExpenseId);
+    if (line.itemId && inventoryTrackedItemIds.has(String(line.itemId))) {
+      accountId = String(inventoryAssetId);
+    }
+    
     debitMap.set(accountId, round2((debitMap.get(accountId) || 0) + amount));
   }
 

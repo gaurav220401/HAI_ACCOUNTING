@@ -479,10 +479,25 @@ function ReportsPageContent() {
 
   useEffect(() => {
     if (activeReportId && firebaseUser && !loading) {
-      void loadReport({ source: "auto" });
+      const timer = setTimeout(() => {
+        void loadReport({ source: "auto" });
+      }, 400);
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeReportId, firebaseUser, loading]);
+  }, [
+    activeReportId,
+    firebaseUser,
+    loading,
+    datePreset,
+    customFrom,
+    customTo,
+    asOf,
+    statusFilter,
+    vendorFilter,
+    customerFilter,
+    reportBasis
+  ]);
 
   const exportPayload = useMemo<ExportPayload | null>(() => {
     if (!activeReport) return null;
@@ -1024,12 +1039,12 @@ function ReportsPageContent() {
               {activeReport?.name}
               {activeReport?.useDateRange && (
                 <span className="text-muted-foreground font-normal ml-2">
-                  � From {fmtDate(from)} To {fmtDate(to)}
+                  • From {fmtDate(from)} To {fmtDate(to)}
                 </span>
               )}
               {(activeReport?.useAsOf || activeReport?.useAgingBuckets) && (
                 <span className="text-muted-foreground font-normal ml-2">
-                  � As of {fmtDate(asOf)}
+                  • As of {fmtDate(asOf)}
                 </span>
               )}
             </h1>
