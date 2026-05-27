@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -33,7 +33,13 @@ export default function NewItemPage() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <ItemForm />
+        <Suspense fallback={
+          <div className="flex min-h-svh items-center justify-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        }>
+          <ItemForm />
+        </Suspense>
       </SidebarInset>
     </SidebarProvider>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ImageIcon, Upload, Trash2, Loader2, Plus,
 } from "lucide-react";
@@ -872,6 +872,8 @@ interface ItemFormProps {
 
 export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("returnUrl") || "/items";
 
   const [form, setForm] = useState<FormState>(() => {
     if (!initialData) return DEFAULT_FORM;
@@ -1340,14 +1342,27 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         payload.preferredVendorId = null;
       }
 
+      let createdId = "";
       if (isEdit && initialData?._id) {
         await itemApi.update(initialData._id, payload);
         toast.success("Item updated");
       } else {
-        await itemApi.create(payload);
+        const res = await itemApi.create(payload);
+        createdId = res.data?._id || "";
         toast.success("Item created");
       }
-      router.push("/items");
+
+      let finalUrl = returnUrl;
+      if (createdId) {
+        try {
+          const urlObj = new URL(returnUrl, window.location.origin);
+          urlObj.searchParams.set("createdItemId", createdId);
+          finalUrl = urlObj.pathname + urlObj.search + urlObj.hash;
+        } catch (e) {
+          // ignore
+        }
+      }
+      router.push(finalUrl);
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? "Failed to save item");
     } finally {
