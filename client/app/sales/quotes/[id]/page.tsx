@@ -214,6 +214,16 @@ export default function QuoteDetailPage() {
     }
   }
 
+  function handlePrint() {
+    const iframe = document.querySelector('iframe[title="PDF Preview"]') as HTMLIFrameElement;
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } else {
+      window.print();
+    }
+  }
+
   async function handleConvertToInvoice() {
     if (!quote) return;
     if (!confirm("Convert this quote to a draft invoice?")) return;
@@ -412,7 +422,7 @@ export default function QuoteDetailPage() {
                           <Download className="h-4 w-4 mr-2" />
                           Download PDF
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => window.print()}>
+                        <DropdownMenuItem onClick={handlePrint}>
                           <Printer className="h-4 w-4 mr-2" />
                           Print
                         </DropdownMenuItem>

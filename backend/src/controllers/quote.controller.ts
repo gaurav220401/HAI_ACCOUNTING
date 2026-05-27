@@ -400,6 +400,7 @@ export const downloadPdf = asyncHandler(
       orgEmail:
         org.smtpSettings?.fromEmail || org.smtpSettings?.user || undefined,
       orgTaxId: org.taxId,
+      orgLogoUrl: (org as any).logo,
 
       customerName,
       customerAddress: [
