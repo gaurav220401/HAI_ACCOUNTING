@@ -376,20 +376,20 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     // Header Title (techno commercial quotation)
     doc.rect(45, nextY, doc.widthOfString("TECHNO-COMMERCIAL QUOTATION") + 12, 16).fill("#e2e8f0");
     doc.fillColor("#000000").font(F_BOLD).fontSize(10.5).text("TECHNO-COMMERCIAL QUOTATION", 51, nextY + 3);
-    nextY += 24;
+    nextY += 20;
 
     // Reference details
     doc.fontSize(9.5).fillColor("#000000");
     doc.font(F_BOLD).text("Ref No.: ", 45, nextY, { continued: true }).font(F_REG).text(data.quoteNumber);
     nextY += 13;
     doc.font(F_BOLD).text("Date: ", 45, nextY, { continued: true }).font(F_REG).text(fmtDate(data.quoteDate));
-    nextY += 20;
+    nextY += 16;
 
     // Recipient "To" details
     doc.font(F_BOLD).text("To,", 45, nextY);
-    nextY += 13;
+    nextY += 12;
     doc.font(F_BOLD).text(data.customerName, 45, nextY);
-    nextY += 14;
+    nextY += 13;
 
     if (data.customerAddress) {
       doc.font(F_REG).fontSize(9.5);
@@ -401,35 +401,35 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
         }
       });
     }
-    nextY += 8;
+    nextY += 4;
 
     // Subject
     if (data.subject) {
       doc.font(F_BOLD).fontSize(9.5).text(`Sub: ${data.subject}`, 45, nextY, { width: 505 });
-      nextY += doc.heightOfString(`Sub: ${data.subject}`, { width: 505 }) + 10;
+      nextY += doc.heightOfString(`Sub: ${data.subject}`, { width: 505 }) + 4;
     }
 
     doc.font(F_REG).fontSize(9.5).text("Dear Sir,", 45, nextY);
-    nextY += 15;
+    nextY += 10;
 
     const introText = "We thank you for the opportunity to submit our techno-commercial quotation for supply of panels as per specifications & GA drawings.";
     doc.text(introText, 45, nextY, { width: 505, align: "justify" });
-    nextY += doc.heightOfString(introText, { width: 505 }) + 8;
+    nextY += doc.heightOfString(introText, { width: 505 }) + 3;
 
     const complianceIntro = "We confirm full compliance to technical requirements, scope & standards mentioned in:";
     doc.text(complianceIntro, 45, nextY, { width: 505 });
-    nextY += doc.heightOfString(complianceIntro, { width: 505 }) + 6;
+    nextY += doc.heightOfString(complianceIntro, { width: 505 }) + 2;
 
     // Standard compliance bullets
     const drawBullet = (bulletText: string) => {
       doc.text("•", 55, nextY, { width: 10 });
       doc.text(bulletText, 67, nextY, { width: 483 });
-      nextY += doc.heightOfString(bulletText, { width: 483 }) + 4;
+      nextY += doc.heightOfString(bulletText, { width: 483 }) + 1;
     };
 
     drawBullet("TS for technical specifications & requirements");
     drawBullet("GA Drawings and scope of supply");
-    nextY += 15;
+    nextY += 4;
 
     // Determine GST columns based on isIntraState flag
     const isIntra = data.isIntraState !== false;
@@ -500,7 +500,7 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       const itemColWidth = hasTax ? (isIntra ? 145 : 190) : 255;
       const nameH = doc.heightOfString(item.name, { width: itemColWidth - 10 });
       const descH = item.description ? doc.heightOfString(item.description, { width: itemColWidth - 10 }) : 0;
-      const itemH = Math.max(28, nameH + descH + 10);
+      const itemH = Math.max(20, nameH + descH + 4);
 
       // Page break check (prevents content row clipping across page borders)
       if (nextY + itemH > 842 - 95) {
@@ -534,27 +534,27 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       doc.fillColor("#000000");
 
       // Index
-      doc.font(F_REG).fontSize(8.5).text(String(idx + 1), 45, nextY + 5, { width: 20, align: "center" });
+      doc.font(F_REG).fontSize(8.5).text(String(idx + 1), 45, nextY + 4, { width: 20, align: "center" });
 
       // Name & description
-      doc.font(F_BOLD).fontSize(8.5).text(item.name, 65, nextY + 5, { width: itemColWidth - 10 });
+      doc.font(F_BOLD).fontSize(8.5).text(item.name, 65, nextY + 4, { width: itemColWidth - 10 });
       if (item.description) {
-        doc.font(F_REG).fontSize(7.5).fillColor("#475569").text(item.description, 65, nextY + 5 + nameH + 2, { width: itemColWidth - 10 });
+        doc.font(F_REG).fontSize(7.5).fillColor("#475569").text(item.description, 65, nextY + 4 + nameH + 1, { width: itemColWidth - 10 });
       }
 
       doc.font(F_REG).fontSize(7.5).fillColor("#000000");
 
       // HSN
       const hsnCol = cols.find(c => c.id === "hsn")!;
-      doc.text(item.hsnSacCode || "—", hsnCol.x + 4, nextY + 5, { width: hsnCol.width - 4, align: "left" });
+      doc.text(item.hsnSacCode || "—", hsnCol.x + 4, nextY + 4, { width: hsnCol.width - 4, align: "left" });
 
       // Qty
       const qtyCol = cols.find(c => c.id === "qty")!;
-      doc.text(fmtNum(item.quantity), qtyCol.x, nextY + 5, { width: qtyCol.width - 2, align: "right" });
+      doc.text(fmtNum(item.quantity), qtyCol.x, nextY + 4, { width: qtyCol.width - 2, align: "right" });
 
       // Rate
       const rateCol = cols.find(c => c.id === "rate")!;
-      doc.text(fmtNum(item.rate), rateCol.x, nextY + 5, { width: rateCol.width - 4, align: "right" });
+      doc.text(fmtNum(item.rate), rateCol.x, nextY + 4, { width: rateCol.width - 4, align: "right" });
 
       const taxPercent = item.taxPercent || 0;
       const taxAmount = item.taxAmount || 0;
@@ -567,21 +567,21 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
           const splitTaxP = taxPercent / 2;
           const splitTaxA = taxAmount / 2;
 
-          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", cgstCol.x, nextY + 5, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", cgstCol.x + 18, nextY + 5, { width: 45, align: "right" });
+          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", cgstCol.x, nextY + 4, { width: 18, align: "right" });
+          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", cgstCol.x + 18, nextY + 4, { width: 45, align: "right" });
 
-          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", sgstCol.x, nextY + 5, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", sgstCol.x + 18, nextY + 5, { width: 45, align: "right" });
+          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", sgstCol.x, nextY + 4, { width: 18, align: "right" });
+          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", sgstCol.x + 18, nextY + 4, { width: 45, align: "right" });
         } else {
           const igstCol = cols.find(c => c.id === "igst")!;
-          doc.text(taxPercent > 0 ? `${taxPercent}%` : "—", igstCol.x, nextY + 5, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(taxAmount) : "—", igstCol.x + 18, nextY + 5, { width: 55, align: "right" });
+          doc.text(taxPercent > 0 ? `${taxPercent}%` : "—", igstCol.x, nextY + 4, { width: 18, align: "right" });
+          doc.text(taxPercent > 0 ? fmtNum(taxAmount) : "—", igstCol.x + 18, nextY + 4, { width: 55, align: "right" });
         }
       }
 
       // Amount
       const amountCol = cols.find(c => c.id === "amount")!;
-      doc.text(fmtNum(item.amount), amountCol.x, nextY + 5, { width: amountCol.width - 4, align: "right" });
+      doc.text(fmtNum(item.amount), amountCol.x, nextY + 4, { width: amountCol.width - 4, align: "right" });
 
       nextY += itemH;
     });
@@ -590,7 +590,7 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
 
     // Totals grid rows inline at the bottom of the table
     const addTotalGridRow = (label: string, value: string, isBold = false) => {
-      const rowHeight = 18;
+      const rowHeight = 15;
       if (nextY + rowHeight > 842 - 95) {
         doc.addPage();
         nextY = 105;
@@ -602,8 +602,8 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       doc.moveTo(amtCol.x, nextY).lineTo(amtCol.x, nextY + rowHeight).stroke();
 
       doc.font(isBold ? F_BOLD : F_REG).fontSize(8.5).fillColor("#000000");
-      doc.text(label, 50, nextY + 5, { width: amtCol.x - 55, align: "right" });
-      doc.text(value, amtCol.x, nextY + 5, { width: amtCol.width - 4, align: "right" });
+      doc.text(label, 50, nextY + 3, { width: amtCol.x - 55, align: "right" });
+      doc.text(value, amtCol.x, nextY + 3, { width: amtCol.width - 4, align: "right" });
 
       nextY += rowHeight;
     };
@@ -633,13 +633,13 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
 
     addTotalGridRow("Total Amount (In Rs)", fmtNum(finalTotal), true);
 
-    nextY += 8;
+    nextY += 5;
 
     // Total in words below table
     doc.font(F_BOLD).fontSize(8.5).fillColor("#000000");
     const totalWordsString = `Total Price (in Words) – ${numberToWords(finalTotal)}.`;
     doc.text(totalWordsString, 45, nextY, { width: 505 });
-    nextY += doc.heightOfString(totalWordsString, { width: 505 }) + 15;
+    nextY += doc.heightOfString(totalWordsString, { width: 505 }) + 6;
 
     // Bullet drawing/notes formatting helper
     const drawFormattedParagraph = (text: string) => {
@@ -648,49 +648,51 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
         const trimmed = line.trim();
         if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
           const content = trimmed.substring(1).trim();
-          doc.font(F_REG).fontSize(8.5).fillColor("#000000");
+          doc.font(F_REG).fontSize(8).fillColor("#000000");
           doc.text("•", 55, nextY, { width: 10 });
           doc.text(content, 67, nextY, { width: 483 });
-          nextY += doc.heightOfString(content, { width: 483 }) + 4;
+          nextY += doc.heightOfString(content, { width: 483 }) + 1;
         } else if (trimmed) {
-          doc.font(F_REG).fontSize(8.5).fillColor("#000000");
+          doc.font(F_REG).fontSize(8).fillColor("#000000");
           doc.text(trimmed, 45, nextY, { width: 505 });
-          nextY += doc.heightOfString(trimmed, { width: 505 }) + 4;
+          nextY += doc.heightOfString(trimmed, { width: 505 }) + 1;
         }
       });
     };
 
     const drawShadedHeading = (title: string) => {
-      if (nextY + 30 > 842 - 95) {
+      if (nextY + 22 > 842 - 95) {
         doc.addPage();
         nextY = 105;
       }
-      doc.rect(45, nextY, doc.widthOfString(title) + 12, 16).fill("#e2e8f0");
-      doc.fillColor("#000000").font(F_BOLD).fontSize(9.5).text(title, 51, nextY + 3);
-      nextY += 22;
+      doc.rect(45, nextY, doc.widthOfString(title) + 10, 13).fill("#e2e8f0");
+      doc.fillColor("#000000").font(F_BOLD).fontSize(8.5).text(title, 50, nextY + 2);
+      nextY += 15;
     };
 
     // Notes
     if (data.customerNotes) {
       drawShadedHeading("Notes:");
       drawFormattedParagraph(data.customerNotes);
-      nextY += 10;
+      nextY += 5;
     }
 
     // Terms
     if (data.termsAndConditions) {
       drawShadedHeading("Terms & conditions:");
       drawFormattedParagraph(data.termsAndConditions);
-      nextY += 10;
+      nextY += 5;
     }
 
     // Signature Area on the bottom right
-    const sigHeight = 70;
-    if (nextY + sigHeight > 842 - 95) {
+    const sigHeight = 65;
+    if (nextY + sigHeight > 842 - 90) {
       doc.addPage();
       nextY = 105;
     } else {
-      nextY = Math.max(nextY, 842 - 180);
+      // Position at the bottom of the page only if it's the first/only page, but leave some spacing.
+      // If we are already near the bottom, don't force it to a specific point that is higher than current nextY.
+      nextY = Math.max(nextY, 842 - 165);
     }
 
     const sigX = 350;
@@ -698,20 +700,20 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     doc.font(F_BOLD).fontSize(8.5).fillColor("#000000");
     const org = data.orgName || "PIKA G ENERGY PVT. LTD.";
     doc.text(`For ${org.toUpperCase()}`, sigX, nextY, { width: sigW, align: "right" });
-    nextY += 12;
+    nextY += 10;
 
-    doc.font(F_REG).fontSize(8.5);
+    doc.font(F_REG).fontSize(8);
     doc.text("Authorized Signatory", sigX, nextY, { width: sigW, align: "right" });
-    nextY += 24;
+    nextY += 14;
 
     const contactPerson = data.salesPersonName || "Gautam Kumar Haldar";
     doc.font(F_BOLD).text(contactPerson, sigX, nextY, { width: sigW, align: "right" });
-    nextY += 11;
+    nextY += 10;
 
-    doc.font(F_REG).fontSize(8).fillColor("#475569");
+    doc.font(F_REG).fontSize(7.5).fillColor("#475569");
     if (data.orgEmail) {
       doc.text(`Email: ${data.orgEmail}`, sigX, nextY, { width: sigW, align: "right" });
-      nextY += 10;
+      nextY += 9;
     }
     doc.text("Phone: +91 97550 21473", sigX, nextY, { width: sigW, align: "right" });
 

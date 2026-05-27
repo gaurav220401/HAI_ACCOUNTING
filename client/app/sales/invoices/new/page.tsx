@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -852,7 +852,7 @@ function SendEmailModal({
 
 // ─── Main Page ──────────────────────────────────────────────────────────
 
-export default function NewInvoicePage() {
+function NewInvoicePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();
@@ -2469,5 +2469,17 @@ export default function NewInvoicePage() {
         sending={sendingEmail}
       />
     </SidebarProvider>
+  );
+}
+
+export default function NewInvoicePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    }>
+      <NewInvoicePageContent />
+    </Suspense>
   );
 }

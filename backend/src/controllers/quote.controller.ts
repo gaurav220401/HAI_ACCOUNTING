@@ -467,7 +467,11 @@ export const sendQuoteEmail = asyncHandler(
       _id: req.params.id,
       organizationId: oid,
       isDeleted: false,
-    }).populate("customerId");
+    })
+      .populate("customerId")
+      .populate("salesPersonId", "name")
+      .populate("items.itemId", "name sku")
+      .populate("items.taxId", "name rate");
 
     if (!quote) throw new NotFoundError("Quote");
 
@@ -497,24 +501,34 @@ export const sendQuoteEmail = asyncHandler(
         orgAddress: org?.address as any,
         orgEmail: org?.smtpSettings?.fromEmail || org?.smtpSettings?.user || undefined,
         orgTaxId: org?.taxId,
-        customerName: (quote.customerId as any)?.displayName || "Customer",
+        orgLogoUrl: (org as any)?.logo,
+
+        customerName,
         customerAddress: [
-          (quote.customerId as any)?.billingAddress?.street,
-          (quote.customerId as any)?.billingAddress?.city,
-          (quote.customerId as any)?.billingAddress?.state,
-          (quote.customerId as any)?.billingAddress?.zip,
-        ].filter(Boolean).join(", "),
-        customerEmail: (quote.customerId as any)?.email,
+          customer?.billingAddress?.street,
+          customer?.billingAddress?.city,
+          customer?.billingAddress?.state,
+          customer?.billingAddress?.zip,
+          customer?.billingAddress?.country,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        customerEmail: customer?.email,
 
         quoteNumber: quote.quoteNumber,
         quoteDate: quote.quoteDate.toISOString(),
         expiryDate: quote.expiryDate ? quote.expiryDate.toISOString() : undefined,
+        salesPersonName: (quote.salesPersonId as any)?.name,
+        subject: quote.subject,
+
         items: (quote.items as any[]).map((item) => ({
-          name: item.name || "Item",
+          name: item.name || (item.itemId as any)?.name || "Item",
           description: item.description,
           hsnSacCode: item.hsnSacCode,
           quantity: item.quantity,
           rate: item.rate,
+          discountPercent: item.discountPercent,
+          discountAmount: item.discountAmount,
           taxPercent: item.taxPercent,
           taxAmount: item.taxAmount,
           amount: item.amount,
