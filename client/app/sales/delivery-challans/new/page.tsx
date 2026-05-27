@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { contactApi, type Contact } from "@/lib/api/contacts";
-import { itemApi, type Item, type CreateItemInput } from "@/lib/api/items";
+import { itemApi, type Item, type CreateItemInput, type UnitOfMeasurement } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import {
   deliveryChallanApi,
@@ -113,8 +113,40 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
   const [name, setName] = useState("");
   const [itemType, setItemType] = useState<"Goods" | "Service">("Goods");
   const [unit, setUnit] = useState("");
+  const [units, setUnits] = useState<UnitOfMeasurement[]>([]);
   const [sellingPrice, setSellingPrice] = useState<number | "">("");
   const [saving, setSaving] = useState(false);
+
+  const loadUnits = useCallback(async () => {
+    try {
+      const res = await itemApi.listUnits();
+      let list = res.data ?? [];
+      if (list.length === 0) {
+        await itemApi.seedUnits().catch(() => {});
+        const seeded = await itemApi.listUnits().catch(() => ({ data: [] as UnitOfMeasurement[] }));
+        list = seeded.data ?? [];
+      }
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+      setUnits(list);
+      
+      if (!unit) {
+        const nos = list.find((u) => String(u.abbreviation).toUpperCase() === "NOS");
+        if (nos) {
+          setUnit(nos._id);
+        } else if (list.length > 0) {
+          setUnit(list[0]._id);
+        }
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  }, [unit]);
+
+  useEffect(() => {
+    if (open) {
+      loadUnits();
+    }
+  }, [open, loadUnits]);
 
   function reset() {
     setName("");
@@ -177,7 +209,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                   className="accent-primary"
                 />
                 Goods
-              </label>
+                  </label>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="radio"
@@ -190,6 +222,21 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                 Service
               </label>
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Unit</Label>
+            <Select value={unit} onValueChange={setUnit}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select unit" />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                {units.map((u) => (
+                  <SelectItem key={u._id} value={u._id}>
+                    {u.name} ({u.abbreviation})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Selling Price</Label>

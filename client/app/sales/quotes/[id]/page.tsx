@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -22,6 +22,9 @@ import {
   Share2,
   Printer,
   ChevronDown,
+  ImagePlus,
+  Upload,
+  Settings2,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -31,6 +34,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { SendEmailModal } from "../_components/send-email-modal";
 import { useAuth } from "@/contexts/auth-context";
@@ -51,6 +57,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { quoteApi, type Quote, type QuoteStatus } from "@/lib/api/quotes";
+import { organizationApi } from "@/lib/api/organizations";
+import { apiFetch } from "@/lib/api/client";
 
 const statusColor: Record<QuoteStatus, string> = {
   Draft: "bg-gray-100 text-gray-700 border-gray-300",
@@ -94,7 +102,7 @@ export default function QuoteDetailPage() {
   const id = params.id as string;
 
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading } = useOrganization();
+  const { needsOrgSetup, loading: orgLoading, activeOrganization, refreshOrganizations } = useOrganization();
 
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -105,6 +113,7 @@ export default function QuoteDetailPage() {
   const [search, setSearch] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [tab, setTab] = useState("details");
+  const [logoAddressOpen, setLogoAddressOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -211,6 +220,16 @@ export default function QuoteDetailPage() {
       toast.success("PDF downloaded");
     } catch (error: any) {
       toast.error("Failed to download PDF");
+    }
+  }
+
+  function handlePrint() {
+    const iframe = document.querySelector('iframe[title="PDF Preview"]') as HTMLIFrameElement;
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } else {
+      window.print();
     }
   }
 
@@ -412,9 +431,25 @@ export default function QuoteDetailPage() {
                           <Download className="h-4 w-4 mr-2" />
                           Download PDF
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => window.print()}>
+                        <DropdownMenuItem onClick={handlePrint}>
                           <Printer className="h-4 w-4 mr-2" />
                           Print
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <Settings2 className="h-3.5 w-3.5 mr-1" />
+                          Customize
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => setLogoAddressOpen(true)}>
+                          <ImagePlus className="h-4 w-4 mr-2" />
+                          Update Logo & Address
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -582,7 +617,203 @@ export default function QuoteDetailPage() {
             defaultRecipient={(quote.customerId as any)?.email}
           />
         )}
+
+        {activeOrganization && (
+          <LogoAddressDialog
+            open={logoAddressOpen}
+            onClose={() => setLogoAddressOpen(false)}
+            orgId={activeOrganization._id}
+            initial={{
+              logo: activeOrganization.logo ?? "",
+              address: activeOrganization.address ?? {},
+              industry: activeOrganization.industry ?? "",
+            }}
+            onSaved={() => {
+              refreshOrganizations();
+              loadPdfPreview();
+            }}
+          />
+        )}
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa",
+  "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala",
+  "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland",
+  "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+  "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Jammu & Kashmir", "Ladakh",
+  "Puducherry", "Chandigarh", "Andaman & Nicobar Islands",
+  "Dadra & Nagar Haveli and Daman & Diu", "Lakshadweep",
+];
+
+const INDUSTRIES = [
+  "Agriculture", "Automotive", "Banking", "Construction", "Education",
+  "Entertainment", "Food & Beverage", "Healthcare", "IT & Technology",
+  "Legal", "Manufacturing", "Media", "Pharmaceuticals", "Real Estate",
+  "Retail", "Services", "Telecommunications", "Transportation", "Other",
+];
+
+interface OrgLogoAddress {
+  logo: string;
+  address: { street?: string; street2?: string; city?: string; state?: string; zip?: string; phone?: string; fax?: string; website?: string };
+  industry: string;
+}
+
+function LogoAddressDialog({
+  open, onClose, orgId, initial, onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string;
+  initial: OrgLogoAddress;
+  onSaved: (data: OrgLogoAddress) => void;
+}) {
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState(initial.logo);
+  const [logoUrl, setLogoUrl] = useState(initial.logo);
+  const [street, setStreet] = useState(initial.address.street ?? "");
+  const [street2, setStreet2] = useState(initial.address.street2 ?? "");
+  const [city, setCity] = useState(initial.address.city ?? "");
+  const [addrState, setAddrState] = useState(initial.address.state ?? "");
+  const [zip, setZip] = useState(initial.address.zip ?? "");
+  const [phone, setPhone] = useState(initial.address.phone ?? "");
+  const [fax, setFax] = useState(initial.address.fax ?? "");
+  const [website, setWebsite] = useState(initial.address.website ?? "");
+  const [industry, setIndustry] = useState(initial.industry);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setLogoPreview(initial.logo);
+    setLogoUrl(initial.logo);
+    setLogoFile(null);
+    setStreet(initial.address.street ?? "");
+    setStreet2(initial.address.street2 ?? "");
+    setCity(initial.address.city ?? "");
+    setAddrState(initial.address.state ?? "");
+    setZip(initial.address.zip ?? "");
+    setPhone(initial.address.phone ?? "");
+    setFax(initial.address.fax ?? "");
+    setWebsite(initial.address.website ?? "");
+    setIndustry(initial.industry);
+  }, [open]);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/bmp"];
+    if (!allowed.includes(file.type)) { toast.error("Only JPG, PNG, GIF, or BMP allowed"); return; }
+    if (file.size > 1 * 1024 * 1024) { toast.error("Image must be less than 1 MB"); return; }
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      let finalLogoUrl = logoUrl;
+      if (logoFile) {
+        const formData = new FormData();
+        formData.append("file", logoFile);
+        const uploadRes = await apiFetch<{ data: { url: string } }>("/upload?folder=logos", {
+          method: "POST",
+          body: formData,
+        });
+        finalLogoUrl = uploadRes.data.url;
+      }
+      const address = { street, street2, city, state: addrState, zip, phone, fax, website };
+      await organizationApi.update(orgId, { logo: finalLogoUrl, address: address as any, industry } as any);
+      onSaved({ logo: finalLogoUrl, address, industry });
+      toast.success("Organization details saved");
+      onClose();
+    } catch {
+      toast.error("Failed to save organization details");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>Update Logo & Address</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto space-y-5 py-2 pr-1">
+          {/* Logo */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Organization Logo</p>
+            <div className="flex items-start gap-4">
+              <div
+                className="w-24 h-24 border-2 border-dashed border-border rounded-lg flex items-center justify-center bg-muted/10 overflow-hidden shrink-0 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {logoPreview ? (
+                  <img src={logoPreview} alt="Logo" className="w-full h-full object-contain p-1" />
+                ) : (
+                  <ImagePlus className="h-8 w-8 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/gif,image/bmp" className="hidden" onChange={handleFileChange} />
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-3.5 w-3.5 mr-1.5" />Upload Logo
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">Supported: JPG, JPEG, PNG, GIF, BMP · Max 1 MB</p>
+                {logoPreview && (
+                  <button onClick={() => { setLogoFile(null); setLogoPreview(""); setLogoUrl(""); }} className="text-xs text-destructive mt-1 hover:underline">
+                    Remove logo
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <Separator />
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Organization Address</p>
+          <div className="grid gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-xs mb-1 block">Street 1</Label><Input className="h-8 text-sm" value={street} onChange={(e) => setStreet(e.target.value)} /></div>
+              <div><Label className="text-xs mb-1 block">Street 2</Label><Input className="h-8 text-sm" value={street2} onChange={(e) => setStreet2(e.target.value)} /></div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label className="text-xs mb-1 block">City</Label><Input className="h-8 text-sm" value={city} onChange={(e) => setCity(e.target.value)} /></div>
+              <div><Label className="text-xs mb-1 block">Pin Code</Label><Input className="h-8 text-sm" value={zip} onChange={(e) => setZip(e.target.value)} /></div>
+              <div>
+                <Label className="text-xs mb-1 block">State</Label>
+                <Select value={addrState} onValueChange={setAddrState}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select state" /></SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {INDIAN_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-xs mb-1 block">Phone</Label><Input className="h-8 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+              <div><Label className="text-xs mb-1 block">Fax Number</Label><Input className="h-8 text-sm" value={fax} onChange={(e) => setFax(e.target.value)} /></div>
+            </div>
+            <div><Label className="text-xs mb-1 block">Website URL</Label><Input className="h-8 text-sm" type="url" placeholder="https://" value={website} onChange={(e) => setWebsite(e.target.value)} /></div>
+            <div>
+              <Label className="text-xs mb-1 block">Select Industry</Label>
+              <Select value={industry} onValueChange={setIndustry}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select industry" /></SelectTrigger>
+                <SelectContent>{INDUSTRIES.map((ind) => <SelectItem key={ind} value={ind}>{ind}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="shrink-0 border-t pt-3">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
+            {saving ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

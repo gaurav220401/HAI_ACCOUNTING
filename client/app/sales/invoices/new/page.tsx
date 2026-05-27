@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Loader2,
@@ -57,7 +57,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { contactApi, type Contact } from "@/lib/api/contacts";
-import { itemApi, type Item, type CreateItemInput } from "@/lib/api/items";
+import { itemApi, type Item, type CreateItemInput, type UnitOfMeasurement } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import { invoiceApi, type CreateInvoiceInput } from "@/lib/api/invoices";
 import {
@@ -123,6 +123,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
   const [name, setName] = useState("");
   const [itemType, setItemType] = useState<"Goods" | "Service">("Goods");
   const [unit, setUnit] = useState("");
+  const [units, setUnits] = useState<UnitOfMeasurement[]>([]);
   const [sellingPrice, setSellingPrice] = useState<number | "">("");
   const [salesDescription, setSalesDescription] = useState("");
   const [costPrice, setCostPrice] = useState<number | "">("");
@@ -130,6 +131,37 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
   const [saving, setSaving] = useState(false);
   const [hasSalesInfo, setHasSalesInfo] = useState(true);
   const [hasPurchaseInfo, setHasPurchaseInfo] = useState(true);
+
+  const loadUnits = useCallback(async () => {
+    try {
+      const res = await itemApi.listUnits();
+      let list = res.data ?? [];
+      if (list.length === 0) {
+        await itemApi.seedUnits().catch(() => {});
+        const seeded = await itemApi.listUnits().catch(() => ({ data: [] as UnitOfMeasurement[] }));
+        list = seeded.data ?? [];
+      }
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+      setUnits(list);
+      
+      if (!unit) {
+        const nos = list.find((u) => String(u.abbreviation).toUpperCase() === "NOS");
+        if (nos) {
+          setUnit(nos._id);
+        } else if (list.length > 0) {
+          setUnit(list[0]._id);
+        }
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  }, [unit]);
+
+  useEffect(() => {
+    if (open) {
+      loadUnits();
+    }
+  }, [open, loadUnits]);
 
   function reset() {
     setName("");
@@ -227,11 +259,18 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
               </div>
               <div className="space-y-1.5">
                 <Label>Unit</Label>
-                <Input
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  placeholder="Select or type to add"
-                />
+                <Select value={unit} onValueChange={setUnit}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {units.map((u) => (
+                      <SelectItem key={u._id} value={u._id}>
+                        {u.name} ({u.abbreviation})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -813,8 +852,9 @@ function SendEmailModal({
 
 // ─── Main Page ──────────────────────────────────────────────────────────
 
-export default function NewInvoicePage() {
+function NewInvoicePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();
   const {
     needsOrgSetup,
@@ -873,6 +913,52 @@ export default function NewInvoicePage() {
   const [saving, setSaving] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  const saveInvoiceDraft = useCallback((newItemLineKey?: number) => {
+    const draft = {
+      customerId,
+      invoiceNumber,
+      orderNumber,
+      invoiceDate,
+      dueDate,
+      paymentTermsId,
+      salesPersonId,
+      subject,
+      lines,
+      discountType,
+      discountValue,
+      taxType,
+      totalTaxId,
+      adjustmentLabel,
+      adjustmentAmount,
+      customerNotes,
+      termsAndConditions,
+      paymentReceived,
+      emailContacts,
+      newItemLineKey,
+    };
+    sessionStorage.setItem("invoice_draft", JSON.stringify(draft));
+  }, [
+    customerId,
+    invoiceNumber,
+    orderNumber,
+    invoiceDate,
+    dueDate,
+    paymentTermsId,
+    salesPersonId,
+    subject,
+    lines,
+    discountType,
+    discountValue,
+    taxType,
+    totalTaxId,
+    adjustmentLabel,
+    adjustmentAmount,
+    customerNotes,
+    termsAndConditions,
+    paymentReceived,
+    emailContacts,
+  ]);
+
   const itemsById = useMemo(
     () => new Map(items.map((item) => [item._id, item])),
     [items],
@@ -915,15 +1001,77 @@ export default function NewInvoicePage() {
         if (termsRes.status === "fulfilled") {
           setPaymentTermsList(termsRes.value.data ?? []);
         }
-        if (nextNumberRes.status === "fulfilled") {
-          setInvoiceNumber(
-            nextNumberRes.value.data?.invoiceNumber ?? "INV-000001",
-          );
+
+        // Restore draft from sessionStorage if it exists
+        const saved = sessionStorage.getItem("invoice_draft");
+        if (saved) {
+          try {
+            const draft = JSON.parse(saved);
+            if (draft.customerId) setCustomerId(draft.customerId);
+            if (draft.invoiceNumber) setInvoiceNumber(draft.invoiceNumber);
+            if (draft.orderNumber) setOrderNumber(draft.orderNumber);
+            if (draft.invoiceDate) setInvoiceDate(draft.invoiceDate);
+            if (draft.dueDate) setDueDate(draft.dueDate);
+            if (draft.paymentTermsId) setPaymentTermsId(draft.paymentTermsId);
+            if (draft.salesPersonId) setSalesPersonId(draft.salesPersonId);
+            if (draft.subject) setSubject(draft.subject);
+
+            // Handle createdItemId from URL params
+            const createdItemId = searchParams.get("createdItemId");
+            let restoredLines = draft.lines || [];
+            if (createdItemId && draft.newItemLineKey !== undefined) {
+              const allItems = itemsRes.status === "fulfilled" ? (itemsRes.value.data ?? []) : [];
+              const newItemObj = allItems.find((it: any) => it._id === createdItemId);
+              if (newItemObj) {
+                const linkedTax = getItemTaxForTransaction({
+                  item: newItemObj,
+                  contact: (customersRes.status === "fulfilled" ? (customersRes.value.data ?? []) : []).find((c: any) => c._id === draft.customerId),
+                  organizationState: activeOrganization?.address?.state,
+                  taxes: taxesRes.status === "fulfilled" ? (taxesRes.value.data ?? []) : [],
+                });
+                restoredLines = restoredLines.map((l: any) =>
+                  l.key === draft.newItemLineKey
+                    ? {
+                        ...l,
+                        itemId: createdItemId,
+                        name: newItemObj.name,
+                        description: newItemObj.description || "",
+                        hsnSacCode: newItemObj.hsnSacCode || "",
+                        rate: newItemObj.sellingPrice || 0,
+                        taxId: linkedTax.taxId,
+                        taxPercent: linkedTax.taxPercent,
+                      }
+                    : l
+                );
+              }
+            }
+            setLines(restoredLines);
+
+            if (draft.discountType) setDiscountType(draft.discountType);
+            if (draft.discountValue) setDiscountValue(draft.discountValue);
+            if (draft.taxType) setTaxType(draft.taxType);
+            if (draft.totalTaxId) setTotalTaxId(draft.totalTaxId);
+            if (draft.adjustmentLabel) setAdjustmentLabel(draft.adjustmentLabel);
+            if (draft.adjustmentAmount) setAdjustmentAmount(draft.adjustmentAmount);
+            if (draft.customerNotes) setCustomerNotes(draft.customerNotes);
+            if (draft.termsAndConditions) setTermsAndConditions(draft.termsAndConditions);
+            if (draft.paymentReceived) setPaymentReceived(draft.paymentReceived);
+            if (draft.emailContacts) setEmailContacts(draft.emailContacts);
+          } catch (e) {
+            console.error("Failed to load invoice draft", e);
+          }
+          sessionStorage.removeItem("invoice_draft");
         } else {
-          toast.warning(
-            "Unable to fetch next invoice number. Using default sequence.",
-          );
-          setInvoiceNumber("INV-000001");
+          if (nextNumberRes.status === "fulfilled") {
+            setInvoiceNumber(
+              nextNumberRes.value.data?.invoiceNumber ?? "INV-000001",
+            );
+          } else {
+            toast.warning(
+              "Unable to fetch next invoice number. Using default sequence.",
+            );
+            setInvoiceNumber("INV-000001");
+          }
         }
       })
       .finally(() => setMasterLoading(false));
@@ -1341,7 +1489,8 @@ export default function NewInvoicePage() {
                 value={customerId || undefined}
                 onValueChange={(v) => {
                   if (v === "__add_new") {
-                    router.push("/sales/customers/new");
+                    saveInvoiceDraft();
+                    router.push("/sales/customers/new?returnUrl=/sales/invoices/new");
                     return;
                   }
                   setCustomerId(v);
@@ -1580,7 +1729,8 @@ export default function NewInvoicePage() {
                             value={line.itemId || undefined}
                             onValueChange={(v) => {
                               if (v === "__new") {
-                                setShowNewItemModal(true);
+                                saveInvoiceDraft(line.key);
+                                router.push("/items/new?returnUrl=/sales/invoices/new");
                               } else {
                                 handleItemSelect(line.key, v);
                               }
@@ -2319,5 +2469,17 @@ export default function NewInvoicePage() {
         sending={sendingEmail}
       />
     </SidebarProvider>
+  );
+}
+
+export default function NewInvoicePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    }>
+      <NewInvoicePageContent />
+    </Suspense>
   );
 }

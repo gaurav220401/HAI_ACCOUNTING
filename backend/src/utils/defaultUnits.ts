@@ -87,6 +87,7 @@ const GST_DEFAULT_CODES = new Set([
   "MLT",
   "MTR",
   "PCS",
+  "NOS",
 ]);
 
 export const GST_UNIT_DEFAULTS: UnitOption[] = UNIT_OPTIONS.filter((unit) =>

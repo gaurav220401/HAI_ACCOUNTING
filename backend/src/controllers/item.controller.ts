@@ -598,6 +598,58 @@ export const getInventoryMetrics = asyncHandler(async (req: AuthenticatedRequest
   });
 });
 
+async function resolveUnitId(organizationId: any, unitInput: any): Promise<Types.ObjectId | null> {
+  if (!unitInput) return null;
+  const raw = String(unitInput).trim();
+  if (!raw) return null;
+
+  // If it's already a valid ObjectId string, return it as ObjectId
+  if (Types.ObjectId.isValid(raw)) {
+    return new Types.ObjectId(raw);
+  }
+
+  // Otherwise, it's a string name/abbreviation. Look it up or create it.
+  const escapeRegex = (val: string) => val.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  
+  let unitDoc = await UnitOfMeasurement.findOne({
+    organizationId,
+    abbreviation: { $regex: `^${escapeRegex(raw)}$`, $options: "i" },
+  });
+
+  if (!unitDoc) {
+    unitDoc = await UnitOfMeasurement.findOne({
+      organizationId,
+      name: { $regex: `^${escapeRegex(raw)}$`, $options: "i" },
+    });
+  }
+
+  if (!unitDoc) {
+    // Generate a reasonable abbreviation (uppercase, max 10 chars)
+    const abbreviation = raw.toUpperCase().replace(/\s+/g, "").substring(0, 10) || "UNIT";
+    
+    // Check if the generated abbreviation already exists
+    const abbreviationExists = await UnitOfMeasurement.findOne({
+      organizationId,
+      abbreviation: { $regex: `^${escapeRegex(abbreviation)}$`, $options: "i" },
+    });
+    
+    if (abbreviationExists) {
+      return abbreviationExists._id as Types.ObjectId;
+    }
+
+    unitDoc = new UnitOfMeasurement({
+      organizationId,
+      name: raw,
+      abbreviation,
+      isSystemUnit: false,
+      isActive: true,
+    });
+    await unitDoc.save();
+  }
+
+  return unitDoc._id as Types.ObjectId;
+}
+
 /** POST /api/items */
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
@@ -606,6 +658,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!req.body.itemType) throw new ValidationError("itemType is required (Goods or Service)");
 
   const payload: any = { ...req.body };
+  payload.unit = await resolveUnitId(organizationId, payload.unit);
   payload.itemMode = payload.itemMode || "SingleItem";
   payload.identifiers = Array.isArray(payload.identifiers)
     ? payload.identifiers.map((value: unknown) => String(value).trim()).filter(Boolean)
@@ -667,6 +720,10 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     inventoryAccountId: (item as any).inventoryAccountId,
     inventoryValue: (item as any).inventoryValue,
   };
+
+  if (req.body.unit !== undefined) {
+    req.body.unit = await resolveUnitId(organizationId, req.body.unit);
+  }
 
   const allowed = [
     "name", "sku", "identifiers", "unit", "itemGroupId", "description", "itemMode", "brand", "manufacturer",
