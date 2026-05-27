@@ -281,6 +281,7 @@ export const update = asyncHandler(
       "termsAndConditions",
       "emailContacts",
       "attachments",
+      "templateConfig",
     ];
 
     allowed.forEach((f) => {
@@ -401,6 +402,8 @@ export const downloadPdf = asyncHandler(
         org.smtpSettings?.fromEmail || org.smtpSettings?.user || undefined,
       orgTaxId: org.taxId,
       orgLogoUrl: (org as any).logo,
+      orgPhone: (org as any)?.phone || (org as any)?.address?.phone,
+      templateConfig: (quote as any).templateConfig,
 
       customerName,
       customerAddress: [
@@ -502,6 +505,8 @@ export const sendQuoteEmail = asyncHandler(
         orgEmail: org?.smtpSettings?.fromEmail || org?.smtpSettings?.user || undefined,
         orgTaxId: org?.taxId,
         orgLogoUrl: (org as any)?.logo,
+        orgPhone: (org as any)?.phone || (org as any)?.address?.phone,
+        templateConfig: (quote as any).templateConfig,
 
         customerName,
         customerAddress: [

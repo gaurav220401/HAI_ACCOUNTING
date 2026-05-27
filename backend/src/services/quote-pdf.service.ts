@@ -26,6 +26,8 @@ export interface QuotePdfData {
   orgEmail?: string;
   orgTaxId?: string; // GSTIN
   orgLogoUrl?: string; // Dynamic user logo
+  orgPhone?: string;
+  templateConfig?: Record<string, any>;
 
   customerName: string;
   customerAddress?: string;
@@ -164,65 +166,17 @@ function numberToWords(num: number): string {
 }
 
 // ── Watermark helper ────────────────
-function drawWatermark(doc: PDFKit.PDFDocument, F_BOLD: string) {
+function drawWatermark(doc: PDFKit.PDFDocument, F_BOLD: string, orgName?: string) {
+  const text = (orgName || "").trim();
+  if (!text) return;
+
   doc.save();
   doc.translate(595 / 2, 842 / 2);
   doc.opacity(0.035); // Light watermark exactly like image
-  
-  // Icon block
-  doc.save();
-  doc.translate(-50, -60);
-  doc.scale(2.5);
-  doc.lineWidth(2.5);
-  doc.strokeColor("#2dd4bf");
-  
-  doc.moveTo(35, 12)
-     .lineTo(15, 12)
-     .bezierCurveTo(5, 12, 5, 28, 15, 28)
-     .lineTo(35, 28)
-     .bezierCurveTo(45, 28, 45, 12, 35, 12)
-     .stroke();
-     
-  doc.moveTo(28, 20).lineTo(35, 20).stroke();
-  
-  doc.strokeColor("#84cc16");
-  doc.lineWidth(2);
-  doc.moveTo(35, 6).lineTo(35, 14).stroke();
-  doc.moveTo(31, 10).lineTo(39, 10).stroke();
-  doc.restore();
-  
-  // Text block
-  doc.font(F_BOLD).fontSize(26).fillColor("#0f172a");
-  doc.text("PIKA G ENERGY PVT. LTD.", -250, 40, { width: 500, align: "center" });
-  
-  doc.restore();
-}
 
-// ── Default vector logo drawing ─────
-function drawDefaultVectorLogo(doc: PDFKit.PDFDocument, logoX: number, logoY: number, F_BOLD: string) {
-  doc.save();
-  doc.translate(logoX, logoY);
-  doc.lineWidth(2.2);
-  doc.strokeColor("#2dd4bf"); // Teal
-  
-  doc.moveTo(32, 11)
-     .lineTo(14, 11)
-     .bezierCurveTo(5, 11, 5, 25, 14, 25)
-     .lineTo(32, 25)
-     .bezierCurveTo(41, 25, 41, 11, 32, 11)
-     .stroke();
-  
-  doc.moveTo(26, 18).lineTo(32, 18).stroke();
-  
-  doc.strokeColor("#84cc16"); // Lime green
-  doc.lineWidth(1.8);
-  doc.moveTo(32, 6).lineTo(32, 13).stroke();
-  doc.moveTo(28, 9).lineTo(36, 9).stroke();
+  doc.font(F_BOLD).fontSize(26).fillColor("#0f172a");
+  doc.text(text.toUpperCase(), -250, 40, { width: 500, align: "center" });
   doc.restore();
-  
-  // Text under logo
-  doc.font(F_BOLD).fontSize(7.5).fillColor("#1e293b");
-  doc.text("PIKA G ENERGY PVT. LTD.", logoX, logoY + 32, { width: 140, align: "left" });
 }
 
 // ── Header helper ──────────────────
@@ -233,110 +187,210 @@ function drawHeader(
   data: QuotePdfData, 
   F_REG: string, 
   F_BOLD: string,
-  logoBuffer: Buffer | null
+  logoBuffer: Buffer | null,
+  cfg: Record<string, any>
 ) {
   doc.save();
+
+  const headerBgEnabled = cfg.headerBgColorEnabled === true;
+  const headerBgColor = typeof cfg.headerBgColor === "string" && cfg.headerBgColor.trim() ? cfg.headerBgColor : "#ffffff";
+  const headerTextColor = typeof cfg.headerTextColor === "string" && cfg.headerTextColor.trim() ? cfg.headerTextColor : "#1e293b";
+  const headerFontSize = Math.max(6, Math.min(12, Number(cfg.headerFontSize) || 7.5));
+  const headerDividerColor = typeof cfg.headerDividerColor === "string" && cfg.headerDividerColor.trim() ? cfg.headerDividerColor : "#f59e0b";
+  const showHeaderDivider = cfg.showHeaderDivider !== false;
+  if (headerBgEnabled) {
+    doc.rect(45, 18, 505, 64).fill(headerBgColor);
+  }
   
+  // Resolve overrides
+  const displayOrgName = typeof cfg.orgNameOverride === "string" && cfg.orgNameOverride.trim()
+    ? cfg.orgNameOverride.trim()
+    : (data.orgName || "");
+    
+  const displayGstin = typeof cfg.gstinValueOverride === "string" && cfg.gstinValueOverride.trim()
+    ? cfg.gstinValueOverride.trim()
+    : (data.orgTaxId || "");
+    
+  const displayContact = typeof cfg.contactValueOverride === "string" && cfg.contactValueOverride.trim()
+    ? cfg.contactValueOverride.trim()
+    : (data.orgPhone || "");
+    
+  const displayEmail = typeof cfg.emailValueOverride === "string" && cfg.emailValueOverride.trim()
+    ? cfg.emailValueOverride.trim()
+    : (data.orgEmail || "");
+    
+  let factory = "";
+  if (typeof cfg.factoryValueOverride === "string" && cfg.factoryValueOverride.trim()) {
+    factory = cfg.factoryValueOverride.trim();
+  } else if (cfg.showOrgAddress !== false && data.orgAddress) {
+    const addr = data.orgAddress;
+    const parts = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean);
+    if (parts.length > 0) factory = parts.join(", ");
+  }
+
   // Draw Logo (Left side)
   const logoX = 45;
   const logoY = 20;
-  
+  const showOrgLogo = cfg.showOrgLogo !== false;
+  const showOrgName = cfg.showOrgName !== false;
+  const orgNameColor = typeof cfg.orgNameColor === "string" && cfg.orgNameColor.trim() ? cfg.orgNameColor : "#1e293b";
+  const orgNameFontSize = Math.max(7, Math.min(16, Number(cfg.orgNameFontSize) || 7.5));
+  let logoRendered = false;
   if (logoBuffer) {
     try {
-      const logoH = 40;
+      const logoH = Math.max(30, Math.min(80, Number(cfg.orgLogoSize) || 40));
       const logoW = logoH * 1.9;
-      doc.image(logoBuffer, logoX, logoY, { fit: [logoW, logoH] });
-      // Draw Organization name below the dynamic logo if it's not default PIKA G
-      if (!data.orgName.toLowerCase().includes("pika")) {
-        doc.font(F_BOLD).fontSize(7.5).fillColor("#1e293b");
-        doc.text(data.orgName.toUpperCase(), logoX, logoY + 42, { width: 145, align: "left" });
+      if (showOrgLogo) {
+        doc.image(logoBuffer, logoX, logoY, { fit: [logoW, logoH] });
+        logoRendered = true;
       }
     } catch {
-      drawDefaultVectorLogo(doc, logoX, logoY, F_BOLD);
+      logoRendered = false;
     }
-  } else {
-    drawDefaultVectorLogo(doc, logoX, logoY, F_BOLD);
+  }
+
+  if (showOrgName && displayOrgName) {
+    const nameY = logoRendered ? logoY + 42 : logoY + 2;
+    doc.font(F_BOLD).fontSize(orgNameFontSize).fillColor(orgNameColor);
+    doc.text(displayOrgName.toUpperCase(), logoX, nameY, { width: 145, align: "left" });
   }
   
   // Right side corporate details
   const rightX = 300;
   const rightY = 20;
   const rightW = 250;
+  const labelW = 55;
   
-  doc.fontSize(7.5).fillColor("#1e293b");
+  doc.fontSize(headerFontSize).fillColor(headerTextColor);
   
-  const drawHeaderLine = (label: string, value: string, isLink = false, ly: number) => {
-    doc.font(F_BOLD).text(label, rightX, ly, { width: 45, align: "left" });
+  const drawHeaderLine = (label: string, value: string, isLink: boolean, ly: number) => {
+    doc.font(F_BOLD).text(label, rightX, ly, { width: labelW, align: "left" });
     doc.font(F_REG);
     if (isLink) {
-      doc.fillColor("#0284c7").text(value, rightX + 45, ly, { underline: true }).fillColor("#1e293b");
+      doc.fillColor("#0284c7").text(value, rightX + labelW, ly, { underline: true }).fillColor(headerTextColor);
     } else {
-      doc.text(value, rightX + 45, ly, { width: rightW - 45, align: "left" });
+      doc.text(value, rightX + labelW, ly, { width: rightW - labelW, align: "left" });
     }
   };
-  
-  const gstin = data.orgTaxId || "22AAJCP7742A1ZP";
-  const contact = "+91- 8349873989";
-  const email = data.orgEmail || "pikagenergy@gmail.com";
-  
-  let factory = "Plot No. 173 , Engineering Park , Hathkhoj , Bhilai , 490026";
-  if (data.orgAddress) {
-    const addr = data.orgAddress;
-    const parts = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean);
-    if (parts.length > 0) factory = parts.join(", ");
+
+  const labelWithColon = (label: string, fallback: string) => {
+    const raw = typeof label === "string" && label.trim() ? label.trim() : fallback;
+    return raw.endsWith(":") ? `${raw} ` : `${raw}: `;
+  };
+
+  const headerLines: Array<{ label: string; value: string; isLink: boolean }> = [];
+  if (cfg.showGstin !== false && displayGstin) {
+    headerLines.push({ label: labelWithColon(cfg.gstinLabel, "GSTIN"), value: displayGstin, isLink: false });
   }
+  if (cfg.showContact !== false && displayContact) {
+    headerLines.push({ label: labelWithColon(cfg.contactLabel, "Contact"), value: displayContact, isLink: false });
+  }
+  if (cfg.showEmail !== false && displayEmail) {
+    headerLines.push({ label: labelWithColon(cfg.emailLabel, "Email"), value: displayEmail, isLink: true });
+  }
+  if (cfg.showOrgAddress !== false && factory) {
+    headerLines.push({ label: labelWithColon(cfg.factoryLabel, "Factory"), value: factory, isLink: false });
+  }
+
+  headerLines.forEach((line, idx) => {
+    drawHeaderLine(line.label, line.value, line.isLink, rightY + idx * 10);
+  });
   
-  drawHeaderLine("GSTIN : ", gstin, false, rightY);
-  drawHeaderLine("Contact : ", contact, false, rightY + 10);
-  drawHeaderLine("Email : ", email, true, rightY + 20);
-  
-  doc.font(F_BOLD).text("Factory : ", rightX, rightY + 30, { width: 45 });
-  doc.font(F_REG).text(factory, rightX + 45, rightY + 30, { width: rightW - 45 });
-  
-  // Gold Divider Line
-  doc.moveTo(45, 78)
-     .lineTo(550, 78)
-     .strokeColor("#f59e0b")
-     .lineWidth(1)
-     .stroke();
-     
+  if (showHeaderDivider) {
+    doc.moveTo(45, 78)
+      .lineTo(550, 78)
+      .strokeColor(headerDividerColor)
+      .lineWidth(1)
+      .stroke();
+  }
+   
   doc.restore();
 }
 
 // ── Footer helper ──────────────────
-function drawFooter(doc: PDFKit.PDFDocument, pageNum: number, totalPages: number, F_REG: string, F_BOLD: string) {
+function drawFooter(
+  doc: PDFKit.PDFDocument,
+  pageNum: number,
+  totalPages: number,
+  F_REG: string,
+  F_BOLD: string,
+  cfg: Record<string, any>
+) {
   doc.save();
   
   const footerStartY = 842 - 90;
+  const footerFontSize = Math.max(7, Math.min(12, Number(cfg.footerFontSize) || 8.5));
+  const footerFontColor = typeof cfg.footerFontColor === "string" && cfg.footerFontColor.trim() ? cfg.footerFontColor : "#1e293b";
+  const footerBgEnabled = cfg.footerBgColorEnabled === true;
+  const footerBgColor = typeof cfg.footerBgColor === "string" && cfg.footerBgColor.trim() ? cfg.footerBgColor : "#ffffff";
+  const footerCustom = typeof cfg.footerCustomContent === "string" ? cfg.footerCustomContent.trim() : "";
+  const footerDividerColor = typeof cfg.footerDividerColor === "string" && cfg.footerDividerColor.trim() ? cfg.footerDividerColor : "#f59e0b";
+  const showFooterLines = cfg.showFooterLines !== false;
+
+  if (footerBgEnabled) {
+    doc.rect(0, footerStartY, 595, 90).fill(footerBgColor);
+  }
   
   // Page number right above the line
-  doc.font(F_REG).fontSize(8.5).fillColor("#1e293b");
+  doc.font(F_REG).fontSize(footerFontSize).fillColor(footerFontColor);
   doc.text(`Page ${pageNum} of ${totalPages}`, 45, footerStartY + 15, { width: 505, align: "right" });
   
-  // Gold Divider Line
+  // Divider Line
   doc.moveTo(45, footerStartY + 28)
      .lineTo(550, footerStartY + 28)
-     .strokeColor("#f59e0b")
+     .strokeColor(footerDividerColor)
      .lineWidth(1.2)
      .stroke();
      
   // Services footer line details
   let fy = footerStartY + 35;
   
-  const drawFooterCenterLine = (label: string, val: string, yPos: number) => {
-    doc.font(F_REG).fontSize(7.5).fillColor("#1e293b");
-    doc.text(`${label}${val}`, 45, yPos, { width: 505, align: "center" });
+  const drawFooterCenterLine = (text: string, yPos: number) => {
+    doc.font(F_REG).fontSize(footerFontSize - 1).fillColor(footerFontColor);
+    doc.text(text, 45, yPos, { width: 505, align: "center" });
   };
   
-  drawFooterCenterLine("Solar Solutions : ", "On grid & Off grid Power Plants | Water Heater | Street Lights | Home Lighting", fy);
-  drawFooterCenterLine("LED Lighting Solution : ", "Domestic | Commercial | Industrial | Customized industrial", fy + 11);
-  drawFooterCenterLine("Industrial Automation: ", "DRIVES | PLC | SCADA | HMI", fy + 22);
+  if (showFooterLines) {
+    const lines = [
+      cfg.footerLine1,
+      cfg.footerLine2,
+      cfg.footerLine3,
+      cfg.footerLine4,
+      cfg.footerLine5,
+    ].filter((l) => typeof l === "string" && l.trim() !== "");
+
+    if (lines.length === 0) {
+      drawFooterCenterLine("Solar Solutions : On grid & Off grid Power Plants | Water Heater | Street Lights | Home Lighting", fy);
+      drawFooterCenterLine("LED Lighting Solution : Domestic | Commercial | Industrial | Customized industrial", fy + 11);
+      drawFooterCenterLine("Industrial Automation: DRIVES | PLC | SCADA | HMI", fy + 22);
+      fy += 33;
+    } else {
+      lines.forEach((line, index) => {
+        drawFooterCenterLine(line, fy + index * 11);
+      });
+      fy += lines.length * 11;
+    }
+  }
+
+  if (footerCustom) {
+    doc.font(F_REG).fontSize(footerFontSize - 1).fillColor(footerFontColor);
+    doc.text(footerCustom, 45, fy, { width: 505, align: "center" });
+  }
   
   doc.restore();
 }
 
 export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
   const logoBuffer = await fetchImageBuffer(data.orgLogoUrl);
+  const cfg = data.templateConfig || {};
+  const pickColor = (value: string | undefined, fallback: string) =>
+    typeof value === "string" && value.trim() ? value : fallback;
+  const showDocTitle = cfg.showDocTitle !== false;
+  const showBillTo = cfg.showBillTo !== false;
+  const showNotes = cfg.showNotes !== false;
+  const showTerms = cfg.showTerms !== false;
+  const showSignature = cfg.showSignature !== false;
+  const showFooter = cfg.showFooter !== false;
 
   return new Promise((resolve, reject) => {
     // bottom margin set to 15 to completely prevent PDFKit from triggering auto-page-breaks.
@@ -363,31 +417,58 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     }
     const sym = canRenderRupee ? (data.currencySymbol ?? "₹") : "Rs.";
 
+    const bgColor = pickColor(cfg.backgroundColor, "#ffffff");
+    if (bgColor !== "#ffffff") {
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill(bgColor);
+    }
+
+    const displayOrgName = typeof cfg.orgNameOverride === "string" && cfg.orgNameOverride.trim()
+      ? cfg.orgNameOverride.trim()
+      : (data.orgName || "");
+
+    const displayContact = typeof cfg.contactValueOverride === "string" && cfg.contactValueOverride.trim()
+      ? cfg.contactValueOverride.trim()
+      : (data.orgPhone || "");
+      
+    const displayEmail = typeof cfg.emailValueOverride === "string" && cfg.emailValueOverride.trim()
+      ? cfg.emailValueOverride.trim()
+      : (data.orgEmail || "");
+
     // Pre-draw watermark on first page background
-    drawWatermark(doc, F_BOLD);
+    drawWatermark(doc, F_BOLD, displayOrgName);
 
     // Auto draw watermark on any newly added pages in background
-    doc.on('pageAdded', () => {
-      drawWatermark(doc, F_BOLD);
+    doc.on("pageAdded", () => {
+      drawWatermark(doc, F_BOLD, displayOrgName);
     });
 
     let nextY = 105;
 
     // Header Title (techno commercial quotation)
-    doc.rect(45, nextY, doc.widthOfString("TECHNO-COMMERCIAL QUOTATION") + 12, 16).fill("#e2e8f0");
-    doc.fillColor("#000000").font(F_BOLD).fontSize(10.5).text("TECHNO-COMMERCIAL QUOTATION", 51, nextY + 3);
-    nextY += 20;
+    if (showDocTitle) {
+      const title = typeof cfg.docTitle === "string" && cfg.docTitle.trim() ? cfg.docTitle : "TECHNO-COMMERCIAL QUOTATION";
+      const titleFontSize = Math.max(8, Math.min(18, Number(cfg.docTitleFontSize) || 10.5));
+      const titleColor = pickColor(cfg.docTitleFontColor, "#000000");
+      doc.rect(45, nextY, doc.widthOfString(title) + 12, 16).fill("#e2e8f0");
+      doc.fillColor(titleColor).font(F_BOLD).fontSize(titleFontSize).text(title, 51, nextY + 3);
+      nextY += 20;
+    }
 
     // Reference details
     doc.fontSize(9.5).fillColor("#000000");
-    doc.font(F_BOLD).text("Ref No.: ", 45, nextY, { continued: true }).font(F_REG).text(data.quoteNumber);
+    const refLabel = typeof cfg.quoteNumberLabel === "string" && cfg.quoteNumberLabel.trim() ? cfg.quoteNumberLabel : "Ref No.";
+    doc.font(F_BOLD).text(`${refLabel}: `, 45, nextY, { continued: true }).font(F_REG).text(data.quoteNumber);
     nextY += 13;
-    doc.font(F_BOLD).text("Date: ", 45, nextY, { continued: true }).font(F_REG).text(fmtDate(data.quoteDate));
+    const dateLabel = typeof cfg.quoteDateLabel === "string" && cfg.quoteDateLabel.trim() ? cfg.quoteDateLabel : "Date";
+    doc.font(F_BOLD).text(`${dateLabel}: `, 45, nextY, { continued: true }).font(F_REG).text(fmtDate(data.quoteDate));
     nextY += 16;
 
     // Recipient "To" details
-    doc.font(F_BOLD).text("To,", 45, nextY);
-    nextY += 12;
+    if (showBillTo) {
+      const billTo = typeof cfg.billToLabel === "string" && cfg.billToLabel.trim() ? cfg.billToLabel : "To,";
+      doc.font(F_BOLD).text(billTo, 45, nextY);
+      nextY += 12;
+    }
     doc.font(F_BOLD).text(data.customerName, 45, nextY);
     nextY += 13;
 
@@ -466,8 +547,16 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     ];
 
     const headerH = 26;
+    const headerBg = pickColor(cfg.tableHeaderBgColor, "#ffffff");
+    const headerFontColor = pickColor(cfg.tableHeaderFontColor, "#000000");
+    const headerFontSize = Math.max(7, Math.min(12, Number(cfg.tableHeaderFontSize) || 8.5));
+    const oddRowColor = pickColor(cfg.oddRowColor, "#ffffff");
+    const evenRowColor = pickColor(cfg.evenRowColor, "#ffffff");
 
     const drawTableHeaderRow = (startY: number) => {
+      if (headerBg !== "#ffffff") {
+        doc.rect(45, startY, 505, headerH).fill(headerBg);
+      }
       doc.rect(45, startY, 505, headerH).strokeColor("#000000").lineWidth(0.75).stroke();
       cols.forEach((col, idx) => {
         if (idx > 0) {
@@ -475,15 +564,15 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
         }
       });
 
-      doc.fillColor("#000000").fontSize(8.5).font(F_BOLD);
+      doc.fillColor(headerFontColor).fontSize(headerFontSize).font(F_BOLD);
       cols.forEach(col => {
         if (col.id === "cgst" || col.id === "sgst" || col.id === "igst") {
           doc.text(col.label, col.x, startY + 3, { width: col.width, align: "center" });
           doc.moveTo(col.x, startY + 13).lineTo(col.x + col.width, startY + 13).stroke();
           doc.moveTo(col.x + 18, startY + 13).lineTo(col.x + 18, startY + headerH).stroke();
-          doc.fontSize(7).text("%", col.x, startY + 16, { width: 18, align: "center" });
+          doc.fontSize(Math.max(6, headerFontSize - 1.5)).text("%", col.x, startY + 16, { width: 18, align: "center" });
           doc.text("Amt", col.x + 18, startY + 16, { width: col.width - 18, align: "center" });
-          doc.fontSize(8.5);
+          doc.fontSize(headerFontSize);
         } else {
           doc.text(col.label, col.x, startY + 8, { width: col.width, align: col.align });
         }
@@ -508,6 +597,12 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
         nextY = 105;
         drawTableHeaderRow(nextY);
         nextY += headerH;
+      }
+
+      // Row background
+      const rowBg = idx % 2 === 0 ? oddRowColor : evenRowColor;
+      if (rowBg !== "#ffffff") {
+        doc.rect(45, nextY, 505, itemH).fill(rowBg);
       }
 
       // Draw cell boxes
@@ -671,58 +766,71 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     };
 
     // Notes
-    if (data.customerNotes) {
-      drawShadedHeading("Notes:");
+    if (showNotes && data.customerNotes) {
+      const notesLabel = typeof cfg.notesLabel === "string" && cfg.notesLabel.trim() ? cfg.notesLabel : "Notes";
+      drawShadedHeading(`${notesLabel}:`);
       drawFormattedParagraph(data.customerNotes);
       nextY += 5;
     }
 
     // Terms
-    if (data.termsAndConditions) {
-      drawShadedHeading("Terms & conditions:");
+    if (showTerms && data.termsAndConditions) {
+      const termsLabel = typeof cfg.termsLabel === "string" && cfg.termsLabel.trim() ? cfg.termsLabel : "Terms & conditions";
+      drawShadedHeading(`${termsLabel}:`);
       drawFormattedParagraph(data.termsAndConditions);
       nextY += 5;
     }
 
     // Signature Area on the bottom right
-    const sigHeight = 65;
-    if (nextY + sigHeight > 842 - 90) {
-      doc.addPage();
-      nextY = 105;
-    } else {
-      // Position at the bottom of the page only if it's the first/only page, but leave some spacing.
-      // If we are already near the bottom, don't force it to a specific point that is higher than current nextY.
-      nextY = Math.max(nextY, 842 - 165);
+    if (showSignature) {
+      const sigHeight = 65;
+      if (nextY + sigHeight > 842 - 90) {
+        doc.addPage();
+        nextY = 105;
+      } else {
+        // Position at the bottom of the page only if it's the first/only page, but leave some spacing.
+        // If we are already near the bottom, don't force it to a specific point that is higher than current nextY.
+        nextY = Math.max(nextY, 842 - 165);
+      }
+
+      const sigX = 350;
+      const sigW = 200;
+      doc.font(F_BOLD).fontSize(8.5).fillColor("#000000");
+      if (displayOrgName) {
+        doc.text(`For ${displayOrgName.toUpperCase()}`, sigX, nextY, { width: sigW, align: "right" });
+        nextY += 10;
+      }
+
+      const signatureLabel = typeof cfg.signatureLabel === "string" && cfg.signatureLabel.trim()
+        ? cfg.signatureLabel
+        : "Authorized Signatory";
+      doc.font(F_REG).fontSize(8);
+      doc.text(signatureLabel, sigX, nextY, { width: sigW, align: "right" });
+      nextY += 14;
+
+      if (data.salesPersonName) {
+        doc.font(F_BOLD).text(data.salesPersonName, sigX, nextY, { width: sigW, align: "right" });
+        nextY += 10;
+      }
+
+      doc.font(F_REG).fontSize(7.5).fillColor("#475569");
+      if (displayEmail) {
+        doc.text(`Email: ${displayEmail}`, sigX, nextY, { width: sigW, align: "right" });
+        nextY += 9;
+      }
+      if (displayContact) {
+        doc.text(`Phone: ${displayContact}`, sigX, nextY, { width: sigW, align: "right" });
+      }
     }
-
-    const sigX = 350;
-    const sigW = 200;
-    doc.font(F_BOLD).fontSize(8.5).fillColor("#000000");
-    const org = data.orgName || "PIKA G ENERGY PVT. LTD.";
-    doc.text(`For ${org.toUpperCase()}`, sigX, nextY, { width: sigW, align: "right" });
-    nextY += 10;
-
-    doc.font(F_REG).fontSize(8);
-    doc.text("Authorized Signatory", sigX, nextY, { width: sigW, align: "right" });
-    nextY += 14;
-
-    const contactPerson = data.salesPersonName || "Gautam Kumar Haldar";
-    doc.font(F_BOLD).text(contactPerson, sigX, nextY, { width: sigW, align: "right" });
-    nextY += 10;
-
-    doc.font(F_REG).fontSize(7.5).fillColor("#475569");
-    if (data.orgEmail) {
-      doc.text(`Email: ${data.orgEmail}`, sigX, nextY, { width: sigW, align: "right" });
-      nextY += 9;
-    }
-    doc.text("Phone: +91 97550 21473", sigX, nextY, { width: sigW, align: "right" });
 
     // Second pass - switch pages to draw header and footer
     const range = doc.bufferedPageRange();
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(i);
-      drawHeader(doc, i + 1, range.count, data, F_REG, F_BOLD, logoBuffer);
-      drawFooter(doc, i + 1, range.count, F_REG, F_BOLD);
+      drawHeader(doc, i + 1, range.count, data, F_REG, F_BOLD, logoBuffer, cfg);
+      if (showFooter) {
+        drawFooter(doc, i + 1, range.count, F_REG, F_BOLD, cfg);
+      }
     }
 
     doc.end();

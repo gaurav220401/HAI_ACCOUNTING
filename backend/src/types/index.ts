@@ -747,6 +747,7 @@ export interface IQuote extends Document {
   total: number;
   customerNotes: string;
   termsAndConditions: string;
+  templateConfig?: Record<string, unknown>;
   status: QuoteStatus;
   placeOfSupply?: string;
   emailContacts: string[];

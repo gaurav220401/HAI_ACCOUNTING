@@ -447,6 +447,10 @@ export default function QuoteDetailPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => router.push(`/sales/quotes/${quote._id}/edit-template`)}>
+                          <Settings2 className="h-4 w-4 mr-2" />
+                          Edit Template
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setLogoAddressOpen(true)}>
                           <ImagePlus className="h-4 w-4 mr-2" />
                           Update Logo & Address
