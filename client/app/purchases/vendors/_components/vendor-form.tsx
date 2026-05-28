@@ -205,6 +205,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [salutation, setSalutation] = useState(initialData?.salutation ?? "");
   const [firstName, setFirstName] = useState(initialData?.firstName ?? "");
   const [lastName, setLastName] = useState(initialData?.lastName ?? "");
+  
   const [companyName, setCompanyName] = useState(initialData?.companyName ?? "");
   const [displayName, setDisplayName] = useState(initialData?.displayName ?? "");
   const [email, setEmail] = useState(initialData?.email ?? "");
@@ -214,6 +215,18 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [displayNameManual, setDisplayNameManual] = useState(isEdit);
   const [displayNameFocused, setDisplayNameFocused] = useState(false);
   const displayNameRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!initialData) {
+      const searchParams = new URLSearchParams(window.location.search);
+      const initialName = searchParams.get("name") || "";
+      if (initialName) {
+        setCompanyName(initialName);
+        setDisplayName(initialName);
+        setDisplayNameManual(true);
+      }
+    }
+  }, [initialData]);
 
   // ── GSTIN Prefill Dialog ─────────────────────────────────────────────────
   const [gstinDialogOpen, setGstinDialogOpen] = useState(false);
@@ -699,14 +712,27 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
     setSaving(true);
     try {
+      let createdContactId = "";
       if (isEdit && initialData?._id) {
         await contactApi.update(initialData._id, payload);
         toast.success("Vendor updated");
       } else {
-        await contactApi.create(payload);
+        const res = await contactApi.create(payload);
+        createdContactId = res.data?._id || "";
         toast.success("Vendor created");
       }
-      router.push("/purchases/vendors");
+
+      const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const redirectUrl = searchParams?.get("redirect");
+      if (redirectUrl) {
+        const url = new URL(redirectUrl, window.location.origin);
+        if (createdContactId) {
+          url.searchParams.set("newVendorId", createdContactId);
+        }
+        router.push(url.pathname + url.search);
+      } else {
+        router.push("/purchases/vendors");
+      }
     } catch (err: any) {
       toast.error(err?.message ?? "Failed to save vendor");
     } finally {
@@ -723,7 +749,15 @@ export function VendorForm({ initialData }: VendorFormProps) {
       <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
         <h1 className="text-lg font-semibold tracking-tight">{isEdit ? "Edit Vendor" : "New Vendor"}</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push("/purchases/vendors")} disabled={saving}>
+          <Button variant="outline" size="sm" onClick={() => {
+            const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+            const redirectUrl = searchParams?.get("redirect");
+            if (redirectUrl) {
+              router.push(redirectUrl);
+            } else {
+              router.push("/purchases/vendors");
+            }
+          }} disabled={saving}>
             Cancel
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>

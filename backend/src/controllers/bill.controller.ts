@@ -230,6 +230,7 @@ function computeBillTotals(input: {
   taxAmount: number;
   tcsAmount: number;
   adjustmentAmount: number;
+  taxType?: string;
 }) {
   const subTotal = input.lineItems
     .filter((i: any) => !i.isHeader)
@@ -238,7 +239,12 @@ function computeBillTotals(input: {
     ? (subTotal * input.discountPercent) / 100
     : input.lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
   const taxableAmount = subTotal - discountAmount;
-  const taxTotal = input.taxAmount + input.tcsAmount;
+  const lineTaxesSum = input.lineItems
+    .filter((i: any) => !i.isHeader)
+    .reduce((s: number, i: any) => s + (toNum(i.amount) * toNum(i.taxRate)) / 100, 0);
+  const tdsAmt = input.taxType === "TDS" ? input.taxAmount : 0;
+  const tcsAmt = input.taxType === "TCS" ? input.tcsAmount : 0;
+  const taxTotal = lineTaxesSum - tdsAmt + tcsAmt;
   const total = taxableAmount + taxTotal + input.adjustmentAmount;
   return { subTotal, discountAmount, taxableAmount, taxTotal, total };
 }
@@ -751,6 +757,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     taxAmount,
     tcsAmount,
     adjustmentAmount,
+    taxType,
   });
   if (totals.total < 0) throw new ValidationError("Total cannot be negative");
 
@@ -1002,6 +1009,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     taxAmount,
     tcsAmount,
     adjustmentAmount,
+    taxType,
   });
   if (totals.total < 0) throw new ValidationError("Total cannot be negative");
   const nextTdsId = taxType === "TDS"

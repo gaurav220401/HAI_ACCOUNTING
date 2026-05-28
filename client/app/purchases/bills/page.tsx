@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import {
   Plus, Search, Loader2, MoreHorizontal, Trash2, RefreshCw,
   ChevronDown, Pencil, Printer, CheckCircle,
@@ -332,6 +334,17 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
   const vendorCreditApplied = (bill.vendor_credit_applications || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const totalApplied = Number(bill.amountPaid || paymentMadeApplied + vendorCreditApplied || 0);
 
+  // Group line taxes
+  const taxGroups: Record<string, number> = {};
+  lineItems.forEach((li) => {
+    if (li.taxRate && li.taxRate > 0) {
+      const taxName = li.taxName || `Tax (${li.taxRate}%)`;
+      const taxAmt = (Number(li.amount || 0) * Number(li.taxRate)) / 100;
+      taxGroups[taxName] = (taxGroups[taxName] || 0) + taxAmt;
+    }
+  });
+  const hasLineTaxes = lineItems.some((li) => li.taxRate && li.taxRate > 0);
+
   const appliedRows: Array<{
     key: string;
     date: string;
@@ -414,12 +427,12 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
           <div className="space-y-1 text-sm text-right">
             <div className="flex justify-end gap-8">
               <span className="text-gray-500">Date</span>
-              <span className="font-medium">{fmtDate(bill.billDate)}</span>
+              <span className="font-medium" suppressHydrationWarning>{fmtDate(bill.billDate)}</span>
             </div>
             {bill.dueDate && (
               <div className="flex justify-end gap-8">
                 <span className="text-gray-500">Due Date</span>
-                <span className="font-medium">{fmtDate(bill.dueDate)}</span>
+                <span className="font-medium" suppressHydrationWarning>{fmtDate(bill.dueDate)}</span>
               </div>
             )}
             {bill.referenceNumber && (
@@ -439,6 +452,7 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
               <th className="text-left px-3 py-2 text-xs font-medium">Item &amp; Description</th>
               <th className="text-right px-3 py-2 text-xs font-medium w-20">Qty</th>
               <th className="text-right px-3 py-2 text-xs font-medium w-24">Rate</th>
+              {hasLineTaxes && <th className="text-right px-3 py-2 text-xs font-medium w-24">Tax</th>}
               <th className="text-right px-3 py-2 text-xs font-medium w-24">Amount</th>
             </tr>
           </thead>
@@ -454,6 +468,18 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
                   </td>
                   <td className="px-3 py-2.5 text-xs text-right align-top">{li.quantity?.toFixed(2)}</td>
                   <td className="px-3 py-2.5 text-xs text-right align-top">{li.rate?.toFixed(2)}</td>
+                  {hasLineTaxes && (
+                    <td className="px-3 py-2.5 text-xs text-right align-top text-gray-600">
+                      {li.taxRate && li.taxRate > 0 ? (
+                        <>
+                          <div className="font-medium">{li.taxName || "Tax"}</div>
+                          <div className="text-[10px] text-gray-400">({li.taxRate}%)</div>
+                        </>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  )}
                   <td className="px-3 py-2.5 text-xs text-right align-top">{li.amount?.toFixed(2)}</td>
                 </tr>
               );
@@ -474,10 +500,16 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
                 <span>-{(bill.discountAmount || 0).toFixed(2)}</span>
               </div>
             )}
+            {Object.entries(taxGroups).map(([taxName, amt]) => (
+              <div key={taxName} className="flex justify-between text-sm">
+                <span className="text-gray-600">{taxName}</span>
+                <span>+{amt.toFixed(2)}</span>
+              </div>
+            ))}
             {(bill.taxAmount || 0) > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">{bill.taxType?.toUpperCase() || "TAX"}</span>
-                <span>{(bill.taxAmount || 0).toFixed(2)}</span>
+                <span>{(bill.taxType === "TDS" ? "-" : "")}{(bill.taxAmount || 0).toFixed(2)}</span>
               </div>
             )}
             {(bill.adjustmentAmount || 0) !== 0 && (
@@ -1507,7 +1539,78 @@ function BillsPageContent() {
   }
 
   async function handleDownloadPdf(id: string) {
-    toast.info("PDF download coming soon");
+    const el = document.getElementById("bill-pdf-view");
+    if (!el) {
+      toast.error("Please enable Show PDF View first, then try downloading again.");
+      return;
+    }
+    const safeNo = (selectedBill?.billNumber || "bill").replace(/[^a-zA-Z0-9-_]/g, "-");
+    const fileName = `Bill-${safeNo}.pdf`;
+
+    try {
+      // Build a sanitized off-screen clone to avoid unsupported CSS color functions
+      const cloneWrap = document.createElement("div");
+      cloneWrap.style.position = "fixed";
+      cloneWrap.style.left = "-100000px";
+      cloneWrap.style.top = "0";
+      cloneWrap.style.width = "680px";
+      cloneWrap.style.background = "#ffffff";
+      cloneWrap.style.pointerEvents = "none";
+
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.style.boxShadow = "none";
+      clone.style.background = "#ffffff";
+
+      // Remove no-print markers and utility classes so renderer relies on inline styles only.
+      clone.querySelectorAll(".no-print").forEach((n) => n.remove());
+      clone.querySelectorAll("*").forEach((node) => {
+        if (node instanceof HTMLElement) {
+          node.removeAttribute("class");
+        }
+      });
+
+      cloneWrap.appendChild(clone);
+      document.body.appendChild(cloneWrap);
+
+      try {
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
+
+        const imageData = canvas.toDataURL("image/png");
+        const pdf = new jsPDF("p", "mm", "a4");
+        const pageW = 210;
+        const pageH = 297;
+        const imgW = pageW;
+        const imgH = (canvas.height * imgW) / canvas.width;
+
+        if (imgH <= pageH) {
+          pdf.addImage(imageData, "PNG", 0, 0, imgW, imgH, undefined, "FAST");
+        } else {
+          let heightLeft = imgH;
+          let y = 0;
+          pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
+          heightLeft -= pageH;
+
+          while (heightLeft > 0) {
+            y = heightLeft - imgH;
+            pdf.addPage();
+            pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
+            heightLeft -= pageH;
+          }
+        }
+
+        pdf.save(fileName);
+        toast.success("PDF downloaded successfully");
+      } finally {
+        cloneWrap.remove();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to download PDF");
+    }
   }
 
   return (
@@ -1749,7 +1852,7 @@ function BillsPageContent() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="font-medium text-sm text-foreground truncate">{getName(b.vendorId) || "—"}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">
+                            <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
                               {b.billNumber} • {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>
                             <div className={cn("text-xs font-medium mt-0.5 uppercase tracking-wide", statusColor[b.status])}>{getBillStatusLabel(b)}</div>
@@ -1777,7 +1880,7 @@ function BillsPageContent() {
                             onChange={(e) => toggleSelectBill(b._id, e.target.checked)}
                           />
                         </div>
-                        <div className="px-2 py-2.5 text-muted-foreground text-xs">
+                        <div className="px-2 py-2.5 text-muted-foreground text-xs" suppressHydrationWarning>
                           {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </div>
                         <div className="px-2 py-2.5 text-primary font-medium">{b.billNumber}</div>

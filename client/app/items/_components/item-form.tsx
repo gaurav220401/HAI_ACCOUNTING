@@ -961,6 +961,13 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
   const autoTaxDefaultsAppliedRef = useRef(false);
 
+  useEffect(() => {
+    const nameParam = searchParams?.get("name");
+    if (nameParam && !initialData) {
+      setForm((prev) => ({ ...prev, name: nameParam }));
+    }
+  }, [searchParams, initialData]);
+
   const uploading = frontUploading || rearUploading || otherUploading;
 
   const intraTaxOptions = useMemo(
@@ -1414,7 +1421,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
         <h1 className="text-lg font-semibold tracking-tight">{isEdit ? "Edit Item" : "New Item"}</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push("/items")} disabled={saving}>
+          <Button variant="outline" size="sm" onClick={() => router.push(returnUrl)} disabled={saving}>
             Cancel
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving || uploading}>

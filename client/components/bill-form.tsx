@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, Fragment, useMemo, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { 
    Plus, Search, Loader2, X, ChevronDown, GripVertical, Settings2, Upload, 
    Trash2, Info, CircleDot, ExternalLink, ShoppingBag as ShoppingBagIcon 
@@ -532,7 +532,7 @@ function ItemSelectorPopup({
    const normalizedQuery = q.trim().toLowerCase();
    const exactExists = normalizedQuery.length > 0
       && items.some((i) => i.name.trim().toLowerCase() === normalizedQuery);
-   const canCreate = Boolean(onCreateItem) && normalizedQuery.length > 0 && !exactExists;
+   const canCreate = Boolean(onCreateItem) && !exactExists;
 
    return (
       <div className="w-full overflow-hidden">
@@ -562,22 +562,21 @@ function ItemSelectorPopup({
                </button>
             ))}
          </div>
-         <div className="p-2 border-t">
+         <div className="p-2 border-t text-center">
             <button
                type="button"
-               className="text-xs text-primary hover:underline disabled:opacity-60 disabled:no-underline"
+               className="text-xs font-semibold text-primary hover:underline disabled:opacity-60 disabled:no-underline"
                disabled={!canCreate}
                onClick={() => {
-                  const nextName = q.trim();
-                  if (!nextName || !onCreateItem) return;
-                  void onCreateItem(nextName);
+                  if (!onCreateItem) return;
+                  void onCreateItem(q.trim());
                }}
             >
                {exactExists
                   ? "Item already exists"
                   : q.trim()
                      ? `+ Create \"${q.trim()}\"`
-                     : "+ Add New Item"}
+                     : "+ Create New Item"}
             </button>
          </div>
       </div>
@@ -654,7 +653,7 @@ function VendorSearchDialog({
    onClose: () => void;
    vendors: Contact[];
    onSelect: (vendor: Contact) => void;
-   onCreateNew: () => void;
+   onCreateNew: (qName: string) => void;
 }) {
    const [q, setQ] = useState("");
 
@@ -715,7 +714,7 @@ function VendorSearchDialog({
                   className="gap-1"
                   onClick={() => {
                      onClose();
-                     onCreateNew();
+                     onCreateNew(q.trim());
                   }}
                >
                   <Plus className="h-3.5 w-3.5" />
@@ -935,16 +934,26 @@ export function BillForm(props: BillFormProps) {
 }
 
 export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFormProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const cloneId = searchParams.get("clone");
-  const defaultVendorId = searchParams.get("vendorId");
+  const defaultVendorId = searchParams.get("vendorId") || searchParams.get("newVendorId");
   const defaultPurchaseOrderId = searchParams.get("purchaseOrderId");
   const shouldAutoImportFromPurchaseOrder = searchParams.get("autoImport") === "1";
   const [saving, setSaving] = useState(false);
-  const [loadingClone, setLoadingClone] = useState(!!cloneId);
+  const [loadingClone, setLoadingClone] = useState(false);
   
   // Basic Fields
-  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || defaultVendorId || "");
+  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || "");
+
+  useEffect(() => {
+     if (!initialData && defaultVendorId) {
+        setVendorId(defaultVendorId);
+     }
+     if (cloneId) {
+        setLoadingClone(true);
+     }
+  }, [initialData, defaultVendorId, cloneId]);
   const [billNumber, setBillNumber] = useState(initialData?.billNumber || "");
    const [referenceNumber, setReferenceNumber] = useState(initialData?.referenceNumber || "");
   const [orderNumber, setOrderNumber] = useState(initialData?.orderNumber || "");
@@ -989,6 +998,90 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
    const [showCreateVendor, setShowCreateVendor] = useState(false);
    const [showCreateLineTax, setShowCreateLineTax] = useState(false);
    const [pendingTaxRowId, setPendingTaxRowId] = useState<string | null>(null);
+
+    const [pendingItemSelection, setPendingItemSelection] = useState<{ rowId: string; itemId: string; rows: LineRow[] } | null>(null);
+
+    const saveDraftToLocalStorage = (pendingRowId?: string) => {
+       const draft = {
+          vendorId,
+          billNumber,
+          referenceNumber,
+          orderNumber,
+          billDate,
+          dueDate,
+          paymentTermsId,
+          accountsPayableId,
+          subject,
+          discountLevel,
+          discountAccountId,
+          discountType,
+          discountPercent,
+          rows,
+          taxType,
+          tdsId,
+          tcsId,
+          adjustmentLabel,
+          adjustmentAmount,
+          notes,
+          terms,
+          attachments,
+          pendingRowId,
+       };
+       localStorage.setItem("draft_bill_form", JSON.stringify(draft));
+    };
+
+    useEffect(() => {
+       const saved = localStorage.getItem("draft_bill_form");
+       if (saved) {
+          try {
+             const draft = JSON.parse(saved);
+             if (draft.vendorId) setVendorId(draft.vendorId);
+             if (draft.billNumber) setBillNumber(draft.billNumber);
+             if (draft.referenceNumber) setReferenceNumber(draft.referenceNumber);
+             if (draft.orderNumber) setOrderNumber(draft.orderNumber);
+             if (draft.billDate) setBillDate(draft.billDate);
+             if (draft.dueDate) setDueDate(draft.dueDate);
+             if (draft.paymentTermsId) setPaymentTermsId(draft.paymentTermsId);
+             if (draft.accountsPayableId) setAccountsPayableId(draft.accountsPayableId);
+             if (draft.subject) setSubject(draft.subject);
+             if (draft.discountLevel) setDiscountLevel(draft.discountLevel);
+             if (draft.discountAccountId) setDiscountAccountId(draft.discountAccountId);
+             if (draft.discountType) setDiscountType(draft.discountType);
+             if (draft.discountPercent !== undefined) setDiscountPercent(draft.discountPercent);
+             if (draft.rows) setRows(draft.rows);
+             if (draft.taxType) setTaxType(draft.taxType);
+             if (draft.tdsId) setTdsId(draft.tdsId);
+             if (draft.tcsId) setTcsId(draft.tcsId);
+             if (draft.adjustmentLabel) setAdjustmentLabel(draft.adjustmentLabel);
+             if (draft.adjustmentAmount !== undefined) setAdjustmentAmount(draft.adjustmentAmount);
+             if (draft.notes) setNotes(draft.notes);
+             if (draft.terms) setTerms(draft.terms);
+             if (draft.attachments) setAttachments(draft.attachments);
+
+             const urlParams = new URLSearchParams(window.location.search);
+             const newVendorId = urlParams.get("newVendorId");
+             const createdItemId = urlParams.get("createdItemId");
+
+             if (newVendorId) {
+                setVendorId(newVendorId);
+             }
+
+             if (createdItemId && draft.pendingRowId && draft.rows) {
+                setPendingItemSelection({
+                   rowId: draft.pendingRowId,
+                   itemId: createdItemId,
+                   rows: draft.rows,
+                });
+             }
+          } catch (e) {
+             console.error("Error restoring draft bill form", e);
+          } finally {
+             localStorage.removeItem("draft_bill_form");
+             const cleanUrl = window.location.pathname + (defaultPurchaseOrderId ? `?purchaseOrderId=${defaultPurchaseOrderId}` : "");
+             window.history.replaceState({}, document.title, cleanUrl);
+          }
+       }
+    }, [defaultPurchaseOrderId]);
 
   // Initialize from initialData or newRow
   useEffect(() => {
@@ -1051,9 +1144,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
      const loadData = async () => {
         try {
            const [vRes, cRes, iRes, ptRes, accRes, gstTaxRes, tdsRes, tcsRes] = await Promise.all([
-              contactApi.list({ type: "Vendor" }),
-              contactApi.list({ type: "Customer" }),
-              itemApi.list(),
+              contactApi.list({ type: "Vendor", limit: 1000 }),
+              contactApi.list({ type: "Customer", limit: 1000 }),
+              itemApi.list({ limit: 1000 }),
               settingsApi.paymentTerms.list(),
               accountApi.list({ excludeGroups: true }),
               settingsApi.taxes.list(),
@@ -1150,7 +1243,8 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
   const tdsAmount = taxType === "TDS" && selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0;
   const tcsAmount = taxType === "TCS" && selectedTcs ? ((subTotal - discountAmt + adjustmentAmount) * selectedTcs.rate) / 100 : 0;
-  const total = subTotal - discountAmt - tdsAmount + tcsAmount + adjustmentAmount;
+  const lineTaxesSum = rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + (r.amount * (r.taxRate || 0)) / 100, 0);
+  const total = subTotal - discountAmt + lineTaxesSum - tdsAmount + tcsAmount + adjustmentAmount;
 
    const gstGroupTaxes = useMemo(
       () => lineTaxes
@@ -1213,8 +1307,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
       });
    }
 
-   function handleSelectItem(rowId: string, item: Item) {
-      const row = rows.find((entry) => entry.id === rowId);
+   function handleSelectItem(rowId: string, item: Item, currentRows?: LineRow[]) {
+      const activeRows = currentRows || rows;
+      const row = activeRows.find((entry) => entry.id === rowId);
       const purchaseAccountId = typeof item.purchaseAccountId === "object"
          ? (item.purchaseAccountId as any)?._id || ""
          : item.purchaseAccountId || "";
@@ -1233,6 +1328,16 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          unit: itemUnitLabel(item),
       });
    }
+
+   useEffect(() => {
+      if (pendingItemSelection && items.length > 0) {
+         const selectedItem = items.find((i) => i._id === pendingItemSelection.itemId);
+         if (selectedItem) {
+            handleSelectItem(pendingItemSelection.rowId, selectedItem, pendingItemSelection.rows);
+            setPendingItemSelection(null);
+         }
+      }
+   }, [items, pendingItemSelection]);
 
    function handleLinkPurchaseOrder(poId: string) {
       setLinkedPurchaseOrderId(poId);
@@ -1651,7 +1756,8 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                      onChange={(e) => {
                         const next = e.target.value;
                         if (next === NEW_VENDOR_OPTION) {
-                           setShowCreateVendor(true);
+                           saveDraftToLocalStorage();
+                           router.push(`/purchases/vendors/new?redirect=${encodeURIComponent(window.location.pathname)}`);
                            return;
                         }
                         const selectedVendor = vendors.find((v) => v._id === next);
@@ -1878,7 +1984,10 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                                    }}
                                                    onCreateItem={async (name) => {
                                                       setItemSelectorRow(null);
-                                                      await handleCreateItemForRow(row.id, name);
+                                                      saveDraftToLocalStorage(row.id);
+                                                      const path = `/items/new?returnUrl=${encodeURIComponent(window.location.pathname)}`;
+                                                      const url = name ? `${path}&name=${encodeURIComponent(name)}` : path;
+                                                      router.push(url);
                                                    }}
                                                 />
                                              </DropdownMenuContent>
@@ -2076,6 +2185,12 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                         </DropdownMenu>
                      </div>
                      <span className="text-sm flex-1 text-right">{fmt(discountAmt)}</span>
+                  </div>
+               )}
+               {lineTaxesSum > 0 && (
+                  <div className="flex justify-between text-sm">
+                     <span className="text-muted-foreground">Tax</span>
+                     <span>+ {fmt(lineTaxesSum)}</span>
                   </div>
                )}
 
@@ -2308,7 +2423,10 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                onClose={() => setShowVendorSearch(false)}
                vendors={vendors}
                onSelect={(vendor) => setVendorId(vendor._id)}
-               onCreateNew={() => setShowCreateVendor(true)}
+               onCreateNew={(searchName) => {
+                  saveDraftToLocalStorage();
+                  router.push(`/purchases/vendors/new?redirect=${encodeURIComponent(window.location.pathname)}` + (searchName ? `&name=${encodeURIComponent(searchName)}` : ""));
+               }}
             />
             <QuickCreateVendorDialog
                open={showCreateVendor}
