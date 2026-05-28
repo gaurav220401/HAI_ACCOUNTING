@@ -361,8 +361,16 @@ export default function EditInvoicePage() {
     }
     setSaving(true);
     try {
+      let finalInvoiceNumber = invoiceNumber;
+      if (finalInvoiceNumber) {
+        const match = finalInvoiceNumber.match(/^(INV-\d+)(INV-.*)$/i);
+        if (match) {
+          finalInvoiceNumber = match[2];
+        }
+      }
+
       const payload: UpdateInvoiceInput = {
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         referenceNumber,
         orderNumber,
         customerId,

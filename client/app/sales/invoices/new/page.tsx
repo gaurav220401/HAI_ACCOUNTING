@@ -1322,8 +1322,16 @@ function NewInvoicePageContent() {
 
     setSaving(true);
     try {
+      let finalInvoiceNumber = invoiceNumber;
+      if (finalInvoiceNumber) {
+        const match = finalInvoiceNumber.match(/^(INV-\d+)(INV-.*)$/i);
+        if (match) {
+          finalInvoiceNumber = match[2];
+        }
+      }
+
       const payload: CreateInvoiceInput = {
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         orderNumber,
         customerId,
         invoiceDate,

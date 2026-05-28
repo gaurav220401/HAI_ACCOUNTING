@@ -472,8 +472,16 @@ export const create = asyncHandler(
       throw new ValidationError("At least one item is required");
     }
 
-    const invoiceNumber =
+    let invoiceNumber =
       req.body.invoiceNumber || (await nextInvoiceNumber(oid));
+
+    // Clean up potential duplicate concatenation if the user typed a custom number
+    if (typeof invoiceNumber === "string") {
+      const match = invoiceNumber.match(/^(INV-\d+)(INV-.*)$/i);
+      if (match) {
+        invoiceNumber = match[2];
+      }
+    }
     const items = await normalizeItems(oid, req.body.customerId, req.body.items || []);
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
@@ -619,6 +627,14 @@ export const update = asyncHandler(
       "paidAt",
       "balanceDue",
     ];
+
+
+    if (typeof req.body.invoiceNumber === "string") {
+      const match = req.body.invoiceNumber.match(/^(INV-\d+)(INV-.*)$/i);
+      if (match) {
+        req.body.invoiceNumber = match[2];
+      }
+    }
 
     allowed.forEach((field) => {
       if (req.body[field] !== undefined)
