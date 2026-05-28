@@ -56,6 +56,14 @@ import {
 import { packageApi, type Package } from "@/lib/api/packages";
 
 type TabKey = "overview" | "packages" | "documents";
+type SalesOrderCustomerDetails = Exclude<SalesOrder["customerId"], string>;
+type OrganizationStateLike = { address?: { state?: string | null } } | null | undefined;
+
+function getSalesOrderCustomerDetails(
+  customer: SalesOrder["customerId"] | undefined,
+): SalesOrderCustomerDetails | null {
+  return customer && typeof customer === "object" ? customer : null;
+}
 
 function getCustomerName(
   customer: SalesOrder["customerId"] | null | undefined,
@@ -74,6 +82,74 @@ function getPaymentTermsName(
 function getLineItemName(lineItem: SalesOrder["lineItems"][number]): string {
   if (!lineItem.itemId || typeof lineItem.itemId === "string") return "";
   return lineItem.itemId.name || "";
+}
+
+function normalizeTaxText(value: unknown): string {
+  return String(value || "").trim().toUpperCase();
+}
+
+function formatNumber(value: number): string {
+  return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+}
+
+function formatTaxRate(value: number): string {
+  return Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+function getLineTaxMode(lineItem: SalesOrder["lineItems"][number]): "igst" | "gst" {
+  const tax = lineItem.taxId;
+  if (tax && typeof tax === "object") {
+    const name = normalizeTaxText(tax.name);
+    const authority = normalizeTaxText(tax.taxAuthority);
+    if (authority === "IGST" || name.startsWith("IGST")) return "igst";
+  }
+  return "gst";
+}
+
+function usesOnlyIgstTax(lineItems: SalesOrder["lineItems"]): boolean {
+  const taxableLines = lineItems.filter((line) => Number(line.taxAmount || 0) > 0);
+  return taxableLines.length > 0 && taxableLines.every((line) => getLineTaxMode(line) === "igst");
+}
+
+function getSalesOrderTaxSummaryRows(lineItems: SalesOrder["lineItems"]) {
+  const rows = new Map<string, number>();
+
+  const addRow = (label: string, amount: number) => {
+    rows.set(label, (rows.get(label) || 0) + amount);
+  };
+
+  lineItems.forEach((line) => {
+    const taxAmount = Number(line.taxAmount || 0);
+    const taxPercent = Number(line.taxPercent || 0);
+    if (taxAmount <= 0) return;
+
+    if (getLineTaxMode(line) === "igst") {
+      addRow(taxPercent > 0 ? `IGST (${formatTaxRate(taxPercent)}%)` : "IGST", taxAmount);
+      return;
+    }
+
+    const halfPercent = taxPercent / 2;
+    const cgstLabel = taxPercent > 0 ? `CGST (${formatTaxRate(halfPercent)}%)` : "CGST";
+    const sgstLabel = taxPercent > 0 ? `SGST (${formatTaxRate(halfPercent)}%)` : "SGST";
+    addRow(cgstLabel, taxAmount / 2);
+    addRow(sgstLabel, taxAmount / 2);
+  });
+
+  return Array.from(rows.entries()).map(([label, amount]) => ({ label, amount }));
+}
+
+function getSalesOrderPlaceOfSupply(
+  order: Partial<SalesOrder> | null | undefined,
+  organization: OrganizationStateLike,
+): string {
+  const customer = getSalesOrderCustomerDetails(order?.customerId);
+  return (
+    customer?.placeOfSupply ||
+    customer?.shippingAddress?.state ||
+    customer?.billingAddress?.state ||
+    organization?.address?.state ||
+    "State"
+  );
 }
 
 function getConvertedInvoiceId(
@@ -100,6 +176,15 @@ function formatQty(value: number | null | undefined) {
   return Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
+}
+
 function statusVariant(status: SalesOrderStatus) {
   if (status === "DRAFT") return "secondary" as const;
   if (status === "OVERDUE") return "destructive" as const;
@@ -120,7 +205,7 @@ const VALID_SALES_ORDER_STATUSES: SalesOrderStatus[] = [
 ];
 
 function salesOrderStatusOf(order: Partial<SalesOrder> | null | undefined): SalesOrderStatus {
-  const raw = String((order as any)?.status || "").toUpperCase();
+  const raw = String(order?.status || "").toUpperCase();
   if (VALID_SALES_ORDER_STATUSES.includes(raw as SalesOrderStatus)) {
     return raw as SalesOrderStatus;
   }
@@ -128,13 +213,13 @@ function salesOrderStatusOf(order: Partial<SalesOrder> | null | undefined): Sale
 }
 
 function invoiceStatusOf(order: Partial<SalesOrder> | null | undefined): "Invoiced" | "Not Invoiced" {
-  const raw = String((order as any)?.invoiceStatus || "");
+  const raw = String(order?.invoiceStatus || "");
   if (raw === "Invoiced" || raw === "Not Invoiced") return raw;
-  return (order as any)?.invoiceId ? "Invoiced" : "Not Invoiced";
+  return order?.invoiceId ? "Invoiced" : "Not Invoiced";
 }
 
 function shipmentStatusOf(order: Partial<SalesOrder> | null | undefined): "Pending" | "Shipped" | "Delivered" {
-  const raw = String((order as any)?.shipmentStatus || "");
+  const raw = String(order?.shipmentStatus || "");
   if (raw === "Pending" || raw === "Shipped" || raw === "Delivered") return raw;
   return "Pending";
 }
@@ -145,11 +230,11 @@ function normalizeSalesOrder(order: SalesOrder): SalesOrder {
     status: salesOrderStatusOf(order),
     invoiceStatus: invoiceStatusOf(order),
     shipmentStatus: shipmentStatusOf(order),
-    lineItems: Array.isArray((order as any)?.lineItems) ? order.lineItems : [],
-    subTotal: Number((order as any)?.subTotal || 0),
-    shippingCharges: Number((order as any)?.shippingCharges || 0),
-    adjustment: Number((order as any)?.adjustment || 0),
-    total: Number((order as any)?.total || 0),
+    lineItems: Array.isArray(order.lineItems) ? order.lineItems : [],
+    subTotal: Number(order.subTotal || 0),
+    shippingCharges: Number(order.shippingCharges || 0),
+    adjustment: Number(order.adjustment || 0),
+    total: Number(order.total || 0),
   };
 }
 
@@ -164,7 +249,7 @@ interface SendEmailModalProps {
 
 function SendEmailModal({ open, onClose, order, onSent }: SendEmailModalProps) {
   const name = getCustomerName(order.customerId);
-  const customerEmail = (order.customerId as any)?.email || "";
+  const customerEmail = getSalesOrderCustomerDetails(order.customerId)?.email || "";
   const { activeOrganization } = useOrganization();
 
   const [to, setTo] = useState(customerEmail);
@@ -173,22 +258,32 @@ function SendEmailModal({ open, onClose, order, onSent }: SendEmailModalProps) {
   const [subject, setSubject] = useState(
     `Sales Order - ${order.salesOrderNumber} from ${activeOrganization?.name || "HAI"}`,
   );
+  const taxSummaryLines = getSalesOrderTaxSummaryRows(order.lineItems)
+    .map((row) => `- ${row.label}: Rs. ${formatNumber(row.amount)}`)
+    .join("\n");
   
-  const defaultBody = `Dear ${name},
-
-Thanks for your business. Please find our sales order (${order.salesOrderNumber}) attached for your reference.
-
-Order Summary:
-- Number: ${order.salesOrderNumber}
-- Date: ${formatDate(order.orderDate)}
-- Sub Total: ₹${Number(order.subTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-${(order.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) > 0) ? `- CGST: ₹${Number(order.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}\n- SGST: ₹${Number(order.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : ""}${(order.shippingCharges + order.adjustment !== 0) ? `\n- Shipping & Adj: ₹${Number(order.shippingCharges + order.adjustment).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : ""}
-- Total Amount: ₹${Number(order.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-
-Assuring you of our best services at all times.
-
-Regards,
-${activeOrganization?.name || "HAI"}`;
+  const defaultBody = [
+    `Dear ${name},`,
+    "",
+    `Thanks for your business. Please find our sales order (${order.salesOrderNumber}) attached for your reference.`,
+    "",
+    "Order Summary:",
+    `- Number: ${order.salesOrderNumber}`,
+    `- Date: ${formatDate(order.orderDate)}`,
+    `- Sub Total: Rs. ${formatNumber(order.subTotal)}`,
+    ...(taxSummaryLines ? taxSummaryLines.split("\n") : []),
+    ...(
+      order.shippingCharges + order.adjustment !== 0 ?
+        [`- Shipping & Adj: Rs. ${formatNumber(order.shippingCharges + order.adjustment)}`]
+      : []
+    ),
+    `- Total Amount: Rs. ${formatNumber(order.total)}`,
+    "",
+    "Assuring you of our best services at all times.",
+    "",
+    "Regards,",
+    activeOrganization?.name || "HAI",
+  ].join("\n");
 
   const [body, setBody] = useState(defaultBody);
   const [attachPdf, setAttachPdf] = useState(true);
@@ -217,8 +312,8 @@ ${activeOrganization?.name || "HAI"}`;
       toast.success(`Email sent to ${toList.length} recipient(s)`);
       onSent();
       onClose();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send email");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to send email"));
     } finally {
       setSending(false);
     }
@@ -350,7 +445,6 @@ export default function SalesOrderDetailsPage() {
     if (firebaseUser && !loading) {
       void fetchOrders();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading]);
 
   useEffect(() => {
@@ -424,8 +518,8 @@ export default function SalesOrderDetailsPage() {
       if (invoiceId) {
         router.push(`/sales/invoices/${invoiceId}`);
       }
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to create instant invoice");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to create instant invoice"));
     }
   }
 
@@ -440,8 +534,8 @@ export default function SalesOrderDetailsPage() {
       await salesOrderApi.dropship(active._id);
       toast.success("Order marked as dropship");
       await fetchOrders();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to mark dropship");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to mark dropship"));
     }
   }
 
@@ -452,8 +546,8 @@ export default function SalesOrderDetailsPage() {
       await salesOrderApi.cancelItems(active._id);
       toast.success("Sales order items cancelled");
       await fetchOrders();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to cancel items");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to cancel items"));
     }
   }
 
@@ -464,8 +558,8 @@ export default function SalesOrderDetailsPage() {
       await salesOrderApi.voidOrder(active._id);
       toast.success("Sales order voided");
       await fetchOrders();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to void sales order");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to void sales order"));
     }
   }
 
@@ -480,8 +574,8 @@ export default function SalesOrderDetailsPage() {
       } else {
         await fetchOrders();
       }
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to clone sales order");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to clone sales order"));
     }
   }
 
@@ -492,7 +586,7 @@ export default function SalesOrderDetailsPage() {
       await salesOrderApi.remove(active._id);
       toast.success("Sales order deleted successfully");
       router.push("/sales/orders");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete sales order");
     }
   }
@@ -533,8 +627,8 @@ export default function SalesOrderDetailsPage() {
       await salesOrderApi.markShipmentFulfilled(active._id);
       toast.success("Shipment marked as fulfilled");
       await fetchOrders();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to mark shipment as fulfilled");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, "Failed to mark shipment as fulfilled"));
     } finally {
       setFulfilling(false);
     }
@@ -551,6 +645,9 @@ export default function SalesOrderDetailsPage() {
   const activeInvoiceStatus = invoiceStatusOf(active);
   const activeShipmentStatus = shipmentStatusOf(active);
   const activeStatus = salesOrderStatusOf(active);
+  const activeTaxRows = getSalesOrderTaxSummaryRows(active?.lineItems || []);
+  const activeUsesIgstColumns = active ? usesOnlyIgstTax(active.lineItems) : false;
+  const activePlaceOfSupply = getSalesOrderPlaceOfSupply(active, activeOrganization);
 
   return (
     <SidebarProvider>
@@ -1020,7 +1117,7 @@ export default function SalesOrderDetailsPage() {
                            </div>
 
                            <div className="mt-8 text-sm font-medium border-t border-b py-3 text-gray-800">
-                             Place Of Supply: <span className="font-normal text-gray-600">{activeOrganization?.address?.state || "State"}</span>
+                             Place Of Supply: <span className="font-normal text-gray-600">{activePlaceOfSupply}</span>
                            </div>
 
                            <table className="w-full mt-6 text-sm">
@@ -1032,8 +1129,14 @@ export default function SalesOrderDetailsPage() {
                                  <th className="px-4 py-2.5 text-right font-semibold">Qty</th>
                                  <th className="px-4 py-2.5 text-right font-semibold">Rate</th>
                                  <th className="px-4 py-2.5 text-right font-semibold">GST%</th>
-                                 <th className="px-4 py-2.5 text-right font-semibold">CGST</th>
-                                 <th className="px-4 py-2.5 text-right font-semibold">SGST</th>
+                                 {activeUsesIgstColumns ? (
+                                   <th className="px-4 py-2.5 text-right font-semibold" colSpan={2}>IGST</th>
+                                 ) : (
+                                   <>
+                                     <th className="px-4 py-2.5 text-right font-semibold">CGST</th>
+                                     <th className="px-4 py-2.5 text-right font-semibold">SGST</th>
+                                   </>
+                                 )}
                                  <th className="px-4 py-2.5 text-right font-semibold">Amount</th>
                                </tr>
                              </thead>
@@ -1051,9 +1154,15 @@ export default function SalesOrderDetailsPage() {
                                    </td>
                                    <td className="px-4 py-3 text-right text-gray-900 align-top">{Number(li.rate).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                                    <td className="px-4 py-3 text-right text-gray-700 align-top">{li.taxPercent || 0}%</td>
-                                   <td className="px-4 py-3 text-right text-gray-900 align-top">{Number((li.taxAmount || 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                                   <td className="px-4 py-3 text-right text-gray-900 align-top">{Number((li.taxAmount || 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                                   <td className="px-4 py-3 text-right text-gray-900 align-top font-medium">{Number(li.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                   {activeUsesIgstColumns ? (
+                                     <td className="px-4 py-3 text-right text-gray-900 align-top" colSpan={2}>{formatNumber(li.taxAmount || 0)}</td>
+                                   ) : (
+                                     <>
+                                       <td className="px-4 py-3 text-right text-gray-900 align-top">{formatNumber((li.taxAmount || 0) / 2)}</td>
+                                       <td className="px-4 py-3 text-right text-gray-900 align-top">{formatNumber((li.taxAmount || 0) / 2)}</td>
+                                     </>
+                                   )}
+                                   <td className="px-4 py-3 text-right text-gray-900 align-top font-medium">{formatNumber(li.amount)}</td>
                                  </tr>
                                ))}
                              </tbody>
@@ -1063,36 +1172,29 @@ export default function SalesOrderDetailsPage() {
                              <div className="w-[300px] text-sm">
                                <div className="flex justify-between py-1.5">
                                  <div className="text-gray-600">Sub Total</div>
-                                 <div className="font-medium text-gray-900">{Number(active.subTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                                 <div className="font-medium text-gray-900">{formatNumber(active.subTotal)}</div>
                                </div>
                                {active.shippingCharges > 0 && (
                                  <div className="flex justify-between py-1.5">
                                    <div className="text-gray-600">Shipping Charges</div>
-                                   <div className="font-medium text-gray-900">{Number(active.shippingCharges).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                                   <div className="font-medium text-gray-900">{formatNumber(active.shippingCharges)}</div>
                                  </div>
                                )}
                                {active.adjustment !== 0 && (
                                  <div className="flex justify-between py-1.5">
                                    <div className="text-gray-600">Adjustment</div>
-                                   <div className="font-medium text-gray-900">{Number(active.adjustment).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                                   <div className="font-medium text-gray-900">{formatNumber(active.adjustment)}</div>
                                  </div>
                                )}
-                               {/* Display taxes if any */}
-                               {active.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) > 0 && (
-                                 <>
-                                   <div className="flex justify-between py-1.5">
-                                     <div className="text-gray-600">CGST</div>
-                                     <div className="font-medium text-gray-900">{Number(active.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
-                                   </div>
-                                   <div className="flex justify-between py-1.5">
-                                     <div className="text-gray-600">SGST</div>
-                                     <div className="font-medium text-gray-900">{Number(active.lineItems.reduce((acc, curr) => acc + (curr.taxAmount || 0), 0) / 2).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
-                                   </div>
-                                 </>
-                               )}
+                               {activeTaxRows.map((row) => (
+                                 <div key={row.label} className="flex justify-between py-1.5">
+                                   <div className="text-gray-600">{row.label}</div>
+                                   <div className="font-medium text-gray-900">{formatNumber(row.amount)}</div>
+                                 </div>
+                               ))}
                                <div className="flex justify-between py-3 border-t border-b border-gray-200 mt-2 bg-gray-50 px-2 rounded">
                                  <div className="font-bold text-gray-900">Total</div>
-                                 <div className="font-bold text-gray-900">₹{Number(active.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                                 <div className="font-bold text-gray-900">Rs. {formatNumber(active.total)}</div>
                                </div>
                              </div>
                            </div>

@@ -342,7 +342,7 @@ export const getOne = asyncHandler(
       .populate("salesPersonId")
       .populate("paymentTermsId")
       .populate("items.itemId", "name sku")
-      .populate("items.taxId", "name rate")
+      .populate("items.taxId", "name rate taxAuthority taxType")
       .populate("taxId", "name rate");
 
     if (!invoice) throw new NotFoundError("Invoice");
@@ -363,6 +363,7 @@ export const downloadPdf = asyncHandler(
       .populate("customerId", "displayName companyName email billingAddress")
       .populate("paymentTermsId", "name netDays")
       .populate("items.itemId", "name sku hsnSacCode")
+      .populate("items.taxId", "name rate taxAuthority taxType")
       .lean();
 
     if (!invoice) throw new NotFoundError("Invoice");
@@ -428,6 +429,7 @@ export const downloadPdf = asyncHandler(
         discountAmount: Number(item.discountAmount || 0),
         taxPercent: Number(item.taxPercent || 0),
         taxAmount: Number(item.taxAmount || 0),
+        taxName: typeof item.taxId === "object" ? item.taxId?.name : "",
         amount: Number(item.amount || 0),
       })),
 
@@ -867,7 +869,7 @@ export const sendInvoiceEmail = asyncHandler(
     // Populate customer and line-item references for name + PDF
     await invoice.populate([
       { path: "customerId" },
-      { path: "items.taxId", select: "name rate" },
+      { path: "items.taxId", select: "name rate taxAuthority taxType" },
       { path: "paymentTermsId", select: "name" },
     ]);
 
@@ -933,6 +935,7 @@ export const sendInvoiceEmail = asyncHandler(
           discountAmount: item.discountAmount,
           taxPercent: item.taxPercent,
           taxAmount: item.taxAmount,
+          taxName: typeof item.taxId === "object" ? item.taxId?.name : "",
           amount: item.amount,
         })),
 

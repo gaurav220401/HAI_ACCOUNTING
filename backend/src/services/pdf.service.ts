@@ -11,6 +11,7 @@ export interface InvoiceItemRow {
   discountAmount?: number;
   taxPercent?: number;
   taxAmount?: number;
+  taxName?: string;
   amount: number;
 }
 
@@ -276,6 +277,16 @@ function fmtDate(d: string): string {
   });
 }
 
+function invoiceItemTaxMode(item: InvoiceItemRow): "igst" | "gst" {
+  const taxName = String(item.taxName || "").trim().toUpperCase();
+  return taxName.startsWith("IGST") ? "igst" : "gst";
+}
+
+function usesOnlyIgstTaxColumns(items: InvoiceItemRow[]): boolean {
+  const taxableItems = items.filter((item) => Number(item.taxAmount || 0) > 0);
+  return taxableItems.length > 0 && taxableItems.every((item) => invoiceItemTaxMode(item) === "igst");
+}
+
 async function fetchImageBuffer(url?: string): Promise<Buffer | null> {
   if (!url) return null;
   try {
@@ -400,6 +411,8 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
       canRenderRupee ? (data.currencySymbol ?? "₹")
       : data.currencySymbol === "₹" || !data.currencySymbol ? "Rs."
       : data.currencySymbol;
+
+    const useIgstColumns = usesOnlyIgstTaxColumns(data.items);
 
     const pageW = doc.page.width - 100; // content width after margins
     const left = 50;
@@ -528,15 +541,24 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
       })
       .text("HSN/SAC", colHsn, y + 5, { width: 45, align: "center" })
       .text("Qty", colQty, y + 5, { width: 35, align: "right" })
-      .text("Rate", colRate, y + 5, { width: 43, align: "right" })
-      .text("CGST %", colCgstRate, y + 5, { width: 30, align: "right" })
-      .text("CGST Amt", colCgstAmt, y + 5, { width: 40, align: "right" })
-      .text("SGST %", colSgstRate, y + 5, { width: 30, align: "right" })
-      .text("SGST Amt", colSgstAmt, y + 5, { width: 40, align: "right" })
-      .text("Amount", colAmt, y + 5, {
-        width: right - colAmt,
-        align: "right",
-      });
+      .text("Rate", colRate, y + 5, { width: 43, align: "right" });
+
+    if (useIgstColumns) {
+      doc
+        .text("IGST %", colCgstRate, y + 5, { width: 72, align: "right" })
+        .text("IGST Amt", colSgstRate, y + 5, { width: 78, align: "right" });
+    } else {
+      doc
+        .text("CGST %", colCgstRate, y + 5, { width: 30, align: "right" })
+        .text("CGST Amt", colCgstAmt, y + 5, { width: 40, align: "right" })
+        .text("SGST %", colSgstRate, y + 5, { width: 30, align: "right" })
+        .text("SGST Amt", colSgstAmt, y + 5, { width: 40, align: "right" });
+    }
+
+    doc.text("Amount", colAmt, y + 5, {
+      width: right - colAmt,
+      align: "right",
+    });
 
     y += rowH;
     doc
@@ -575,27 +597,42 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
         .text(fmtNum(item.rate), colRate, textY, {
           width: 43,
           align: "right",
-        })
-        .text(taxPercent > 0 ? fmtNum(halfTaxPercent) : "-", colCgstRate, textY, {
-          width: 30,
-          align: "right",
-        })
-        .text(taxPercent > 0 ? fmtNum(halfTaxAmount) : "-", colCgstAmt, textY, {
-          width: 40,
-          align: "right",
-        })
-        .text(taxPercent > 0 ? fmtNum(halfTaxPercent) : "-", colSgstRate, textY, {
-          width: 30,
-          align: "right",
-        })
-        .text(taxPercent > 0 ? fmtNum(halfTaxAmount) : "-", colSgstAmt, textY, {
-          width: 40,
-          align: "right",
-        })
-        .text(fmtNum(taxableAmount), colAmt, textY, {
-          width: right - colAmt,
-          align: "right",
         });
+
+      if (useIgstColumns) {
+        doc
+          .text(taxPercent > 0 ? fmtNum(taxPercent) : "-", colCgstRate, textY, {
+            width: 72,
+            align: "right",
+          })
+          .text(taxPercent > 0 ? fmtNum(taxAmount) : "-", colSgstRate, textY, {
+            width: 78,
+            align: "right",
+          });
+      } else {
+        doc
+          .text(taxPercent > 0 ? fmtNum(halfTaxPercent) : "-", colCgstRate, textY, {
+            width: 30,
+            align: "right",
+          })
+          .text(taxPercent > 0 ? fmtNum(halfTaxAmount) : "-", colCgstAmt, textY, {
+            width: 40,
+            align: "right",
+          })
+          .text(taxPercent > 0 ? fmtNum(halfTaxPercent) : "-", colSgstRate, textY, {
+            width: 30,
+            align: "right",
+          })
+          .text(taxPercent > 0 ? fmtNum(halfTaxAmount) : "-", colSgstAmt, textY, {
+            width: 40,
+            align: "right",
+          });
+      }
+
+      doc.text(fmtNum(taxableAmount), colAmt, textY, {
+        width: right - colAmt,
+        align: "right",
+      });
 
       y += rowH;
 
@@ -628,6 +665,12 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
       const taxPercent = Number(item.taxPercent || 0);
       const taxAmount = Number(item.taxAmount || 0);
       if (taxPercent <= 0 || taxAmount <= 0) return acc;
+
+      if (invoiceItemTaxMode(item) === "igst") {
+        const igstLabel = `IGST (${fmtNum(taxPercent)}%)`;
+        acc[igstLabel] = (acc[igstLabel] || 0) + taxAmount;
+        return acc;
+      }
 
       const halfTaxPercent = taxPercent / 2;
       const cgstLabel = `CGST (${fmtNum(halfTaxPercent)}%)`;
@@ -1437,6 +1480,7 @@ export function generateSalesOrderPdf(params: {
       : new Date().toISOString(),
     items: (order.lineItems || []).map((li: any) => {
       const itemRef = typeof li.itemId === "object" ? li.itemId : null;
+      const taxRef = typeof li.taxId === "object" ? li.taxId : null;
       const quantity = Number(li.quantity) || 0;
       const rate = Number(li.rate) || 0;
       const taxPercent = Number(li.taxPercent) || 0;
@@ -1453,6 +1497,7 @@ export function generateSalesOrderPdf(params: {
         discountAmount: Number(li.discountAmount ?? li.discount) || 0,
         taxPercent,
         taxAmount: computedTaxAmt,
+        taxName: taxRef?.name || li.taxName || "",
         amount: Number(li.amount) || 0,
       };
     }),

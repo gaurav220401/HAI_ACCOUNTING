@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Plus, Trash2, Send } from "lucide-react";
 
@@ -32,6 +32,7 @@ import {
 
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
 import {
   salesOrderApi,
@@ -53,6 +54,7 @@ type LineItemUi = {
   discount: string;
   taxId: string | null;
   taxPercent: string;
+  taxIsManual?: boolean;
   amount: number;
 };
 
@@ -67,6 +69,15 @@ function todayISO() {
 function genSoNumber() {
   const n = String(Date.now()).slice(-5);
   return `SO-${n}`;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 
 export default function NewSalesOrderPage() {
@@ -91,7 +102,6 @@ export default function NewSalesOrderPage() {
   const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [allTaxes, setAllTaxes] = useState<Tax[]>([]);
-  const [sendAfterSave, setSendAfterSave] = useState(false);
 
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
@@ -110,23 +120,10 @@ export default function NewSalesOrderPage() {
       discount: "0",
       taxId: "",
       taxPercent: "0",
+      taxIsManual: false,
       amount: 0,
     },
   ]);
-
-  // Set default tax for initial line once taxes are loaded
-  useEffect(() => {
-    if (allTaxes.length > 0 && lineItems.length === 1 && !lineItems[0].itemId && !lineItems[0].taxId) {
-      const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
-      if (gst18) {
-        setLineItems([{
-          ...lineItems[0],
-          taxId: gst18._id,
-          taxPercent: String(gst18.rate)
-        }]);
-      }
-    }
-  }, [allTaxes]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>("");
@@ -135,6 +132,7 @@ export default function NewSalesOrderPage() {
     () => new Map(items.map((item) => [item._id, item])),
     [items],
   );
+  const selectedCustomer = customers.find((customer) => customer._id === customerId);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -191,7 +189,7 @@ export default function NewSalesOrderPage() {
           selectedTax.components.forEach((comp) => {
             const compAmount = (amountBeforeTax * comp.rate) / 100;
             const compTax = allTaxes.find(t => t._id === comp.taxId);
-            const compName = compTax?.name || (comp as any).name || `Tax ${comp.rate}%`;
+            const compName = compTax?.name || comp.name || `Tax ${comp.rate}%`;
             const existing = breakdownMap.get(compName) || { name: compName, amount: 0, rate: comp.rate };
             existing.amount += compAmount;
             breakdownMap.set(compName, existing);
@@ -239,8 +237,20 @@ export default function NewSalesOrderPage() {
     setLineItems((prev) => prev.map((li) => (li.id === id ? recalcLine({ ...li, ...patch }) : li)));
   }
 
+  const getDefaultLineTax = useCallback((item: Item) => {
+    const linkedTax = getItemTaxForTransaction({
+      item,
+      contact: selectedCustomer,
+      organizationState: activeOrganization?.address?.state,
+      taxes: allTaxes,
+    });
+    return {
+      taxId: linkedTax.taxId || "",
+      taxPercent: linkedTax.taxPercent ? String(linkedTax.taxPercent) : "0",
+    };
+  }, [selectedCustomer, activeOrganization?.address?.state, allTaxes]);
+
   function addLine() {
-    const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
     setLineItems((prev) => [
       ...prev,
       recalcLine({
@@ -251,8 +261,9 @@ export default function NewSalesOrderPage() {
         quantity: "1",
         rate: "0",
         discount: "0",
-        taxId: gst18?._id || "",
-        taxPercent: gst18 ? String(gst18.rate) : "0",
+        taxId: "",
+        taxPercent: "0",
+        taxIsManual: false,
         amount: 0,
       }),
     ]);
@@ -273,7 +284,10 @@ export default function NewSalesOrderPage() {
         const rate = Number(li.rate);
         const disc = Number(li.discount) || 0;
         const selectedItem = itemsById.get(li.itemId);
-        const taxId = li.taxId && li.taxId !== "none" ? li.taxId : null;
+        const taxId =
+          li.taxId && li.taxId !== "none" ? li.taxId
+          : li.taxIsManual ? "none"
+          : null;
         return {
           itemId: li.itemId,
           name: selectedItem?.name || "",
@@ -314,6 +328,28 @@ export default function NewSalesOrderPage() {
     };
   }
 
+  useEffect(() => {
+    if (!lineItems.some((line) => line.itemId && !line.taxIsManual)) return;
+    setLineItems((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        if (!line.itemId || line.taxIsManual) return line;
+        const item = itemsById.get(line.itemId);
+        if (!item) return line;
+        const linkedTax = getDefaultLineTax(item);
+        if (
+          (line.taxId || "") === linkedTax.taxId &&
+          String(line.taxPercent || "0") === linkedTax.taxPercent
+        ) {
+          return line;
+        }
+        changed = true;
+        return recalcLine({ ...line, ...linkedTax });
+      });
+      return changed ? next : prev;
+    });
+  }, [getDefaultLineTax, itemsById, lineItems]);
+
   async function onSaveDraft() {
     const payload = buildPayload("DRAFT");
     if (!payload) return;
@@ -321,8 +357,8 @@ export default function NewSalesOrderPage() {
     try {
       await salesOrderApi.create(payload);
       router.push("/sales/orders");
-    } catch (e: any) {
-      setError(e?.message || "Failed to create sales order");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to create sales order"));
     } finally { setSaving(false); }
   }
 
@@ -338,8 +374,8 @@ export default function NewSalesOrderPage() {
       } else {
         router.push("/sales/orders");
       }
-    } catch (e: any) {
-      setError(e?.message || "Failed to create sales order");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to create sales order"));
     } finally { setSaving(false); }
   }
 
@@ -537,14 +573,13 @@ export default function NewSalesOrderPage() {
                                 value={li.itemId}
                                 onValueChange={(v) => {
                                   const selected = itemsById.get(v);
-                                  const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
+                                  const linkedTax = selected && !li.taxIsManual ? getDefaultLineTax(selected) : null;
                                   updateLine(li.id, {
                                     itemId: v,
                                     description: selected?.description || "",
                                     hsnSacCode: selected?.hsnSacCode || "",
                                     rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
-                                    taxId: li.taxId || gst18?._id || "",
-                                    taxPercent: li.taxId ? li.taxPercent : (gst18 ? String(gst18.rate) : "0"),
+                                    ...(linkedTax || {}),
                                   });
                                 }}
                               >
@@ -619,7 +654,8 @@ export default function NewSalesOrderPage() {
                                 const selectedTax = allTaxes.find(t => t._id === val);
                                 updateLine(li.id, { 
                                   taxId: val === "none" ? null : val, 
-                                  taxPercent: selectedTax ? String(selectedTax.rate) : "0" 
+                                  taxPercent: selectedTax ? String(selectedTax.rate) : "0",
+                                  taxIsManual: true,
                                 });
                               }}
                             >
@@ -713,7 +749,7 @@ export default function NewSalesOrderPage() {
                     <div className="pt-2 mt-2 border-t">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          {["none", "TDS", "TCS"].map((t) => (
+                          {(["none", "TDS", "TCS"] as const).map((t) => (
                             <label key={t} className={cn(
                               "flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors border",
                               taxType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input hover:bg-muted"
@@ -723,7 +759,7 @@ export default function NewSalesOrderPage() {
                                 name="taxType"
                                 value={t}
                                 checked={taxType === t}
-                                onChange={() => setTaxType(t as any)}
+                                onChange={() => setTaxType(t)}
                                 className="sr-only"
                               />
                               {t.toUpperCase()}

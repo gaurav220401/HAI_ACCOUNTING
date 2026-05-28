@@ -37,7 +37,10 @@ export interface SalesOrderLineItem {
   quantity: number;
   rate: number;
   discount?: number;
-  taxId?: string | { _id: string; name: string; rate?: number } | null;
+  taxId?:
+    | string
+    | { _id: string; name: string; rate?: number; taxAuthority?: string; taxType?: string }
+    | null;
   taxPercent?: number;
   taxAmount?: number;
   qtyInvoiced?: number;
@@ -57,6 +60,9 @@ export interface SalesOrder {
         displayName: string;
         companyName?: string;
         email?: string;
+        placeOfSupply?: string;
+        billingAddress?: { state?: string };
+        shippingAddress?: { state?: string };
       };
   salesOrderNumber: string;
   reference?: string;

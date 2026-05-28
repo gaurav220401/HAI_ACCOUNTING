@@ -1336,7 +1336,7 @@ export const sendEmail = asyncHandler(async (req: AuthenticatedRequest, res: Res
   const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any)
     .populate("customerId", "displayName email companyName")
     .populate("lineItems.itemId", "name hsnSacCode")
-    .populate("lineItems.taxId", "name rate");
+    .populate("lineItems.taxId", "name rate taxAuthority taxType");
 
   if (!order) throw new NotFoundError("Sales Order");
   if (String((order as any).status || "") === "VOID") {
@@ -1413,6 +1413,7 @@ export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: R
   } as any)
     .populate("customerId", "displayName companyName email billingAddress")
     .populate("lineItems.itemId", "name hsnSacCode")
+    .populate("lineItems.taxId", "name rate taxAuthority taxType")
     .lean();
 
   if (!order) throw new NotFoundError("Sales Order");
