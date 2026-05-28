@@ -165,10 +165,137 @@ function numberToWords(num: number): string {
   return res + "Only";
 }
 
+const DEFAULT_CONFIG = {
+  templateName: "Standard",
+  paperSize: "A4",
+  orientation: "Portrait",
+  margins: { top: 0.7, bottom: 0.7, left: 0.55, right: 0.4 },
+  fontFamily: "Inter, sans-serif",
+  fontSize: 12,
+  backgroundColor: "#ffffff",
+  headerBgColor: "#ffffff",
+  headerBgColorEnabled: false,
+  headerTextColor: "#1e293b",
+  headerFontSize: 7.5,
+  headerDividerColor: "#f59e0b",
+  showHeaderDivider: true,
+  gstinLabel: "GSTIN",
+  contactLabel: "Contact",
+  emailLabel: "Email",
+  factoryLabel: "Factory",
+  showContact: true,
+  showEmail: true,
+  showFooter: true,
+  showFooterPageNumber: true,
+  showFooterLines: true,
+  footerFontSize: 9,
+  footerFontColor: "#666666",
+  footerDividerColor: "#f59e0b",
+  footerLine1: "Solar Solutions : On grid & Off grid Power Plants | Water Heater | Street Lights | Home Lighting",
+  footerLine2: "LED Lighting Solution : Domestic | Commercial | Industrial | Customized industrial",
+  footerLine3: "Industrial Automation: DRIVES | PLC | SCADA | HMI",
+  footerLine4: "",
+  footerLine5: "",
+  footerBgColor: "#ffffff",
+  footerBgColorEnabled: false,
+  footerCustomContent: "",
+  showOrgLogo: true,
+  orgLogoSize: 60,
+  showOrgName: true,
+  orgNameColor: "#333333",
+  orgNameFontSize: 10,
+  showOrgAddress: true,
+  showGstin: true,
+  orgNameOverride: "",
+  gstinValueOverride: "",
+  contactValueOverride: "",
+  emailValueOverride: "",
+  factoryValueOverride: "",
+  customerNameFontColor: "#333333",
+  customerNameFontSize: 9,
+  showBillTo: true,
+  billToLabel: "To,",
+  showDocTitle: true,
+  docTitle: "TECHNO-COMMERCIAL QUOTATION",
+  docTitleFontSize: 11,
+  docTitleFontColor: "#000000",
+  quoteNumberLabel: "Ref No.",
+  quoteDateLabel: "Date",
+  expiryDateLabel: "Expiry Date",
+  showSignature: true,
+  signatureLabel: "Authorized Signatory",
+  colItem: true, itemLabel: "Item & Description",
+  colHsn: true, hsnLabel: "HSN/SAC",
+  colQty: true, qtyLabel: "Qty",
+  colRate: true, rateLabel: "Rate",
+  colDiscount: true, discountLabel: "Discount",
+  colTax: true, taxLabel: "Tax",
+  colAmount: true, amountLabel: "Amount",
+  tableHeaderFontSize: 9,
+  tableHeaderBgColor: "#ffffff",
+  tableHeaderFontColor: "#000000",
+  oddRowColor: "#ffffff",
+  evenRowColor: "#ffffff",
+  showNotes: true,
+  notesLabel: "Notes",
+  showTerms: true,
+  termsLabel: "Terms & conditions",
+  colorTheme: "default",
+  primaryColor: "#1a1a1a",
+};
+
+function normalizeConfig(raw?: Record<string, any> | null): Record<string, any> {
+  const merged = {
+    ...DEFAULT_CONFIG,
+    ...(raw || {}),
+    margins: { ...DEFAULT_CONFIG.margins, ...(raw?.margins ?? {}) },
+  };
+
+  const TEXT_FALLBACK_KEYS = [
+    "templateName",
+    "billToLabel",
+    "docTitle",
+    "quoteNumberLabel",
+    "quoteDateLabel",
+    "expiryDateLabel",
+    "signatureLabel",
+    "gstinLabel",
+    "contactLabel",
+    "emailLabel",
+    "factoryLabel",
+    "itemLabel",
+    "hsnLabel",
+    "qtyLabel",
+    "rateLabel",
+    "discountLabel",
+    "taxLabel",
+    "amountLabel",
+    "notesLabel",
+    "termsLabel",
+    "footerLine1",
+    "footerLine2",
+    "footerLine3",
+    "footerCustomContent",
+  ];
+
+  TEXT_FALLBACK_KEYS.forEach((key) => {
+    const value = (merged as any)[key];
+    if (typeof value === "string" && value.trim() === "") {
+      (merged as any)[key] = (DEFAULT_CONFIG as any)[key];
+    }
+  });
+
+  return merged;
+}
+
 // ── Watermark helper ────────────────
 function drawWatermark(doc: PDFKit.PDFDocument, F_BOLD: string, orgName?: string) {
   const text = (orgName || "").trim();
   if (!text) return;
+
+  const prevFont = (doc as any)._font;
+  const prevFontSize = (doc as any)._fontSize;
+  const prevFillColor = (doc as any)._fillColor;
 
   doc.save();
   doc.translate(595 / 2, 842 / 2);
@@ -177,6 +304,10 @@ function drawWatermark(doc: PDFKit.PDFDocument, F_BOLD: string, orgName?: string
   doc.font(F_BOLD).fontSize(26).fillColor("#0f172a");
   doc.text(text.toUpperCase(), -250, 40, { width: 500, align: "center" });
   doc.restore();
+
+  if (prevFont) (doc as any)._font = prevFont;
+  if (prevFontSize !== undefined) (doc as any)._fontSize = prevFontSize;
+  if (prevFillColor !== undefined) (doc as any)._fillColor = prevFillColor;
 }
 
 // ── Header helper ──────────────────
@@ -191,33 +322,37 @@ function drawHeader(
   cfg: Record<string, any>
 ) {
   doc.save();
+  const oldBottomMargin = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
 
   const headerBgEnabled = cfg.headerBgColorEnabled === true;
   const headerBgColor = typeof cfg.headerBgColor === "string" && cfg.headerBgColor.trim() ? cfg.headerBgColor : "#ffffff";
   const headerTextColor = typeof cfg.headerTextColor === "string" && cfg.headerTextColor.trim() ? cfg.headerTextColor : "#1e293b";
-  const headerFontSize = Math.max(6, Math.min(12, Number(cfg.headerFontSize) || 7.5));
+  let headerFontSize = Number(cfg.headerFontSize);
+  if (isNaN(headerFontSize) || headerFontSize <= 0) headerFontSize = 7.5;
+  headerFontSize = Math.max(6, Math.min(12, headerFontSize));
   const headerDividerColor = typeof cfg.headerDividerColor === "string" && cfg.headerDividerColor.trim() ? cfg.headerDividerColor : "#f59e0b";
   const showHeaderDivider = cfg.showHeaderDivider !== false;
   if (headerBgEnabled) {
-    doc.rect(45, 18, 505, 64).fill(headerBgColor);
+    doc.rect(45, 18, 505, 77).fill(headerBgColor);
   }
   
   // Resolve overrides
-  const displayOrgName = typeof cfg.orgNameOverride === "string" && cfg.orgNameOverride.trim()
+  const displayOrgName = String(typeof cfg.orgNameOverride === "string" && cfg.orgNameOverride.trim()
     ? cfg.orgNameOverride.trim()
-    : (data.orgName || "");
+    : (data.orgName || "")).trim();
     
-  const displayGstin = typeof cfg.gstinValueOverride === "string" && cfg.gstinValueOverride.trim()
+  const displayGstin = String(typeof cfg.gstinValueOverride === "string" && cfg.gstinValueOverride.trim()
     ? cfg.gstinValueOverride.trim()
-    : (data.orgTaxId || "");
+    : (data.orgTaxId || "")).trim();
     
-  const displayContact = typeof cfg.contactValueOverride === "string" && cfg.contactValueOverride.trim()
+  const displayContact = String(typeof cfg.contactValueOverride === "string" && cfg.contactValueOverride.trim()
     ? cfg.contactValueOverride.trim()
-    : (data.orgPhone || "");
+    : (data.orgPhone || "")).trim();
     
-  const displayEmail = typeof cfg.emailValueOverride === "string" && cfg.emailValueOverride.trim()
+  const displayEmail = String(typeof cfg.emailValueOverride === "string" && cfg.emailValueOverride.trim()
     ? cfg.emailValueOverride.trim()
-    : (data.orgEmail || "");
+    : (data.orgEmail || "")).trim();
     
   let factory = "";
   if (typeof cfg.factoryValueOverride === "string" && cfg.factoryValueOverride.trim()) {
@@ -227,6 +362,7 @@ function drawHeader(
     const parts = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean);
     if (parts.length > 0) factory = parts.join(", ");
   }
+  factory = String(factory).trim();
 
   // Draw Logo (Left side)
   const logoX = 45;
@@ -234,11 +370,17 @@ function drawHeader(
   const showOrgLogo = cfg.showOrgLogo !== false;
   const showOrgName = cfg.showOrgName !== false;
   const orgNameColor = typeof cfg.orgNameColor === "string" && cfg.orgNameColor.trim() ? cfg.orgNameColor : "#1e293b";
-  const orgNameFontSize = Math.max(7, Math.min(16, Number(cfg.orgNameFontSize) || 7.5));
+  let orgNameFontSize = Number(cfg.orgNameFontSize);
+  if (isNaN(orgNameFontSize) || orgNameFontSize <= 0) orgNameFontSize = 7.5;
+  orgNameFontSize = Math.max(7, Math.min(16, orgNameFontSize));
+  
+  let logoH = 40;
   let logoRendered = false;
   if (logoBuffer) {
     try {
-      const logoH = Math.max(30, Math.min(80, Number(cfg.orgLogoSize) || 40));
+      logoH = Number(cfg.orgLogoSize);
+      if (isNaN(logoH) || logoH <= 0) logoH = 40;
+      logoH = Math.max(30, Math.min(80, logoH));
       const logoW = logoH * 1.9;
       if (showOrgLogo) {
         doc.image(logoBuffer, logoX, logoY, { fit: [logoW, logoH] });
@@ -250,31 +392,51 @@ function drawHeader(
   }
 
   if (showOrgName && displayOrgName) {
-    const nameY = logoRendered ? logoY + 42 : logoY + 2;
+    const nameY = logoRendered ? logoY + logoH + 4 : logoY + 2;
     doc.font(F_BOLD).fontSize(orgNameFontSize).fillColor(orgNameColor);
     doc.text(displayOrgName.toUpperCase(), logoX, nameY, { width: 145, align: "left" });
   }
   
   // Right side corporate details
-  const rightX = 300;
-  const rightY = 20;
-  const rightW = 250;
-  const labelW = 55;
-  
   doc.fontSize(headerFontSize).fillColor(headerTextColor);
   
-  const drawHeaderLine = (label: string, value: string, isLink: boolean, ly: number) => {
-    doc.font(F_BOLD).text(label, rightX, ly, { width: labelW, align: "left" });
-    doc.font(F_REG);
-    if (isLink) {
-      doc.fillColor("#0284c7").text(value, rightX + labelW, ly, { underline: true }).fillColor(headerTextColor);
+  const drawHeaderLine = (label: string, value: string, isLink: boolean, ly: number): number => {
+    const cleanLabel = String(label);
+    const cleanValue = String(value);
+    doc.font(F_REG).fontSize(headerFontSize);
+    const valW = doc.widthOfString(cleanValue) || 0;
+    doc.font(F_BOLD).fontSize(headerFontSize);
+    const labelW = doc.widthOfString(cleanLabel) || 0;
+    const maxW = 250;
+    
+    if (valW + labelW <= maxW) {
+      const startX = 550 - valW - labelW;
+      doc.font(F_BOLD).fillColor(headerTextColor).text(cleanLabel, startX, ly, { lineBreak: false });
+      doc.font(F_REG);
+      if (isLink) {
+        doc.fillColor("#0284c7").text(cleanValue, startX + labelW, ly, { lineBreak: false }).fillColor(headerTextColor);
+      } else {
+        doc.fillColor(headerTextColor).text(cleanValue, startX + labelW, ly, { lineBreak: false });
+      }
+      return ly + 10;
     } else {
-      doc.text(value, rightX + labelW, ly, { width: rightW - labelW, align: "left" });
+      doc.font(F_BOLD).fillColor(headerTextColor).text(cleanLabel, 300, ly, { width: 250, align: "right" });
+      const labelHeight = doc.heightOfString(cleanLabel, { width: 250 }) || 0;
+      
+      doc.font(F_REG);
+      if (isLink) {
+        doc.fillColor("#0284c7");
+      } else {
+        doc.fillColor(headerTextColor);
+      }
+      doc.text(cleanValue, 300, ly + labelHeight, { width: 250, align: "right" }).fillColor(headerTextColor);
+      const valHeight = doc.heightOfString(cleanValue, { width: 250 }) || 0;
+      return ly + labelHeight + valHeight + 2;
     }
   };
 
   const labelWithColon = (label: string, fallback: string) => {
-    const raw = typeof label === "string" && label.trim() ? label.trim() : fallback;
+    const raw = String(typeof label === "string" && label.trim() ? label.trim() : fallback);
     return raw.endsWith(":") ? `${raw} ` : `${raw}: `;
   };
 
@@ -292,18 +454,38 @@ function drawHeader(
     headerLines.push({ label: labelWithColon(cfg.factoryLabel, "Factory"), value: factory, isLink: false });
   }
 
-  headerLines.forEach((line, idx) => {
-    drawHeaderLine(line.label, line.value, line.isLink, rightY + idx * 10);
+  let totalHeaderHeight = 0;
+  headerLines.forEach((line) => {
+    doc.font(F_REG).fontSize(headerFontSize);
+    const valW = doc.widthOfString(line.value) || 0;
+    doc.font(F_BOLD).fontSize(headerFontSize);
+    const labelW = doc.widthOfString(line.label) || 0;
+    const maxW = 250;
+    if (valW + labelW <= maxW) {
+      totalHeaderHeight += 10;
+    } else {
+      const labelHeight = doc.heightOfString(line.label, { width: 250 }) || 0;
+      const valHeight = doc.heightOfString(line.value, { width: 250 }) || 0;
+      totalHeaderHeight += labelHeight + valHeight + 2;
+    }
+  });
+
+  let currentHeaderY = 90 - totalHeaderHeight;
+  if (currentHeaderY < 18) currentHeaderY = 18;
+
+  headerLines.forEach((line) => {
+    currentHeaderY = drawHeaderLine(line.label, line.value, line.isLink, currentHeaderY);
   });
   
   if (showHeaderDivider) {
-    doc.moveTo(45, 78)
-      .lineTo(550, 78)
+    doc.moveTo(45, 95)
+      .lineTo(550, 95)
       .strokeColor(headerDividerColor)
-      .lineWidth(1)
+      .lineWidth(1.2)
       .stroke();
   }
    
+  doc.page.margins.bottom = oldBottomMargin;
   doc.restore();
 }
 
@@ -317,9 +499,13 @@ function drawFooter(
   cfg: Record<string, any>
 ) {
   doc.save();
+  const oldBottomMargin = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
   
   const footerStartY = 842 - 90;
-  const footerFontSize = Math.max(7, Math.min(12, Number(cfg.footerFontSize) || 8.5));
+  let footerFontSize = Number(cfg.footerFontSize);
+  if (isNaN(footerFontSize) || footerFontSize <= 0) footerFontSize = 8.5;
+  footerFontSize = Math.max(7, Math.min(12, footerFontSize));
   const footerFontColor = typeof cfg.footerFontColor === "string" && cfg.footerFontColor.trim() ? cfg.footerFontColor : "#1e293b";
   const footerBgEnabled = cfg.footerBgColorEnabled === true;
   const footerBgColor = typeof cfg.footerBgColor === "string" && cfg.footerBgColor.trim() ? cfg.footerBgColor : "#ffffff";
@@ -377,12 +563,13 @@ function drawFooter(
     doc.text(footerCustom, 45, fy, { width: 505, align: "center" });
   }
   
+  doc.page.margins.bottom = oldBottomMargin;
   doc.restore();
 }
 
 export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
   const logoBuffer = await fetchImageBuffer(data.orgLogoUrl);
-  const cfg = data.templateConfig || {};
+  const cfg = normalizeConfig(data.templateConfig);
   const pickColor = (value: string | undefined, fallback: string) =>
     typeof value === "string" && value.trim() ? value : fallback;
   const showDocTitle = cfg.showDocTitle !== false;
@@ -434,20 +621,14 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       ? cfg.emailValueOverride.trim()
       : (data.orgEmail || "");
 
-    // Pre-draw watermark on first page background
-    drawWatermark(doc, F_BOLD, displayOrgName);
-
-    // Auto draw watermark on any newly added pages in background
-    doc.on("pageAdded", () => {
-      drawWatermark(doc, F_BOLD, displayOrgName);
-    });
-
     let nextY = 105;
 
     // Header Title (techno commercial quotation)
     if (showDocTitle) {
       const title = typeof cfg.docTitle === "string" && cfg.docTitle.trim() ? cfg.docTitle : "TECHNO-COMMERCIAL QUOTATION";
-      const titleFontSize = Math.max(8, Math.min(18, Number(cfg.docTitleFontSize) || 10.5));
+      let titleFontSize = Number(cfg.docTitleFontSize);
+      if (isNaN(titleFontSize) || titleFontSize <= 0) titleFontSize = 10.5;
+      titleFontSize = Math.max(8, Math.min(18, titleFontSize));
       const titleColor = pickColor(cfg.docTitleFontColor, "#000000");
       doc.rect(45, nextY, doc.widthOfString(title) + 12, 16).fill("#e2e8f0");
       doc.fillColor(titleColor).font(F_BOLD).fontSize(titleFontSize).text(title, 51, nextY + 3);
@@ -516,40 +697,94 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     const isIntra = data.isIntraState !== false;
     
     // Check if quote has non-zero tax to determine whether to render tax columns
-    const hasTax = data.items.some(item => (item.taxPercent || 0) > 0);
+    const hasTax = data.items.some(item => (item.taxPercent || 0) > 0) && cfg.colTax !== false;
     
-    const cols = (hasTax) ? (
-      isIntra ? [
-        { id: "num", label: "#", x: 45, width: 20, align: "center" as const },
-        { id: "item", label: "Item & Description", x: 65, width: 145, align: "left" as const },
-        { id: "hsn", label: "HSN/SAC", x: 210, width: 45, align: "left" as const },
-        { id: "qty", label: "Qty", x: 255, width: 25, align: "right" as const },
-        { id: "rate", label: "Rate", x: 280, width: 65, align: "right" as const },
-        { id: "cgst", label: "CGST", x: 345, width: 65, align: "center" as const },
-        { id: "sgst", label: "SGST", x: 410, width: 65, align: "center" as const },
-        { id: "amount", label: "Amount", x: 475, width: 75, align: "right" as const },
-      ] : [
-        { id: "num", label: "#", x: 45, width: 20, align: "center" as const },
-        { id: "item", label: "Item & Description", x: 65, width: 190, align: "left" as const },
-        { id: "hsn", label: "HSN/SAC", x: 255, width: 45, align: "left" as const },
-        { id: "qty", label: "Qty", x: 300, width: 25, align: "right" as const },
-        { id: "rate", label: "Rate", x: 325, width: 70, align: "right" as const },
-        { id: "igst", label: "IGST", x: 395, width: 75, align: "center" as const },
-        { id: "amount", label: "Amount", x: 470, width: 80, align: "right" as const },
-      ]
-    ) : [
-      { id: "num", label: "#", x: 45, width: 20, align: "center" as const },
-      { id: "item", label: "Item & Description", x: 65, width: 255, align: "left" as const },
-      { id: "hsn", label: "HSN/SAC", x: 320, width: 55, align: "left" as const },
-      { id: "qty", label: "Qty", x: 375, width: 30, align: "right" as const },
-      { id: "rate", label: "Rate", x: 405, width: 75, align: "right" as const },
-      { id: "amount", label: "Amount", x: 480, width: 70, align: "right" as const },
-    ];
+    // Build columns dynamically
+    const cols: Array<{ id: string; label: string; x: number; width: number; align: "center" | "left" | "right" }> = [];
+    
+    // First, collect all active columns except 'item' to compute 'item' width
+    let totalOtherWidths = 20; // '#' is always 20
+    if (cfg.colHsn !== false) totalOtherWidths += 45;
+    if (cfg.colQty !== false) totalOtherWidths += (hasTax ? 25 : 30);
+    if (cfg.colRate !== false) totalOtherWidths += (hasTax ? (isIntra ? 65 : 70) : 75);
+    if (cfg.colDiscount === true) totalOtherWidths += 55;
+    if (hasTax) {
+      if (isIntra) {
+        totalOtherWidths += 65; // CGST
+        totalOtherWidths += 65; // SGST
+      } else {
+        totalOtherWidths += 75; // IGST
+      }
+    }
+    if (cfg.colAmount !== false) totalOtherWidths += (hasTax ? 75 : 70);
+
+    const itemWidth = Math.max(100, 505 - totalOtherWidths);
+
+    // Now construct the actual cols array with precise X positions
+    let currentX = 45;
+    
+    // 1. Num
+    cols.push({ id: "num", label: "#", x: currentX, width: 20, align: "center" });
+    currentX += 20;
+
+    // 2. Item
+    if (cfg.colItem !== false) {
+      cols.push({ id: "item", label: cfg.itemLabel || "Item & Description", x: currentX, width: itemWidth, align: "left" });
+      currentX += itemWidth;
+    }
+
+    // 3. HSN
+    if (cfg.colHsn !== false) {
+      cols.push({ id: "hsn", label: cfg.hsnLabel || "HSN/SAC", x: currentX, width: 45, align: "left" });
+      currentX += 45;
+    }
+
+    // 4. Qty
+    if (cfg.colQty !== false) {
+      const w = hasTax ? 25 : 30;
+      cols.push({ id: "qty", label: cfg.qtyLabel || "Qty", x: currentX, width: w, align: "right" });
+      currentX += w;
+    }
+
+    // 5. Rate
+    if (cfg.colRate !== false) {
+      const w = hasTax ? (isIntra ? 65 : 70) : 75;
+      cols.push({ id: "rate", label: cfg.rateLabel || "Rate", x: currentX, width: w, align: "right" });
+      currentX += w;
+    }
+
+    // 6. Discount
+    if (cfg.colDiscount === true) {
+      cols.push({ id: "discount", label: cfg.discountLabel || "Discount", x: currentX, width: 55, align: "right" });
+      currentX += 55;
+    }
+
+    // 7. Taxes
+    if (hasTax) {
+      if (isIntra) {
+        cols.push({ id: "cgst", label: "CGST", x: currentX, width: 65, align: "center" });
+        currentX += 65;
+        cols.push({ id: "sgst", label: "SGST", x: currentX, width: 65, align: "center" });
+        currentX += 65;
+      } else {
+        cols.push({ id: "igst", label: "IGST", x: currentX, width: 75, align: "center" });
+        currentX += 75;
+      }
+    }
+
+    // 8. Amount
+    if (cfg.colAmount !== false) {
+      const w = hasTax ? 75 : 70;
+      cols.push({ id: "amount", label: cfg.amountLabel || "Amount", x: currentX, width: w, align: "right" });
+      currentX += w;
+    }
 
     const headerH = 26;
     const headerBg = pickColor(cfg.tableHeaderBgColor, "#ffffff");
     const headerFontColor = pickColor(cfg.tableHeaderFontColor, "#000000");
-    const headerFontSize = Math.max(7, Math.min(12, Number(cfg.tableHeaderFontSize) || 8.5));
+    let tableHeaderFontSize = Number(cfg.tableHeaderFontSize);
+    if (isNaN(tableHeaderFontSize) || tableHeaderFontSize <= 0) tableHeaderFontSize = 8.5;
+    const headerFontSize = Math.max(7, Math.min(12, tableHeaderFontSize));
     const oddRowColor = pickColor(cfg.oddRowColor, "#ffffff");
     const evenRowColor = pickColor(cfg.evenRowColor, "#ffffff");
 
@@ -571,10 +806,14 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
           doc.moveTo(col.x, startY + 13).lineTo(col.x + col.width, startY + 13).stroke();
           doc.moveTo(col.x + 18, startY + 13).lineTo(col.x + 18, startY + headerH).stroke();
           doc.fontSize(Math.max(6, headerFontSize - 1.5)).text("%", col.x, startY + 16, { width: 18, align: "center" });
-          doc.text("Amt", col.x + 18, startY + 16, { width: col.width - 18, align: "center" });
+          doc.text("Amt", col.x + 18, startY + 16, { width: col.width - 18 - 4, align: "right" });
           doc.fontSize(headerFontSize);
+        } else if (col.align === "left") {
+          doc.text(col.label, col.x + 4, startY + 8, { width: col.width - 8, align: "left" });
+        } else if (col.align === "right") {
+          doc.text(col.label, col.x, startY + 8, { width: col.width - 4, align: "right" });
         } else {
-          doc.text(col.label, col.x, startY + 8, { width: col.width, align: col.align });
+          doc.text(col.label, col.x, startY + 8, { width: col.width, align: "center" });
         }
       });
     };
@@ -586,10 +825,9 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     // Items rendering loop
     let totalTaxAmount = 0;
     data.items.forEach((item, idx) => {
-      const itemColWidth = hasTax ? (isIntra ? 145 : 190) : 255;
-      const nameH = doc.heightOfString(item.name, { width: itemColWidth - 10 });
-      const descH = item.description ? doc.heightOfString(item.description, { width: itemColWidth - 10 }) : 0;
-      const itemH = Math.max(20, nameH + descH + 4);
+      const nameH = cfg.colItem !== false ? doc.heightOfString(item.name, { width: itemWidth - 8 }) : 0;
+      const descH = (cfg.colItem !== false && item.description) ? doc.heightOfString(item.description, { width: itemWidth - 8 }) : 0;
+      const itemH = Math.max(20, nameH + descH + 8);
 
       // Page break check (prevents content row clipping across page borders)
       if (nextY + itemH > 842 - 95) {
@@ -632,24 +870,39 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       doc.font(F_REG).fontSize(8.5).text(String(idx + 1), 45, nextY + 4, { width: 20, align: "center" });
 
       // Name & description
-      doc.font(F_BOLD).fontSize(8.5).text(item.name, 65, nextY + 4, { width: itemColWidth - 10 });
-      if (item.description) {
-        doc.font(F_REG).fontSize(7.5).fillColor("#475569").text(item.description, 65, nextY + 4 + nameH + 1, { width: itemColWidth - 10 });
+      if (cfg.colItem !== false) {
+        const itemCol = cols.find(c => c.id === "item")!;
+        doc.font(F_BOLD).fontSize(8.5).text(item.name, itemCol.x + 4, nextY + 4, { width: itemCol.width - 8 });
+        if (item.description) {
+          doc.font(F_REG).fontSize(7.5).fillColor("#475569").text(item.description, itemCol.x + 4, nextY + 4 + nameH + 1, { width: itemCol.width - 8 });
+        }
       }
 
       doc.font(F_REG).fontSize(7.5).fillColor("#000000");
 
       // HSN
-      const hsnCol = cols.find(c => c.id === "hsn")!;
-      doc.text(item.hsnSacCode || "—", hsnCol.x + 4, nextY + 4, { width: hsnCol.width - 4, align: "left" });
+      if (cfg.colHsn !== false) {
+        const hsnCol = cols.find(c => c.id === "hsn")!;
+        doc.text(item.hsnSacCode || "—", hsnCol.x + 4, nextY + 4, { width: hsnCol.width - 8, align: "left" });
+      }
 
       // Qty
-      const qtyCol = cols.find(c => c.id === "qty")!;
-      doc.text(fmtNum(item.quantity), qtyCol.x, nextY + 4, { width: qtyCol.width - 2, align: "right" });
+      if (cfg.colQty !== false) {
+        const qtyCol = cols.find(c => c.id === "qty")!;
+        doc.text(fmtNum(item.quantity), qtyCol.x, nextY + 4, { width: qtyCol.width - 4, align: "right" });
+      }
 
       // Rate
-      const rateCol = cols.find(c => c.id === "rate")!;
-      doc.text(fmtNum(item.rate), rateCol.x, nextY + 4, { width: rateCol.width - 4, align: "right" });
+      if (cfg.colRate !== false) {
+        const rateCol = cols.find(c => c.id === "rate")!;
+        doc.text(fmtNum(item.rate), rateCol.x, nextY + 4, { width: rateCol.width - 4, align: "right" });
+      }
+
+      // Discount
+      if (cfg.colDiscount === true) {
+        const discountCol = cols.find(c => c.id === "discount")!;
+        doc.text(item.discountPercent ? `${item.discountPercent}%` : "—", discountCol.x, nextY + 4, { width: discountCol.width - 4, align: "right" });
+      }
 
       const taxPercent = item.taxPercent || 0;
       const taxAmount = item.taxAmount || 0;
@@ -662,21 +915,23 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
           const splitTaxP = taxPercent / 2;
           const splitTaxA = taxAmount / 2;
 
-          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", cgstCol.x, nextY + 4, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", cgstCol.x + 18, nextY + 4, { width: 45, align: "right" });
+          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", cgstCol.x, nextY + 4, { width: 18, align: "center" });
+          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", cgstCol.x + 18, nextY + 4, { width: cgstCol.width - 18 - 4, align: "right" });
 
-          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", sgstCol.x, nextY + 4, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", sgstCol.x + 18, nextY + 4, { width: 45, align: "right" });
+          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", sgstCol.x, nextY + 4, { width: 18, align: "center" });
+          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", sgstCol.x + 18, nextY + 4, { width: sgstCol.width - 18 - 4, align: "right" });
         } else {
           const igstCol = cols.find(c => c.id === "igst")!;
-          doc.text(taxPercent > 0 ? `${taxPercent}%` : "—", igstCol.x, nextY + 4, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(taxAmount) : "—", igstCol.x + 18, nextY + 4, { width: 55, align: "right" });
+          doc.text(taxPercent > 0 ? `${taxPercent}%` : "—", igstCol.x, nextY + 4, { width: 18, align: "center" });
+          doc.text(taxPercent > 0 ? fmtNum(taxAmount) : "—", igstCol.x + 18, nextY + 4, { width: igstCol.width - 18 - 4, align: "right" });
         }
       }
 
       // Amount
-      const amountCol = cols.find(c => c.id === "amount")!;
-      doc.text(fmtNum(item.amount), amountCol.x, nextY + 4, { width: amountCol.width - 4, align: "right" });
+      if (cfg.colAmount !== false) {
+        const amountCol = cols.find(c => c.id === "amount")!;
+        doc.text(fmtNum(item.amount), amountCol.x, nextY + 4, { width: amountCol.width - 4, align: "right" });
+      }
 
       nextY += itemH;
     });
@@ -693,7 +948,7 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
 
       doc.rect(45, nextY, 505, rowHeight).strokeColor("#000000").lineWidth(0.5).stroke();
       
-      const amtCol = cols.find(c => c.id === "amount")!;
+      const amtCol = cols.find(c => c.id === "amount") || cols[cols.length - 1];
       doc.moveTo(amtCol.x, nextY).lineTo(amtCol.x, nextY + rowHeight).stroke();
 
       doc.font(isBold ? F_BOLD : F_REG).fontSize(8.5).fillColor("#000000");
@@ -823,10 +1078,11 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       }
     }
 
-    // Second pass - switch pages to draw header and footer
+    // Second pass - switch pages to draw header, footer and watermark
     const range = doc.bufferedPageRange();
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(i);
+      drawWatermark(doc, F_BOLD, displayOrgName);
       drawHeader(doc, i + 1, range.count, data, F_REG, F_BOLD, logoBuffer, cfg);
       if (showFooter) {
         drawFooter(doc, i + 1, range.count, F_REG, F_BOLD, cfg);

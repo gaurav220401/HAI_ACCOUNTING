@@ -446,7 +446,7 @@ export default function EditQuoteTemplatePage() {
                     <p style={{ margin: "1px 0 0", lineHeight: 1.3 }}><strong>{labelWithColon(config.contactLabel)} </strong>{displayContact}</p>
                   )}
                   {config.showEmail && displayEmail && (
-                    <p style={{ margin: "1px 0 0", lineHeight: 1.3 }}><strong>{labelWithColon(config.emailLabel)} </strong><span style={{ color: "#0284c7", textDecoration: "underline" }}>{displayEmail}</span></p>
+                    <p style={{ margin: "1px 0 0", lineHeight: 1.3 }}><strong>{labelWithColon(config.emailLabel)} </strong><span style={{ color: "#0284c7" }}>{displayEmail}</span></p>
                   )}
                   {config.showOrgAddress && displayFactory && (
                     <p style={{ margin: "1px 0 0", lineHeight: 1.3 }}>

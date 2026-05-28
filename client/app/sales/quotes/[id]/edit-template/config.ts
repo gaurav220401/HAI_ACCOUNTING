@@ -120,7 +120,7 @@ export const DEFAULT_CONFIG: QuoteTemplateConfig = {
   footerLine5: "",
   footerBgColor: "#ffffff",
   footerBgColorEnabled: false,
-  footerCustomContent: "This is a computer-generated quotation.",
+  footerCustomContent: "",
   showOrgLogo: true,
   orgLogoSize: 60,
   showOrgName: true,
