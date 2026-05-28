@@ -386,6 +386,14 @@ export default function InvoiceDetailPage() {
   const cName = customerName(invoice.customerId);
   const dueLabel = getDueLabel(invoice);
   const orgName = activeOrganization?.name || "HAI";
+  const lineTaxTotal = invoice.items.reduce(
+    (sum, item) => sum + Number(item.taxAmount || 0),
+    0,
+  );
+  const lineTaxPercent =
+    invoice.items.find((item) => Number(item.taxPercent || 0) > 0)
+      ?.taxPercent || 0;
+  const halfLineTaxPercent = Number(lineTaxPercent || 0) / 2;
 
   return (
     <SidebarProvider>
@@ -836,18 +844,28 @@ export default function InvoiceDetailPage() {
                         </div>
 
                         {/* Itemized Taxes */}
-                        {invoice.items.some((i) => i.taxAmount > 0) && (
+                        {lineTaxTotal > 0 && (
                           <>
                             <div className="flex justify-between text-sm">
-                              <span className="text-slate-500">CGST9 (9%)</span>
+                              <span className="text-slate-500">
+                                CGST
+                                {halfLineTaxPercent > 0 ?
+                                  ` (${halfLineTaxPercent}%)`
+                                : ""}
+                              </span>
                               <span className="font-medium">
-                                {fmtNum(invoice.taxAmount / 2)}
+                                {fmtNum(lineTaxTotal / 2)}
                               </span>
                             </div>
                             <div className="flex justify-between text-sm">
-                              <span className="text-slate-500">SGST9 (9%)</span>
+                              <span className="text-slate-500">
+                                SGST
+                                {halfLineTaxPercent > 0 ?
+                                  ` (${halfLineTaxPercent}%)`
+                                : ""}
+                              </span>
                               <span className="font-medium">
-                                {fmtNum(invoice.taxAmount / 2)}
+                                {fmtNum(lineTaxTotal / 2)}
                               </span>
                             </div>
                           </>
