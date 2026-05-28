@@ -274,7 +274,7 @@ function computeTotals(
   taxAmountRaw: number = 0,
   tcsAmountRaw: number = 0
 ) {
-  const subTotal = round2((lineItems || []).reduce((sum, li) => sum + toNum(li?.amount), 0));
+  const subTotal = round2((lineItems || []).reduce((sum, li) => sum + (toNum(li?.quantity) * toNum(li?.rate) - toNum(li?.discount)), 0));
 
   let globalDiscountAmount = 0;
   let totalDiscountAmount = 0;
@@ -293,7 +293,8 @@ function computeTotals(
   if (discountLevel === "transaction") {
      total -= globalDiscountAmount;
   }
-  total = round2(total - taxAmount + tcsAmount + toNum(shippingCharges) + toNum(adjustment));
+  const itemTaxes = (lineItems || []).reduce((sum, li) => sum + toNum(li?.taxAmount), 0);
+  total = round2(total + itemTaxes - taxAmount + tcsAmount + toNum(shippingCharges) + toNum(adjustment));
 
   return { subTotal, discountAmount: totalDiscountAmount, total };
 }

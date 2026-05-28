@@ -1501,7 +1501,10 @@ export function generateSalesOrderPdf(params: {
         amount: Number(li.amount) || 0,
       };
     }),
-    subTotal: Number(order.subTotal) || 0,
+    subTotal: (order.lineItems || []).reduce(
+      (sum: number, li: any) => sum + (Number(li.quantity) || 0) * (Number(li.rate) || 0),
+      0,
+    ),
     adjustmentLabel: "Shipping & Adjustment",
     adjustmentAmount:
       (Number(order.shippingCharges) || 0) + (Number(order.adjustment) || 0),
