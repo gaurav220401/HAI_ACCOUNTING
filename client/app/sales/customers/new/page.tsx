@@ -65,9 +65,25 @@ export default function NewCustomerPage() {
           <div className="mt-5">
             <CustomerForm
               mode="create"
-              onCancel={() => router.push("/sales/customers")}
+              onCancel={() => {
+                const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+                const redirectUrl = searchParams?.get("redirect");
+                if (redirectUrl) {
+                  router.push(redirectUrl);
+                } else {
+                  router.push("/sales/customers");
+                }
+              }}
               onSaved={(contact) => {
-                router.push(`/sales/customers?selectedId=${contact._id}`);
+                const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+                const redirectUrl = searchParams?.get("redirect");
+                if (redirectUrl) {
+                  const url = new URL(redirectUrl, window.location.origin);
+                  url.searchParams.set("newCustomerId", contact._id);
+                  router.push(url.toString());
+                } else {
+                  router.push(`/sales/customers?selectedId=${contact._id}`);
+                }
               }}
             />
           </div>

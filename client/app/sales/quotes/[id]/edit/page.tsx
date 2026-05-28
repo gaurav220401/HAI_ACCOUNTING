@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -39,7 +39,12 @@ import { Separator } from "@/components/ui/separator";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
-import { quoteApi, type Quote, type UpdateQuoteInput } from "@/lib/api/quotes";
+import {
+  quoteApi,
+  type Quote,
+  type SendQuoteEmailInput,
+  type UpdateQuoteInput,
+} from "@/lib/api/quotes";
 import { settingsApi, type SalesPerson, type Tax } from "@/lib/api/settings";
 
 interface LineItem {
@@ -53,7 +58,14 @@ interface LineItem {
   discountPercent: number;
   taxId: string;
   taxPercent: number;
+  taxIsManual?: boolean;
 }
+
+const EXPLICIT_NO_TAX = "none";
+
+type QuoteEmailFormData = SendQuoteEmailInput & {
+  files: File[];
+};
 
 type RefValue = string | { _id: string } | null | undefined;
 
@@ -71,7 +83,24 @@ function calcLineAmount(l: LineItem) {
   const discAmt = (lineTotal * l.discountPercent) / 100;
   const afterDisc = lineTotal - discAmt;
   const taxAmt = (afterDisc * l.taxPercent) / 100;
-  return { amount: afterDisc + taxAmt };
+  return { lineTotal, discAmt, afterDisc, taxAmt, amount: afterDisc + taxAmt };
+}
+
+function normalizeTaxLabel(value?: string): string {
+  return (value || "").trim().toUpperCase();
+}
+
+function resolveTaxMode(tax?: Tax): "igst" | "cgst" | "sgst" | "gst" | "unknown" {
+  if (!tax) return "unknown";
+  const name = normalizeTaxLabel(tax.name);
+  const authority = normalizeTaxLabel(tax.taxAuthority);
+
+  if (authority === "IGST" || name.startsWith("IGST")) return "igst";
+  if (authority === "CGST" || name.startsWith("CGST")) return "cgst";
+  if (authority === "SGST" || name.startsWith("SGST")) return "sgst";
+  if (tax.taxType === "TaxGroup" || authority === "GST" || name.startsWith("GST")) return "gst";
+
+  return "unknown";
 }
 
 let lineKeyCounter = 1000;
@@ -87,6 +116,7 @@ function newLine(): LineItem {
     discountPercent: 0,
     taxId: "",
     taxPercent: 0,
+    taxIsManual: false,
   };
 }
 
@@ -121,12 +151,13 @@ export default function EditQuotePage() {
     "percent",
   );
   const [discountValue, setDiscountValue] = useState(0);
-  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("TDS");
+  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("none");
   const [totalTaxId, setTotalTaxId] = useState("");
   const [adjustmentLabel, setAdjustmentLabel] = useState("Adjustment");
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
   const [customerNotes, setCustomerNotes] = useState("");
   const [termsAndConditions, setTermsAndConditions] = useState("");
+  const [placeOfSupply, setPlaceOfSupply] = useState("");
 
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -180,21 +211,27 @@ export default function EditQuotePage() {
         setAdjustmentAmount(q.adjustmentAmount || 0);
         setCustomerNotes(q.customerNotes || "");
         setTermsAndConditions(q.termsAndConditions || "");
+        setPlaceOfSupply(q.placeOfSupply || "");
 
         if (q.items && q.items.length > 0) {
           setLines(
-            q.items.map((it: Quote["items"][number]) => ({
-              key: lineKeyCounter++,
-              itemId: getRefId(it.itemId),
-              name: it.name,
-              description: it.description || "",
-              hsnSacCode: it.hsnSacCode || "",
-              quantity: it.quantity || 1,
-              rate: it.rate || 0,
-              discountPercent: it.discountPercent || 0,
-              taxId: getRefId(it.taxId),
-              taxPercent: it.taxPercent || 0,
-            })),
+            q.items.map((it: Quote["items"][number]) => {
+              const taxId = getRefId(it.taxId);
+              const taxPercent = it.taxPercent || 0;
+              return {
+                key: lineKeyCounter++,
+                itemId: getRefId(it.itemId),
+                name: it.name,
+                description: it.description || "",
+                hsnSacCode: it.hsnSacCode || "",
+                quantity: it.quantity || 1,
+                rate: it.rate || 0,
+                discountPercent: it.discountPercent || 0,
+                taxId,
+                taxPercent,
+                taxIsManual: !taxId && taxPercent <= 0,
+              };
+            }),
           );
         }
       })
@@ -243,6 +280,7 @@ export default function EditQuotePage() {
               rate: item.sellingPrice || 0,
               taxId: linkedTax.taxId,
               taxPercent: linkedTax.taxPercent,
+              taxIsManual: false,
             }
           : l,
         ),
@@ -251,11 +289,41 @@ export default function EditQuotePage() {
     [items, selectedCustomer, activeOrganization?.address?.state, taxes],
   );
 
+  // ─── Query Param Autoselect ───────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const newCustomerId = searchParams.get("newCustomerId");
+    if (newCustomerId && customers.some((c) => c._id === newCustomerId)) {
+      setCustomerId(newCustomerId);
+    }
+  }, [customers]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const createdItemId = searchParams.get("createdItemId");
+    if (createdItemId && items.some((i) => i._id === createdItemId)) {
+      setLines((prev) => {
+        if (prev.some((l) => l.itemId === createdItemId)) return prev;
+        const target = prev[prev.length - 1];
+        if (!target.itemId && !target.name) {
+          setTimeout(() => handleItemSelect(target.key, createdItemId), 0);
+          return prev;
+        } else {
+          const newKey = Date.now();
+          setTimeout(() => handleItemSelect(newKey, createdItemId), 0);
+          return [...prev, { ...newLine(), key: newKey }];
+        }
+      });
+    }
+  }, [items, handleItemSelect]);
+
   useEffect(() => {
     setLines((prev) => {
       let changed = false;
       const next = prev.map((line) => {
-        if (!line.itemId) return line;
+        if (!line.itemId || line.taxIsManual) return line;
         const item = items.find((entry) => entry._id === line.itemId);
         if (!item) return line;
         const linkedTax = getItemTaxForTransaction({
@@ -280,27 +348,72 @@ export default function EditQuotePage() {
 
   // Calculations
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const lineItemsTotal = lines.reduce((s, l) => s + calcLineAmount(l).amount, 0);
+  const lineTaxesSum = lines.reduce((s, l) => s + calcLineAmount(l).taxAmt, 0);
+  const lineDiscountsSum = lines.reduce((s, l) => s + calcLineAmount(l).discAmt, 0);
   const discountAmount =
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
-  const selectedTax = taxes.find((t) => t._id === totalTaxId);
+  const selectedTax =
+    taxType !== "none" ? taxes.find((t) => t._id === totalTaxId) : undefined;
   const taxAmount =
     selectedTax ? (subTotal * (selectedTax.rate || 0)) / 100 : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total = subTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total = lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+
+  const taxBreakdown = useMemo(() => {
+    const fallbackIsIntra =
+      placeOfSupply && activeOrganization?.address?.state ?
+        placeOfSupply.trim().toLowerCase() ===
+        activeOrganization.address.state.trim().toLowerCase()
+      : false;
+
+    return lines.reduce(
+      (acc, line) => {
+        const taxAmt = calcLineAmount(line).taxAmt;
+        if (!taxAmt) return acc;
+
+        const tax = taxes.find((entry) => entry._id === line.taxId);
+        const mode = resolveTaxMode(tax);
+
+        if (mode === "igst") {
+          acc.igst += taxAmt;
+        } else if (mode === "cgst") {
+          acc.cgst += taxAmt;
+        } else if (mode === "sgst") {
+          acc.sgst += taxAmt;
+        } else if (mode === "gst") {
+          acc.cgst += taxAmt / 2;
+          acc.sgst += taxAmt / 2;
+        } else if (fallbackIsIntra) {
+          acc.cgst += taxAmt / 2;
+          acc.sgst += taxAmt / 2;
+        } else {
+          acc.igst += taxAmt;
+        }
+
+        return acc;
+      },
+      { cgst: 0, sgst: 0, igst: 0 },
+    );
+  }, [lines, taxes, placeOfSupply, activeOrganization?.address?.state]);
 
   // Submit
-  async function handleSave(status?: string) {
+  async function handleSave(status?: "Draft" | "Sent") {
     if (!customerId) {
       toast.error("Please select a customer");
       return;
     }
     setSaving(true);
     try {
+      const normalizedTaxType =
+        taxType !== "none" && totalTaxId ? taxType : "none";
+      const normalizedTaxAmount =
+        normalizedTaxType === "none" ? 0 : taxAmount;
       const payload: UpdateQuoteInput = {
         referenceNumber,
         customerId,
@@ -319,21 +432,22 @@ export default function EditQuotePage() {
             quantity: l.quantity,
             rate: l.rate,
             discountPercent: l.discountPercent,
-            taxId: l.taxId || null,
-            taxPercent: l.taxPercent,
+            taxId: l.taxId || (l.taxIsManual ? EXPLICIT_NO_TAX : null),
+            taxPercent: l.taxId ? l.taxPercent : 0,
           })),
         discountType,
         discountValue,
-        taxType,
-        taxId: totalTaxId || null,
-        taxAmount,
+        taxType: normalizedTaxType,
+        taxId: normalizedTaxType === "none" ? null : totalTaxId,
+        taxAmount: normalizedTaxAmount,
         adjustmentLabel,
         adjustmentAmount,
         customerNotes,
         termsAndConditions,
+        placeOfSupply,
       };
 
-      if (status) payload.status = status as any;
+      if (status) payload.status = status;
 
       await quoteApi.update(id, payload);
       
@@ -352,7 +466,7 @@ export default function EditQuotePage() {
     }
   }
 
-  async function handleSendEmail(data: any) {
+  async function handleSendEmail(data: QuoteEmailFormData) {
     await quoteApi.sendEmailWithFiles(
       id,
       {
@@ -416,16 +530,42 @@ export default function EditQuotePage() {
               <Label className="text-red-600">
                 Customer Name<span className="text-red-500">*</span>
               </Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
+              <Select
+                value={customerId || undefined}
+                onValueChange={(v) => {
+                  if (v === "__add_new") {
+                    router.push(`/sales/customers/new?redirect=${encodeURIComponent(window.location.pathname)}`);
+                    return;
+                  }
+                  setCustomerId(v);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
-                <SelectContent>
-                  {customers.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      {c.displayName}
+                <SelectContent position="popper">
+                  <SelectItem value="__add_new">
+                    <span className="text-blue-600 font-medium">
+                      + Add a customer
+                    </span>
+                  </SelectItem>
+                  {customers.length === 0 && (
+                    <SelectItem value="__empty" disabled>
+                      No customers found
                     </SelectItem>
-                  ))}
+                  )}
+                  {customers.map((c) => (
+                     <SelectItem key={c._id} value={c._id}>
+                       <div className="flex flex-col">
+                         <span className="font-medium">{c.displayName}</span>
+                         {c.companyName && (
+                           <span className="text-xs text-muted-foreground">
+                             {c.companyName}
+                           </span>
+                         )}
+                       </div>
+                     </SelectItem>
+                   ))}
                 </SelectContent>
               </Select>
             </div>
@@ -478,7 +618,14 @@ export default function EditQuotePage() {
                 </SelectContent>
               </Select>
             </div>
-            <div />
+            <div className="space-y-1.5">
+              <Label>Place Of Supply</Label>
+              <Input
+                placeholder="e.g. Chhattisgarh (22)"
+                value={placeOfSupply}
+                onChange={(e) => setPlaceOfSupply(e.target.value)}
+              />
+            </div>
           </div>
 
           <Separator />
@@ -521,6 +668,10 @@ export default function EditQuotePage() {
                           <Select
                             value={line.itemId || "__custom"}
                             onValueChange={(v) => {
+                              if (v === "__add_new") {
+                                router.push(`/items/new?returnUrl=${encodeURIComponent(window.location.pathname)}`);
+                                return;
+                              }
                               if (v === "__custom") {
                                 updateLine(line.key, "itemId", "");
                               } else {
@@ -532,6 +683,11 @@ export default function EditQuotePage() {
                               <SelectValue placeholder="Select item" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="__add_new">
+                                <span className="text-blue-600 font-medium">
+                                  + Add an item
+                                </span>
+                              </SelectItem>
                               <SelectItem value="__custom">
                                 <span className="text-muted-foreground">
                                   Custom item…
@@ -607,15 +763,17 @@ export default function EditQuotePage() {
                             value={line.taxId || "__none"}
                             onValueChange={(v) => {
                               const tax = taxes.find((t) => t._id === v);
-                              updateLine(
-                                line.key,
-                                "taxId",
-                                v === "__none" ? "" : v,
-                              );
-                              updateLine(
-                                line.key,
-                                "taxPercent",
-                                tax ? tax.rate : 0,
+                              setLines((prev) =>
+                                prev.map((row) =>
+                                  row.key === line.key ?
+                                    {
+                                      ...row,
+                                      taxId: v === "__none" ? "" : v,
+                                      taxPercent: tax ? tax.rate : 0,
+                                      taxIsManual: true,
+                                    }
+                                  : row,
+                                ),
                               );
                             }}
                           >
@@ -725,8 +883,62 @@ export default function EditQuotePage() {
                 </div>
               </div>
 
+              {/* Line Discounts */}
+              {lineDiscountsSum > 0 && (
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-sm">Item Discounts</span>
+                  <span className="tabular-nums w-20 text-right">
+                    - {lineDiscountsSum.toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {/* Line Taxes */}
+              {lineTaxesSum > 0 && (
+                <>
+                  {taxBreakdown.cgst > 0 && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-sm">CGST</span>
+                      <span className="tabular-nums w-20 text-right">
+                        {taxBreakdown.cgst.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {taxBreakdown.sgst > 0 && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-sm">SGST</span>
+                      <span className="tabular-nums w-20 text-right">
+                        {taxBreakdown.sgst.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {taxBreakdown.igst > 0 && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-sm">IGST</span>
+                      <span className="tabular-nums w-20 text-right">
+                        {taxBreakdown.igst.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="radio"
+                      name="taxType"
+                      value="none"
+                      checked={taxType === "none"}
+                      onChange={() => {
+                        setTaxType("none");
+                        setTotalTaxId("");
+                      }}
+                      className="accent-primary"
+                    />
+                    None
+                  </label>
                   <label className="flex items-center gap-1 text-sm">
                     <input
                       type="radio"
@@ -751,7 +963,18 @@ export default function EditQuotePage() {
                   </label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Select value={totalTaxId} onValueChange={setTotalTaxId}>
+                  <Select
+                    value={totalTaxId || "__none"}
+                    onValueChange={(value) => {
+                      if (value === "__none") {
+                        setTotalTaxId("");
+                        setTaxType("none");
+                        return;
+                      }
+                      setTotalTaxId(value);
+                      if (taxType === "none") setTaxType("TDS");
+                    }}
+                  >
                     <SelectTrigger className="h-8 w-40">
                       <SelectValue placeholder="Select a Tax" />
                     </SelectTrigger>

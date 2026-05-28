@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Plus, Trash2, Settings, X, Upload, Mail } from "lucide-react";
 import { SendEmailModal } from "../_components/send-email-modal";
@@ -62,7 +62,14 @@ interface LineItem {
   discountPercent: number;
   taxId: string;
   taxPercent: number;
+  taxIsManual?: boolean;
 }
+
+const EXPLICIT_NO_TAX = "none";
+
+type QuoteEmailFormData = SendQuoteEmailInput & {
+  files: File[];
+};
 
 function calcLineAmount(l: LineItem) {
   const lineTotal = l.quantity * l.rate;
@@ -70,6 +77,23 @@ function calcLineAmount(l: LineItem) {
   const afterDisc = lineTotal - discAmt;
   const taxAmt = (afterDisc * l.taxPercent) / 100;
   return { lineTotal, discAmt, afterDisc, taxAmt, amount: afterDisc + taxAmt };
+}
+
+function normalizeTaxLabel(value?: string): string {
+  return (value || "").trim().toUpperCase();
+}
+
+function resolveTaxMode(tax?: Tax): "igst" | "cgst" | "sgst" | "gst" | "unknown" {
+  if (!tax) return "unknown";
+  const name = normalizeTaxLabel(tax.name);
+  const authority = normalizeTaxLabel(tax.taxAuthority);
+
+  if (authority === "IGST" || name.startsWith("IGST")) return "igst";
+  if (authority === "CGST" || name.startsWith("CGST")) return "cgst";
+  if (authority === "SGST" || name.startsWith("SGST")) return "sgst";
+  if (tax.taxType === "TaxGroup" || authority === "GST" || name.startsWith("GST")) return "gst";
+
+  return "unknown";
 }
 
 let lineKeyCounter = 1;
@@ -85,6 +109,7 @@ function newLine(): LineItem {
     discountPercent: 0,
     taxId: "",
     taxPercent: 0,
+    taxIsManual: false,
   };
 }
 
@@ -116,7 +141,7 @@ export default function NewQuotePage() {
     "percent",
   );
   const [discountValue, setDiscountValue] = useState(0);
-  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("TDS");
+  const [taxType, setTaxType] = useState<"TDS" | "TCS" | "none">("none");
   const [totalTaxId, setTotalTaxId] = useState("");
   const [adjustmentLabel, setAdjustmentLabel] = useState("Adjustment");
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
@@ -164,12 +189,14 @@ export default function NewQuotePage() {
       router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
+
+
   // ─── Line item helpers ────────────────────────────────────────────
 
   const selectedCustomer = customers.find((entry) => entry._id === customerId);
 
   const updateLine = useCallback(
-    (key: number, field: keyof LineItem, value: any) => {
+    <K extends keyof LineItem>(key: number, field: K, value: LineItem[K]) => {
       setLines((prev) =>
         prev.map((l) => (l.key === key ? { ...l, [field]: value } : l)),
       );
@@ -205,6 +232,7 @@ export default function NewQuotePage() {
               rate: item.sellingPrice || 0,
               taxId: linkedTax.taxId,
               taxPercent: linkedTax.taxPercent,
+              taxIsManual: false,
             }
           : l,
         ),
@@ -213,11 +241,41 @@ export default function NewQuotePage() {
     [items, selectedCustomer, activeOrganization?.address?.state, taxes],
   );
 
+  // ─── Query Param Autoselect ───────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const newCustomerId = searchParams.get("newCustomerId");
+    if (newCustomerId && customers.some((c) => c._id === newCustomerId)) {
+      setCustomerId(newCustomerId);
+    }
+  }, [customers]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const createdItemId = searchParams.get("createdItemId");
+    if (createdItemId && items.some((i) => i._id === createdItemId)) {
+      setLines((prev) => {
+        if (prev.some((l) => l.itemId === createdItemId)) return prev;
+        const target = prev[prev.length - 1];
+        if (!target.itemId && !target.name) {
+          setTimeout(() => handleItemSelect(target.key, createdItemId), 0);
+          return prev;
+        } else {
+          const newKey = Date.now();
+          setTimeout(() => handleItemSelect(newKey, createdItemId), 0);
+          return [...prev, { ...newLine(), key: newKey }];
+        }
+      });
+    }
+  }, [items, handleItemSelect]);
+
   useEffect(() => {
     setLines((prev) => {
       let changed = false;
       const next = prev.map((line) => {
-        if (!line.itemId) return line;
+        if (!line.itemId || line.taxIsManual) return line;
         const item = items.find((entry) => entry._id === line.itemId);
         if (!item) return line;
         const linkedTax = getItemTaxForTransaction({
@@ -249,18 +307,59 @@ export default function NewQuotePage() {
   // ─── Calculations ────────────────────────────────────────────────
 
   const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const lineItemsTotal = lines.reduce((s, l) => s + calcLineAmount(l).amount, 0);
+  const lineTaxesSum = lines.reduce((s, l) => s + calcLineAmount(l).taxAmt, 0);
+  const lineDiscountsSum = lines.reduce((s, l) => s + calcLineAmount(l).discAmt, 0);
   const discountAmount =
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
-  const selectedTax = taxes.find((t) => t._id === totalTaxId);
+  const selectedTax =
+    taxType !== "none" ? taxes.find((t) => t._id === totalTaxId) : undefined;
   const taxAmount =
     selectedTax ? (subTotal * (selectedTax.rate || 0)) / 100 : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total = subTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total = lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+
+  const taxBreakdown = useMemo(() => {
+    const fallbackIsIntra =
+      placeOfSupply && activeOrganization?.address?.state ?
+        placeOfSupply.trim().toLowerCase() ===
+        activeOrganization.address.state.trim().toLowerCase()
+      : false;
+
+    return lines.reduce(
+      (acc, line) => {
+        const taxAmt = calcLineAmount(line).taxAmt;
+        if (!taxAmt) return acc;
+
+        const tax = taxes.find((entry) => entry._id === line.taxId);
+        const mode = resolveTaxMode(tax);
+
+        if (mode === "igst") {
+          acc.igst += taxAmt;
+        } else if (mode === "cgst") {
+          acc.cgst += taxAmt;
+        } else if (mode === "sgst") {
+          acc.sgst += taxAmt;
+        } else if (mode === "gst") {
+          acc.cgst += taxAmt / 2;
+          acc.sgst += taxAmt / 2;
+        } else if (fallbackIsIntra) {
+          acc.cgst += taxAmt / 2;
+          acc.sgst += taxAmt / 2;
+        } else {
+          acc.igst += taxAmt;
+        }
+
+        return acc;
+      },
+      { cgst: 0, sgst: 0, igst: 0 },
+    );
+  }, [lines, taxes, placeOfSupply, activeOrganization?.address?.state]);
 
   // ─── Submit ──────────────────────────────────────────────────────
 
@@ -277,6 +376,10 @@ export default function NewQuotePage() {
 
     setSaving(true);
     try {
+      const normalizedTaxType =
+        taxType !== "none" && totalTaxId ? taxType : "none";
+      const normalizedTaxAmount =
+        normalizedTaxType === "none" ? 0 : taxAmount;
       const payload: CreateQuoteInput = {
         quoteNumber,
         referenceNumber,
@@ -295,14 +398,14 @@ export default function NewQuotePage() {
             quantity: l.quantity,
             rate: l.rate,
             discountPercent: l.discountPercent,
-            taxId: l.taxId || null,
-            taxPercent: l.taxPercent,
+            taxId: l.taxId || (l.taxIsManual ? EXPLICIT_NO_TAX : null),
+            taxPercent: l.taxId ? l.taxPercent : 0,
           })),
         discountType,
         discountValue,
-        taxType,
-        taxId: totalTaxId || null,
-        taxAmount,
+        taxType: normalizedTaxType,
+        taxId: normalizedTaxType === "none" ? null : totalTaxId,
+        taxAmount: normalizedTaxAmount,
         adjustmentLabel,
         adjustmentAmount,
         customerNotes,
@@ -321,14 +424,16 @@ export default function NewQuotePage() {
 
       toast.success("Quote saved successfully");
       router.push("/sales/quotes");
-    } catch (e: any) {
-      toast.error(e.message || "Failed to save quote");
+    } catch (e: unknown) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to save quote",
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleSendEmail(data: any) {
+  async function handleSendEmail(data: QuoteEmailFormData) {
     if (!savedQuoteId) {
       toast.error("Quote was not saved — please close and try again.");
       return;
@@ -399,7 +504,7 @@ export default function NewQuotePage() {
                 value={customerId || undefined}
                 onValueChange={(v) => {
                   if (v === "__add_new") {
-                    router.push("/sales/customers/new");
+                    router.push(`/sales/customers/new?redirect=${encodeURIComponent(window.location.pathname)}`);
                     return;
                   }
                   setCustomerId(v);
@@ -568,6 +673,10 @@ export default function NewQuotePage() {
                           <Select
                             value={line.itemId || "__custom"}
                             onValueChange={(v) => {
+                              if (v === "__add_new") {
+                                router.push(`/items/new?returnUrl=${encodeURIComponent(window.location.pathname)}`);
+                                return;
+                              }
                               if (v === "__custom") {
                                 updateLine(line.key, "itemId", "");
                               } else {
@@ -579,6 +688,11 @@ export default function NewQuotePage() {
                               <SelectValue placeholder="Type or click to select an item." />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="__add_new">
+                                <span className="text-blue-600 font-medium">
+                                  + Add an item
+                                </span>
+                              </SelectItem>
                               <SelectItem value="__custom">
                                 <span className="text-muted-foreground">
                                   Custom item…
@@ -655,8 +769,18 @@ export default function NewQuotePage() {
                             value={line.taxId || "__none"}
                             onValueChange={(v) => {
                               const tax = taxes.find((t) => t._id === v);
-                              updateLine(line.key, "taxId", v === "__none" ? "" : v);
-                              updateLine(line.key, "taxPercent", tax ? tax.rate : 0);
+                              setLines((prev) =>
+                                prev.map((row) =>
+                                  row.key === line.key ?
+                                    {
+                                      ...row,
+                                      taxId: v === "__none" ? "" : v,
+                                      taxPercent: tax ? tax.rate : 0,
+                                      taxIsManual: true,
+                                    }
+                                  : row,
+                                ),
+                              );
                             }}
                           >
                             <SelectTrigger className="h-8 text-right text-sm">
@@ -771,9 +895,63 @@ export default function NewQuotePage() {
                 </div>
               </div>
 
+              {/* Line Discounts */}
+              {lineDiscountsSum > 0 && (
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-sm">Item Discounts</span>
+                  <span className="tabular-nums w-20 text-right">
+                    - {lineDiscountsSum.toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {/* Line Taxes */}
+              {lineTaxesSum > 0 && (
+                <>
+                  {taxBreakdown.cgst > 0 && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-sm">CGST</span>
+                      <span className="tabular-nums w-20 text-right">
+                        {taxBreakdown.cgst.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {taxBreakdown.sgst > 0 && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-sm">SGST</span>
+                      <span className="tabular-nums w-20 text-right">
+                        {taxBreakdown.sgst.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {taxBreakdown.igst > 0 && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-sm">IGST</span>
+                      <span className="tabular-nums w-20 text-right">
+                        {taxBreakdown.igst.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+
               {/* TDS / TCS */}
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="radio"
+                      name="taxType"
+                      value="none"
+                      checked={taxType === "none"}
+                      onChange={() => {
+                        setTaxType("none");
+                        setTotalTaxId("");
+                      }}
+                      className="accent-primary"
+                    />
+                    None
+                  </label>
                   <label className="flex items-center gap-1 text-sm">
                     <input
                       type="radio"
@@ -798,7 +976,18 @@ export default function NewQuotePage() {
                   </label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Select value={totalTaxId} onValueChange={setTotalTaxId}>
+                  <Select
+                    value={totalTaxId || "__none"}
+                    onValueChange={(value) => {
+                      if (value === "__none") {
+                        setTotalTaxId("");
+                        setTaxType("none");
+                        return;
+                      }
+                      setTotalTaxId(value);
+                      if (taxType === "none") setTaxType("TDS");
+                    }}
+                  >
                     <SelectTrigger className="h-8 w-40">
                       <SelectValue placeholder="Select a Tax" />
                     </SelectTrigger>

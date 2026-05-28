@@ -25,6 +25,8 @@ import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/
 import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { cn } from "@/lib/utils";
 import { uploadApi } from "@/lib/api/upload";
+import { useOrganization } from "@/contexts/organization-context";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 
 // --- Helpers ---
 const TODAY = () => new Date().toISOString().slice(0, 10);
@@ -935,6 +937,7 @@ export function BillForm(props: BillFormProps) {
 
 export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFormProps) {
   const router = useRouter();
+  const { activeOrganization } = useOrganization();
   const searchParams = useSearchParams();
   const cloneId = searchParams.get("clone");
   const defaultVendorId = searchParams.get("vendorId") || searchParams.get("newVendorId");
@@ -1317,6 +1320,21 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          ? accounts.find((account) => account._id === purchaseAccountId)?.name || ""
          : "";
 
+      // Auto-apply item's default tax (intra vs inter state), matching Invoice behaviour
+      const selectedVendor = vendors.find((v) => v._id === vendorId);
+      const orgState = activeOrganization?.address?.state;
+      const linkedTax = getItemTaxForTransaction({
+         item,
+         contact: selectedVendor,
+         organizationState: orgState,
+         taxes: lineTaxes,
+      });
+      const autoTaxId = linkedTax.taxId || "";
+      const autoTaxRate = linkedTax.taxPercent || 0;
+      const autoTaxName = autoTaxId
+         ? lineTaxes.find((t) => t._id === autoTaxId)?.name || ""
+         : "";
+
       updateRow(rowId, {
          itemId: item._id,
          itemName: item.name,
@@ -1326,6 +1344,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          rate: item.costPrice || 0,
          quantity: row?.quantity && row.quantity > 0 ? row.quantity : 1,
          unit: itemUnitLabel(item),
+         taxId: autoTaxId,
+         taxRate: autoTaxRate,
+         taxName: autoTaxName,
       });
    }
 
@@ -1338,6 +1359,54 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          }
       }
    }, [items, pendingItemSelection]);
+
+   useEffect(() => {
+      const selectedVendor = vendors.find((v) => v._id === vendorId);
+      const orgState = activeOrganization?.address?.state;
+
+      setRows((prev) => {
+         if (!prev.some((row) => row.itemId && !row.isHeader)) return prev;
+
+         let changed = false;
+
+         const next = prev.map((row) => {
+            if (row.isHeader || !row.itemId) return row;
+            const item = items.find((entry) => entry._id === row.itemId);
+            if (!item) return row;
+
+            const linkedTax = getItemTaxForTransaction({
+               item,
+               contact: selectedVendor,
+               organizationState: orgState,
+               taxes: lineTaxes,
+            });
+
+            const nextTaxId = linkedTax.taxId || "";
+            const nextTaxRate = linkedTax.taxPercent || 0;
+            const nextTaxName = nextTaxId
+               ? lineTaxes.find((t) => t._id === nextTaxId)?.name || ""
+               : "";
+
+            if (
+               (row.taxId || "") === nextTaxId &&
+               Number(row.taxRate || 0) === Number(nextTaxRate || 0) &&
+               (row.taxName || "") === nextTaxName
+            ) {
+               return row;
+            }
+
+            changed = true;
+            return {
+               ...row,
+               taxId: nextTaxId,
+               taxRate: nextTaxRate,
+               taxName: nextTaxName,
+            };
+         });
+
+         return changed ? next : prev;
+      });
+   }, [vendorId, vendors, activeOrganization?.address?.state, items, lineTaxes]);
 
    function handleLinkPurchaseOrder(poId: string) {
       setLinkedPurchaseOrderId(poId);

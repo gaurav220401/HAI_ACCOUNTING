@@ -26,8 +26,20 @@ function refId(value: unknown): string {
 }
 
 function normalizeTaxSelection(value: unknown): string {
+  if (isExplicitNoTaxSelection(value)) return "";
   const taxId = refId(value);
-  return taxId && taxId.toLowerCase() !== "none" ? taxId : "";
+  return taxId ? taxId : "";
+}
+
+function isExplicitNoTaxSelection(value: unknown): boolean {
+  const taxId = refId(value).trim().toLowerCase();
+  return taxId === "none" || taxId === "__none";
+}
+
+function clearLineTax(line: any): void {
+  line.taxId = null;
+  line.taxPercent = 0;
+  line.taxAmount = 0;
 }
 
 function normalizeState(value: unknown): string {
@@ -189,7 +201,6 @@ export async function applyItemTaxLinkageToItems(
 
   return linkedItems.map((line) => {
     const item = itemById.get(refId((line as any)?.itemId));
-    const rawLineTaxId = refId((line as any)?.taxId);
     const lineTaxId = normalizeTaxSelection((line as any)?.taxId);
     const lineTaxPercent = Number((line as any)?.taxPercent || 0);
 
@@ -199,28 +210,19 @@ export async function applyItemTaxLinkageToItems(
         if (!lineTaxPercent) {
           (line as any).taxPercent = Number(taxRateById.get(lineTaxId) || 0);
         }
-      } else if (rawLineTaxId.toLowerCase() === "none") {
-        (line as any).taxId = null;
-        if ((line as any).taxPercent !== undefined) {
-          (line as any).taxPercent = 0;
-        }
+      } else if (isExplicitNoTaxSelection((line as any)?.taxId)) {
+        clearLineTax(line);
       }
       return line;
     }
 
     if ((item as any).taxPreference && (item as any).taxPreference !== "Taxable") {
-      (line as any).taxId = null;
-      if ((line as any).taxPercent !== undefined) {
-        (line as any).taxPercent = 0;
-      }
+      clearLineTax(line);
       return line;
     }
 
-    if (rawLineTaxId.toLowerCase() === "none") {
-      (line as any).taxId = null;
-      if ((line as any).taxPercent !== undefined) {
-        (line as any).taxPercent = 0;
-      }
+    if (isExplicitNoTaxSelection((line as any)?.taxId)) {
+      clearLineTax(line);
       return line;
     }
 

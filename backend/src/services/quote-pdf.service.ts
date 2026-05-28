@@ -936,7 +936,7 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       nextY += itemH;
     });
 
-    const finalTotal = data.subTotal + totalTaxAmount + (data.adjustmentAmount || 0) - (data.discountAmount || 0);
+    const finalTotal = data.total !== undefined && data.total !== null ? data.total : data.subTotal + totalTaxAmount + (data.adjustmentAmount || 0) - (data.discountAmount || 0);
 
     // Totals grid rows inline at the bottom of the table
     const addTotalGridRow = (label: string, value: string, isBold = false) => {

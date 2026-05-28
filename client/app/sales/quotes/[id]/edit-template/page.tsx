@@ -50,6 +50,20 @@ const TEXT_FALLBACK_KEYS: Array<keyof QuoteTemplateConfig> = [
   "footerCustomContent",
 ];
 
+function normalizeTaxLabel(value?: string): string {
+  return (value || "").trim().toUpperCase();
+}
+
+function resolveTaxModeFromName(value?: string): "igst" | "cgst" | "sgst" | "gst" | "unknown" {
+  const name = normalizeTaxLabel(value);
+  if (!name) return "unknown";
+  if (name.startsWith("IGST")) return "igst";
+  if (name.startsWith("CGST")) return "cgst";
+  if (name.startsWith("SGST")) return "sgst";
+  if (name.startsWith("GST")) return "gst";
+  return "unknown";
+}
+
 function normalizeConfig(raw?: Partial<QuoteTemplateConfig> | null): QuoteTemplateConfig {
   const merged: QuoteTemplateConfig = {
     ...DEFAULT_CONFIG,
@@ -256,7 +270,6 @@ export default function EditQuoteTemplatePage() {
 
   const placeOfSupply = quote?.placeOfSupply || customer?.billingAddress?.state || "";
   const orgState = orgAddr?.state || "";
-  const isIntra = orgState && placeOfSupply ? orgState.toLowerCase() === placeOfSupply.toLowerCase() : true;
 
   const itemsSource = quote?.items?.length ? quote.items : MOCK_ITEMS;
   const itemsList = itemsSource.map((item: any) => {
@@ -268,6 +281,8 @@ export default function EditQuoteTemplatePage() {
     const taxPct = Number(item.taxPercent ?? item.tax ?? 0) || 0;
     const taxAmt = Number(item.taxAmount ?? (taxable * taxPct) / 100) || 0;
     const amount = Number(item.amount ?? (taxable + taxAmt)) || 0;
+    const taxName =
+      typeof item.taxId === "object" ? item.taxId?.name : item.taxName || "";
     return {
       name: item.name || item.itemId?.name || "Item",
       description: item.description || "",
@@ -278,9 +293,39 @@ export default function EditQuoteTemplatePage() {
       discountAmount: discAmt,
       taxPercent: taxPct,
       taxAmount: taxAmt,
+      taxName,
       amount,
     };
   });
+
+  const taxBreakdown = itemsList.reduce(
+    (acc, item) => {
+      const taxAmt = item.taxAmount || 0;
+      if (!taxAmt) return acc;
+
+      const mode = resolveTaxModeFromName(item.taxName);
+      if (mode === "igst") {
+        acc.igst += taxAmt;
+      } else if (mode === "cgst") {
+        acc.cgst += taxAmt;
+      } else if (mode === "sgst") {
+        acc.sgst += taxAmt;
+      } else if (mode === "gst") {
+        acc.cgst += taxAmt / 2;
+        acc.sgst += taxAmt / 2;
+      }
+
+      return acc;
+    },
+    { cgst: 0, sgst: 0, igst: 0 },
+  );
+  const hasIgst = taxBreakdown.igst > 0;
+  const hasSplit = taxBreakdown.cgst > 0 || taxBreakdown.sgst > 0;
+  const isIntraBySupply =
+    orgState && placeOfSupply ?
+      orgState.toLowerCase() === placeOfSupply.toLowerCase()
+    : true;
+  const isIntra = hasSplit && !hasIgst ? true : hasIgst && !hasSplit ? false : isIntraBySupply;
 
   const totalTaxAmount = itemsList.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
   const hasTax = itemsList.some((item) => (item.taxPercent || 0) > 0 || (item.taxAmount || 0) > 0);
@@ -324,11 +369,14 @@ export default function EditQuoteTemplatePage() {
   }
   if (totalTaxAmount > 0) {
     if (isIntra) {
-      const splitTax = totalTaxAmount / 2;
-      totalRows.push({ label: "CGST (In Rs)", value: fmtNum(splitTax) });
-      totalRows.push({ label: "SGST (In Rs)", value: fmtNum(splitTax) });
+      const splitFallback = totalTaxAmount / 2;
+      const cgstValue = taxBreakdown.cgst > 0 ? taxBreakdown.cgst : splitFallback;
+      const sgstValue = taxBreakdown.sgst > 0 ? taxBreakdown.sgst : splitFallback;
+      totalRows.push({ label: "CGST (In Rs)", value: fmtNum(cgstValue) });
+      totalRows.push({ label: "SGST (In Rs)", value: fmtNum(sgstValue) });
     } else {
-      totalRows.push({ label: "IGST (In Rs)", value: fmtNum(totalTaxAmount) });
+      const igstValue = taxBreakdown.igst > 0 ? taxBreakdown.igst : totalTaxAmount;
+      totalRows.push({ label: "IGST (In Rs)", value: fmtNum(igstValue) });
     }
   }
   if (adjustmentAmount) {
