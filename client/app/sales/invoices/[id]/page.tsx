@@ -735,8 +735,8 @@ export default function InvoiceDetailPage() {
                                 </div>
                               </div>
                             </TableHead>
-                            <TableHead className="w-[120px] text-right font-bold text-slate-700">
-                              Amount
+                            <TableHead className="w-[140px] text-right font-bold text-slate-700">
+                              Amount (excl. tax)
                             </TableHead>
                           </TableRow>
                         </TableHeader>
@@ -746,7 +746,17 @@ export default function InvoiceDetailPage() {
                             const taxAmount = item.taxAmount || 0;
                             const halfTaxPercent = taxPercent / 2;
                             const halfTaxAmount = taxAmount / 2;
-                            const taxableAmount = item.quantity * item.rate;
+                            const lineTotal =
+                              Number(item.quantity || 0) *
+                              Number(item.rate || 0);
+                            const lineDiscount =
+                              Number(item.discountAmount || 0) ||
+                              (lineTotal * Number(item.discountPercent || 0)) /
+                                100;
+                            const taxableAmount = Math.max(
+                              0,
+                              lineTotal - lineDiscount,
+                            );
 
                             return (
                               <TableRow

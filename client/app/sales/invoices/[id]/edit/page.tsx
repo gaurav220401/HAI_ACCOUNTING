@@ -318,7 +318,10 @@ export default function EditInvoicePage() {
           organizationState: activeOrganization?.address?.state,
           taxes,
         });
-        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+        if (
+          line.taxId === linkedTax.taxId &&
+          Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)
+        ) {
           return line;
         }
         changed = true;
@@ -330,7 +333,13 @@ export default function EditInvoicePage() {
       });
       return changed ? next : prev;
     });
-  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
+  }, [
+    customerId,
+    selectedCustomer,
+    activeOrganization?.address?.state,
+    items,
+    taxes,
+  ]);
 
   // Calculations
   const lineTotals = lines.map(calcLineAmount);
@@ -408,14 +417,14 @@ export default function EditInvoicePage() {
         termsAndConditions,
       };
       await invoiceApi.update(id, payload);
-      
+
       if (shouldSend) {
         await invoiceApi.send(id);
         toast.success("Invoice updated and sent successfully");
       } else {
         toast.success("Invoice updated successfully");
       }
-      
+
       router.push(`/sales/invoices/${id}`);
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Failed to update invoice"));
@@ -452,25 +461,49 @@ export default function EditInvoicePage() {
         <PageHeader
           breadcrumb={
             <div className="flex items-center gap-2">
-               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(`/sales/invoices/${id}`)}>
-                 <ArrowLeft className="h-4 w-4" />
-               </Button>
-               <span className="text-sm text-muted-foreground">Invoices</span>
-               <span className="text-sm text-muted-foreground">/</span>
-               <span className="font-semibold text-foreground">Edit {invoice.invoiceNumber}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => router.push(`/sales/invoices/${id}`)}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground">Invoices</span>
+              <span className="text-sm text-muted-foreground">/</span>
+              <span className="font-semibold text-foreground">
+                Edit {invoice.invoiceNumber}
+              </span>
             </div>
           }
           actions={
             <div className="flex items-center gap-2">
-               <Button variant="outline" size="sm" onClick={() => router.push(`/sales/invoices/${id}`)}>
-                  Cancel
-               </Button>
-               <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => handleUpdate(false)} disabled={saving}>
-                  {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />} Save
-               </Button>
-               <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleUpdate(true)} disabled={saving}>
-                  <Send className="h-4 w-4 mr-2" /> Save and Send
-               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/sales/invoices/${id}`)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => handleUpdate(false)}
+                disabled={saving}
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                : <Save className="h-4 w-4 mr-2" />}{" "}
+                Save
+              </Button>
+              <Button
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => handleUpdate(true)}
+                disabled={saving}
+              >
+                <Send className="h-4 w-4 mr-2" /> Save and Send
+              </Button>
             </div>
           }
         />
@@ -499,7 +532,9 @@ export default function EditInvoicePage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__add_new">
-                        <span className="text-blue-600 font-bold">+ Add New Customer</span>
+                        <span className="text-blue-600 font-bold">
+                          + Add New Customer
+                        </span>
                       </SelectItem>
                       {customers.map((c) => (
                         <SelectItem key={c._id} value={c._id}>
@@ -512,20 +547,28 @@ export default function EditInvoicePage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-700">Invoice# <span className="text-red-500">*</span></Label>
+                    <Label className="text-sm font-bold text-slate-700">
+                      Invoice# <span className="text-red-500">*</span>
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         value={invoiceNumber}
                         onChange={(e) => setInvoiceNumber(e.target.value)}
                         className="h-11 border-slate-200 focus:ring-blue-500 font-mono"
                       />
-                      <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 border-slate-200">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-11 w-11 shrink-0 border-slate-200"
+                      >
                         <Settings className="h-4 w-4 text-slate-400" />
                       </Button>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-700">Order Number</Label>
+                    <Label className="text-sm font-bold text-slate-700">
+                      Order Number
+                    </Label>
                     <Input
                       value={orderNumber}
                       onChange={(e) => setOrderNumber(e.target.value)}
@@ -539,7 +582,9 @@ export default function EditInvoicePage() {
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-700">Invoice Date <span className="text-red-500">*</span></Label>
+                    <Label className="text-sm font-bold text-slate-700">
+                      Invoice Date <span className="text-red-500">*</span>
+                    </Label>
                     <Input
                       type="date"
                       value={invoiceDate}
@@ -548,7 +593,9 @@ export default function EditInvoicePage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-700">Due Date</Label>
+                    <Label className="text-sm font-bold text-slate-700">
+                      Due Date
+                    </Label>
                     <Input
                       type="date"
                       value={dueDate}
@@ -560,21 +607,30 @@ export default function EditInvoicePage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-700">Salesperson</Label>
-                    <Select value={salesPersonId || undefined} onValueChange={setSalesPersonId}>
+                    <Label className="text-sm font-bold text-slate-700">
+                      Salesperson
+                    </Label>
+                    <Select
+                      value={salesPersonId || undefined}
+                      onValueChange={setSalesPersonId}
+                    >
                       <SelectTrigger className="w-full h-11 border-slate-200 focus:ring-blue-500">
                         <SelectValue placeholder="Select Salesperson" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">None</SelectItem>
                         {salesPersons.map((sp) => (
-                          <SelectItem key={sp._id} value={sp._id}>{sp.name}</SelectItem>
+                          <SelectItem key={sp._id} value={sp._id}>
+                            {sp.name}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-slate-700">Reference#</Label>
+                    <Label className="text-sm font-bold text-slate-700">
+                      Reference#
+                    </Label>
                     <Input
                       value={referenceNumber}
                       onChange={(e) => setReferenceNumber(e.target.value)}
@@ -589,7 +645,9 @@ export default function EditInvoicePage() {
             <Separator className="bg-slate-100" />
 
             <div className="space-y-2 max-w-2xl">
-              <Label className="text-sm font-bold text-slate-700">Subject</Label>
+              <Label className="text-sm font-bold text-slate-700">
+                Subject
+              </Label>
               <Input
                 placeholder="Briefly describe the purpose of this invoice"
                 value={subject}
@@ -603,11 +661,19 @@ export default function EditInvoicePage() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-slate-900">Line Items</h2>
                 <div className="flex items-center gap-3">
-                  <Button variant="ghost" size="sm" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                  >
                     <ScanBarcode className="h-4 w-4 mr-1.5" /> Barcode Scanning
                   </Button>
                   <Separator orientation="vertical" className="h-4" />
-                  <Button variant="ghost" size="sm" className="text-xs font-bold text-slate-600">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs font-bold text-slate-600"
+                  >
                     <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh Prices
                   </Button>
                 </div>
@@ -617,41 +683,66 @@ export default function EditInvoicePage() {
                 <Table>
                   <TableHeader className="bg-slate-50/80">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="min-w-[300px] py-4 font-bold text-slate-600">ITEM DETAILS</TableHead>
-                      <TableHead className="w-[100px] text-right font-bold text-slate-600">QTY</TableHead>
-                      <TableHead className="w-[140px] text-right font-bold text-slate-600">RATE</TableHead>
-                      <TableHead className="w-[100px] text-right font-bold text-slate-600">DISC %</TableHead>
-                      <TableHead className="w-[180px] text-right font-bold text-slate-600">TAX</TableHead>
-                      <TableHead className="w-[140px] text-right font-bold text-slate-600">AMOUNT</TableHead>
+                      <TableHead className="min-w-[300px] py-4 font-bold text-slate-600">
+                        ITEM DETAILS
+                      </TableHead>
+                      <TableHead className="w-[100px] text-right font-bold text-slate-600">
+                        QTY
+                      </TableHead>
+                      <TableHead className="w-[140px] text-right font-bold text-slate-600">
+                        RATE
+                      </TableHead>
+                      <TableHead className="w-[100px] text-right font-bold text-slate-600">
+                        DISC %
+                      </TableHead>
+                      <TableHead className="w-[180px] text-right font-bold text-slate-600">
+                        TAX
+                      </TableHead>
+                      <TableHead className="w-[160px] text-right font-bold text-slate-600">
+                        AMOUNT (EXCL. TAX)
+                      </TableHead>
                       <TableHead className="w-[50px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {lines.map((line) => {
-                      const { amount } = calcLineAmount(line);
+                      const { afterDisc } = calcLineAmount(line);
                       return (
-                        <TableRow key={line.key} className="group hover:bg-slate-50/50 transition-colors">
+                        <TableRow
+                          key={line.key}
+                          className="group hover:bg-slate-50/50 transition-colors"
+                        >
                           <TableCell className="py-5">
                             <div className="space-y-2">
-                               <Select
-                                 value={line.itemId || undefined}
-                                 onValueChange={(v) => handleItemSelect(line.key, v)}
-                               >
-                                 <SelectTrigger className="h-10 border-slate-200 group-hover:border-slate-300">
-                                   <SelectValue placeholder="Select an item" />
-                                 </SelectTrigger>
-                                 <SelectContent>
-                                   {items.map((it) => (
-                                     <SelectItem key={it._id} value={it._id}>{it.name}</SelectItem>
-                                   ))}
-                                 </SelectContent>
-                               </Select>
-                               <Input
-                                 className="h-8 text-xs bg-slate-50 border-slate-100 italic"
-                                 placeholder="Add a description or note for this item"
-                                 value={line.description}
-                                 onChange={(e) => updateLine(line.key, "description", e.target.value)}
-                               />
+                              <Select
+                                value={line.itemId || undefined}
+                                onValueChange={(v) =>
+                                  handleItemSelect(line.key, v)
+                                }
+                              >
+                                <SelectTrigger className="h-10 border-slate-200 group-hover:border-slate-300">
+                                  <SelectValue placeholder="Select an item" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {items.map((it) => (
+                                    <SelectItem key={it._id} value={it._id}>
+                                      {it.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                className="h-8 text-xs bg-slate-50 border-slate-100 italic"
+                                placeholder="Add a description or note for this item"
+                                value={line.description}
+                                onChange={(e) =>
+                                  updateLine(
+                                    line.key,
+                                    "description",
+                                    e.target.value,
+                                  )
+                                }
+                              />
                             </div>
                           </TableCell>
                           <TableCell>
@@ -660,7 +751,13 @@ export default function EditInvoicePage() {
                               min={0}
                               className="h-10 text-right font-medium border-slate-200"
                               value={line.quantity}
-                              onChange={(e) => updateLine(line.key, "quantity", parseFloat(e.target.value) || 0)}
+                              onChange={(e) =>
+                                updateLine(
+                                  line.key,
+                                  "quantity",
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
                             />
                           </TableCell>
                           <TableCell>
@@ -670,7 +767,13 @@ export default function EditInvoicePage() {
                               step="0.01"
                               className="h-10 text-right font-medium border-slate-200"
                               value={line.rate}
-                              onChange={(e) => updateLine(line.key, "rate", parseFloat(e.target.value) || 0)}
+                              onChange={(e) =>
+                                updateLine(
+                                  line.key,
+                                  "rate",
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
                             />
                           </TableCell>
                           <TableCell>
@@ -680,28 +783,43 @@ export default function EditInvoicePage() {
                               max={100}
                               className="h-10 text-right font-medium border-slate-200"
                               value={line.discountPercent}
-                              onChange={(e) => updateLine(line.key, "discountPercent", parseFloat(e.target.value) || 0)}
+                              onChange={(e) =>
+                                updateLine(
+                                  line.key,
+                                  "discountPercent",
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
                             />
                           </TableCell>
                           <TableCell>
                             <Select
                               value={line.taxId || "__none"}
-                              onValueChange={(v) => updateLineTax(line.key, v === "__none" ? "" : v)}
+                              onValueChange={(v) =>
+                                updateLineTax(line.key, v === "__none" ? "" : v)
+                              }
                             >
                               <SelectTrigger className="h-10 border-slate-200">
                                 <SelectValue placeholder="Tax" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="__none">Non-Taxable</SelectItem>
+                                <SelectItem value="__none">
+                                  Non-Taxable
+                                </SelectItem>
                                 {taxes.map((tax) => (
-                                  <SelectItem key={tax._id} value={tax._id}>{tax.name} ({tax.rate}%)</SelectItem>
+                                  <SelectItem key={tax._id} value={tax._id}>
+                                    {tax.name} ({tax.rate}%)
+                                  </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </TableCell>
                           <TableCell className="text-right py-5 pr-4">
                             <div className="font-bold text-slate-900 tabular-nums">
-                               {amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {afterDisc.toLocaleString("en-IN", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </div>
                           </TableCell>
                           <TableCell className="py-5">
@@ -730,8 +848,12 @@ export default function EditInvoicePage() {
                 >
                   <Plus className="h-4 w-4 mr-2 text-blue-600" /> Add New Row
                 </Button>
-                <Button variant="ghost" size="sm" className="font-bold text-slate-500 h-10">
-                   Add Multiple Items
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="font-bold text-slate-500 h-10"
+                >
+                  Add Multiple Items
                 </Button>
               </div>
             </div>
@@ -742,7 +864,9 @@ export default function EditInvoicePage() {
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-16">
               <div className="space-y-8">
                 <div className="space-y-3">
-                  <Label className="text-sm font-bold text-slate-700">Customer Notes</Label>
+                  <Label className="text-sm font-bold text-slate-700">
+                    Customer Notes
+                  </Label>
                   <textarea
                     className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     placeholder="Notes added here will be visible on the invoice"
@@ -751,7 +875,9 @@ export default function EditInvoicePage() {
                   />
                 </div>
                 <div className="space-y-3">
-                  <Label className="text-sm font-bold text-slate-700">Terms & Conditions</Label>
+                  <Label className="text-sm font-bold text-slate-700">
+                    Terms & Conditions
+                  </Label>
                   <textarea
                     className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     placeholder="Enter the terms and conditions of your business"
@@ -764,87 +890,136 @@ export default function EditInvoicePage() {
               <div className="bg-slate-50/50 rounded-2xl p-8 border border-slate-100 space-y-5 h-fit">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500 font-medium">Sub Total</span>
-                  <span className="font-bold tabular-nums text-slate-900">{subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  <span className="font-bold tabular-nums text-slate-900">
+                    {subTotal.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
                 </div>
-                
+
                 {lineDiscountAmount > 0 && (
                   <div className="flex items-center justify-between text-sm text-green-600 font-medium">
                     <span>Line Item Discount</span>
-                    <span className="tabular-nums">- {lineDiscountAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    <span className="tabular-nums">
+                      -{" "}
+                      {lineDiscountAmount.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between gap-6 py-2">
-                   <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">Discount</span>
-                      <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                         <SelectTrigger className="h-7 w-16 text-[10px] py-0">
-                            <SelectValue />
-                         </SelectTrigger>
-                         <SelectContent>
-                            <SelectItem value="percent">%</SelectItem>
-                            <SelectItem value="amount">₹</SelectItem>
-                         </SelectContent>
-                      </Select>
-                   </div>
-                   <Input
-                      type="number"
-                      className="h-9 w-24 text-right font-bold border-slate-200"
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
-                   />
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-500">Discount</span>
+                    <Select
+                      value={discountType}
+                      onValueChange={(v: any) => setDiscountType(v)}
+                    >
+                      <SelectTrigger className="h-7 w-16 text-[10px] py-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percent">%</SelectItem>
+                        <SelectItem value="amount">₹</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Input
+                    type="number"
+                    className="h-9 w-24 text-right font-bold border-slate-200"
+                    value={discountValue}
+                    onChange={(e) =>
+                      setDiscountValue(parseFloat(e.target.value) || 0)
+                    }
+                  />
                 </div>
 
                 <div className="flex items-center justify-between gap-6 py-2">
-                   <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">Adjustment</span>
-                      <TooltipProvider>
-                         <Tooltip>
-                            <TooltipTrigger asChild><Info className="h-3.5 w-3.5 text-slate-300 cursor-help" /></TooltipTrigger>
-                            <TooltipContent>Add or subtract a small amount for rounding or other purposes</TooltipContent>
-                         </Tooltip>
-                      </TooltipProvider>
-                   </div>
-                   <Input
-                      type="number"
-                      className="h-9 w-24 text-right font-bold border-slate-200"
-                      value={adjustmentAmount}
-                      onChange={(e) => setAdjustmentAmount(parseFloat(e.target.value) || 0)}
-                   />
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-500">Adjustment</span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-slate-300 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Add or subtract a small amount for rounding or other
+                          purposes
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <Input
+                    type="number"
+                    className="h-9 w-24 text-right font-bold border-slate-200"
+                    value={adjustmentAmount}
+                    onChange={(e) =>
+                      setAdjustmentAmount(parseFloat(e.target.value) || 0)
+                    }
+                  />
                 </div>
 
                 <Separator className="bg-slate-200" />
 
                 <div className="flex items-center justify-between pt-2">
-                  <span className="text-lg font-bold text-slate-900">Total ( ₹ )</span>
+                  <span className="text-lg font-bold text-slate-900">
+                    Total ( ₹ )
+                  </span>
                   <span className="text-2xl font-black text-slate-900 tabular-nums">
-                    {total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {total.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
-                
+
                 <div className="bg-white border rounded-xl p-4 mt-6 space-y-2">
-                   <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Post-update Status</div>
-                   <div className="flex items-center justify-between">
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-100 font-bold px-3 py-1">
-                         {invoice.status}
-                      </Badge>
-                      {total > 0 && <span className="text-[10px] text-slate-400">Syncs to Ledger & Stock</span>}
-                   </div>
+                  <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                    Post-update Status
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Badge
+                      variant="outline"
+                      className="bg-blue-50 text-blue-700 border-blue-100 font-bold px-3 py-1"
+                    >
+                      {invoice.status}
+                    </Badge>
+                    {total > 0 && (
+                      <span className="text-[10px] text-slate-400">
+                        Syncs to Ledger & Stock
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          
+
           <div className="flex justify-end gap-4 pb-20">
-             <Button variant="outline" className="px-8 font-bold border-slate-200" onClick={() => router.push(`/sales/invoices/${id}`)}>
-                Discard
-             </Button>
-             <Button className="px-8 font-bold bg-slate-900 hover:bg-slate-800" onClick={() => handleUpdate(false)} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : "Save Changes"}
-             </Button>
-             <Button className="px-8 font-bold bg-blue-600 hover:bg-blue-700" onClick={() => handleUpdate(true)} disabled={saving}>
-                <Send className="h-4 w-4 mr-2" /> Update and Send
-             </Button>
+            <Button
+              variant="outline"
+              className="px-8 font-bold border-slate-200"
+              onClick={() => router.push(`/sales/invoices/${id}`)}
+            >
+              Discard
+            </Button>
+            <Button
+              className="px-8 font-bold bg-slate-900 hover:bg-slate-800"
+              onClick={() => handleUpdate(false)}
+              disabled={saving}
+            >
+              {saving ?
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              : "Save Changes"}
+            </Button>
+            <Button
+              className="px-8 font-bold bg-blue-600 hover:bg-blue-700"
+              onClick={() => handleUpdate(true)}
+              disabled={saving}
+            >
+              <Send className="h-4 w-4 mr-2" /> Update and Send
+            </Button>
           </div>
         </div>
       </SidebarInset>

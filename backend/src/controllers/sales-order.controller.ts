@@ -11,7 +11,11 @@ import Package from "../models/package.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
-import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import {
+  NotFoundError,
+  ValidationError,
+  ForbiddenError,
+} from "../utils/errors";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 import { sendSalesOrderEmail as sendSalesOrderEmailService } from "../services/email.service";
 import { generateSalesOrderPdf } from "../services/pdf.service";
@@ -59,6 +63,14 @@ function toNum(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function hasLineItemDiscount(items: any[] = []): boolean {
+  return (items || []).some((line) => {
+    const discountAmount = toNum(line?.discountAmount || line?.discount);
+    const discountPercent = toNum(line?.discountPercent);
+    return discountAmount > 0 || discountPercent > 0;
+  });
+}
+
 function normalizeSalesOrderStatus(
   value: unknown,
   fallback: SalesOrderStatus = "DRAFT",
@@ -92,20 +104,32 @@ function normalizeExpectedShipmentDate(value: unknown): unknown {
 function getObjectIdString(value: unknown): string {
   if (!value) return "";
   if (typeof value === "string") return value;
-  if (typeof value === "object" && value !== null && "_id" in (value as Record<string, unknown>)) {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "_id" in (value as Record<string, unknown>)
+  ) {
     return String((value as { _id?: unknown })._id || "");
   }
   return String(value || "");
 }
 
-function addQuantity(map: Map<string, number>, key: string, quantity: unknown): void {
+function addQuantity(
+  map: Map<string, number>,
+  key: string,
+  quantity: unknown,
+): void {
   if (!key) return;
   const qty = round2(Math.max(0, toNum(quantity)));
   if (qty <= 0) return;
   map.set(key, round2((map.get(key) || 0) + qty));
 }
 
-function consumeQuantity(map: Map<string, number>, key: string, requested: unknown): number {
+function consumeQuantity(
+  map: Map<string, number>,
+  key: string,
+  requested: unknown,
+): number {
   if (!key) return 0;
   const needed = round2(Math.max(0, toNum(requested)));
   if (needed <= 0) return 0;
@@ -118,7 +142,8 @@ function consumeQuantity(map: Map<string, number>, key: string, requested: unkno
 function buildPostedInvoiceQuantityMap(invoices: any[]): Map<string, number> {
   const out = new Map<string, number>();
   for (const invoice of invoices || []) {
-    if (!POSTED_INVOICE_STATUSES.includes(String(invoice.status || ""))) continue;
+    if (!POSTED_INVOICE_STATUSES.includes(String(invoice.status || "")))
+      continue;
     for (const line of invoice.items || []) {
       addQuantity(out, getObjectIdString(line.itemId), line.quantity);
     }
@@ -139,7 +164,8 @@ function buildPackageQuantityMap(packages: any[]): Map<string, number> {
 function buildChallanQuantityMap(challans: any[]): Map<string, number> {
   const out = new Map<string, number>();
   for (const challan of challans || []) {
-    if (!SHIPPED_CHALLAN_STATUSES.includes(String(challan.status || ""))) continue;
+    if (!SHIPPED_CHALLAN_STATUSES.includes(String(challan.status || "")))
+      continue;
     for (const line of challan.items || []) {
       addQuantity(out, getObjectIdString(line.itemId), line.quantity);
     }
@@ -147,7 +173,10 @@ function buildChallanQuantityMap(challans: any[]): Map<string, number> {
   return out;
 }
 
-function maxQuantityMaps(left: Map<string, number>, right: Map<string, number>): Map<string, number> {
+function maxQuantityMaps(
+  left: Map<string, number>,
+  right: Map<string, number>,
+): Map<string, number> {
   const out = new Map<string, number>();
   const keys = new Set([...left.keys(), ...right.keys()]);
   for (const key of keys) {
@@ -165,12 +194,15 @@ function withLineFulfillmentQuantities(
 ): any[] {
   const invoiceQtyByItem = buildPostedInvoiceQuantityMap(linkedInvoices);
   const hasShipmentDocuments =
-    (linkedPackages || []).some((pkg) => (pkg.lineItems || []).length > 0)
-    || (linkedChallans || []).some((challan) =>
-      SHIPPED_CHALLAN_STATUSES.includes(String(challan.status || "")) && (challan.items || []).length > 0,
+    (linkedPackages || []).some((pkg) => (pkg.lineItems || []).length > 0) ||
+    (linkedChallans || []).some(
+      (challan) =>
+        SHIPPED_CHALLAN_STATUSES.includes(String(challan.status || "")) &&
+        (challan.items || []).length > 0,
     );
   const useShipmentStatusFallback =
-    !hasShipmentDocuments && ["Shipped", "Delivered"].includes(String(shipmentStatus || ""));
+    !hasShipmentDocuments &&
+    ["Shipped", "Delivered"].includes(String(shipmentStatus || ""));
   const shippedQtyByItem = maxQuantityMaps(
     buildPackageQuantityMap(linkedPackages),
     buildChallanQuantityMap(linkedChallans),
@@ -180,9 +212,10 @@ function withLineFulfillmentQuantities(
     const itemKey = getObjectIdString(line.itemId);
     const orderedQty = round2(Math.max(0, toNum(line.quantity)));
     const qtyInvoiced = consumeQuantity(invoiceQtyByItem, itemKey, orderedQty);
-    const qtyShipped = useShipmentStatusFallback
-      ? orderedQty
-      : consumeQuantity(shippedQtyByItem, itemKey, orderedQty);
+    const qtyShipped =
+      useShipmentStatusFallback ? orderedQty : (
+        consumeQuantity(shippedQtyByItem, itemKey, orderedQty)
+      );
 
     return {
       ...line,
@@ -272,18 +305,25 @@ function computeTotals(
   discountAmountRaw: number = 0,
   taxType: string = "none",
   taxAmountRaw: number = 0,
-  tcsAmountRaw: number = 0
+  tcsAmountRaw: number = 0,
 ) {
-  const subTotal = round2((lineItems || []).reduce((sum, li) => sum + toNum(li?.amount), 0));
+  const subTotal = round2(
+    (lineItems || []).reduce((sum, li) => sum + toNum(li?.amount), 0),
+  );
 
   let globalDiscountAmount = 0;
   let totalDiscountAmount = 0;
 
   if (discountLevel === "transaction") {
-    globalDiscountAmount = toNum(discountAmountRaw) || round2((subTotal * toNum(discountPercent)) / 100);
+    globalDiscountAmount =
+      toNum(discountAmountRaw) ||
+      round2((subTotal * toNum(discountPercent)) / 100);
     totalDiscountAmount = globalDiscountAmount;
   } else {
-    totalDiscountAmount = (lineItems || []).reduce((sum, li) => sum + toNum(li?.discountAmount), 0);
+    totalDiscountAmount = (lineItems || []).reduce(
+      (sum, li) => sum + toNum(li?.discountAmount),
+      0,
+    );
   }
 
   const taxAmount = taxType === "TDS" ? toNum(taxAmountRaw) : 0;
@@ -291,20 +331,26 @@ function computeTotals(
 
   let total = subTotal;
   if (discountLevel === "transaction") {
-     total -= globalDiscountAmount;
+    total -= globalDiscountAmount;
   }
-  total = round2(total - taxAmount + tcsAmount + toNum(shippingCharges) + toNum(adjustment));
+  total = round2(
+    total - taxAmount + tcsAmount + toNum(shippingCharges) + toNum(adjustment),
+  );
 
   return { subTotal, discountAmount: totalDiscountAmount, total };
 }
 
-function normalizeLineItems(items: any[] = [], discountLevel: string = "transaction") {
+function normalizeLineItems(
+  items: any[] = [],
+  discountLevel: string = "transaction",
+) {
   return (items || [])
     .map((line) => {
       const { ...rest } = line || {};
       const rawTaxId = String(rest.taxId || "").trim();
-      const taxId = rawTaxId && rawTaxId.toLowerCase() !== "none" ? rest.taxId : null;
-      
+      const taxId =
+        rawTaxId && rawTaxId.toLowerCase() !== "none" ? rest.taxId : null;
+
       if (rest.isHeader) {
         return {
           ...rest,
@@ -325,13 +371,19 @@ function normalizeLineItems(items: any[] = [], discountLevel: string = "transact
 
       let discountAmount = 0;
       let discountPercent = 0;
-      
+
       if (discountLevel === "line_item") {
+        const rawDiscountAmount = toNum(rest.discountAmount || rest.discount);
         discountPercent = toNum(rest.discountPercent);
-        discountAmount = round2(toNum(rest.discountAmount) || (lineTotal * discountPercent) / 100);
+        discountAmount = round2(
+          rawDiscountAmount || (lineTotal * discountPercent) / 100,
+        );
         discountAmount = Math.min(discountAmount, lineTotal);
+        if (rawDiscountAmount > 0 && lineTotal > 0) {
+          discountPercent = round2((discountAmount / lineTotal) * 100);
+        }
       }
-      
+
       const afterDiscount = round2(Math.max(0, lineTotal - discountAmount));
       const taxPercent = toNum(rest.taxPercent);
       const taxAmount = round2((afterDiscount * taxPercent) / 100);
@@ -420,14 +472,15 @@ function normalizeLegacyOrderForResponse(order: any) {
   }
 
   if (!normalized.invoiceStatus) {
-    normalized.invoiceStatus = normalized.invoiceId ? "Invoiced" : "Not Invoiced";
+    normalized.invoiceStatus =
+      normalized.invoiceId ? "Invoiced" : "Not Invoiced";
   }
 
   if (!normalized.shipmentStatus) {
     normalized.shipmentStatus = "Pending";
   }
 
-  if (order.invoiceId && typeof order.invoiceId === 'object') {
+  if (order.invoiceId && typeof order.invoiceId === "object") {
     normalized.invoicePaymentReceived = !!order.invoiceId.paymentReceived;
     normalized.invoicePaymentStatus = order.invoiceId.status;
   }
@@ -443,15 +496,18 @@ async function autoCreateVendorFromCustomer(params: {
   const { organizationId, customer, req } = params;
 
   const source =
-    customer && typeof customer === "object" ? customer : ({} as Record<string, unknown>);
+    customer && typeof customer === "object" ?
+      customer
+    : ({} as Record<string, unknown>);
 
   const fallbackName = `Vendor-${Date.now()}`;
   const displayName = String(
     (source as any).displayName || (source as any).companyName || fallbackName,
   ).trim();
 
-  const linkedContactId = Types.ObjectId.isValid(String((source as any)._id || ""))
-    ? (source as any)._id
+  const linkedContactId =
+    Types.ObjectId.isValid(String((source as any)._id || "")) ?
+      (source as any)._id
     : null;
 
   const vendor = new Contact({
@@ -472,7 +528,10 @@ async function autoCreateVendorFromCustomer(params: {
   attachUser(vendor as any, req);
   await vendor.save();
 
-  if (linkedContactId && !Types.ObjectId.isValid(String((source as any).linkedContactId || ""))) {
+  if (
+    linkedContactId &&
+    !Types.ObjectId.isValid(String((source as any).linkedContactId || ""))
+  ) {
     await Contact.updateOne(
       {
         _id: linkedContactId,
@@ -506,14 +565,19 @@ async function resolveVendorForPurchaseOrder(params: {
 
     if (!vendor) throw new ValidationError("Provided vendorId was not found");
     if (!isVendorContactType(String(vendor.contactType || ""))) {
-      throw new ValidationError("Provided vendor contact is not of type Vendor/Both");
+      throw new ValidationError(
+        "Provided vendor contact is not of type Vendor/Both",
+      );
     }
     return vendor._id;
   }
 
   const customerId = String(customer?._id || "");
   const customerContactType = String(customer?.contactType || "");
-  if (Types.ObjectId.isValid(customerId) && isVendorContactType(customerContactType)) {
+  if (
+    Types.ObjectId.isValid(customerId) &&
+    isVendorContactType(customerContactType)
+  ) {
     return customer._id;
   }
 
@@ -542,7 +606,10 @@ async function resolveVendorForPurchaseOrder(params: {
       .select("_id contactType")
       .lean();
 
-    if (linkedVendor && isVendorContactType(String(linkedVendor.contactType || ""))) {
+    if (
+      linkedVendor &&
+      isVendorContactType(String(linkedVendor.contactType || ""))
+    ) {
       return linkedVendor._id;
     }
   }
@@ -568,13 +635,18 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
     organizationId,
     isDeleted: false,
   } as any)
-    .populate("customerId", "_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress")
+    .populate(
+      "customerId",
+      "_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress",
+    )
     .populate("lineItems.itemId", "name purchaseAccountId unit")
     .lean();
 
   if (!order) throw new NotFoundError("Sales Order");
   if (String((order as any).status || "") === "VOID") {
-    throw new ValidationError("Cannot convert a void sales order to purchase order");
+    throw new ValidationError(
+      "Cannot convert a void sales order to purchase order",
+    );
   }
 
   let customer = (order as any).customerId;
@@ -586,7 +658,9 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
         organizationId,
         isDeleted: false,
       })
-        .select("_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress")
+        .select(
+          "_id displayName companyName contactType linkedContactId email phone mobile currency billingAddress shippingAddress",
+        )
         .lean();
     }
   }
@@ -603,7 +677,9 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
     organizationId,
     isDeleted: false,
   })
-    .select("_id displayName companyName email phone mobile billingAddress shippingAddress")
+    .select(
+      "_id displayName companyName email phone mobile billingAddress shippingAddress",
+    )
     .lean();
 
   const purchaseOrderNumber = await nextPurchaseOrderNumber(organizationId);
@@ -619,16 +695,13 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
 
       return {
         itemId: item?._id || li.itemId,
-        name:
-          item?.name ||
-          li.name ||
-          li.description ||
-          "Item",
+        name: item?.name || li.name || li.description || "Item",
         accountId: item?.purchaseAccountId || null,
         description: copyDescriptions ? li.description || "" : "",
         quantity: qty,
         rate,
-        discountPercent: lineTotal > 0 ? round2((discountAmount / lineTotal) * 100) : 0,
+        discountPercent:
+          lineTotal > 0 ? round2((discountAmount / lineTotal) * 100) : 0,
         discountAmount,
         amount,
       };
@@ -639,9 +712,15 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
     throw new ValidationError("Sales order has no line items to convert");
   }
 
-  const subTotal = round2(lineItems.reduce((s: number, li: any) => s + li.quantity * li.rate, 0));
-  const discountAmount = round2(lineItems.reduce((s: number, li: any) => s + (li.discountAmount || 0), 0));
-  const adjustmentAmount = round2(toNum((order as any).shippingCharges) + toNum((order as any).adjustment));
+  const subTotal = round2(
+    lineItems.reduce((s: number, li: any) => s + li.quantity * li.rate, 0),
+  );
+  const discountAmount = round2(
+    lineItems.reduce((s: number, li: any) => s + (li.discountAmount || 0), 0),
+  );
+  const adjustmentAmount = round2(
+    toNum((order as any).shippingCharges) + toNum((order as any).adjustment),
+  );
   const total = round2(subTotal - discountAmount + adjustmentAmount);
 
   return {
@@ -652,7 +731,9 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
       deliveryAddressType: "Organization",
       deliveryCustomerId: null,
       purchaseOrderNumber,
-      referenceNumber: String((order as any).reference || (order as any).salesOrderNumber || ""),
+      referenceNumber: String(
+        (order as any).reference || (order as any).salesOrderNumber || "",
+      ),
       purchaseOrderDate: new Date().toISOString(),
       deliveryDate: (order as any).expectedShipmentDate || null,
       paymentTermsId: (order as any).paymentTermsId || null,
@@ -696,7 +777,9 @@ async function updateCommittedStock(
     if (!item || !item.inventoryTracked) continue;
 
     if (direction === "commit") {
-      (item as any).committedStock = round2(toNum((item as any).committedStock) + qty);
+      (item as any).committedStock = round2(
+        toNum((item as any).committedStock) + qty,
+      );
     } else {
       (item as any).committedStock = round2(
         Math.max(0, toNum((item as any).committedStock) - qty),
@@ -734,7 +817,11 @@ async function transitionShipmentStatus(params: {
   );
 
   // Delivered transition moves stock only when a posted invoice has not already moved it.
-  if (!postedInvoiceExists && oldStatus !== "Delivered" && shipmentStatus === "Delivered") {
+  if (
+    !postedInvoiceExists &&
+    oldStatus !== "Delivered" &&
+    shipmentStatus === "Delivered"
+  ) {
     const lineItems = (order as any).lineItems || [];
     for (const li of lineItems) {
       const itemId = typeof li.itemId === "object" ? li.itemId?._id : li.itemId;
@@ -749,7 +836,11 @@ async function transitionShipmentStatus(params: {
       item.committedStock = Math.max(0, (item.committedStock || 0) - qty);
       await item.save();
     }
-  } else if (!postedInvoiceExists && oldStatus === "Delivered" && shipmentStatus !== "Delivered") {
+  } else if (
+    !postedInvoiceExists &&
+    oldStatus === "Delivered" &&
+    shipmentStatus !== "Delivered"
+  ) {
     const lineItems = (order as any).lineItems || [];
     for (const li of lineItems) {
       const itemId = typeof li.itemId === "object" ? li.itemId?._id : li.itemId;
@@ -784,934 +875,1106 @@ async function transitionShipmentStatus(params: {
 }
 
 /** GET /api/sales-orders?search=...&status=...&page=1&limit=25 */
-export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const {
-    search,
-    status,
-    customerId,
-    customer_id,
-    page = 1,
-    limit = 25,
-  } = req.query as Record<string, string>;
+export const list = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const {
+      search,
+      status,
+      customerId,
+      customer_id,
+      page = 1,
+      limit = 25,
+    } = req.query as Record<string, string>;
 
-  const filter: any = { organizationId: orgId(req), isDeleted: false };
-  if (status && status.toUpperCase() !== "ALL") {
-    filter.status = normalizeSalesOrderStatus(status);
-  }
-  const customerFilterId = customerId || customer_id;
-  if (customerFilterId) filter.customerId = customerFilterId;
-  if (search) {
-    filter.$or = [
-      { salesOrderNumber: { $regex: search, $options: "i" } },
-      { reference: { $regex: search, $options: "i" } },
-    ];
-  }
+    const filter: any = { organizationId: orgId(req), isDeleted: false };
+    if (status && status.toUpperCase() !== "ALL") {
+      filter.status = normalizeSalesOrderStatus(status);
+    }
+    const customerFilterId = customerId || customer_id;
+    if (customerFilterId) filter.customerId = customerFilterId;
+    if (search) {
+      filter.$or = [
+        { salesOrderNumber: { $regex: search, $options: "i" } },
+        { reference: { $regex: search, $options: "i" } },
+      ];
+    }
 
-  const total = await SalesOrder.countDocuments(filter);
-  const orders = await SalesOrder.find(filter)
-    .populate("customerId paymentTermsId salesPersonId invoiceId")
-    .sort({ orderDate: -1 })
-    .skip((+page - 1) * +limit)
-    .limit(+limit)
-    .lean();
+    const total = await SalesOrder.countDocuments(filter);
+    const orders = await SalesOrder.find(filter)
+      .populate("customerId paymentTermsId salesPersonId invoiceId")
+      .sort({ orderDate: -1 })
+      .skip((+page - 1) * +limit)
+      .limit(+limit)
+      .lean();
 
-  const normalizedOrders = (orders || []).map((order) =>
-    normalizeLegacyOrderForResponse(order),
-  );
+    const normalizedOrders = (orders || []).map((order) =>
+      normalizeLegacyOrderForResponse(order),
+    );
 
-  res.json({
-    success: true,
-    data: normalizedOrders,
-    pagination: { total, page: +page, limit: +limit, pages: Math.ceil(total / +limit) },
-  });
-});
+    res.json({
+      success: true,
+      data: normalizedOrders,
+      pagination: {
+        total,
+        page: +page,
+        limit: +limit,
+        pages: Math.ceil(total / +limit),
+      },
+    });
+  },
+);
 
 /** GET /api/sales-orders/:id */
-export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any)
-    .populate("customerId paymentTermsId salesPersonId lineItems.itemId lineItems.taxId invoiceId");
-  if (!order) throw new NotFoundError("Sales Order");
-  
-  const orderData = (order as any).toObject ? (order as any).toObject() : order;
-  const normalizedOrder = normalizeLegacyOrderForResponse(orderData);
+export const getOne = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any).populate(
+      "customerId paymentTermsId salesPersonId lineItems.itemId lineItems.taxId invoiceId",
+    );
+    if (!order) throw new NotFoundError("Sales Order");
 
-  // Find linked documents
-  const salesOrderNumber = normalizedOrder.salesOrderNumber;
-  const [linkedInvoices, linkedPackages, linkedChallans, linkedMoveOrders] = await Promise.all([
-    Invoice.find({ organizationId: oid, orderNumber: salesOrderNumber, isDeleted: false } as any)
-      .select("invoiceNumber status total balanceDue invoiceDate items.itemId items.quantity createdAt")
-      .lean(),
-    Package.find({ organizationId: oid, salesOrderId: order._id, isDeleted: false } as any)
-      .select("packageSlipNumber date lineItems.itemId lineItems.quantityToPack")
-      .lean(),
-    DeliveryChallan.find({ organizationId: oid, salesOrderNumber: salesOrderNumber, isDeleted: false } as any)
-      .select("challanNumber challanDate status items.itemId items.quantity")
-      .lean(),
-    MoveOrder.find({ organizationId: oid, salesOrderId: order._id, isDeleted: false } as any)
-      .select("orderNumber date status")
-      .lean(),
-  ]);
+    const orderData =
+      (order as any).toObject ? (order as any).toObject() : order;
+    const normalizedOrder = normalizeLegacyOrderForResponse(orderData);
 
-  const lineItems = withLineFulfillmentQuantities(
-    normalizedOrder.lineItems || [],
-    linkedInvoices,
-    linkedPackages,
-    linkedChallans,
-    normalizedOrder.shipmentStatus,
-  );
+    // Find linked documents
+    const salesOrderNumber = normalizedOrder.salesOrderNumber;
+    const [linkedInvoices, linkedPackages, linkedChallans, linkedMoveOrders] =
+      await Promise.all([
+        Invoice.find({
+          organizationId: oid,
+          orderNumber: salesOrderNumber,
+          isDeleted: false,
+        } as any)
+          .select(
+            "invoiceNumber status total balanceDue invoiceDate items.itemId items.quantity createdAt",
+          )
+          .lean(),
+        Package.find({
+          organizationId: oid,
+          salesOrderId: order._id,
+          isDeleted: false,
+        } as any)
+          .select(
+            "packageSlipNumber date lineItems.itemId lineItems.quantityToPack",
+          )
+          .lean(),
+        DeliveryChallan.find({
+          organizationId: oid,
+          salesOrderNumber: salesOrderNumber,
+          isDeleted: false,
+        } as any)
+          .select(
+            "challanNumber challanDate status items.itemId items.quantity",
+          )
+          .lean(),
+        MoveOrder.find({
+          organizationId: oid,
+          salesOrderId: order._id,
+          isDeleted: false,
+        } as any)
+          .select("orderNumber date status")
+          .lean(),
+      ]);
 
-  res.json({ 
-    success: true, 
-    data: { 
-      ...normalizedOrder,
-      lineItems,
-      linkedDocuments: {
-        invoices: linkedInvoices,
-        packages: linkedPackages,
-        deliveryChallans: linkedChallans,
-        moveOrders: linkedMoveOrders,
-      }
-    } 
-  });
-});
+    const lineItems = withLineFulfillmentQuantities(
+      normalizedOrder.lineItems || [],
+      linkedInvoices,
+      linkedPackages,
+      linkedChallans,
+      normalizedOrder.shipmentStatus,
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...normalizedOrder,
+        lineItems,
+        linkedDocuments: {
+          invoices: linkedInvoices,
+          packages: linkedPackages,
+          deliveryChallans: linkedChallans,
+          moveOrders: linkedMoveOrders,
+        },
+      },
+    });
+  },
+);
 
 /** POST /api/sales-orders */
-export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const body = (req.body || {}) as Record<string, unknown>;
-  const customerId = body.customerId;
-  const salesOrderNumber = normalizeSalesOrderNumber(body.salesOrderNumber);
-  const orderDate = body.orderDate;
-  const status = normalizeSalesOrderStatus(body.status, "DRAFT");
+export const create = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const body = (req.body || {}) as Record<string, unknown>;
+    const customerId = body.customerId;
+    const salesOrderNumber = normalizeSalesOrderNumber(body.salesOrderNumber);
+    const orderDate = body.orderDate;
+    const status = normalizeSalesOrderStatus(body.status, "DRAFT");
 
-  if (!customerId) throw new ValidationError("customerId is required");
-  if (!orderDate) throw new ValidationError("orderDate is required");
-  if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
-    throw new ValidationError("At least one line item is required");
-  }
+    if (!customerId) throw new ValidationError("customerId is required");
+    if (!orderDate) throw new ValidationError("orderDate is required");
+    if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
+      throw new ValidationError("At least one line item is required");
+    }
 
-  await ensureStatusLinkage({
-    organizationId: oid,
-    salesOrderNumber,
-    status,
-  });
-
-  const discountLevel = String(body.discountLevel || "transaction");
-  const linkedLineItems = normalizeLineItems(
-    await applyItemTaxLinkageToItems({
-      organizationId: oid,
-      contactId: customerId,
-      items: body.lineItems,
-    }),
-    discountLevel
-  );
-
-  if (linkedLineItems.length === 0) {
-    throw new ValidationError("At least one valid line item is required");
-  }
-
-  const shippingCharges = round2(toNum(body.shippingCharges));
-  const adjustment = round2(toNum(body.adjustment));
-  
-  const discountPercent = discountLevel === "transaction" ? toNum(body.discountPercent) : 0;
-  const taxType = String(body.taxType || "none");
-  const tdsId = taxType === "TDS" ? (body.tdsId || null) : null;
-  const tcsId = taxType === "TCS" ? (body.tcsId || null) : null;
-  const taxAmountRaw = taxType === "TDS" ? toNum(body.taxAmount) : 0;
-  const tcsAmountRaw = taxType === "TCS" ? toNum(body.tcsAmount) : 0;
-
-  const { subTotal, discountAmount, total } = computeTotals(
-    linkedLineItems,
-    shippingCharges,
-    adjustment,
-    discountLevel,
-    discountPercent,
-    toNum(body.discountAmount),
-    taxType,
-    taxAmountRaw,
-    tcsAmountRaw
-  );
-
-  const order = new SalesOrder({
-    organizationId: oid,
-    ...body,
-    salesOrderNumber,
-    expectedShipmentDate: normalizeExpectedShipmentDate(body.expectedShipmentDate),
-    lineItems: linkedLineItems,
-    discountLevel,
-    discountAccountId: body.discountAccountId || null,
-    discountPercent,
-    discountAmount,
-    taxType,
-    tdsId,
-    tcsId,
-    taxAmount: taxAmountRaw,
-    tcsAmount: tcsAmountRaw,
-    adjustmentLabel: body.adjustmentLabel || "Adjustment",
-    shippingCharges,
-    adjustment,
-    subTotal,
-    total,
-    status,
-    invoiceStatus: "Not Invoiced",
-    shipmentStatus: "Pending",
-  });
-  attachUser(order as any, req);
-  await order.save();
-
-  // Commit stock if status is APPROVED
-  if (status === "APPROVED") {
-    await updateCommittedStock(linkedLineItems, "commit");
-  }
-
-  res.status(201).json({ success: true, data: order });
-});
-
-/** PATCH /api/sales-orders/:id */
-export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
-  if (!order) throw new NotFoundError("Sales Order");
-
-  const body = (req.body || {}) as Record<string, unknown>;
-
-  if (body.lineItems !== undefined && !Array.isArray(body.lineItems)) {
-    throw new ValidationError("lineItems must be an array");
-  }
-
-  const currentOrderNumber = String((order as any).salesOrderNumber || "").trim();
-  const nextOrderNumber =
-    body.salesOrderNumber !== undefined ?
-      normalizeSalesOrderNumber(body.salesOrderNumber)
-    : currentOrderNumber;
-
-  await ensureSalesOrderNumberCanChange({
-    organizationId: oid,
-    previousNumber: currentOrderNumber,
-    nextNumber: nextOrderNumber,
-  });
-
-  if (body.status !== undefined) {
-    const nextStatus = normalizeSalesOrderStatus(body.status);
     await ensureStatusLinkage({
       organizationId: oid,
-      salesOrderNumber: nextOrderNumber,
-      status: nextStatus,
+      salesOrderNumber,
+      status,
     });
-  }
 
-  const prevStatus = String((order as any).status || "");
-  const previousLineItems = JSON.parse(
-    JSON.stringify((order as any).lineItems || []),
-  );
-
-  const allowed = [
-    "customerId",
-    "reference",
-    "orderDate",
-    "paymentTermsId",
-    "deliveryMethod",
-    "salesPersonId",
-    "notes",
-    "terms",
-    "isActive",
-  ];
-
-  allowed.forEach((f) => {
-    if (body[f] !== undefined) (order as any)[f] = body[f];
-  });
-
-  if (body.salesOrderNumber !== undefined) {
-    (order as any).salesOrderNumber = nextOrderNumber;
-  }
-
-  if (body.expectedShipmentDate !== undefined) {
-    (order as any).expectedShipmentDate = normalizeExpectedShipmentDate(
-      body.expectedShipmentDate,
-    );
-  }
-
-  if (body.shippingCharges !== undefined) {
-    (order as any).shippingCharges = round2(toNum(body.shippingCharges));
-  }
-
-  if (body.adjustment !== undefined) {
-    (order as any).adjustment = round2(toNum(body.adjustment));
-  }
-
-  if (body.status !== undefined) {
-    (order as any).status = normalizeSalesOrderStatus(body.status);
-  }
-
-  let lineItemsChanged = false;
-  const discountLevel = body.discountLevel !== undefined ? String(body.discountLevel) : String((order as any).discountLevel || "transaction");
-  
-  if (body.lineItems !== undefined || body.customerId !== undefined) {
-    const customerId = body.customerId ?? (order as any).customerId;
-    const sourceLineItems =
-      body.lineItems !== undefined ?
-        (body.lineItems as any[])
-      : ((order as any).lineItems || []);
-
+    const discountLevel = String(body.discountLevel || "transaction");
     const linkedLineItems = normalizeLineItems(
       await applyItemTaxLinkageToItems({
         organizationId: oid,
         contactId: customerId,
-        items: sourceLineItems,
+        items: body.lineItems,
       }),
-      discountLevel
+      discountLevel,
     );
 
     if (linkedLineItems.length === 0) {
       throw new ValidationError("At least one valid line item is required");
     }
 
-    (order as any).lineItems = linkedLineItems;
-    lineItemsChanged = true;
-  }
-  
-  const additionalFields = [
-    "discountLevel",
-    "discountAccountId",
-    "taxType",
-    "tdsId",
-    "tcsId",
-    "adjustmentLabel"
-  ];
-  additionalFields.forEach((f) => {
-    if (body[f] !== undefined) (order as any)[f] = body[f];
-  });
-  
-  if (body.discountPercent !== undefined) {
-    (order as any).discountPercent = toNum(body.discountPercent);
-  }
-  if (body.taxAmount !== undefined) {
-    (order as any).taxAmount = toNum(body.taxAmount);
-  }
-  if (body.tcsAmount !== undefined) {
-    (order as any).tcsAmount = toNum(body.tcsAmount);
-  }
+    const shippingCharges = round2(toNum(body.shippingCharges));
+    const adjustment = round2(toNum(body.adjustment));
 
-  if (
-    lineItemsChanged ||
-    body.customerId !== undefined ||
-    body.shippingCharges !== undefined ||
-    body.adjustment !== undefined ||
-    body.discountLevel !== undefined ||
-    body.discountPercent !== undefined ||
-    body.discountAmount !== undefined ||
-    body.taxType !== undefined ||
-    body.taxAmount !== undefined ||
-    body.tcsAmount !== undefined
-  ) {
-    const discountAmountRaw = body.discountAmount !== undefined ? toNum(body.discountAmount) : toNum((order as any).discountAmount);
-    
+    const discountPercent =
+      discountLevel === "transaction" ? toNum(body.discountPercent) : 0;
+    const taxType = String(body.taxType || "none");
+    const tdsId = taxType === "TDS" ? body.tdsId || null : null;
+    const tcsId = taxType === "TCS" ? body.tcsId || null : null;
+    const taxAmountRaw = taxType === "TDS" ? toNum(body.taxAmount) : 0;
+    const tcsAmountRaw = taxType === "TCS" ? toNum(body.tcsAmount) : 0;
+
     const { subTotal, discountAmount, total } = computeTotals(
-      (order as any).lineItems || [],
-      (order as any).shippingCharges,
-      (order as any).adjustment,
-      (order as any).discountLevel,
-      toNum((order as any).discountPercent),
-      discountAmountRaw,
-      (order as any).taxType,
-      toNum((order as any).taxAmount),
-      toNum((order as any).tcsAmount)
-    );
-    (order as any).subTotal = subTotal;
-    (order as any).discountAmount = discountAmount;
-    (order as any).total = total;
-  }
-
-  // Keep committed stock aligned with approval state and line-item edits.
-  const newStatus = String((order as any).status || "");
-  const wasApproved = prevStatus === "APPROVED";
-  const isApproved = newStatus === "APPROVED";
-
-  if (wasApproved && !isApproved) {
-    await updateCommittedStock(previousLineItems, "release");
-  } else if (!wasApproved && isApproved) {
-    await updateCommittedStock((order as any).lineItems, "commit");
-  } else if (wasApproved && isApproved && lineItemsChanged) {
-    await updateCommittedStock(previousLineItems, "release");
-    await updateCommittedStock((order as any).lineItems, "commit");
-  }
-
-  attachUser(order as any, req);
-  await order.save();
-
-  res.json({ success: true, data: order });
-});
-
-/** DELETE /api/sales-orders/:id */
-export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: orgId(req) } as any);
-  if (!order) throw new NotFoundError("Sales Order");
-
-  // Release committed stock
-  const status = String((order as any).status || "");
-  if (status === "APPROVED") {
-    await updateCommittedStock((order as any).lineItems, "release");
-  }
-
-  (order as any).isDeleted = true;
-  (order as any).deletedAt = new Date();
-  attachUser(order as any, req);
-  await order.save();
-
-  res.json({ success: true, message: "Sales Order deleted" });
-});
-
-/** POST /api/sales-orders/:id/convert-to-invoice */
-export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any)
-    .populate("lineItems.itemId", "name hsnSacCode")
-    .populate("lineItems.taxId", "rate")
-    .populate("customerId", "displayName")
-    .populate("paymentTermsId", "name netDays")
-    .populate("salesPersonId", "name");
-
-  if (!order) throw new NotFoundError("Sales Order");
-
-  if (String((order as any).status || "") === "VOID") {
-    throw new ValidationError("Cannot convert a void sales order to invoice");
-  }
-
-  const existingInvoice = await Invoice.findOne({
-    organizationId: oid,
-    orderNumber: (order as any).salesOrderNumber,
-    isDeleted: false,
-  })
-    .select("_id invoiceNumber")
-    .lean();
-
-  if (existingInvoice) {
-    await syncSalesOrderByInvoice({
-      organizationId: oid,
-      invoice: {
-        _id: existingInvoice._id,
-        orderNumber: (order as any).salesOrderNumber,
-      },
-      req,
-    });
-    const invoiceId = String(existingInvoice._id);
-    res.json({
-      success: true,
-      data: {
-        invoiceId,
-        _id: invoiceId,
-        invoiceNumber: existingInvoice.invoiceNumber,
-      },
-      message: "Sales order is already linked to an invoice",
-    });
-    return;
-  }
-
-  if (["INVOICED", "PARTIALLY_INVOICED"].includes(String((order as any).status || ""))) {
-    throw new ValidationError("Sales order is already invoiced");
-  }
-
-  const invoiceNumber = await nextInvoiceNumber(oid);
-  const invoiceItems = ((order as any).lineItems || []).map((line: any) => {
-    const quantity = Number(line.quantity) || 0;
-    const rate = Number(line.rate) || 0;
-    const lineTotal = quantity * rate;
-    const lineDiscountAmount = Math.max(0, Number(line.discount) || 0);
-    const discountPercent = lineTotal > 0 ? (lineDiscountAmount / lineTotal) * 100 : 0;
-    const afterDiscount = Math.max(0, lineTotal - lineDiscountAmount);
-
-    const taxRef = line.taxId && String(line.taxId) !== "none" ? (line.taxId as any) : null;
-    const taxPercent = Number(taxRef?.rate) || Number(line.taxPercent) || 0;
-    const itemTaxAmount = round2((afterDiscount * taxPercent) / 100);
-
-    const itemRef = line.itemId as any;
-    const itemId = itemRef?._id || line.itemId || null;
-
-    return {
-      itemId,
-      name: itemRef?.name || line.name || line.description || "Item",
-      description: line.description || "",
-      hsnSacCode: itemRef?.hsnSacCode || line.hsnSacCode || "",
-      quantity,
-      rate,
+      linkedLineItems,
+      shippingCharges,
+      adjustment,
+      discountLevel,
       discountPercent,
-      discountAmount: lineDiscountAmount,
-      taxId: taxRef?._id || line.taxId || null,
-      taxPercent,
-      taxAmount: itemTaxAmount,
-      amount: round2(afterDiscount + itemTaxAmount),
-      accountId: null,
-      projectId: null,
-      costRate: 0,
-      costAmount: 0,
-    };
-  });
+      toNum(body.discountAmount),
+      taxType,
+      taxAmountRaw,
+      tcsAmountRaw,
+    );
 
-  if (invoiceItems.length === 0) {
-    throw new ValidationError("Sales order has no line items to convert");
-  }
-
-  const subTotal = round2(invoiceItems.reduce(
-    (sum: number, line: any) => sum + (Number(line.quantity) || 0) * (Number(line.rate) || 0),
-    0,
-  ));
-  const lineDiscountAmount = round2(((order as any).lineItems || []).reduce(
-    (sum: number, line: any) => sum + (Number(line.discount) || 0),
-    0,
-  ));
-  const discountType: "amount" = "amount";
-  const discountValue = 0;
-  const discountAmount = 0;
-  const adjustmentAmount = round2((Number((order as any).shippingCharges) || 0) + (Number((order as any).adjustment) || 0));
-  const totalTaxAmount = round2(invoiceItems.reduce((sum: number, line: any) => sum + (Number(line.taxAmount) || 0), 0));
-  const tdsAmount = (order as any).taxType === "TDS" ? Number((order as any).taxAmount || 0) : 0;
-  const tcsAmount = (order as any).taxType === "TCS" ? Number((order as any).tcsAmount || 0) : 0;
-  const total = round2(subTotal - lineDiscountAmount + totalTaxAmount + adjustmentAmount - tdsAmount + tcsAmount);
-
-  const dueDateInput = req.body?.dueDate;
-  const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;
-  const dueDate = dueDateCandidate && !Number.isNaN(dueDateCandidate.getTime()) ? dueDateCandidate : null;
-
-  const invoice = new Invoice({
-    organizationId: oid,
-    invoiceNumber,
-    referenceNumber: (order as any).reference || "",
-    orderNumber: (order as any).salesOrderNumber || "",
-    customerId: (order as any).customerId?._id || (order as any).customerId,
-    invoiceDate: new Date(),
-    dueDate,
-    paymentTermsId: (order as any).paymentTermsId?._id || (order as any).paymentTermsId || null,
-    salesPersonId: (order as any).salesPersonId?._id || (order as any).salesPersonId || null,
-    subject: `Converted from Sales Order ${(order as any).salesOrderNumber}`,
-    items: invoiceItems,
-    subTotal,
-    discountType,
-    discountValue,
-    discountAmount,
-    taxType: (order as any).taxType || "none",
-    tdsId: (order as any).tdsId || null,
-    tcsId: (order as any).tcsId || null,
-    taxAmount: (order as any).taxAmount || 0,
-    tcsAmount: (order as any).tcsAmount || 0,
-    adjustmentLabel: "Shipping & Adjustment",
-    adjustmentAmount,
-    total,
-    balanceDue: total,
-    customerNotes: (order as any).notes || "",
-    termsAndConditions: (order as any).terms || "",
-    status: "Draft",
-    emailContacts: [],
-    attachments: [],
-    paymentReceived: false,
-    isRecurring: false,
-    journalEntries: [],
-    pdfTemplateId: null,
-    sentAt: null,
-    paidAt: null,
-  });
-
-  attachUser(invoice as any, req);
-  await invoice.save();
-
-  await syncSalesOrderByInvoice({
-    organizationId: oid,
-    invoice,
-    req,
-  });
-
-  res.status(201).json({
-    success: true,
-    data: {
-      invoiceId: String((invoice as any)._id),
-      _id: String((invoice as any)._id),
-      invoiceNumber: (invoice as any).invoiceNumber,
-    },
-  });
-});
-
-/** POST /api/sales-orders/:id/send-email */
-export const sendEmail = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any)
-    .populate("customerId", "displayName email companyName")
-    .populate("lineItems.itemId", "name hsnSacCode")
-    .populate("lineItems.taxId", "name rate");
-
-  if (!order) throw new NotFoundError("Sales Order");
-  if (String((order as any).status || "") === "VOID") {
-    throw new ValidationError("Cannot email a void sales order");
-  }
-
-  const body = req.body || {};
-  const toEmails: string[] = body.to || [];
-  const ccEmails: string[] = body.cc || [];
-  const bccEmails: string[] = body.bcc || [];
-  const subject: string = body.subject || `Sales Order - ${(order as any).salesOrderNumber}`;
-  const emailBody: string = body.body || "";
-  const attachPdf: boolean = body.attachPdf !== false;
-
-  if (toEmails.length === 0) {
-    // Try to get customer email
-    const customerRef = (order as any).customerId as any;
-    const custEmail = customerRef?.email || "";
-    if (!custEmail) {
-      throw new ValidationError("No recipient email address provided");
-    }
-    toEmails.push(custEmail);
-  }
-
-  // Get organization info
-  const org = await Organization.findById(oid).lean();
-
-  let pdfBuffer: Buffer | null = null;
-  if (attachPdf) {
-    try {
-      pdfBuffer = await generateSalesOrderPdf({
-        order: order as any,
-        organization: org,
-      });
-    } catch {
-      // PDF generation failed, send without attachment
-    }
-  }
-
-  try {
-    await sendSalesOrderEmailService({
-      organizationId: String(oid),
-      to: toEmails,
-      cc: ccEmails,
-      bcc: bccEmails,
-      subject,
-      body: emailBody,
-      order: order as any,
-      organization: org,
-      pdfBuffer,
+    const order = new SalesOrder({
+      organizationId: oid,
+      ...body,
+      salesOrderNumber,
+      expectedShipmentDate: normalizeExpectedShipmentDate(
+        body.expectedShipmentDate,
+      ),
+      lineItems: linkedLineItems,
+      discountLevel,
+      discountAccountId: body.discountAccountId || null,
+      discountPercent,
+      discountAmount,
+      taxType,
+      tdsId,
+      tcsId,
+      taxAmount: taxAmountRaw,
+      tcsAmount: tcsAmountRaw,
+      adjustmentLabel: body.adjustmentLabel || "Adjustment",
+      shippingCharges,
+      adjustment,
+      subTotal,
+      total,
+      status,
+      invoiceStatus: "Not Invoiced",
+      shipmentStatus: "Pending",
     });
-  } catch (err: any) {
-    throw new ValidationError(err.message || "Failed to send email");
-  }
-
-  // Update order status to APPROVED if it was DRAFT
-  if ((order as any).status === "DRAFT") {
-    (order as any).status = "APPROVED";
-    await updateCommittedStock((order as any).lineItems, "commit");
     attachUser(order as any, req);
     await order.save();
-  }
 
-  res.json({ success: true, message: "Sales order email sent successfully" });
-});
+    // Commit stock if status is APPROVED
+    if (status === "APPROVED") {
+      await updateCommittedStock(linkedLineItems, "commit");
+    }
+
+    res.status(201).json({ success: true, data: order });
+  },
+);
+
+/** PATCH /api/sales-orders/:id */
+export const update = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any);
+    if (!order) throw new NotFoundError("Sales Order");
+
+    const body = (req.body || {}) as Record<string, unknown>;
+
+    if (body.lineItems !== undefined && !Array.isArray(body.lineItems)) {
+      throw new ValidationError("lineItems must be an array");
+    }
+
+    const currentOrderNumber = String(
+      (order as any).salesOrderNumber || "",
+    ).trim();
+    const nextOrderNumber =
+      body.salesOrderNumber !== undefined ?
+        normalizeSalesOrderNumber(body.salesOrderNumber)
+      : currentOrderNumber;
+
+    await ensureSalesOrderNumberCanChange({
+      organizationId: oid,
+      previousNumber: currentOrderNumber,
+      nextNumber: nextOrderNumber,
+    });
+
+    if (body.status !== undefined) {
+      const nextStatus = normalizeSalesOrderStatus(body.status);
+      await ensureStatusLinkage({
+        organizationId: oid,
+        salesOrderNumber: nextOrderNumber,
+        status: nextStatus,
+      });
+    }
+
+    const prevStatus = String((order as any).status || "");
+    const previousLineItems = JSON.parse(
+      JSON.stringify((order as any).lineItems || []),
+    );
+
+    const allowed = [
+      "customerId",
+      "reference",
+      "orderDate",
+      "paymentTermsId",
+      "deliveryMethod",
+      "salesPersonId",
+      "notes",
+      "terms",
+      "isActive",
+    ];
+
+    allowed.forEach((f) => {
+      if (body[f] !== undefined) (order as any)[f] = body[f];
+    });
+
+    if (body.salesOrderNumber !== undefined) {
+      (order as any).salesOrderNumber = nextOrderNumber;
+    }
+
+    if (body.expectedShipmentDate !== undefined) {
+      (order as any).expectedShipmentDate = normalizeExpectedShipmentDate(
+        body.expectedShipmentDate,
+      );
+    }
+
+    if (body.shippingCharges !== undefined) {
+      (order as any).shippingCharges = round2(toNum(body.shippingCharges));
+    }
+
+    if (body.adjustment !== undefined) {
+      (order as any).adjustment = round2(toNum(body.adjustment));
+    }
+
+    if (body.status !== undefined) {
+      (order as any).status = normalizeSalesOrderStatus(body.status);
+    }
+
+    let lineItemsChanged = false;
+    const discountLevel =
+      body.discountLevel !== undefined ?
+        String(body.discountLevel)
+      : String((order as any).discountLevel || "transaction");
+
+    if (body.lineItems !== undefined || body.customerId !== undefined) {
+      const customerId = body.customerId ?? (order as any).customerId;
+      const sourceLineItems =
+        body.lineItems !== undefined ?
+          (body.lineItems as any[])
+        : (order as any).lineItems || [];
+
+      const linkedLineItems = normalizeLineItems(
+        await applyItemTaxLinkageToItems({
+          organizationId: oid,
+          contactId: customerId,
+          items: sourceLineItems,
+        }),
+        discountLevel,
+      );
+
+      if (linkedLineItems.length === 0) {
+        throw new ValidationError("At least one valid line item is required");
+      }
+
+      (order as any).lineItems = linkedLineItems;
+      lineItemsChanged = true;
+    }
+
+    const additionalFields = [
+      "discountLevel",
+      "discountAccountId",
+      "taxType",
+      "tdsId",
+      "tcsId",
+      "adjustmentLabel",
+    ];
+    additionalFields.forEach((f) => {
+      if (body[f] !== undefined) (order as any)[f] = body[f];
+    });
+
+    if (body.discountPercent !== undefined) {
+      (order as any).discountPercent = toNum(body.discountPercent);
+    }
+    if (body.taxAmount !== undefined) {
+      (order as any).taxAmount = toNum(body.taxAmount);
+    }
+    if (body.tcsAmount !== undefined) {
+      (order as any).tcsAmount = toNum(body.tcsAmount);
+    }
+
+    if (
+      lineItemsChanged ||
+      body.customerId !== undefined ||
+      body.shippingCharges !== undefined ||
+      body.adjustment !== undefined ||
+      body.discountLevel !== undefined ||
+      body.discountPercent !== undefined ||
+      body.discountAmount !== undefined ||
+      body.taxType !== undefined ||
+      body.taxAmount !== undefined ||
+      body.tcsAmount !== undefined
+    ) {
+      const discountAmountRaw =
+        body.discountAmount !== undefined ?
+          toNum(body.discountAmount)
+        : toNum((order as any).discountAmount);
+
+      const { subTotal, discountAmount, total } = computeTotals(
+        (order as any).lineItems || [],
+        (order as any).shippingCharges,
+        (order as any).adjustment,
+        (order as any).discountLevel,
+        toNum((order as any).discountPercent),
+        discountAmountRaw,
+        (order as any).taxType,
+        toNum((order as any).taxAmount),
+        toNum((order as any).tcsAmount),
+      );
+      (order as any).subTotal = subTotal;
+      (order as any).discountAmount = discountAmount;
+      (order as any).total = total;
+    }
+
+    // Keep committed stock aligned with approval state and line-item edits.
+    const newStatus = String((order as any).status || "");
+    const wasApproved = prevStatus === "APPROVED";
+    const isApproved = newStatus === "APPROVED";
+
+    if (wasApproved && !isApproved) {
+      await updateCommittedStock(previousLineItems, "release");
+    } else if (!wasApproved && isApproved) {
+      await updateCommittedStock((order as any).lineItems, "commit");
+    } else if (wasApproved && isApproved && lineItemsChanged) {
+      await updateCommittedStock(previousLineItems, "release");
+      await updateCommittedStock((order as any).lineItems, "commit");
+    }
+
+    attachUser(order as any, req);
+    await order.save();
+
+    res.json({ success: true, data: order });
+  },
+);
+
+/** DELETE /api/sales-orders/:id */
+export const remove = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: orgId(req),
+    } as any);
+    if (!order) throw new NotFoundError("Sales Order");
+
+    // Release committed stock
+    const status = String((order as any).status || "");
+    if (status === "APPROVED") {
+      await updateCommittedStock((order as any).lineItems, "release");
+    }
+
+    (order as any).isDeleted = true;
+    (order as any).deletedAt = new Date();
+    attachUser(order as any, req);
+    await order.save();
+
+    res.json({ success: true, message: "Sales Order deleted" });
+  },
+);
+
+/** POST /api/sales-orders/:id/convert-to-invoice */
+export const convertToInvoice = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any)
+      .populate("lineItems.itemId", "name hsnSacCode")
+      .populate("lineItems.taxId", "rate")
+      .populate("customerId", "displayName")
+      .populate("paymentTermsId", "name netDays")
+      .populate("salesPersonId", "name");
+
+    if (!order) throw new NotFoundError("Sales Order");
+
+    if (String((order as any).status || "") === "VOID") {
+      throw new ValidationError("Cannot convert a void sales order to invoice");
+    }
+
+    const existingInvoice = await Invoice.findOne({
+      organizationId: oid,
+      orderNumber: (order as any).salesOrderNumber,
+      isDeleted: false,
+    })
+      .select("_id invoiceNumber")
+      .lean();
+
+    if (existingInvoice) {
+      await syncSalesOrderByInvoice({
+        organizationId: oid,
+        invoice: {
+          _id: existingInvoice._id,
+          orderNumber: (order as any).salesOrderNumber,
+        },
+        req,
+      });
+      const invoiceId = String(existingInvoice._id);
+      res.json({
+        success: true,
+        data: {
+          invoiceId,
+          _id: invoiceId,
+          invoiceNumber: existingInvoice.invoiceNumber,
+        },
+        message: "Sales order is already linked to an invoice",
+      });
+      return;
+    }
+
+    if (
+      ["INVOICED", "PARTIALLY_INVOICED"].includes(
+        String((order as any).status || ""),
+      )
+    ) {
+      throw new ValidationError("Sales order is already invoiced");
+    }
+
+    const invoiceNumber = await nextInvoiceNumber(oid);
+    const invoiceItems = ((order as any).lineItems || []).map((line: any) => {
+      const quantity = Number(line.quantity) || 0;
+      const rate = Number(line.rate) || 0;
+      const lineTotal = quantity * rate;
+      const lineDiscountAmount = Math.max(0, Number(line.discount) || 0);
+      const discountPercent =
+        lineTotal > 0 ? (lineDiscountAmount / lineTotal) * 100 : 0;
+      const afterDiscount = Math.max(0, lineTotal - lineDiscountAmount);
+
+      const taxRef =
+        line.taxId && String(line.taxId) !== "none" ?
+          (line.taxId as any)
+        : null;
+      const taxPercent = Number(taxRef?.rate) || Number(line.taxPercent) || 0;
+      const itemTaxAmount = round2((afterDiscount * taxPercent) / 100);
+
+      const itemRef = line.itemId as any;
+      const itemId = itemRef?._id || line.itemId || null;
+
+      return {
+        itemId,
+        name: itemRef?.name || line.name || line.description || "Item",
+        description: line.description || "",
+        hsnSacCode: itemRef?.hsnSacCode || line.hsnSacCode || "",
+        quantity,
+        rate,
+        discountPercent,
+        discountAmount: lineDiscountAmount,
+        taxId: taxRef?._id || line.taxId || null,
+        taxPercent,
+        taxAmount: itemTaxAmount,
+        amount: round2(afterDiscount + itemTaxAmount),
+        accountId: null,
+        projectId: null,
+        costRate: 0,
+        costAmount: 0,
+      };
+    });
+
+    if (invoiceItems.length === 0) {
+      throw new ValidationError("Sales order has no line items to convert");
+    }
+
+    const subTotal = round2(
+      invoiceItems.reduce(
+        (sum: number, line: any) =>
+          sum + (Number(line.quantity) || 0) * (Number(line.rate) || 0),
+        0,
+      ),
+    );
+    const lineDiscountAmount = round2(
+      ((order as any).lineItems || []).reduce(
+        (sum: number, line: any) => sum + (Number(line.discount) || 0),
+        0,
+      ),
+    );
+    const discountType: "amount" = "amount";
+    const discountValue = 0;
+    const discountAmount = 0;
+    const adjustmentAmount = round2(
+      (Number((order as any).shippingCharges) || 0) +
+        (Number((order as any).adjustment) || 0),
+    );
+    const totalTaxAmount = round2(
+      invoiceItems.reduce(
+        (sum: number, line: any) => sum + (Number(line.taxAmount) || 0),
+        0,
+      ),
+    );
+    const tdsAmount =
+      (order as any).taxType === "TDS" ?
+        Number((order as any).taxAmount || 0)
+      : 0;
+    const tcsAmount =
+      (order as any).taxType === "TCS" ?
+        Number((order as any).tcsAmount || 0)
+      : 0;
+    const total = round2(
+      subTotal -
+        lineDiscountAmount +
+        totalTaxAmount +
+        adjustmentAmount -
+        tdsAmount +
+        tcsAmount,
+    );
+
+    const dueDateInput = req.body?.dueDate;
+    const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;
+    const dueDate =
+      dueDateCandidate && !Number.isNaN(dueDateCandidate.getTime()) ?
+        dueDateCandidate
+      : null;
+
+    const invoice = new Invoice({
+      organizationId: oid,
+      invoiceNumber,
+      referenceNumber: (order as any).reference || "",
+      orderNumber: (order as any).salesOrderNumber || "",
+      customerId: (order as any).customerId?._id || (order as any).customerId,
+      invoiceDate: new Date(),
+      dueDate,
+      paymentTermsId:
+        (order as any).paymentTermsId?._id ||
+        (order as any).paymentTermsId ||
+        null,
+      salesPersonId:
+        (order as any).salesPersonId?._id ||
+        (order as any).salesPersonId ||
+        null,
+      subject: `Converted from Sales Order ${(order as any).salesOrderNumber}`,
+      items: invoiceItems,
+      subTotal,
+      discountType,
+      discountValue,
+      discountAmount,
+      taxType: (order as any).taxType || "none",
+      tdsId: (order as any).tdsId || null,
+      tcsId: (order as any).tcsId || null,
+      taxAmount: (order as any).taxAmount || 0,
+      tcsAmount: (order as any).tcsAmount || 0,
+      adjustmentLabel: "Shipping & Adjustment",
+      adjustmentAmount,
+      total,
+      balanceDue: total,
+      customerNotes: (order as any).notes || "",
+      termsAndConditions: (order as any).terms || "",
+      status: "Draft",
+      emailContacts: [],
+      attachments: [],
+      paymentReceived: false,
+      isRecurring: false,
+      journalEntries: [],
+      pdfTemplateId: null,
+      sentAt: null,
+      paidAt: null,
+    });
+
+    attachUser(invoice as any, req);
+    await invoice.save();
+
+    await syncSalesOrderByInvoice({
+      organizationId: oid,
+      invoice,
+      req,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        invoiceId: String((invoice as any)._id),
+        _id: String((invoice as any)._id),
+        invoiceNumber: (invoice as any).invoiceNumber,
+      },
+    });
+  },
+);
+
+/** POST /api/sales-orders/:id/send-email */
+export const sendEmail = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any)
+      .populate("customerId", "displayName email companyName")
+      .populate("lineItems.itemId", "name hsnSacCode")
+      .populate("lineItems.taxId", "name rate");
+
+    if (!order) throw new NotFoundError("Sales Order");
+    if (String((order as any).status || "") === "VOID") {
+      throw new ValidationError("Cannot email a void sales order");
+    }
+
+    const body = req.body || {};
+    const toEmails: string[] = body.to || [];
+    const ccEmails: string[] = body.cc || [];
+    const bccEmails: string[] = body.bcc || [];
+    const subject: string =
+      body.subject || `Sales Order - ${(order as any).salesOrderNumber}`;
+    const emailBody: string = body.body || "";
+    const attachPdf: boolean = body.attachPdf !== false;
+
+    if (toEmails.length === 0) {
+      // Try to get customer email
+      const customerRef = (order as any).customerId as any;
+      const custEmail = customerRef?.email || "";
+      if (!custEmail) {
+        throw new ValidationError("No recipient email address provided");
+      }
+      toEmails.push(custEmail);
+    }
+
+    // Get organization info
+    const org = await Organization.findById(oid).lean();
+
+    let pdfBuffer: Buffer | null = null;
+    if (attachPdf) {
+      try {
+        pdfBuffer = await generateSalesOrderPdf({
+          order: order as any,
+          organization: org,
+        });
+      } catch {
+        // PDF generation failed, send without attachment
+      }
+    }
+
+    try {
+      await sendSalesOrderEmailService({
+        organizationId: String(oid),
+        to: toEmails,
+        cc: ccEmails,
+        bcc: bccEmails,
+        subject,
+        body: emailBody,
+        order: order as any,
+        organization: org,
+        pdfBuffer,
+      });
+    } catch (err: any) {
+      throw new ValidationError(err.message || "Failed to send email");
+    }
+
+    // Update order status to APPROVED if it was DRAFT
+    if ((order as any).status === "DRAFT") {
+      (order as any).status = "APPROVED";
+      await updateCommittedStock((order as any).lineItems, "commit");
+      attachUser(order as any, req);
+      await order.save();
+    }
+
+    res.json({ success: true, message: "Sales order email sent successfully" });
+  },
+);
 
 /** GET /api/sales-orders/:id/pdf */
-export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({
-    _id: req.params.id,
-    organizationId: oid,
-    isDeleted: false,
-  } as any)
-    .populate("customerId", "displayName companyName email billingAddress")
-    .populate("lineItems.itemId", "name hsnSacCode")
-    .lean();
+export const downloadPdf = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    } as any)
+      .populate("customerId", "displayName companyName email billingAddress")
+      .populate("lineItems.itemId", "name hsnSacCode")
+      .lean();
 
-  if (!order) throw new NotFoundError("Sales Order");
+    if (!order) throw new NotFoundError("Sales Order");
 
-  const org = await Organization.findById(oid).lean();
-  if (!org) throw new NotFoundError("Organization");
+    const org = await Organization.findById(oid).lean();
+    if (!org) throw new NotFoundError("Organization");
 
-  const pdfBuffer = await generateSalesOrderPdf({
-    order,
-    organization: org,
-  });
+    const pdfBuffer = await generateSalesOrderPdf({
+      order,
+      organization: org,
+    });
 
-  const isPreview = req.query.preview === "true";
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader(
-    "Content-Disposition",
-    `${isPreview ? "inline" : "attachment"}; filename="Sales-Order-${(order as any).salesOrderNumber}.pdf"`,
-  );
-  res.send(pdfBuffer);
-});
+    const isPreview = req.query.preview === "true";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `${isPreview ? "inline" : "attachment"}; filename="Sales-Order-${(order as any).salesOrderNumber}.pdf"`,
+    );
+    res.send(pdfBuffer);
+  },
+);
 
 /** POST /api/sales-orders/:id/update-shipment */
-export const updateShipment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
-  if (!order) throw new NotFoundError("Sales Order");
+export const updateShipment = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any);
+    if (!order) throw new NotFoundError("Sales Order");
 
-  const { shipmentStatus } = req.body;
-  await transitionShipmentStatus({
-    order,
-    shipmentStatus,
-    req,
-  });
+    const { shipmentStatus } = req.body;
+    await transitionShipmentStatus({
+      order,
+      shipmentStatus,
+      req,
+    });
 
-  res.json({ success: true, data: order });
-});
+    res.json({ success: true, data: order });
+  },
+);
 
 export const instantInvoice = convertToInvoice;
 
 /** POST /api/sales-orders/:id/mark-shipment-fulfilled */
-export const markShipmentFulfilled = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
-  if (!order) throw new NotFoundError("Sales Order");
+export const markShipmentFulfilled = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any);
+    if (!order) throw new NotFoundError("Sales Order");
 
-  if (String((order as any).status || "") === "VOID") {
-    throw new ValidationError("Cannot fulfill shipment for a void sales order");
-  }
-
-  const existingPackages = await Package.find({
-    organizationId: oid,
-    salesOrderId: (order as any)._id,
-    isDeleted: false,
-  } as any)
-    .select("lineItems")
-    .lean();
-
-  const packedQtyMap = new Map<string, number>();
-  for (const pkg of existingPackages as any[]) {
-    for (const li of pkg.lineItems || []) {
-      const itemKey = String((li as any).itemId || "");
-      const packed = toNum((li as any).quantityToPack);
-      packedQtyMap.set(itemKey, toNum(packedQtyMap.get(itemKey), 0) + packed);
+    if (String((order as any).status || "") === "VOID") {
+      throw new ValidationError(
+        "Cannot fulfill shipment for a void sales order",
+      );
     }
-  }
 
-  const lineItemsToPack = ((order as any).lineItems || [])
-    .map((li: any) => {
-      const itemId = typeof li.itemId === "object" ? li.itemId?._id : li.itemId;
-      const itemKey = String(itemId || "");
-      const ordered = toNum(li.quantity);
-      const packed = toNum(packedQtyMap.get(itemKey), 0);
-      const quantityToPack = Math.max(0, ordered - packed);
-
-      return {
-        itemId,
-        name: li.name || li.description || "Item",
-        ordered,
-        packed,
-        quantityToPack,
-      };
-    })
-    .filter((li: any) => li.itemId && li.quantityToPack > 0);
-
-  if (lineItemsToPack.length > 0) {
-    const pkg = new Package({
+    const existingPackages = await Package.find({
       organizationId: oid,
       salesOrderId: (order as any)._id,
-      packageSlipNumber: `PKG-${String((order as any).salesOrderNumber)}-${existingPackages.length + 1}`,
-      date: new Date(),
-      lineItems: lineItemsToPack,
-      internalNotes: "Auto-created while marking shipment as fulfilled",
+      isDeleted: false,
+    } as any)
+      .select("lineItems")
+      .lean();
+
+    const packedQtyMap = new Map<string, number>();
+    for (const pkg of existingPackages as any[]) {
+      for (const li of pkg.lineItems || []) {
+        const itemKey = String((li as any).itemId || "");
+        const packed = toNum((li as any).quantityToPack);
+        packedQtyMap.set(itemKey, toNum(packedQtyMap.get(itemKey), 0) + packed);
+      }
+    }
+
+    const lineItemsToPack = ((order as any).lineItems || [])
+      .map((li: any) => {
+        const itemId =
+          typeof li.itemId === "object" ? li.itemId?._id : li.itemId;
+        const itemKey = String(itemId || "");
+        const ordered = toNum(li.quantity);
+        const packed = toNum(packedQtyMap.get(itemKey), 0);
+        const quantityToPack = Math.max(0, ordered - packed);
+
+        return {
+          itemId,
+          name: li.name || li.description || "Item",
+          ordered,
+          packed,
+          quantityToPack,
+        };
+      })
+      .filter((li: any) => li.itemId && li.quantityToPack > 0);
+
+    if (lineItemsToPack.length > 0) {
+      const pkg = new Package({
+        organizationId: oid,
+        salesOrderId: (order as any)._id,
+        packageSlipNumber: `PKG-${String((order as any).salesOrderNumber)}-${existingPackages.length + 1}`,
+        date: new Date(),
+        lineItems: lineItemsToPack,
+        internalNotes: "Auto-created while marking shipment as fulfilled",
+      });
+      attachUser(pkg as any, req);
+      await pkg.save();
+    }
+
+    await transitionShipmentStatus({
+      order,
+      shipmentStatus: "Delivered",
+      req,
     });
-    attachUser(pkg as any, req);
-    await pkg.save();
-  }
 
-  await transitionShipmentStatus({
-    order,
-    shipmentStatus: "Delivered",
-    req,
-  });
-
-  res.json({ success: true, data: order });
-});
+    res.json({ success: true, data: order });
+  },
+);
 
 /** POST /api/sales-orders/:id/dropship */
-export const dropship = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
-  if (!order) throw new NotFoundError("Sales Order");
+export const dropship = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any);
+    if (!order) throw new NotFoundError("Sales Order");
 
-  if (String((order as any).status || "") === "VOID") {
-    throw new ValidationError("Cannot set dropship on a void sales order");
-  }
+    if (String((order as any).status || "") === "VOID") {
+      throw new ValidationError("Cannot set dropship on a void sales order");
+    }
 
-  (order as any).deliveryMethod = "Dropship";
-  attachUser(order as any, req);
-  await order.save();
+    (order as any).deliveryMethod = "Dropship";
+    attachUser(order as any, req);
+    await order.save();
 
-  res.json({ success: true, data: order, message: "Order marked for dropship" });
-});
+    res.json({
+      success: true,
+      data: order,
+      message: "Order marked for dropship",
+    });
+  },
+);
 
 /** POST /api/sales-orders/:id/void */
-export const voidOrder = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
-  if (!order) throw new NotFoundError("Sales Order");
+export const voidOrder = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any);
+    if (!order) throw new NotFoundError("Sales Order");
 
-  if (String((order as any).invoiceStatus || "") === "Invoiced" || (order as any).invoiceId) {
-    throw new ValidationError("Cannot void a sales order after invoice linkage");
-  }
+    if (
+      String((order as any).invoiceStatus || "") === "Invoiced" ||
+      (order as any).invoiceId
+    ) {
+      throw new ValidationError(
+        "Cannot void a sales order after invoice linkage",
+      );
+    }
 
-  if (String((order as any).status || "") === "APPROVED") {
-    await updateCommittedStock((order as any).lineItems || [], "release");
-  }
+    if (String((order as any).status || "") === "APPROVED") {
+      await updateCommittedStock((order as any).lineItems || [], "release");
+    }
 
-  (order as any).status = "VOID";
-  (order as any).isActive = false;
-  attachUser(order as any, req);
-  await order.save();
+    (order as any).status = "VOID";
+    (order as any).isActive = false;
+    attachUser(order as any, req);
+    await order.save();
 
-  res.json({ success: true, data: order, message: "Sales order voided" });
-});
+    res.json({ success: true, data: order, message: "Sales order voided" });
+  },
+);
 
 /** POST /api/sales-orders/:id/cancel-items */
-export const cancelItems = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any);
-  if (!order) throw new NotFoundError("Sales Order");
+export const cancelItems = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const order = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+    } as any);
+    if (!order) throw new NotFoundError("Sales Order");
 
-  if (String((order as any).invoiceStatus || "") === "Invoiced" || (order as any).invoiceId) {
-    throw new ValidationError("Cannot cancel items after invoice linkage");
-  }
+    if (
+      String((order as any).invoiceStatus || "") === "Invoiced" ||
+      (order as any).invoiceId
+    ) {
+      throw new ValidationError("Cannot cancel items after invoice linkage");
+    }
 
-  if (String((order as any).status || "") === "APPROVED") {
-    await updateCommittedStock((order as any).lineItems || [], "release");
-  }
+    if (String((order as any).status || "") === "APPROVED") {
+      await updateCommittedStock((order as any).lineItems || [], "release");
+    }
 
-  (order as any).lineItems = [];
-  (order as any).subTotal = 0;
-  (order as any).shippingCharges = 0;
-  (order as any).adjustment = 0;
-  (order as any).total = 0;
-  (order as any).invoiceStatus = "Not Invoiced";
-  (order as any).invoiceId = null;
-  (order as any).shipmentStatus = "Pending";
-  (order as any).status = "VOID";
-  (order as any).isActive = false;
-  attachUser(order as any, req);
-  await order.save();
+    (order as any).lineItems = [];
+    (order as any).subTotal = 0;
+    (order as any).shippingCharges = 0;
+    (order as any).adjustment = 0;
+    (order as any).total = 0;
+    (order as any).invoiceStatus = "Not Invoiced";
+    (order as any).invoiceId = null;
+    (order as any).shipmentStatus = "Pending";
+    (order as any).status = "VOID";
+    (order as any).isActive = false;
+    attachUser(order as any, req);
+    await order.save();
 
-  res.json({ success: true, data: order, message: "All sales order items cancelled" });
-});
+    res.json({
+      success: true,
+      data: order,
+      message: "All sales order items cancelled",
+    });
+  },
+);
 
 /** POST /api/sales-orders/:id/clone */
-export const cloneOrder = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const source = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid, isDeleted: false } as any).lean();
-  if (!source) throw new NotFoundError("Sales Order");
+export const cloneOrder = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const source = await SalesOrder.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    } as any).lean();
+    if (!source) throw new NotFoundError("Sales Order");
 
-  const salesOrderNumber = await nextSalesOrderNumber(oid);
+    const salesOrderNumber = await nextSalesOrderNumber(oid);
 
-  const clone = new SalesOrder({
-    organizationId: source.organizationId,
-    customerId: source.customerId,
-    salesOrderNumber,
-    reference: source.reference || "",
-    orderDate: new Date(),
-    expectedShipmentDate: source.expectedShipmentDate || null,
-    paymentTermsId: source.paymentTermsId || null,
-    deliveryMethod: source.deliveryMethod || "",
-    salesPersonId: source.salesPersonId || null,
-    lineItems: (source.lineItems || []).map((li: any) => ({
-      itemId: li.itemId,
-      name: li.name || "",
-      description: li.description || "",
-      hsnSacCode: li.hsnSacCode || "",
-      quantity: toNum(li.quantity),
-      rate: toNum(li.rate),
-      discount: toNum(li.discount),
-      taxId: li.taxId || null,
-      taxPercent: toNum(li.taxPercent),
-      taxAmount: toNum(li.taxAmount),
-      amount: toNum(li.amount),
-    })),
-    subTotal: toNum(source.subTotal),
-    shippingCharges: toNum(source.shippingCharges),
-    adjustment: toNum(source.adjustment),
-    total: toNum(source.total),
-    notes: source.notes || "",
-    terms: source.terms || "",
-    status: "DRAFT",
-    invoiceStatus: "Not Invoiced",
-    shipmentStatus: "Pending",
-    invoiceId: null,
-    isActive: true,
-  });
+    const clone = new SalesOrder({
+      organizationId: source.organizationId,
+      customerId: source.customerId,
+      salesOrderNumber,
+      reference: source.reference || "",
+      orderDate: new Date(),
+      expectedShipmentDate: source.expectedShipmentDate || null,
+      paymentTermsId: source.paymentTermsId || null,
+      deliveryMethod: source.deliveryMethod || "",
+      salesPersonId: source.salesPersonId || null,
+      lineItems: (source.lineItems || []).map((li: any) => ({
+        itemId: li.itemId,
+        name: li.name || "",
+        description: li.description || "",
+        hsnSacCode: li.hsnSacCode || "",
+        quantity: toNum(li.quantity),
+        rate: toNum(li.rate),
+        discount: toNum(li.discount),
+        taxId: li.taxId || null,
+        taxPercent: toNum(li.taxPercent),
+        taxAmount: toNum(li.taxAmount),
+        amount: toNum(li.amount),
+      })),
+      subTotal: toNum(source.subTotal),
+      shippingCharges: toNum(source.shippingCharges),
+      adjustment: toNum(source.adjustment),
+      total: toNum(source.total),
+      notes: source.notes || "",
+      terms: source.terms || "",
+      status: "DRAFT",
+      invoiceStatus: "Not Invoiced",
+      shipmentStatus: "Pending",
+      invoiceId: null,
+      isActive: true,
+    });
 
-  attachUser(clone as any, req);
-  await clone.save();
+    attachUser(clone as any, req);
+    await clone.save();
 
-  res.status(201).json({ success: true, data: clone, message: "Sales order cloned" });
-});
+    res
+      .status(201)
+      .json({ success: true, data: clone, message: "Sales order cloned" });
+  },
+);
 
 /** GET /api/sales-orders/:id/purchase-order-draft */
-export const getPurchaseOrderDraft = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const { draft } = await buildPurchaseOrderDraftFromSalesOrder({
-    organizationId: oid,
-    salesOrderId: String(req.params.id),
-    requestedVendorId: req.query?.vendorId,
-    copyDescriptions: req.query?.copyDescriptions !== "false",
-    req,
-  });
+export const getPurchaseOrderDraft = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const { draft } = await buildPurchaseOrderDraftFromSalesOrder({
+      organizationId: oid,
+      salesOrderId: String(req.params.id),
+      requestedVendorId: req.query?.vendorId,
+      copyDescriptions: req.query?.copyDescriptions !== "false",
+      req,
+    });
 
-  res.json({ success: true, data: draft });
-});
+    res.json({ success: true, data: draft });
+  },
+);
 
 /** POST /api/sales-orders/:id/convert-to-purchase-order */
-export const convertToPurchaseOrder = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const oid = orgId(req);
-  const { order, draft } = await buildPurchaseOrderDraftFromSalesOrder({
-    organizationId: oid,
-    salesOrderId: String(req.params.id),
-    requestedVendorId: req.body?.vendorId,
-    copyDescriptions: req.body?.copyDescriptions !== false,
-    req,
-  });
+export const convertToPurchaseOrder = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const { order, draft } = await buildPurchaseOrderDraftFromSalesOrder({
+      organizationId: oid,
+      salesOrderId: String(req.params.id),
+      requestedVendorId: req.body?.vendorId,
+      copyDescriptions: req.body?.copyDescriptions !== false,
+      req,
+    });
 
-  const po = new PurchaseOrder({
-    organizationId: oid,
-    vendorId: draft.vendorId,
-    deliveryAddressType: draft.deliveryAddressType,
-    deliveryCustomerId: draft.deliveryCustomerId,
-    purchaseOrderNumber: draft.purchaseOrderNumber,
-    referenceNumber: draft.referenceNumber,
-    purchaseOrderDate: draft.purchaseOrderDate,
-    deliveryDate: draft.deliveryDate,
-    paymentTermsId: draft.paymentTermsId,
-    shipmentPreference: draft.shipmentPreference,
-    discountLevel: draft.discountLevel,
-    discountAccountId: draft.discountAccountId,
-    lineItems: draft.lineItems,
-    subTotal: draft.subTotal,
-    discountPercent: draft.discountPercent,
-    discountAmount: draft.discountAmount,
-    taxType: draft.taxType,
-    tdsId: draft.tdsId,
-    tcsId: draft.tcsId,
-    taxAmount: draft.taxAmount,
-    tcsAmount: draft.tcsAmount,
-    adjustmentLabel: draft.adjustmentLabel,
-    adjustmentAmount: draft.adjustmentAmount,
-    total: draft.total,
-    notes: draft.notes,
-    termsAndConditions: draft.termsAndConditions,
-    attachments: draft.attachments,
-    comments: [
-      {
-        author: "System",
-        text: `Converted from Sales Order ${(order as any).salesOrderNumber}`,
-        time: new Date(),
-        isSystem: true,
+    const po = new PurchaseOrder({
+      organizationId: oid,
+      vendorId: draft.vendorId,
+      deliveryAddressType: draft.deliveryAddressType,
+      deliveryCustomerId: draft.deliveryCustomerId,
+      purchaseOrderNumber: draft.purchaseOrderNumber,
+      referenceNumber: draft.referenceNumber,
+      purchaseOrderDate: draft.purchaseOrderDate,
+      deliveryDate: draft.deliveryDate,
+      paymentTermsId: draft.paymentTermsId,
+      shipmentPreference: draft.shipmentPreference,
+      discountLevel: draft.discountLevel,
+      discountAccountId: draft.discountAccountId,
+      lineItems: draft.lineItems,
+      subTotal: draft.subTotal,
+      discountPercent: draft.discountPercent,
+      discountAmount: draft.discountAmount,
+      taxType: draft.taxType,
+      tdsId: draft.tdsId,
+      tcsId: draft.tcsId,
+      taxAmount: draft.taxAmount,
+      tcsAmount: draft.tcsAmount,
+      adjustmentLabel: draft.adjustmentLabel,
+      adjustmentAmount: draft.adjustmentAmount,
+      total: draft.total,
+      notes: draft.notes,
+      termsAndConditions: draft.termsAndConditions,
+      attachments: draft.attachments,
+      comments: [
+        {
+          author: "System",
+          text: `Converted from Sales Order ${(order as any).salesOrderNumber}`,
+          time: new Date(),
+          isSystem: true,
+        },
+      ],
+      status: "Draft",
+    });
+
+    attachUser(po as any, req);
+    await po.save();
+
+    res.status(201).json({
+      success: true,
+      data: {
+        purchaseOrderId: String((po as any)._id),
+        purchaseOrderNumber: (po as any).purchaseOrderNumber,
+        _id: String((po as any)._id),
       },
-    ],
-    status: "Draft",
-  });
-
-  attachUser(po as any, req);
-  await po.save();
-
-  res.status(201).json({
-    success: true,
-    data: {
-      purchaseOrderId: String((po as any)._id),
-      purchaseOrderNumber: (po as any).purchaseOrderNumber,
-      _id: String((po as any)._id),
-    },
-    message: "Sales order converted to purchase order",
-  });
-});
+      message: "Sales order converted to purchase order",
+    });
+  },
+);
