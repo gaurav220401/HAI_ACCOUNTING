@@ -72,6 +72,7 @@ type AccountFieldKey =
 
 const NEW_ACCOUNT_VALUE = "__new_account__";
 const FIXED_ASSET_ACCOUNT_TYPES: AccountType[] = ["Fixed Asset"];
+const CONTRA_ASSET_ACCOUNT_TYPES: AccountType[] = ["Contra Asset"];
 const DEPRECIATION_EXPENSE_ACCOUNT_TYPES: AccountType[] = [
   "Expense",
   "Cost Of Goods Sold",
@@ -281,6 +282,11 @@ function NewFixedAssetPageContent() {
     [accounts],
   );
 
+  const contraAssetAccountOptions = useMemo(
+    () => accounts.filter((account) => account.accountType === "Contra Asset"),
+    [accounts],
+  );
+
   const expenseAccountOptions = useMemo(
     () => accounts.filter((account) => account.rootType === "Expense"),
     [accounts],
@@ -289,14 +295,16 @@ function NewFixedAssetPageContent() {
   const accountOptionsForFixed =
     fixedAssetAccountOptions.length > 0 ? fixedAssetAccountOptions : accounts;
   const accountOptionsForAccumulated =
-    fixedAssetAccountOptions.length > 0 ? fixedAssetAccountOptions : accounts;
+    contraAssetAccountOptions.length > 0 ? contraAssetAccountOptions : accounts;
   const accountOptionsForExpense =
     expenseAccountOptions.length > 0 ? expenseAccountOptions : accounts;
 
   const createAccountTypes =
     createTargetField === "depreciationExpenseAccountId"
       ? DEPRECIATION_EXPENSE_ACCOUNT_TYPES
-      : FIXED_ASSET_ACCOUNT_TYPES;
+      : createTargetField === "accumulatedDepreciationAccountId"
+        ? CONTRA_ASSET_ACCOUNT_TYPES
+        : FIXED_ASSET_ACCOUNT_TYPES;
 
   function openCreateAccountFor(field: AccountFieldKey) {
     setCreateTargetField(field);
@@ -394,6 +402,11 @@ function NewFixedAssetPageContent() {
       !form.depreciationExpenseAccountId
     ) {
       toast.error("Please select all account details");
+      return;
+    }
+
+    if (form.fixedAssetAccountId === form.accumulatedDepreciationAccountId) {
+      toast.error("Asset Account and Accumulated Depreciation Account cannot be the same GL account");
       return;
     }
 

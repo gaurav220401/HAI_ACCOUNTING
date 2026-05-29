@@ -14,6 +14,7 @@ export type ChartTemplateNode = {
   rootType: AccountRootType;
   accountType: AccountType;
   description?: string;
+  code?: string;
 };
 
 const ACCOUNT_TYPES_BY_ROOT: Record<AccountRootType, AccountType[]> = {
@@ -29,6 +30,7 @@ const ACCOUNT_TYPES_BY_ROOT: Record<AccountRootType, AccountType[]> = {
     "Intangible Asset",
     "Non Current Asset",
     "Deferred Tax Asset",
+    "Contra Asset",
   ],
   Liability: [
     "Other Current Liability",
@@ -64,8 +66,8 @@ function normalizeRequestedCode(value: unknown): string | null {
   const code = String(value).trim();
   if (!code) return null;
 
-  if (!/^\d{4}$/.test(code)) {
-    throw new ValidationError("Account code must be a 4-digit number (for example: 1001)");
+  if (!/^\d{4}(\.\d+)?$/.test(code)) {
+    throw new ValidationError("Account code must be a 4-digit number or a sub-account code (for example: 1001 or 1007.1)");
   }
 
   return code;
@@ -75,7 +77,7 @@ function collectUsedCodesFromRows(rows: Array<{ code?: string }>): Set<number> {
   const used = new Set<number>();
   for (const row of rows) {
     const code = String(row.code || "").trim();
-    if (!/^\d{4}$/.test(code)) continue;
+    if (!/^\d{4}(\.\d+)?$/.test(code)) continue;
     used.add(Number(code));
   }
   return used;
@@ -236,7 +238,7 @@ export async function ensureDefaultChartOfAccounts(params: {
     if (existingSystemCount + createdInThisRun >= requiredCount) continue;
 
     const range = getAccountCodeRange(node.rootType, node.accountType);
-    const code = pickNextAvailableCode(usedCodes, range);
+    const code = node.code || pickNextAvailableCode(usedCodes, range);
     usedCodes.add(Number(code));
 
     const account = new Account({
@@ -327,7 +329,8 @@ export function getIndianCoATemplate(): ChartTemplateNode[] {
     { name: "Petty Cash", rootType: "Asset", accountType: "Cash", description: "Small amount of cash kept for minor expenses." },
     { name: "Undeposited Funds", rootType: "Asset", accountType: "Cash", description: "Payments received but not yet deposited to the bank." },
     { name: "Accounts Receivable", rootType: "Asset", accountType: "Accounts Receivable", description: "Money customers owe for goods or services rendered." },
-    { name: "Furniture and Equipment", rootType: "Asset", accountType: "Fixed Asset", description: "Furniture, fixtures, and equipment owned by the business." },
+    { name: "Furniture and Equipment", rootType: "Asset", accountType: "Fixed Asset", description: "Furniture, fixtures, and equipment owned by the business.", code: "1007" },
+    { name: "Accumulated Depreciation - Furniture and Equipment", rootType: "Asset", accountType: "Contra Asset", description: "Accumulated depreciation for Furniture and Equipment.", code: "1007.1" },
     { name: "Inventory Asset", rootType: "Asset", accountType: "Stock", description: "Value of goods held in inventory." },
 
     // Liabilities

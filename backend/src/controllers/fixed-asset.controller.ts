@@ -76,9 +76,15 @@ async function validateFixedAssetAccountMappings(params: {
     );
   }
 
-  if (accumulatedAccount.accountType !== "Fixed Asset") {
+  if (accumulatedAccount.accountType !== "Contra Asset") {
     throw new ValidationError(
-      "accumulatedDepreciationAccountId must reference an account of type Fixed Asset",
+      "accumulatedDepreciationAccountId must reference an account of type Contra Asset",
+    );
+  }
+
+  if (String(params.fixedAssetAccountId) === String(params.accumulatedDepreciationAccountId)) {
+    throw new ValidationError(
+      "Asset Account and Accumulated Depreciation Account cannot be the same GL account",
     );
   }
 
