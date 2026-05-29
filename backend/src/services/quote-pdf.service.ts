@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 import * as fs from "fs";
 import { divideMoney, formatMoney, sumMoney } from "../utils/money";
-
+  
 export interface QuoteItemRow {
   name: string;
   description?: string;
@@ -695,20 +695,20 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     const cols: Array<{ id: string; label: string; x: number; width: number; align: "center" | "left" | "right" }> = [];
     
     // First, collect all active columns except 'item' to compute 'item' width
-    let totalOtherWidths = 20; // '#' is always 20
-    if (cfg.colHsn !== false) totalOtherWidths += 45;
-    if (cfg.colQty !== false) totalOtherWidths += (hasTax ? 25 : 30);
-    if (cfg.colRate !== false) totalOtherWidths += (hasTax ? (isIntra ? 65 : 70) : 75);
-    if (cfg.colDiscount === true) totalOtherWidths += 55;
+    let totalOtherWidths = 15; // '#' is always 15
+    if (cfg.colHsn !== false) totalOtherWidths += 35;
+    if (cfg.colQty !== false) totalOtherWidths += 25;
+    if (cfg.colRate !== false) totalOtherWidths += (hasTax ? (isIntra ? 60 : 65) : 70);
+    if (cfg.colDiscount === true) totalOtherWidths += 40;
     if (hasTax) {
       if (isIntra) {
-        totalOtherWidths += 65; // CGST
-        totalOtherWidths += 65; // SGST
+        totalOtherWidths += 60; // CGST
+        totalOtherWidths += 60; // SGST
       } else {
-        totalOtherWidths += 75; // IGST
+        totalOtherWidths += 65; // IGST
       }
     }
-    if (cfg.colAmount !== false) totalOtherWidths += (hasTax ? 75 : 70);
+    if (cfg.colAmount !== false) totalOtherWidths += (hasTax ? 70 : 65);
 
     const itemWidth = Math.max(100, 505 - totalOtherWidths);
 
@@ -716,8 +716,8 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     let currentX = 45;
     
     // 1. Num
-    cols.push({ id: "num", label: "#", x: currentX, width: 20, align: "center" });
-    currentX += 20;
+    cols.push({ id: "num", label: "#", x: currentX, width: 15, align: "center" });
+    currentX += 15;
 
     // 2. Item
     if (cfg.colItem !== false) {
@@ -727,46 +727,46 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
 
     // 3. HSN
     if (cfg.colHsn !== false) {
-      cols.push({ id: "hsn", label: cfg.hsnLabel || "HSN/SAC", x: currentX, width: 45, align: "left" });
-      currentX += 45;
+      cols.push({ id: "hsn", label: cfg.hsnLabel || "HSN/SAC", x: currentX, width: 35, align: "left" });
+      currentX += 35;
     }
 
     // 4. Qty
     if (cfg.colQty !== false) {
-      const w = hasTax ? 25 : 30;
+      const w = 25;
       cols.push({ id: "qty", label: cfg.qtyLabel || "Qty", x: currentX, width: w, align: "right" });
       currentX += w;
     }
 
     // 5. Rate
     if (cfg.colRate !== false) {
-      const w = hasTax ? (isIntra ? 65 : 70) : 75;
+      const w = hasTax ? (isIntra ? 60 : 65) : 70;
       cols.push({ id: "rate", label: cfg.rateLabel || "Rate", x: currentX, width: w, align: "right" });
       currentX += w;
     }
 
     // 6. Discount
     if (cfg.colDiscount === true) {
-      cols.push({ id: "discount", label: cfg.discountLabel || "Discount", x: currentX, width: 55, align: "right" });
-      currentX += 55;
+      cols.push({ id: "discount", label: cfg.discountLabel || "Discount", x: currentX, width: 40, align: "right" });
+      currentX += 40;
     }
 
     // 7. Taxes
     if (hasTax) {
       if (isIntra) {
-        cols.push({ id: "cgst", label: "CGST", x: currentX, width: 65, align: "center" });
-        currentX += 65;
-        cols.push({ id: "sgst", label: "SGST", x: currentX, width: 65, align: "center" });
-        currentX += 65;
+        cols.push({ id: "cgst", label: "CGST", x: currentX, width: 60, align: "center" });
+        currentX += 60;
+        cols.push({ id: "sgst", label: "SGST", x: currentX, width: 60, align: "center" });
+        currentX += 60;
       } else {
-        cols.push({ id: "igst", label: "IGST", x: currentX, width: 75, align: "center" });
-        currentX += 75;
+        cols.push({ id: "igst", label: "IGST", x: currentX, width: 65, align: "center" });
+        currentX += 65;
       }
     }
 
     // 8. Amount
     if (cfg.colAmount !== false) {
-      const w = hasTax ? 75 : 70;
+      const w = hasTax ? 70 : 65;
       cols.push({ id: "amount", label: cfg.amountLabel || "Amount", x: currentX, width: w, align: "right" });
       currentX += w;
     }
