@@ -645,7 +645,7 @@ export const vendorBalanceSummary = asyncHandler(async (req: AuthenticatedReques
     vendorId: String(v._id),
     vendorName: v.displayName || v.companyName || "Unknown",
     openingBalance: round2(toNum(v.openingBalance)),
-    outstandingPayable: round2(toNum(v.outstandingPayable)),
+    outstandingPayable: round2(toNum(v.outstandingPayable) + toNum(v.openingBalance)),
   })).filter(r => Math.abs(r.outstandingPayable) >= 0.01 || Math.abs(r.openingBalance) >= 0.01)
     .sort((a, b) => a.vendorName.localeCompare(b.vendorName));
 
@@ -876,7 +876,7 @@ export const customerBalanceSummary = asyncHandler(async (req: AuthenticatedRequ
     customerId: String(c._id),
     customerName: c.displayName || c.companyName || "Unknown",
     openingBalance: round2(toNum(c.openingBalance)),
-    outstandingReceivable: round2(toNum(c.outstandingReceivable)),
+    outstandingReceivable: round2(toNum(c.outstandingReceivable) + toNum(c.openingBalance)),
   })).filter(r => Math.abs(r.outstandingReceivable) >= 0.01 || Math.abs(r.openingBalance) >= 0.01)
     .sort((a, b) => a.customerName.localeCompare(b.customerName));
 
@@ -2435,7 +2435,7 @@ export const salesByCustomer = asyncHandler(async (req: AuthenticatedRequest, re
       $group: {
         _id: "$customerId",
         invoiceCount: { $sum: 1 },
-        totalSales: { $sum: { $ifNull: ["$total", 0] } },
+        totalSales: { $sum: { $ifNull: ["$subTotal", 0] } },
         totalWithTax: { $sum: { $ifNull: ["$total", 0] } },
       },
     },
