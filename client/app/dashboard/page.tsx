@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown, PlusCircle } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -112,6 +112,7 @@ function formatMonthYear(value?: string): string {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { firebaseUser, dbUser, loading } = useAuth();
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
@@ -182,10 +183,23 @@ export default function DashboardPage() {
       }
     }
 
-    loadDashboard();
+    if (pathname === "/dashboard") {
+      loadDashboard();
+    }
+
+    const handleFocus = () => {
+      if (document.visibilityState === "visible" && pathname === "/dashboard") {
+        loadDashboard();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("visibilitychange", handleFocus);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("visibilitychange", handleFocus);
     };
   }, [
     loading,
@@ -196,6 +210,7 @@ export default function DashboardPage() {
     incomeExpensePeriod,
     incomeExpenseBasis,
     watchlistBasis,
+    pathname,
   ]);
 
   if (loading || orgLoading || !firebaseUser || isUnverifiedEmailPasswordUser) {
@@ -221,8 +236,9 @@ export default function DashboardPage() {
   const cashFlowIncomingTotal = dashboard?.cashFlow.incomingTotal || 0;
   const cashFlowOutgoingTotal = dashboard?.cashFlow.outgoingTotal || 0;
   const cashClosing = dashboard?.cashFlow.closingBalance || 0;
-  const cashFlowStartDate = dashboard?.periods.cashFlow.from;
-  const cashFlowEndDate = dashboard?.periods.cashFlow.to;
+  const cashFlowStartDate = dashboard?.periods?.cashFlow?.from || toISODate(new Date());
+  const cashFlowEndDate = dashboard?.periods?.cashFlow?.to || toISODate(new Date());
+  const asOfDate = dashboard?.asOf || toISODate(new Date());
 
   const incomeExpenseData = dashboard?.incomeExpense.months || [];
   const incomeTotal = dashboard?.incomeExpense.totalIncome || 0;
@@ -385,7 +401,7 @@ export default function DashboardPage() {
               </div>
               <div className="space-y-5 text-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-slate-400" />Cash as on {formatDisplayDate(cashFlowStartDate)}</span>
+                  <span className="text-muted-foreground inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-slate-400" />Opening Balance</span>
                   <span className="font-semibold">{fmtCurrency(cashFlowStart)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
@@ -397,7 +413,7 @@ export default function DashboardPage() {
                   <span className="font-semibold">{fmtCurrency(cashFlowOutgoingTotal)} ( - )</span>
                 </div>
                 <div className="flex items-center justify-between gap-2 border-t pt-3">
-                  <span className="text-blue-700 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-blue-600" />Cash as on {formatDisplayDate(cashFlowEndDate)}</span>
+                  <span className="text-blue-700 inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded bg-blue-600" />Cash as on {formatDisplayDate(asOfDate)}</span>
                   <span className="font-semibold">{fmtCurrency(cashClosing)} ( = )</span>
                 </div>
               </div>
