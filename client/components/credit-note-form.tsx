@@ -28,6 +28,7 @@ import {
   type UpdateCreditNoteInput,
 } from "@/lib/api/credit-notes";
 import { uploadApi } from "@/lib/api/upload";
+import { divideMoney, formatMoney, multiplyMoney, percentMoney, roundMoney, subtractMoney, sumMoney } from "@/lib/money";
 
 const REASONS = [
   "Sales Return",
@@ -74,10 +75,7 @@ function todayIso() {
 }
 
 function fmt(v: number) {
-  return new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(v || 0);
+  return formatMoney(v || 0);
 }
 
 function refId(value: unknown): string {
@@ -290,55 +288,52 @@ export function CreditNoteForm({
       prev.map((row) => {
         if (row.id !== id) return row;
         const next = { ...row, ...patch };
-        const base = Number(next.quantity || 0) * Number(next.rate || 0);
-        const tax = (base * Number(next.taxPercent || 0)) / 100;
-        next.amount = base + tax;
+        const base = multiplyMoney(next.quantity || 0, next.rate || 0);
+        const tax = percentMoney(base, next.taxPercent || 0);
+        next.amount = sumMoney([base, tax]);
         return next;
       }),
     );
   }
 
   const subTotal = useMemo(
-    () => rows.reduce((sum, row) => sum + row.quantity * row.rate, 0),
+    () => sumMoney(rows.map((row) => multiplyMoney(row.quantity, row.rate))),
     [rows],
   );
 
   const lineTaxTotal = useMemo(
     () =>
-      rows.reduce(
-        (sum, row) => sum + (row.quantity * row.rate * row.taxPercent) / 100,
-        0,
-      ),
+      sumMoney(rows.map((row) => percentMoney(multiplyMoney(row.quantity, row.rate), row.taxPercent))),
     [rows],
   );
 
   const discountAmount = useMemo(() => {
-    if (discountMode === "percent") return (subTotal * discountValue) / 100;
-    return discountValue;
+    if (discountMode === "percent") return percentMoney(subTotal, discountValue);
+    return roundMoney(discountValue);
   }, [discountMode, discountValue, subTotal]);
 
   const taxableAfterDiscount = useMemo(
-    () => Math.max(0, subTotal - discountAmount),
+    () => Math.max(0, subtractMoney(subTotal, discountAmount)),
     [subTotal, discountAmount],
   );
 
   const tdsAmount = useMemo(() => {
     if (taxType !== "TDS") return 0;
     const tax = tdsTaxes.find((t) => t._id === tdsId);
-    return tax ? (taxableAfterDiscount * Number(tax.rate || 0)) / 100 : 0;
+    return tax ? percentMoney(taxableAfterDiscount, Number(tax.rate || 0)) : 0;
   }, [taxType, tdsId, tdsTaxes, taxableAfterDiscount]);
 
   const tcsAmount = useMemo(() => {
     if (taxType !== "TCS") return 0;
     const tax = tcsTaxes.find((t) => t._id === tcsId);
-    return tax ? (taxableAfterDiscount * Number(tax.rate || 0)) / 100 : 0;
+    return tax ? percentMoney(taxableAfterDiscount, Number(tax.rate || 0)) : 0;
   }, [taxType, tcsId, tcsTaxes, taxableAfterDiscount]);
 
   const total = useMemo(
     () =>
       Math.max(
         0,
-        taxableAfterDiscount + lineTaxTotal - tdsAmount + tcsAmount + adjustmentAmount,
+        sumMoney([taxableAfterDiscount, lineTaxTotal, -tdsAmount, tcsAmount, adjustmentAmount]),
       ),
     [taxableAfterDiscount, lineTaxTotal, tdsAmount, tcsAmount, adjustmentAmount],
   );
@@ -387,7 +382,7 @@ export function CreditNoteForm({
         quantity: Number(row.quantity || 0),
         rate: Number(row.rate || 0),
         taxPercent: Number(row.taxPercent || 0),
-        amount: Number(row.amount || 0),
+        amount: roundMoney(row.amount || 0),
       };
     });
 
@@ -407,7 +402,7 @@ export function CreditNoteForm({
         discountMode === "percent"
           ? discountValue
           : subTotal > 0
-            ? (discountValue / subTotal) * 100
+            ? multiplyMoney(divideMoney(discountValue, subTotal, 6), 100)
             : 0,
       taxType,
       tdsId: taxType === "TDS" ? tdsId || null : null,

@@ -38,6 +38,7 @@ import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/
 import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { uploadApi, type UploadResult } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
+import { formatMoney, multiplyMoney, percentMoney, roundMoney, subtractMoney, sumMoney } from "@/lib/money";
 
 const SHIPMENT_OPTIONS = [
   "Road", "Air", "Sea", "Rail", "Courier", "Hand Delivery", "Other",
@@ -73,8 +74,7 @@ const DEFAULT_TDS_TAXES: TdsTax[] = [
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
-const fmt = (v: number) =>
-  new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+const fmt = (v: number) => formatMoney(v);
 const fmtQty = (v: number) =>
   new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
 
@@ -123,10 +123,10 @@ function newHeader(): LineRow {
 
 function calcRow(row: LineRow, discountLevel: DiscountLevel): LineRow {
   if (row.isHeader) return { ...row, amount: 0 };
-  const lineTotal = row.quantity * row.rate;
+  const lineTotal = multiplyMoney(row.quantity, row.rate);
   if (discountLevel === "line_item") {
-    const discAmt = row.discountPercent > 0 ? (lineTotal * row.discountPercent) / 100 : row.discountAmount;
-    return { ...row, discountAmount: discAmt, amount: lineTotal - discAmt };
+    const discAmt = row.discountPercent > 0 ? percentMoney(lineTotal, row.discountPercent) : roundMoney(row.discountAmount);
+    return { ...row, discountAmount: discAmt, amount: Math.max(0, subtractMoney(lineTotal, discAmt)) };
   }
   return { ...row, discountPercent: 0, discountAmount: 0, amount: lineTotal };
 }
@@ -676,28 +676,28 @@ export default function EditPurchaseOrderPage() {
   }, [activeOrganization]);
 
   // Computed totals
-  const subTotal = rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.amount, 0);
+  const subTotal = sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.amount));
   const discountAmt = discountLevel === "transaction"
-    ? discountType === "%" ? (subTotal * discountPercent) / 100 : discountPercent
-    : rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.discountAmount, 0);
+    ? discountType === "%" ? percentMoney(subTotal, discountPercent) : roundMoney(discountPercent)
+    : sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.discountAmount));
   const selectedTds = tdsTaxes.find((t) => t._id === tdsId);
   const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
-  const baseBeforeTax = subTotal - discountAmt + adjustmentAmount;
+  const baseBeforeTax = sumMoney([subTotal, -discountAmt, adjustmentAmount]);
   const computedTax = taxType === "TDS"
-    ? (selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0)
+    ? (selectedTds ? percentMoney(Math.max(0, subtractMoney(subTotal, discountAmt)), selectedTds.rate) : 0)
     : taxType === "TCS"
-      ? (selectedTcs ? (baseBeforeTax * selectedTcs.rate) / 100 : 0)
-      : taxAmount;
+      ? (selectedTcs ? percentMoney(baseBeforeTax, selectedTcs.rate) : 0)
+      : roundMoney(taxAmount);
   const totalQuantity = rows.filter((r) => !r.isHeader).reduce((s, r) => s + r.quantity, 0);
   const panelItem = items.find((i) => i._id === itemPanelItemId) ?? null;
   const panelUnit = !panelItem?.unit ? "" : typeof panelItem.unit === "string" ? panelItem.unit : (panelItem.unit as any)?.abbreviation || "";
   const panelSalesAccount = accounts.find((a) => a._id === (panelItem?.salesAccountId || ""));
   const panelPurchaseAccount = accounts.find((a) => a._id === (panelItem?.purchaseAccountId || ""));
   const total = taxType === "TDS"
-    ? (subTotal - discountAmt - computedTax + adjustmentAmount)
+    ? sumMoney([subTotal, -discountAmt, -computedTax, adjustmentAmount])
     : taxType === "TCS"
-      ? (subTotal - discountAmt + adjustmentAmount + computedTax)
-      : (subTotal - discountAmt + adjustmentAmount);
+      ? sumMoney([subTotal, -discountAmt, adjustmentAmount, computedTax])
+      : sumMoney([subTotal, -discountAmt, adjustmentAmount]);
 
   const filteredVendors = vendors.filter((v) =>
     (v.displayName || v.companyName || "").toLowerCase().includes("") || true

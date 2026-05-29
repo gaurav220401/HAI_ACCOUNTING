@@ -14,6 +14,13 @@ import {
 import { sendInvoiceEmail } from "./email.service";
 import { generateInvoicePdf } from "./pdf.service";
 import { applyItemTaxLinkageToItems } from "./item-tax-linkage.service";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 const SCHEDULER_INTERVAL_MS = 60_000;
 
@@ -126,19 +133,19 @@ export function alignRecurringNextRunDate(
 export function normalizeInvoiceItems(items: Partial<IInvoiceItem>[] = []) {
   return items.map((item, index) => {
     const quantity = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = quantity * rate;
+    const rate = roundMoney(Number(item.rate) || 0);
+    const lineTotal = multiplyMoney(quantity, rate);
     const discountPercent = Number(item.discountPercent) || 0;
     const discountAmount =
       item.discountAmount !== undefined && item.discountAmount !== null ?
-        Number(item.discountAmount)
-      : (lineTotal * discountPercent) / 100;
-    const afterDiscount = lineTotal - discountAmount;
+        roundMoney(Number(item.discountAmount))
+      : percentMoney(lineTotal, discountPercent);
+    const afterDiscount = Math.max(0, subtractMoney(lineTotal, discountAmount));
     const taxPercent = Number(item.taxPercent) || 0;
     const taxAmount =
       item.taxAmount !== undefined && item.taxAmount !== null ?
-        Number(item.taxAmount)
-      : (afterDiscount * taxPercent) / 100;
+        roundMoney(Number(item.taxAmount))
+      : percentMoney(afterDiscount, taxPercent);
 
     return {
       itemId: item.itemId || null,
@@ -152,7 +159,7 @@ export function normalizeInvoiceItems(items: Partial<IInvoiceItem>[] = []) {
       taxId: item.taxId || null,
       taxPercent,
       taxAmount,
-      amount: afterDiscount + taxAmount,
+      amount: sumMoney([afterDiscount, taxAmount]),
       accountId: item.accountId || null,
       projectId: item.projectId || null,
     };
@@ -224,20 +231,17 @@ export function summarizeInvoiceTotals(
   taxAmount: number,
   adjustmentAmount: number,
 ) {
-  const subTotal = items.reduce(
-    (sum, item) => sum + item.quantity * item.rate,
-    0,
-  );
+  const subTotal = sumMoney(items.map((item) => multiplyMoney(item.quantity, item.rate)));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
-  const normalizedTaxAmount = Number(taxAmount) || 0;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
+  const normalizedTaxAmount = roundMoney(Number(taxAmount) || 0);
   const taxImpact =
     taxType === "TCS" ? normalizedTaxAmount
     : taxType === "TDS" ? -normalizedTaxAmount
     : 0;
-  const total = subTotal - discountAmount + taxImpact + adjustmentAmount;
+  const total = sumMoney([subTotal, -discountAmount, taxImpact, adjustmentAmount]);
 
   return {
     subTotal,

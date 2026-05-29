@@ -59,6 +59,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item, type CreateItemInput, type UnitOfMeasurement } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import {
+  decimalToFixed,
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 import { invoiceApi, type CreateInvoiceInput } from "@/lib/api/invoices";
 import {
   settingsApi,
@@ -87,11 +95,11 @@ interface LineItem {
 }
 
 function calcLineAmount(l: LineItem) {
-  const lineTotal = l.quantity * l.rate;
-  const discAmt = (lineTotal * l.discountPercent) / 100;
-  const afterDisc = lineTotal - discAmt;
-  const taxAmt = (afterDisc * l.taxPercent) / 100;
-  return { lineTotal, discAmt, afterDisc, taxAmt, amount: afterDisc + taxAmt };
+  const lineTotal = multiplyMoney(l.quantity, l.rate);
+  const discAmt = percentMoney(lineTotal, l.discountPercent);
+  const afterDisc = Math.max(0, subtractMoney(lineTotal, discAmt));
+  const taxAmt = percentMoney(afterDisc, l.taxPercent);
+  return { lineTotal, discAmt, afterDisc, taxAmt, amount: sumMoney([afterDisc, taxAmt]) };
 }
 
 let lineKeyCounter = 1;
@@ -1287,25 +1295,24 @@ function NewInvoicePageContent() {
   // ─── Calculations ────────────────────────────────────────────────
 
   const lineTotals = lines.map(calcLineAmount);
-  const subTotal = lineTotals.reduce((s, l) => s + l.lineTotal, 0);
-  const lineDiscountAmount = lineTotals.reduce((s, l) => s + l.discAmt, 0);
-  const lineTaxAmount = lineTotals.reduce((s, l) => s + l.taxAmt, 0);
-  const lineItemsTotal = lineTotals.reduce((s, l) => s + l.amount, 0);
+  const subTotal = sumMoney(lineTotals.map((l) => l.lineTotal));
+  const lineDiscountAmount = sumMoney(lineTotals.map((l) => l.discAmt));
+  const lineTaxAmount = sumMoney(lineTotals.map((l) => l.taxAmt));
+  const lineItemsTotal = sumMoney(lineTotals.map((l) => l.amount));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
   const selectedTax = taxes.find((t) => t._id === totalTaxId);
   const taxAmount =
     selectedTax && taxType !== "none" ?
-      (subTotal * (selectedTax.rate || 0)) / 100
+      percentMoney(subTotal, selectedTax.rate || 0)
     : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total =
-    lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total = sumMoney([lineItemsTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
 
   // ─── Submit ──────────────────────────────────────────────────────
 
@@ -1887,7 +1894,7 @@ function NewInvoicePageContent() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {amount.toFixed(2)}
+                          {decimalToFixed(amount)}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5">
@@ -1990,7 +1997,7 @@ function NewInvoicePageContent() {
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">Sub Total</span>
                 <span className="font-medium tabular-nums">
-                  {subTotal.toFixed(2)}
+                  {decimalToFixed(subTotal)}
                 </span>
               </div>
 
@@ -1998,7 +2005,7 @@ function NewInvoicePageContent() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Line Item Discount</span>
                   <span className="tabular-nums">
-                    - {lineDiscountAmount.toFixed(2)}
+                    - {decimalToFixed(lineDiscountAmount)}
                   </span>
                 </div>
               )}
@@ -2007,7 +2014,7 @@ function NewInvoicePageContent() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Line Item Tax</span>
                   <span className="tabular-nums">
-                    + {lineTaxAmount.toFixed(2)}
+                    + {decimalToFixed(lineTaxAmount)}
                   </span>
                 </div>
               )}
@@ -2040,7 +2047,7 @@ function NewInvoicePageContent() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm tabular-nums w-20 text-right">
-                    {discountAmount.toFixed(2)}
+                    {decimalToFixed(discountAmount)}
                   </span>
                 </div>
               </div>
@@ -2113,7 +2120,7 @@ function NewInvoicePageContent() {
                     : taxType === "TDS" ?
                       "-"
                     : ""}{" "}
-                    {taxAmount.toFixed(2)}
+                    {decimalToFixed(taxAmount)}
                   </span>
                 </div>
               </div>
@@ -2136,7 +2143,7 @@ function NewInvoicePageContent() {
                     }
                   />
                   <span className="text-sm tabular-nums w-20 text-right">
-                    {adjustmentAmount.toFixed(2)}
+                    {decimalToFixed(adjustmentAmount)}
                   </span>
                 </div>
               </div>
@@ -2146,7 +2153,7 @@ function NewInvoicePageContent() {
               {/* Total */}
               <div className="flex items-center justify-between text-base font-bold">
                 <span>Total ( &#8377; )</span>
-                <span className="tabular-nums">{total.toFixed(2)}</span>
+                <span className="tabular-nums">{decimalToFixed(total)}</span>
               </div>
             </div>
           </div>
@@ -2420,7 +2427,7 @@ function NewInvoicePageContent() {
               </button>
               <div className="text-right">
                 <div className="text-sm font-semibold">
-                  Total Amount: &#8377; {total.toFixed(2)}
+                  Total Amount: &#8377; {decimalToFixed(total)}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Total Quantity:{" "}

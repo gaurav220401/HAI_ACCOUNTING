@@ -1,5 +1,13 @@
 import PDFDocument from "pdfkit";
 import * as fs from "fs";
+import {
+  divideMoney,
+  formatMoney,
+  multiplyMoney,
+  percentMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 export interface InvoiceItemRow {
   name: string;
@@ -251,20 +259,11 @@ const _sysBold = findFont(FONT_CANDIDATES.bold);
 const _sysBoldItalic = findFont(FONT_CANDIDATES.boldItalic);
 
 function fmt(n: number, symbol = "₹"): string {
-  return (
-    symbol +
-    n.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  return symbol + formatMoney(n);
 }
 
 function fmtNum(n: number): string {
-  return n.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatMoney(n);
 }
 
 function fmtDate(d: string): string {
@@ -575,12 +574,15 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
       const textY = y;
       const taxableAmount = Math.max(
         0,
-        Number(item.quantity || 0) * Number(item.rate || 0) - (Number(item.discountAmount) || 0),
+        subtractMoney(
+          multiplyMoney(Number(item.quantity || 0), Number(item.rate || 0)),
+          Number(item.discountAmount || 0),
+        ),
       );
       const taxPercent = Number(item.taxPercent || 0);
       const taxAmount = Number(item.taxAmount || 0);
       const halfTaxPercent = taxPercent / 2;
-      const halfTaxAmount = taxAmount / 2;
+      const halfTaxAmount = divideMoney(taxAmount, 2);
       doc
         .fillColor("#000000")
         .font(F_REG)
@@ -658,7 +660,7 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
 
     const sectionStartY = y;
     const lineItemDiscountAmount = data.items.reduce(
-      (sum, item) => sum + (Number(item.discountAmount) || 0),
+      (sum, item) => sumMoney([sum, Number(item.discountAmount) || 0]),
       0,
     );
     const lineItemTaxTotals = data.items.reduce((acc, item) => {
@@ -668,15 +670,16 @@ export function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
 
       if (invoiceItemTaxMode(item) === "igst") {
         const igstLabel = `IGST (${fmtNum(taxPercent)}%)`;
-        acc[igstLabel] = (acc[igstLabel] || 0) + taxAmount;
+        acc[igstLabel] = sumMoney([acc[igstLabel] || 0, taxAmount]);
         return acc;
       }
 
       const halfTaxPercent = taxPercent / 2;
       const cgstLabel = `CGST (${fmtNum(halfTaxPercent)}%)`;
       const sgstLabel = `SGST (${fmtNum(halfTaxPercent)}%)`;
-      acc[cgstLabel] = (acc[cgstLabel] || 0) + taxAmount / 2;
-      acc[sgstLabel] = (acc[sgstLabel] || 0) + taxAmount / 2;
+      const halfTaxAmount = divideMoney(taxAmount, 2);
+      acc[cgstLabel] = sumMoney([acc[cgstLabel] || 0, halfTaxAmount]);
+      acc[sgstLabel] = sumMoney([acc[sgstLabel] || 0, halfTaxAmount]);
       return acc;
     }, {} as Record<string, number>);
 
@@ -1486,7 +1489,7 @@ export function generateSalesOrderPdf(params: {
       const taxPercent = Number(li.taxPercent) || 0;
       const storedTaxAmt = Number(li.taxAmount) || 0;
       const computedTaxAmt = storedTaxAmt > 0 ? storedTaxAmt
-        : (taxPercent > 0 ? Math.round(quantity * rate * taxPercent) / 100 : 0);
+        : (taxPercent > 0 ? percentMoney(multiplyMoney(quantity, rate), taxPercent) : 0);
       return {
         name: itemRef?.name || li.name || li.description || "Item",
         description: li.description || "",
@@ -1501,9 +1504,10 @@ export function generateSalesOrderPdf(params: {
         amount: Number(li.amount) || 0,
       };
     }),
-    subTotal: (order.lineItems || []).reduce(
-      (sum: number, li: any) => sum + (Number(li.quantity) || 0) * (Number(li.rate) || 0),
-      0,
+    subTotal: sumMoney(
+      (order.lineItems || []).map((li: any) =>
+        multiplyMoney(Number(li.quantity) || 0, Number(li.rate) || 0),
+      ),
     ),
     adjustmentLabel: "Shipping & Adjustment",
     adjustmentAmount:

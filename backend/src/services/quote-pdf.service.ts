@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import * as fs from "fs";
+import { divideMoney, formatMoney, sumMoney } from "../utils/money";
 
 export interface QuoteItemRow {
   name: string;
@@ -96,20 +97,11 @@ const _sysBold = findFont(FONT_CANDIDATES.bold);
 const _sysBoldItalic = findFont(FONT_CANDIDATES.boldItalic);
 
 function fmt(n: number, symbol = "₹"): string {
-  return (
-    symbol +
-    n.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  return symbol + formatMoney(n);
 }
 
 function fmtNum(n: number): string {
-  return n.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatMoney(n);
 }
 
 function fmtDate(d: string): string {
@@ -906,14 +898,14 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
 
       const taxPercent = item.taxPercent || 0;
       const taxAmount = item.taxAmount || 0;
-      totalTaxAmount += taxAmount;
+      totalTaxAmount = sumMoney([totalTaxAmount, taxAmount]);
 
       if (hasTax) {
         if (isIntra) {
           const cgstCol = cols.find(c => c.id === "cgst")!;
           const sgstCol = cols.find(c => c.id === "sgst")!;
           const splitTaxP = taxPercent / 2;
-          const splitTaxA = taxAmount / 2;
+          const splitTaxA = divideMoney(taxAmount, 2);
 
           doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", cgstCol.x, nextY + 4, { width: 18, align: "center" });
           doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", cgstCol.x + 18, nextY + 4, { width: cgstCol.width - 18 - 4, align: "right" });
@@ -936,7 +928,9 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       nextY += itemH;
     });
 
-    const finalTotal = data.total !== undefined && data.total !== null ? data.total : data.subTotal + totalTaxAmount + (data.adjustmentAmount || 0) - (data.discountAmount || 0);
+    const finalTotal = data.total !== undefined && data.total !== null
+      ? data.total
+      : sumMoney([data.subTotal, totalTaxAmount, data.adjustmentAmount || 0, -(data.discountAmount || 0)]);
 
     // Totals grid rows inline at the bottom of the table
     const addTotalGridRow = (label: string, value: string, isBold = false) => {

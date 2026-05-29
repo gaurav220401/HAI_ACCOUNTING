@@ -57,6 +57,14 @@ import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import {
+  formatMoney,
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
+import {
   invoiceApi,
   type Invoice,
   type UpdateInvoiceInput,
@@ -95,11 +103,11 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 function calcLineAmount(l: LineItem) {
-  const lineTotal = l.quantity * l.rate;
-  const discAmt = (lineTotal * l.discountPercent) / 100;
-  const afterDisc = lineTotal - discAmt;
-  const taxAmt = (afterDisc * l.taxPercent) / 100;
-  return { lineTotal, discAmt, afterDisc, taxAmt, amount: afterDisc + taxAmt };
+  const lineTotal = multiplyMoney(l.quantity, l.rate);
+  const discAmt = percentMoney(lineTotal, l.discountPercent);
+  const afterDisc = Math.max(0, subtractMoney(lineTotal, discAmt));
+  const taxAmt = percentMoney(afterDisc, l.taxPercent);
+  return { lineTotal, discAmt, afterDisc, taxAmt, amount: sumMoney([afterDisc, taxAmt]) };
 }
 
 let lineKeyCounter = 1000;
@@ -334,25 +342,24 @@ export default function EditInvoicePage() {
 
   // Calculations
   const lineTotals = lines.map(calcLineAmount);
-  const subTotal = lineTotals.reduce((s, l) => s + l.lineTotal, 0);
-  const lineDiscountAmount = lineTotals.reduce((s, l) => s + l.discAmt, 0);
-  const lineTaxAmount = lineTotals.reduce((s, l) => s + l.taxAmt, 0);
-  const lineItemsTotal = lineTotals.reduce((s, l) => s + l.amount, 0);
+  const subTotal = sumMoney(lineTotals.map((l) => l.lineTotal));
+  const lineDiscountAmount = sumMoney(lineTotals.map((l) => l.discAmt));
+  const lineTaxAmount = sumMoney(lineTotals.map((l) => l.taxAmt));
+  const lineItemsTotal = sumMoney(lineTotals.map((l) => l.amount));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
   const selectedTax = taxes.find((t) => t._id === totalTaxId);
   const taxAmount =
     selectedTax && taxType !== "none" ?
-      (subTotal * (selectedTax.rate || 0)) / 100
+      percentMoney(subTotal, selectedTax.rate || 0)
     : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total =
-    lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total = sumMoney([lineItemsTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
 
   async function handleUpdate(shouldSend = false) {
     if (!customerId) {
@@ -693,7 +700,7 @@ export default function EditInvoicePage() {
                           </TableCell>
                           <TableCell className="text-right py-5 pr-4">
                             <div className="font-bold text-slate-900 tabular-nums">
-                               {amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                               {formatMoney(amount)}
                             </div>
                           </TableCell>
                           <TableCell className="py-5">
@@ -756,13 +763,13 @@ export default function EditInvoicePage() {
               <div className="bg-slate-50/50 rounded-2xl p-8 border border-slate-100 space-y-5 h-fit">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500 font-medium">Sub Total</span>
-                  <span className="font-bold tabular-nums text-slate-900">{subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  <span className="font-bold tabular-nums text-slate-900">{formatMoney(subTotal)}</span>
                 </div>
                 
                 {lineDiscountAmount > 0 && (
                   <div className="flex items-center justify-between text-sm text-green-600 font-medium">
                     <span>Line Item Discount</span>
-                    <span className="tabular-nums">- {lineDiscountAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    <span className="tabular-nums">- {formatMoney(lineDiscountAmount)}</span>
                   </div>
                 )}
 
@@ -810,7 +817,7 @@ export default function EditInvoicePage() {
                 <div className="flex items-center justify-between pt-2">
                   <span className="text-lg font-bold text-slate-900">Total ( ₹ )</span>
                   <span className="text-2xl font-black text-slate-900 tabular-nums">
-                    {total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatMoney(total)}
                   </span>
                 </div>
                 

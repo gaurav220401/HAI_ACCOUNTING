@@ -13,6 +13,13 @@ import { generateQuotePdf } from "../services/quote-pdf.service";
 import { sendQuoteEmail as sendQuoteEmailService } from "../services/email.service";
 import Organization from "../models/organization.model";
 import Invoice from "../models/invoice.model";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -33,14 +40,14 @@ async function normalizeQuoteItems(
 
   return linkedItems.map((item: any) => {
     const qty = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = qty * rate;
+    const rate = roundMoney(Number(item.rate) || 0);
+    const lineTotal = multiplyMoney(qty, rate);
     const discPct = Number(item.discountPercent) || 0;
     const discAmt =
-      Number(item.discountAmount) || (lineTotal * discPct) / 100;
-    const afterDiscount = lineTotal - discAmt;
+      roundMoney(Number(item.discountAmount) || percentMoney(lineTotal, discPct));
+    const afterDiscount = Math.max(0, subtractMoney(lineTotal, discAmt));
     const taxPct = Number(item.taxPercent) || 0;
-    const taxAmt = Number(item.taxAmount) || (afterDiscount * taxPct) / 100;
+    const taxAmt = roundMoney(Number(item.taxAmount) || percentMoney(afterDiscount, taxPct));
     return {
       ...item,
       quantity: qty,
@@ -49,7 +56,7 @@ async function normalizeQuoteItems(
       discountAmount: discAmt,
       taxPercent: taxPct,
       taxAmount: taxAmt,
-      amount: afterDiscount + taxAmt,
+      amount: sumMoney([afterDiscount, taxAmt]),
     };
   });
 }
@@ -85,7 +92,7 @@ async function nextQuoteNumber(organizationId: any): Promise<string> {
 }
 
 function resolveTaxImpact(taxType: string, taxAmount: number): number {
-  const normalizedTaxAmount = Number(taxAmount) || 0;
+  const normalizedTaxAmount = roundMoney(Number(taxAmount) || 0);
   if (taxType === "TCS") return normalizedTaxAmount;
   if (taxType === "TDS") return -normalizedTaxAmount;
   return 0;
@@ -118,7 +125,7 @@ function normalizeHeaderTax(
 ): {
   taxType: "TDS" | "TCS" | "none";
   taxId: string | null;
-  taxAmount: number;
+    taxAmount: number;
 } {
   const taxType =
     taxTypeRaw === "TDS" || taxTypeRaw === "TCS" ? taxTypeRaw : "none";
@@ -131,7 +138,7 @@ function normalizeHeaderTax(
   return {
     taxType,
     taxId,
-    taxAmount: Number(taxAmountRaw) || 0,
+    taxAmount: roundMoney(Number(taxAmountRaw) || 0),
   };
 }
 
@@ -269,23 +276,17 @@ export const create = asyncHandler(
       req.body.items || [],
     );
 
-    const subTotal = items.reduce(
-      (s: number, i: any) => s + i.quantity * i.rate,
-      0,
-    );
+    const subTotal = sumMoney(items.map((i: any) => multiplyMoney(i.quantity, i.rate)));
 
-    const lineItemsTotal = items.reduce(
-      (s: number, i: any) => s + (Number(i.amount) || 0),
-      0,
-    );
+    const lineItemsTotal = sumMoney(items.map((i: any) => Number(i.amount) || 0));
 
     // Discount on total
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
     const discountAmount =
       discountType === "percent" ?
-        (subTotal * discountValue) / 100
-      : discountValue;
+        percentMoney(subTotal, discountValue)
+      : roundMoney(discountValue);
 
     // Tax on total
     const headerTax = normalizeHeaderTax(
@@ -295,13 +296,14 @@ export const create = asyncHandler(
     );
 
     // Adjustment
-    const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
+    const adjustmentAmount = roundMoney(Number(req.body.adjustmentAmount) || 0);
 
-    const total =
-      lineItemsTotal -
-      discountAmount +
-      resolveTaxImpact(headerTax.taxType, headerTax.taxAmount) +
-      adjustmentAmount;
+    const total = sumMoney([
+      lineItemsTotal,
+      -discountAmount,
+      resolveTaxImpact(headerTax.taxType, headerTax.taxAmount),
+      adjustmentAmount,
+    ]);
 
     const quote = new Quote({
       organizationId: oid,
@@ -411,27 +413,23 @@ export const update = asyncHandler(
       );
     }
 
-    quote.subTotal = quote.items.reduce(
-      (s: number, i: any) => s + i.quantity * i.rate,
-      0,
-    );
-    const lineItemsTotal = quote.items.reduce(
-      (s: number, i: any) => s + (Number(i.amount) || 0),
-      0,
-    );
+    quote.subTotal = sumMoney((quote.items as any[]).map((i: any) => multiplyMoney(i.quantity, i.rate)));
+    const lineItemsTotal = sumMoney((quote.items as any[]).map((i: any) => Number(i.amount) || 0));
     quote.discountAmount =
       quote.discountType === "percent" ?
-        (quote.subTotal * quote.discountValue) / 100
-      : quote.discountValue;
+        percentMoney(quote.subTotal, quote.discountValue)
+      : roundMoney(quote.discountValue);
     const taxImpact = resolveTaxImpact(
       String(quote.taxType || "none"),
       Number(quote.taxAmount) || 0,
     );
-    quote.total =
-      lineItemsTotal -
-      quote.discountAmount +
-      taxImpact +
-      quote.adjustmentAmount;
+    quote.adjustmentAmount = roundMoney(quote.adjustmentAmount);
+    quote.total = sumMoney([
+      lineItemsTotal,
+      -quote.discountAmount,
+      taxImpact,
+      quote.adjustmentAmount,
+    ]);
 
     attachUser(quote, req);
     await quote.save();

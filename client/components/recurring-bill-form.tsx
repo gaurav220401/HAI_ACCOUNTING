@@ -22,6 +22,13 @@ import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/
 import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 
 interface FreqOption { label: string; frequency: RecurringFrequency; repeatEvery: number }
 const FREQ_OPTIONS: FreqOption[] = [
@@ -39,7 +46,7 @@ function findFreqOption(freq: RecurringFrequency, repeatEvery: number) {
   return FREQ_OPTIONS.find((o) => o.frequency === freq && o.repeatEvery === repeatEvery) ?? FREQ_OPTIONS[1];
 }
 
-const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(roundMoney(v));
 
 
 const SUPPLY_STATES = [
@@ -120,10 +127,10 @@ const newHeader = (): LineRow => ({ ...newRow(), isHeader: true, headerText: "Ad
 
 function calcRow(row: LineRow, discountLevel: "transaction" | "line_item"): LineRow {
   if (row.isHeader) return { ...row, amount: 0 };
-  const lineTotal = row.quantity * row.rate;
+  const lineTotal = multiplyMoney(row.quantity, row.rate);
   if (discountLevel === "line_item") {
-    const discAmt = row.discountPercent > 0 ? (lineTotal * row.discountPercent) / 100 : row.discountAmount;
-    return { ...row, discountAmount: discAmt, amount: lineTotal - discAmt };
+    const discAmt = row.discountPercent > 0 ? percentMoney(lineTotal, row.discountPercent) : roundMoney(row.discountAmount);
+    return { ...row, discountAmount: discAmt, amount: Math.max(0, subtractMoney(lineTotal, discAmt)) };
   }
   return { ...row, discountPercent: 0, discountAmount: 0, amount: lineTotal };
 }
@@ -686,15 +693,16 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
   );
 
   const selectedFreq = FREQ_OPTIONS.find((o) => freqKey(o) === freqKeyValue) ?? FREQ_OPTIONS[1];
-  const subTotal = rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + r.amount, 0);
+  const subTotal = sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.amount));
   const discountAmt = discountLevel === "transaction"
-    ? (discountType === "%" ? (subTotal * discountPercent) / 100 : discountPercent)
-    : rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + (r.discountAmount || 0), 0);
+    ? (discountType === "%" ? percentMoney(subTotal, discountPercent) : roundMoney(discountPercent))
+    : sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.discountAmount || 0));
   const selectedTds = tdsTaxes.find((t) => t._id === tdsId);
   const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
-  const tdsAmount = taxType === "TDS" && selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0;
-  const tcsAmount = taxType === "TCS" && selectedTcs ? ((subTotal - discountAmt + adjustmentAmount) * selectedTcs.rate) / 100 : 0;
-  const total = subTotal - discountAmt - tdsAmount + tcsAmount + adjustmentAmount;
+  const taxableBase = Math.max(0, subtractMoney(subTotal, discountAmt));
+  const tdsAmount = taxType === "TDS" && selectedTds ? percentMoney(taxableBase, selectedTds.rate) : 0;
+  const tcsAmount = taxType === "TCS" && selectedTcs ? percentMoney(sumMoney([taxableBase, adjustmentAmount]), selectedTcs.rate) : 0;
+  const total = sumMoney([taxableBase, -tdsAmount, tcsAmount, adjustmentAmount]);
 
   useEffect(() => {
     const load = async () => {

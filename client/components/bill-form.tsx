@@ -27,10 +27,17 @@ import { cn } from "@/lib/utils";
 import { uploadApi } from "@/lib/api/upload";
 import { useOrganization } from "@/contexts/organization-context";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 
 // --- Helpers ---
 const TODAY = () => new Date().toISOString().slice(0, 10);
-const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(roundMoney(v));
 const fmtQty = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
 function getName(v: any): string {
   if (!v) return "";
@@ -116,10 +123,10 @@ const newHeader = (): LineRow => ({ ...newRow(), isHeader: true, headerText: "Ad
 
 function calcRow(row: LineRow, discountLevel: DiscountLevel): LineRow {
    if (row.isHeader) return { ...row, amount: 0 };
-   const lineTotal = row.quantity * row.rate;
+   const lineTotal = multiplyMoney(row.quantity, row.rate);
    if (discountLevel === "line_item") {
-      const discAmt = row.discountPercent > 0 ? (lineTotal * row.discountPercent) / 100 : row.discountAmount;
-      return { ...row, discountAmount: discAmt, amount: lineTotal - discAmt };
+      const discAmt = row.discountPercent > 0 ? percentMoney(lineTotal, row.discountPercent) : roundMoney(row.discountAmount);
+      return { ...row, discountAmount: discAmt, amount: Math.max(0, subtractMoney(lineTotal, discAmt)) };
    }
    return { ...row, discountPercent: 0, discountAmount: 0, amount: lineTotal };
 }
@@ -1237,17 +1244,18 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   }, [mode, cloneId]);
 
   // Calculations
-  const subTotal = rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + r.amount, 0);
+  const subTotal = sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.amount));
   const discountAmt = discountLevel === "transaction"
-    ? (discountType === "%" ? (subTotal * discountPercent) / 100 : discountPercent)
-    : rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + (r.discountAmount || 0), 0);
+    ? (discountType === "%" ? percentMoney(subTotal, discountPercent) : roundMoney(discountPercent))
+    : sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.discountAmount || 0));
 
          const selectedTds = tdsTaxes.find((t) => t._id === tdsId);
          const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
-  const tdsAmount = taxType === "TDS" && selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0;
-  const tcsAmount = taxType === "TCS" && selectedTcs ? ((subTotal - discountAmt + adjustmentAmount) * selectedTcs.rate) / 100 : 0;
-  const lineTaxesSum = rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + (r.amount * (r.taxRate || 0)) / 100, 0);
-  const total = subTotal - discountAmt + lineTaxesSum - tdsAmount + tcsAmount + adjustmentAmount;
+  const taxableBase = Math.max(0, subtractMoney(subTotal, discountAmt));
+  const tdsAmount = taxType === "TDS" && selectedTds ? percentMoney(taxableBase, selectedTds.rate) : 0;
+  const tcsAmount = taxType === "TCS" && selectedTcs ? percentMoney(sumMoney([taxableBase, adjustmentAmount]), selectedTcs.rate) : 0;
+  const lineTaxesSum = sumMoney(rows.filter((r) => !r.isHeader).map((r) => percentMoney(r.amount, r.taxRate || 0)));
+  const total = sumMoney([taxableBase, lineTaxesSum, -tdsAmount, tcsAmount, adjustmentAmount]);
 
    const gstGroupTaxes = useMemo(
       () => lineTaxes

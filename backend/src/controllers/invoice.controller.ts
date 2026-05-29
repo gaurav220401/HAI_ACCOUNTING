@@ -37,6 +37,13 @@ import {
 } from "../services/gl-posting.service";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
 import { createPaymentReceivedEntry } from "./payment-received.controller";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 /** Parse a field that may arrive as a JS array (JSON body) or a JSON string (FormData). */
 function parseStringArray(val: unknown): string[] {
@@ -122,19 +129,19 @@ async function normalizeItems(
 
   return linkedItems.map((item) => {
     const quantity = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = quantity * rate;
+    const rate = roundMoney(Number(item.rate) || 0);
+    const lineTotal = multiplyMoney(quantity, rate);
     const discountPercent = Number(item.discountPercent) || 0;
     const discountAmount =
       item.discountAmount !== undefined && item.discountAmount !== null ?
-        Number(item.discountAmount)
-      : (lineTotal * discountPercent) / 100;
-    const afterDiscount = lineTotal - discountAmount;
+        roundMoney(Number(item.discountAmount))
+      : percentMoney(lineTotal, discountPercent);
+    const afterDiscount = Math.max(0, subtractMoney(lineTotal, discountAmount));
     const taxPercent = Number(item.taxPercent) || 0;
     const taxAmount =
       item.taxAmount !== undefined && item.taxAmount !== null ?
-        Number(item.taxAmount)
-      : (afterDiscount * taxPercent) / 100;
+        roundMoney(Number(item.taxAmount))
+      : percentMoney(afterDiscount, taxPercent);
 
     return {
       ...item,
@@ -144,7 +151,7 @@ async function normalizeItems(
       discountAmount,
       taxPercent,
       taxAmount,
-      amount: afterDiscount + taxAmount,
+      amount: sumMoney([afterDiscount, taxAmount]),
     };
   });
 }
@@ -157,34 +164,31 @@ function summarizeTotals(
   taxAmount: number,
   adjustmentAmount: number,
 ) {
-  const subTotal = items.reduce(
-    (sum, item) => sum + item.quantity * item.rate,
-    0,
+  const subTotal = sumMoney(
+    items.map((item) => multiplyMoney(item.quantity || 0, item.rate || 0)),
   );
-  const lineItemsTotal = items.reduce(
-    (sum, item) =>
-      sum +
-      (Number.isFinite(Number(item.amount)) ?
+  const lineItemsTotal = sumMoney(
+    items.map((item) =>
+      Number.isFinite(Number(item.amount)) ?
         Number(item.amount)
-      : Number(item.quantity || 0) * Number(item.rate || 0)),
-    0,
+      : multiplyMoney(Number(item.quantity || 0), Number(item.rate || 0)),
+    ),
   );
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
-  const normalizedTaxAmount = Number(taxAmount) || 0;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
+  const normalizedTaxAmount = roundMoney(Number(taxAmount) || 0);
   const taxImpact =
     taxType === "TCS" ? normalizedTaxAmount
     : taxType === "TDS" ? -normalizedTaxAmount
     : 0;
-  const total =
-    lineItemsTotal - discountAmount + taxImpact + adjustmentAmount;
+  const total = sumMoney([lineItemsTotal, -discountAmount, taxImpact, adjustmentAmount]);
   return { subTotal, discountAmount, total };
 }
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundMoney(value);
 }
 
 function toNum(value: unknown, fallback = 0): number {
@@ -240,7 +244,7 @@ function applyCostLinesToInvoiceItems(items: any[] = [], costLines: any[] = []):
 
     if (itemId && quantity > 0 && costRateMap.has(itemId)) {
       const rate = round2(toNum(costRateMap.get(itemId)));
-      const amount = round2(quantity * rate);
+      const amount = multiplyMoney(quantity, rate);
       if (round2(toNum(item.costRate)) !== rate) {
         item.costRate = rate;
         changed = true;
@@ -480,8 +484,8 @@ export const create = asyncHandler(
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
     const taxType = req.body.taxType || "none";
-    const taxAmount = Number(req.body.taxAmount) || 0;
-    const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
+    const taxAmount = roundMoney(Number(req.body.taxAmount) || 0);
+    const adjustmentAmount = roundMoney(Number(req.body.adjustmentAmount) || 0);
     const { subTotal, discountAmount, total } = summarizeTotals(
       items,
       discountType,
@@ -493,7 +497,7 @@ export const create = asyncHandler(
 
     const paymentReceived = req.body.paymentReceived === true;
     const balanceDueInput =
-      req.body.balanceDue !== undefined ? Number(req.body.balanceDue) : total;
+      req.body.balanceDue !== undefined ? roundMoney(Number(req.body.balanceDue)) : total;
     const balanceDue = Math.max(0, paymentReceived ? 0 : balanceDueInput);
     const status = req.body.status || (paymentReceived ? "Paid" : "Draft");
 
@@ -655,7 +659,7 @@ export const update = asyncHandler(
     invoice.total = totals.total;
 
     if (req.body.balanceDue !== undefined) {
-      invoice.balanceDue = Math.max(0, Number(req.body.balanceDue));
+      invoice.balanceDue = Math.max(0, roundMoney(Number(req.body.balanceDue)));
     } else if (
       req.body.items ||
       req.body.taxAmount !== undefined ||

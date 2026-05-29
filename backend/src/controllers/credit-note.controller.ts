@@ -22,6 +22,13 @@ import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -36,7 +43,7 @@ function toNum(value: unknown, fallback = 0): number {
 }
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundMoney(value);
 }
 
 function scalarId(value: unknown): string {
@@ -53,12 +60,12 @@ function calcLineItems(items: any[], discountLevel: "transaction" | "line_item")
     if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
 
     const qty = Math.max(0, toNum(item.quantity, 1));
-    const rate = Math.max(0, toNum(item.rate, 0));
-    const gross = round2(qty * rate);
+    const rate = round2(Math.max(0, toNum(item.rate, 0)));
+    const gross = multiplyMoney(qty, rate);
 
     if (discountLevel === "line_item") {
       const discountPercent = Math.max(0, toNum(item.discountPercent, 0));
-      const computedDiscount = round2((gross * discountPercent) / 100);
+      const computedDiscount = percentMoney(gross, discountPercent);
       const discountAmount = round2(Math.min(gross, toNum(item.discountAmount, computedDiscount)));
       return {
         ...item,
@@ -67,7 +74,7 @@ function calcLineItems(items: any[], discountLevel: "transaction" | "line_item")
         discountPercent,
         discountAmount,
         taxPercent: Math.max(0, toNum(item.taxPercent, 0)),
-        amount: round2(gross - discountAmount),
+        amount: Math.max(0, subtractMoney(gross, discountAmount)),
       };
     }
 
@@ -92,31 +99,30 @@ function computeTotals(input: {
   adjustmentAmount: number;
 }) {
   const rowItems = input.lineItems.filter((line: any) => !line.isHeader);
-  const subTotal = round2(
-    rowItems.reduce((sum: number, line: any) => sum + round2(toNum(line.quantity) * toNum(line.rate)), 0),
+  const subTotal = sumMoney(
+    rowItems.map((line: any) => multiplyMoney(toNum(line.quantity), toNum(line.rate))),
   );
 
   const discountAmount =
     input.discountLevel === "transaction"
-      ? round2((subTotal * input.discountPercent) / 100)
-      : round2(rowItems.reduce((sum: number, line: any) => sum + toNum(line.discountAmount), 0));
+      ? percentMoney(subTotal, input.discountPercent)
+      : sumMoney(rowItems.map((line: any) => toNum(line.discountAmount)));
 
   const safeDiscountAmount = Math.min(subTotal, Math.max(0, discountAmount));
-  const taxableBase = round2(subTotal - safeDiscountAmount);
+  const taxableBase = subtractMoney(subTotal, safeDiscountAmount);
 
-  const transactionScale = subTotal > 0 ? taxableBase / subTotal : 1;
-  const taxAmount = round2(
-    rowItems.reduce((sum: number, line: any) => {
-      const gross = round2(toNum(line.quantity) * toNum(line.rate));
+  const taxAmount = sumMoney(
+    rowItems.map((line: any) => {
+      const gross = multiplyMoney(toNum(line.quantity), toNum(line.rate));
       const lineBase =
         input.discountLevel === "line_item"
-          ? round2(Math.max(0, gross - toNum(line.discountAmount)))
-          : round2(Math.max(0, gross * transactionScale));
-      return sum + round2((lineBase * toNum(line.taxPercent)) / 100);
-    }, 0),
+          ? Math.max(0, subtractMoney(gross, toNum(line.discountAmount)))
+          : Math.max(0, subtractMoney(gross, percentMoney(gross, input.discountPercent)));
+      return percentMoney(lineBase, toNum(line.taxPercent));
+    }),
   );
 
-  const total = round2(taxableBase + taxAmount - input.tdsAmount + input.tcsAmount + input.adjustmentAmount);
+  const total = sumMoney([taxableBase, taxAmount, -input.tdsAmount, input.tcsAmount, input.adjustmentAmount]);
   return {
     subTotal,
     discountAmount: safeDiscountAmount,

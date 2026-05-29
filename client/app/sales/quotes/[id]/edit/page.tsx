@@ -40,6 +40,14 @@ import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import {
+  decimalToFixed,
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
+import {
   quoteApi,
   type Quote,
   type SendQuoteEmailInput,
@@ -79,11 +87,11 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 function calcLineAmount(l: LineItem) {
-  const lineTotal = l.quantity * l.rate;
-  const discAmt = (lineTotal * l.discountPercent) / 100;
-  const afterDisc = lineTotal - discAmt;
-  const taxAmt = (afterDisc * l.taxPercent) / 100;
-  return { lineTotal, discAmt, afterDisc, taxAmt, amount: afterDisc + taxAmt };
+  const lineTotal = multiplyMoney(l.quantity, l.rate);
+  const discAmt = percentMoney(lineTotal, l.discountPercent);
+  const afterDisc = Math.max(0, subtractMoney(lineTotal, discAmt));
+  const taxAmt = percentMoney(afterDisc, l.taxPercent);
+  return { lineTotal, discAmt, afterDisc, taxAmt, amount: sumMoney([afterDisc, taxAmt]) };
 }
 
 function normalizeTaxLabel(value?: string): string {
@@ -347,23 +355,23 @@ export default function EditQuotePage() {
   }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
   // Calculations
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
-  const lineItemsTotal = lines.reduce((s, l) => s + calcLineAmount(l).amount, 0);
-  const lineTaxesSum = lines.reduce((s, l) => s + calcLineAmount(l).taxAmt, 0);
-  const lineDiscountsSum = lines.reduce((s, l) => s + calcLineAmount(l).discAmt, 0);
+  const subTotal = sumMoney(lines.map((l) => multiplyMoney(l.quantity, l.rate)));
+  const lineItemsTotal = sumMoney(lines.map((l) => calcLineAmount(l).amount));
+  const lineTaxesSum = sumMoney(lines.map((l) => calcLineAmount(l).taxAmt));
+  const lineDiscountsSum = sumMoney(lines.map((l) => calcLineAmount(l).discAmt));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
   const selectedTax =
     taxType !== "none" ? taxes.find((t) => t._id === totalTaxId) : undefined;
   const taxAmount =
-    selectedTax ? (subTotal * (selectedTax.rate || 0)) / 100 : 0;
+    selectedTax ? percentMoney(subTotal, selectedTax.rate || 0) : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total = lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total = sumMoney([lineItemsTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
 
   const taxBreakdown = useMemo(() => {
     const fallbackIsIntra =
@@ -791,7 +799,7 @@ export default function EditQuotePage() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {amount.toFixed(2)}
+                          {decimalToFixed(amount)}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -847,7 +855,7 @@ export default function EditQuotePage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">Sub Total</span>
                 <span className="font-medium tabular-nums">
-                  {subTotal.toFixed(2)}
+                  {decimalToFixed(subTotal)}
                 </span>
               </div>
 
@@ -878,7 +886,7 @@ export default function EditQuotePage() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm tabular-nums w-20 text-right">
-                    {discountAmount.toFixed(2)}
+                    {decimalToFixed(discountAmount)}
                   </span>
                 </div>
               </div>
@@ -888,7 +896,7 @@ export default function EditQuotePage() {
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-sm">Item Discounts</span>
                   <span className="tabular-nums w-20 text-right">
-                    - {lineDiscountsSum.toFixed(2)}
+                    - {decimalToFixed(lineDiscountsSum)}
                   </span>
                 </div>
               )}
@@ -900,7 +908,7 @@ export default function EditQuotePage() {
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-sm">CGST</span>
                       <span className="tabular-nums w-20 text-right">
-                        {taxBreakdown.cgst.toFixed(2)}
+                        {decimalToFixed(taxBreakdown.cgst)}
                       </span>
                     </div>
                   )}
@@ -908,7 +916,7 @@ export default function EditQuotePage() {
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-sm">SGST</span>
                       <span className="tabular-nums w-20 text-right">
-                        {taxBreakdown.sgst.toFixed(2)}
+                        {decimalToFixed(taxBreakdown.sgst)}
                       </span>
                     </div>
                   )}
@@ -916,7 +924,7 @@ export default function EditQuotePage() {
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-sm">IGST</span>
                       <span className="tabular-nums w-20 text-right">
-                        {taxBreakdown.igst.toFixed(2)}
+                        {decimalToFixed(taxBreakdown.igst)}
                       </span>
                     </div>
                   )}
@@ -989,7 +997,7 @@ export default function EditQuotePage() {
                   </Select>
                   <span className="text-sm tabular-nums w-20 text-right">
                     {taxType === "TCS" ? "+" : taxType === "TDS" ? "-" : ""}{" "}
-                    {taxAmount.toFixed(2)}
+                    {decimalToFixed(taxAmount)}
                   </span>
                 </div>
               </div>
@@ -1011,7 +1019,7 @@ export default function EditQuotePage() {
                     }
                   />
                   <span className="text-sm tabular-nums w-20 text-right">
-                    {adjustmentAmount.toFixed(2)}
+                    {decimalToFixed(adjustmentAmount)}
                   </span>
                 </div>
               </div>
@@ -1020,7 +1028,7 @@ export default function EditQuotePage() {
 
               <div className="flex items-center justify-between text-base font-bold">
                 <span>Total ( ₹ )</span>
-                <span className="tabular-nums">{total.toFixed(2)}</span>
+                <span className="tabular-nums">{decimalToFixed(total)}</span>
               </div>
             </div>
           </div>

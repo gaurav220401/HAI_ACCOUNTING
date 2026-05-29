@@ -5,6 +5,7 @@ import Invoice from "../models/invoice.model";
 import Item from "../models/item.model";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
+import { multiplyMoney, roundMoney } from "../utils/money";
 
 export type StockDeltaMap = Record<string, number>;
 export type ValueDeltaMap = Record<string, number>;
@@ -17,7 +18,7 @@ export interface InvoiceCostLine {
 }
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundMoney(value);
 }
 
 function toObjectId(value: Types.ObjectId | string): Types.ObjectId {
@@ -319,7 +320,7 @@ export async function computeInvoiceCostLines(params: {
     const quantity = normalizeQuantity(line?.quantity);
     if (quantity <= 0) continue;
     const costRate = round2(costMap.get(itemId) || 0);
-    const costAmount = round2(quantity * costRate);
+    const costAmount = multiplyMoney(quantity, costRate);
     costs.push({ itemId, quantity, costRate, costAmount });
   }
 
