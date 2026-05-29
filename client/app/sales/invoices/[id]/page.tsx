@@ -386,10 +386,19 @@ export default function InvoiceDetailPage() {
   const cName = customerName(invoice.customerId);
   const dueLabel = getDueLabel(invoice);
   const orgName = activeOrganization?.name || "HAI";
-  const lineTaxTotal = invoice.items.reduce(
-    (sum, item) => sum + Number(item.taxAmount || 0),
-    0,
-  );
+  const lineTaxTotal = invoice.items.reduce((sum, item) => {
+    const storedTax = Number(item.taxAmount || 0);
+    if (storedTax > 0) return sum + storedTax;
+    // Fallback: compute from taxPercent when taxAmount is 0/missing
+    const taxPct = Number(item.taxPercent || 0);
+    if (taxPct <= 0) return sum;
+    const lineTotal =
+      Number(item.quantity || 0) * Number(item.rate || 0);
+    const lineDiscount =
+      Number(item.discountAmount || 0) ||
+      (lineTotal * Number(item.discountPercent || 0)) / 100;
+    return sum + ((lineTotal - lineDiscount) * taxPct) / 100;
+  }, 0);
   const lineTaxPercent =
     invoice.items.find((item) => Number(item.taxPercent || 0) > 0)
       ?.taxPercent || 0;
@@ -743,9 +752,6 @@ export default function InvoiceDetailPage() {
                         <TableBody>
                           {invoice.items.map((item, idx) => {
                             const taxPercent = item.taxPercent || 0;
-                            const taxAmount = item.taxAmount || 0;
-                            const halfTaxPercent = taxPercent / 2;
-                            const halfTaxAmount = taxAmount / 2;
                             const lineTotal =
                               Number(item.quantity || 0) *
                               Number(item.rate || 0);
@@ -757,6 +763,13 @@ export default function InvoiceDetailPage() {
                               0,
                               lineTotal - lineDiscount,
                             );
+                            // Use stored taxAmount if available, otherwise compute from taxPercent
+                            const taxAmount =
+                              Number(item.taxAmount || 0) > 0
+                                ? Number(item.taxAmount)
+                                : (taxableAmount * taxPercent) / 100;
+                            const halfTaxPercent = taxPercent / 2;
+                            const halfTaxAmount = taxAmount / 2;
 
                             return (
                               <TableRow
