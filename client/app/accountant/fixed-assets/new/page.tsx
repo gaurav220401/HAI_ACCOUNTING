@@ -40,6 +40,12 @@ import {
 } from "@/lib/api/fixed-assets";
 import { FixedAssetTypeDialog } from "@/components/fixed-asset-type-dialog";
 import { AccountDialog } from "@/components/account-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type FormState = {
   assetName: string;
@@ -138,6 +144,202 @@ function sortAccounts(rows: Account[]): Account[] {
   });
 }
 
+type ForecastRow = {
+  depreciationDate: string;
+  depreciationValue: number;
+  cumulativeDepreciationValue: number;
+  currentValue: number;
+};
+
+type ForecastPoint = {
+  date: string;
+  label: string;
+  currentValue: number;
+};
+
+type DepreciationProjection = {
+  rows: ForecastRow[];
+  points: ForecastPoint[];
+};
+
+function monthEnd(date: Date) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  return new Date(year, month + 1, 0);
+}
+
+function yearEnd(date: Date) {
+  return new Date(date.getFullYear(), 11, 31);
+}
+
+function daysInYear(date: Date) {
+  const year = date.getFullYear();
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  const diff = end.getTime() - start.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function round2(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function getPeriods(asset: {
+  assetLifeValue: string;
+  assetLifeUnit: string;
+  depreciationFrequency: string;
+}) {
+  const life = Math.max(1, Number(asset.assetLifeValue || 1));
+  const unit = asset.assetLifeUnit;
+  const frequency = asset.depreciationFrequency;
+
+  if (frequency === "Monthly") {
+    if (unit === "Months") return life;
+    return Math.max(1, Math.ceil(life / 30));
+  }
+
+  if (unit === "Months") return Math.max(1, Math.ceil(life / 12));
+  return Math.max(1, Math.ceil(life / 365));
+}
+
+function buildDepreciationProjection(form: FormState): DepreciationProjection {
+  const periods = getPeriods({
+    assetLifeValue: form.assetLifeValue,
+    assetLifeUnit: form.assetLifeUnit,
+    depreciationFrequency: form.depreciationFrequency,
+  });
+  const startDate = new Date(form.depreciationStartDate || form.purchaseDate || new Date().toISOString());
+
+  const openingValue = Math.max(0, toNumber(form.currentValue || form.purchaseValue || "0"));
+  const floorValue = Math.max(0, toNumber(form.disposalValue || "0"));
+  let remainingValue = openingValue;
+  let cumulative = 0;
+
+  const rows: ForecastRow[] = [];
+  const points: ForecastPoint[] = [];
+
+  const straightLineBase = periods > 0 ? (openingValue - floorValue) / periods : 0;
+  const decliningPercentage = toNumber(form.depreciationPercentage || "0");
+  const fallbackDecliningRate = Math.min(0.95, Math.max(0.01, 2 / Math.max(1, periods)));
+  const annualDecliningRate = decliningPercentage > 0 ? Math.max(0, Math.min(1, decliningPercentage / 100)) : fallbackDecliningRate;
+
+  const monthBasedDecliningRate = form.depreciationFrequency === "Monthly" ? annualDecliningRate / 12 : annualDecliningRate;
+
+  const computeDecliningValue = (index: number, available: number, periodDate: Date) => {
+    const isProRata = form.computationType === "Pro Rata";
+
+    if (!isProRata) {
+      return round2(available * monthBasedDecliningRate);
+    }
+
+    if (form.depreciationFrequency === "Monthly") {
+      const totalMonthDays = monthEnd(periodDate).getDate();
+      let periodDays = totalMonthDays;
+      if (index === 0) {
+        periodDays = Math.max(1, totalMonthDays - startDate.getDate() + 1);
+      }
+      const ratio = periodDays / daysInYear(periodDate);
+      return round2(available * annualDecliningRate * ratio);
+    }
+
+    const totalYearDays = daysInYear(periodDate);
+    let periodDays = totalYearDays;
+    if (index === 0) {
+      const end = yearEnd(startDate);
+      periodDays = Math.max(
+        1,
+        Math.floor((end.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      );
+    }
+    const ratio = periodDays / totalYearDays;
+    return round2(available * annualDecliningRate * ratio);
+  };
+
+  for (let index = 0; index < periods; index += 1) {
+    let periodDate = new Date(startDate);
+    if (form.depreciationFrequency === "Monthly") {
+      periodDate.setMonth(periodDate.getMonth() + index);
+      periodDate = monthEnd(periodDate);
+    } else {
+      periodDate.setFullYear(periodDate.getFullYear() + index);
+      periodDate = yearEnd(periodDate);
+    }
+
+    const remainingPeriods = periods - index;
+    const available = Math.max(0, remainingValue - floorValue);
+
+    let depreciationValue = 0;
+    if (form.depreciationMethod === "Declining Balance") {
+      depreciationValue = computeDecliningValue(index, available, periodDate);
+    } else {
+      depreciationValue = round2(straightLineBase);
+    }
+
+    if (form.depreciationMethod !== "Declining Balance" && remainingPeriods === 1) {
+      depreciationValue = round2(available);
+    }
+
+    depreciationValue = Math.min(depreciationValue, available);
+    depreciationValue = Math.max(0, depreciationValue);
+
+    cumulative = round2(cumulative + depreciationValue);
+    remainingValue = round2(Math.max(floorValue, remainingValue - depreciationValue));
+
+    rows.push({
+      depreciationDate: periodDate.toISOString(),
+      depreciationValue,
+      cumulativeDepreciationValue: cumulative,
+      currentValue: remainingValue,
+    });
+
+    points.push({
+      date: periodDate.toISOString(),
+      label: periodDate.toLocaleDateString("en-US", { month: "short" }),
+      currentValue: remainingValue,
+    });
+  }
+
+  // Declining balance can leave residual value; add one balancing row to close at disposal value.
+  const residual = round2(Math.max(0, remainingValue - floorValue));
+  if (form.depreciationMethod === "Declining Balance" && residual > 0.009) {
+    let finalDate = new Date(startDate);
+    if (form.depreciationFrequency === "Monthly") {
+      finalDate.setMonth(finalDate.getMonth() + periods);
+      finalDate = monthEnd(finalDate);
+    } else {
+      finalDate.setFullYear(finalDate.getFullYear() + periods);
+      finalDate = yearEnd(finalDate);
+    }
+
+    cumulative = round2(cumulative + residual);
+    remainingValue = round2(Math.max(floorValue, remainingValue - residual));
+
+    rows.push({
+      depreciationDate: finalDate.toISOString(),
+      depreciationValue: residual,
+      cumulativeDepreciationValue: cumulative,
+      currentValue: remainingValue,
+    });
+
+    points.push({
+      date: finalDate.toISOString(),
+      label: finalDate.toLocaleDateString("en-US", { month: "short" }),
+      currentValue: remainingValue,
+    });
+  }
+
+  return { rows, points };
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
 function MoneyInput({
   value,
   onChange,
@@ -205,6 +407,30 @@ function NewFixedAssetPageContent() {
     useState<AccountFieldKey>("fixedAssetAccountId");
   const [editStatus, setEditStatus] = useState<FixedAssetStatus | null>(null);
   const initialLoadDone = useRef(false);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [projection, setProjection] = useState<DepreciationProjection | null>(null);
+
+  const handlePreview = () => {
+    const purchaseVal = toNumber(form.purchaseValue);
+    const lifeVal = toNumber(form.assetLifeValue);
+    if (!form.purchaseValue || Number.isNaN(purchaseVal) || purchaseVal <= 0) {
+      toast.error("Please enter a valid Purchase Value before previewing.");
+      return;
+    }
+    if (!form.assetLifeValue || Number.isNaN(lifeVal) || lifeVal <= 0) {
+      toast.error("Please enter a valid Asset Life before previewing.");
+      return;
+    }
+
+    try {
+      const proj = buildDepreciationProjection(form);
+      setProjection(proj);
+      setPreviewOpen(true);
+    } catch (error) {
+      toast.error("Failed to generate depreciation schedule preview.");
+    }
+  };
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -1102,7 +1328,8 @@ function NewFixedAssetPageContent() {
             <div className="px-5 py-4 border-t flex items-center justify-between">
               <button
                 type="button"
-                className="text-sm text-primary hover:underline"
+                onClick={handlePreview}
+                className="text-sm text-primary hover:underline font-semibold"
               >
                 Preview Depreciation Entries
               </button>
@@ -1125,6 +1352,89 @@ function NewFixedAssetPageContent() {
             </div>
           </div>
         </main>
+
+        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+          <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+                <span className="p-1.5 rounded-md bg-primary/10 text-primary">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calendar-range"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>
+                </span>
+                Depreciation Schedule Preview
+              </DialogTitle>
+            </DialogHeader>
+
+            {projection && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-lg bg-muted/30 border text-xs">
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Method</span>
+                    <span className="font-semibold text-foreground">{form.depreciationMethod || "N/A"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Frequency</span>
+                    <span className="font-semibold text-foreground">{form.depreciationFrequency || "N/A"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Asset Life</span>
+                    <span className="font-semibold text-foreground">{form.assetLifeValue} {form.assetLifeUnit}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Comp. Type</span>
+                    <span className="font-semibold text-foreground">{form.computationType || "N/A"}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto max-h-[45vh] scrollbar-thin">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-muted/50 text-muted-foreground sticky top-0 backdrop-blur-xs border-b">
+                        <tr>
+                          <th className="text-left px-4 py-3 font-semibold">Period</th>
+                          <th className="text-left px-4 py-3 font-semibold">Depreciation Date</th>
+                          <th className="text-right px-4 py-3 font-semibold">Depreciation Amount</th>
+                          <th className="text-right px-4 py-3 font-semibold">Accumulated Depr.</th>
+                          <th className="text-right px-4 py-3 font-semibold">Book Value</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y bg-background">
+                        {projection.rows.map((row, index) => (
+                          <tr key={index} className="hover:bg-muted/10 transition-colors">
+                            <td className="px-4 py-2.5 font-medium text-muted-foreground">
+                              #{index + 1}
+                            </td>
+                            <td className="px-4 py-2.5 text-foreground">
+                              {new Date(row.depreciationDate).toLocaleDateString("en-IN", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              })}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-medium text-foreground">
+                              {formatCurrency(row.depreciationValue)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-muted-foreground">
+                              {formatCurrency(row.cumulativeDepreciationValue)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                              {formatCurrency(row.currentValue)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+                Close Preview
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <FixedAssetTypeDialog
           open={typeDialogOpen}
