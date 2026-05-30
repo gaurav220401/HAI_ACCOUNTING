@@ -139,6 +139,8 @@ export default function InvoicesPage() {
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -185,6 +187,32 @@ export default function InvoicesPage() {
 
   const selectedInvoice =
     filtered.find((inv) => inv._id === selectedId) || null;
+
+  const previewData = previewInvoice ?? selectedInvoice;
+
+  useEffect(() => {
+    if (!selectedId) {
+      setPreviewInvoice(null);
+      return;
+    }
+    let active = true;
+    setPreviewInvoice(null);
+    setPreviewLoading(true);
+    invoiceApi
+      .getById(selectedId)
+      .then((res) => {
+        if (active) setPreviewInvoice(res.data);
+      })
+      .catch(() => {
+        if (active) setPreviewInvoice(null);
+      })
+      .finally(() => {
+        if (active) setPreviewLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedId]);
 
   async function fetchInvoices() {
     setFetching(true);
@@ -684,9 +712,7 @@ export default function InvoicesPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() =>
-                        router.push(
-                          `/sales/invoices/${selectedInvoice._id}`,
-                        )
+                        router.push(`/sales/invoices/${selectedInvoice._id}`)
                       }
                     >
                       <Maximize2 className="h-3.5 w-3.5 mr-1" />
@@ -729,243 +755,254 @@ export default function InvoicesPage() {
 
                   <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50 p-5">
                     <div className="mx-auto max-w-4xl rounded-lg border bg-white shadow-sm">
-                      <div className="border-b p-6">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Tax Invoice
-                            </div>
-                            <h1 className="mt-1 text-2xl font-bold">
-                              {selectedInvoice.invoiceNumber}
-                            </h1>
-                            <div className="mt-2 text-sm text-muted-foreground">
-                              {getCustomerName(selectedInvoice.customerId)}
-                              {selectedInvoice.orderNumber ?
-                                ` - Order ${selectedInvoice.orderNumber}`
-                              : ""}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <Badge
-                              variant="outline"
-                              className={statusColor[selectedInvoice.status]}
-                            >
-                              {selectedInvoice.status}
-                            </Badge>
-                            <div className="mt-3 text-2xl font-bold tabular-nums">
-                              {formatCurrency(selectedInvoice.total)}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              Balance{" "}
-                              {formatCurrency(selectedInvoice.balanceDue)}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-6 grid gap-4 text-sm md:grid-cols-4">
-                          <div>
-                            <div className="text-muted-foreground">
-                              Invoice Date
-                            </div>
-                            <div className="font-medium">
-                              {formatDate(selectedInvoice.invoiceDate)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">
-                              Due Date
-                            </div>
-                            <div className="font-medium">
-                              {formatDate(selectedInvoice.dueDate)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Terms</div>
-                            <div className="font-medium">
-                              {getPaymentTerms(selectedInvoice.paymentTermsId)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">
-                              Salesperson
-                            </div>
-                            <div className="font-medium">
-                              {(
-                                typeof selectedInvoice.salesPersonId ===
-                                "object"
-                              ) ?
-                                selectedInvoice.salesPersonId?.name || "-"
-                              : "-"}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-6">
-                        <div className="rounded-lg border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Item & Description</TableHead>
-                                <TableHead className="text-right">
-                                  Qty
-                                </TableHead>
-                                <TableHead className="text-right">
-                                  Rate
-                                </TableHead>
-                                <TableHead className="text-right">
-                                  Tax
-                                </TableHead>
-                                <TableHead className="text-right">
-                                  Amount
-                                </TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {selectedInvoice.items.map((item, index) => (
-                                <TableRow key={item._id || index}>
-                                  <TableCell>
-                                    <div className="font-medium">
-                                      {item.name}
-                                    </div>
-                                    {item.description && (
-                                      <div className="text-xs text-muted-foreground">
-                                        {item.description}
-                                      </div>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-right tabular-nums">
-                                    {Number(item.quantity || 0).toFixed(2)}
-                                  </TableCell>
-                                  <TableCell className="text-right tabular-nums">
-                                    {Number(item.rate || 0).toFixed(2)}
-                                  </TableCell>
-                                  <TableCell className="text-right text-xs tabular-nums">
-                                    {Number(item.taxPercent || 0) > 0 ?
-                                      `${Number(item.taxPercent || 0).toFixed(2)}%`
-                                    : "-"}
-                                  </TableCell>
-                                  <TableCell className="text-right font-medium tabular-nums">
-                                    {Number(item.amount || 0).toFixed(2)}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-
-                        <div className="mt-6 flex justify-end">
-                          <div className="w-80 space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span>Sub Total</span>
-                              <span className="tabular-nums">
-                                {Number(selectedInvoice.subTotal || 0).toFixed(
-                                  2,
-                                )}
-                              </span>
-                            </div>
-                            {getLineDiscount(selectedInvoice) > 0 && (
-                              <div className="flex justify-between text-muted-foreground">
-                                <span>Line Item Discount</span>
-                                <span className="tabular-nums">
-                                  -{" "}
-                                  {getLineDiscount(selectedInvoice).toFixed(2)}
-                                </span>
-                              </div>
-                            )}
-                            {getLineTax(selectedInvoice) > 0 && (
-                              <div className="flex justify-between text-muted-foreground">
-                                <span>Line Item Tax</span>
-                                <span className="tabular-nums">
-                                  + {getLineTax(selectedInvoice).toFixed(2)}
-                                </span>
-                              </div>
-                            )}
-                            {Number(selectedInvoice.discountAmount || 0) >
-                              0 && (
-                              <div className="flex justify-between text-muted-foreground">
-                                <span>Discount</span>
-                                <span className="tabular-nums">
-                                  -{" "}
-                                  {Number(
-                                    selectedInvoice.discountAmount || 0,
-                                  ).toFixed(2)}
-                                </span>
-                              </div>
-                            )}
-                            {Number(selectedInvoice.taxAmount || 0) > 0 && (
-                              <div className="flex justify-between text-muted-foreground">
-                                <span>{selectedInvoice.taxType}</span>
-                                <span className="tabular-nums">
-                                  {selectedInvoice.taxType === "TDS" ?
-                                    "- "
-                                  : "+ "}
-                                  {Number(
-                                    selectedInvoice.taxAmount || 0,
-                                  ).toFixed(2)}
-                                </span>
-                              </div>
-                            )}
-                            {Number(selectedInvoice.adjustmentAmount || 0) !==
-                              0 && (
-                              <div className="flex justify-between text-muted-foreground">
-                                <span>
-                                  {selectedInvoice.adjustmentLabel ||
-                                    "Adjustment"}
-                                </span>
-                                <span className="tabular-nums">
-                                  {(
-                                    Number(selectedInvoice.adjustmentAmount) > 0
-                                  ) ?
-                                    "+ "
-                                  : ""}
-                                  {Number(
-                                    selectedInvoice.adjustmentAmount || 0,
-                                  ).toFixed(2)}
-                                </span>
-                              </div>
-                            )}
-                            <div className="border-t pt-2">
-                              <div className="flex justify-between text-base font-bold">
-                                <span>Total</span>
-                                <span>
-                                  {formatCurrency(selectedInvoice.total)}
-                                </span>
-                              </div>
-                              <div className="mt-1 flex justify-between font-semibold">
-                                <span>Balance Due</span>
-                                <span>
-                                  {formatCurrency(selectedInvoice.balanceDue)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {(selectedInvoice.customerNotes ||
-                          selectedInvoice.termsAndConditions) && (
-                          <div className="mt-8 grid gap-4 text-sm md:grid-cols-2">
-                            {selectedInvoice.customerNotes && (
+                      {previewData && (
+                        <>
+                          <div className="border-b p-6">
+                            <div className="flex items-start justify-between gap-4">
                               <div>
-                                <div className="font-semibold">Notes</div>
-                                <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                                  {selectedInvoice.customerNotes}
-                                </p>
-                              </div>
-                            )}
-                            {selectedInvoice.termsAndConditions && (
-                              <div>
-                                <div className="font-semibold">
-                                  Terms & Conditions
+                                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Tax Invoice
                                 </div>
-                                <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                                  {selectedInvoice.termsAndConditions}
-                                </p>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <h1 className="text-2xl font-bold">
+                                    {previewData.invoiceNumber}
+                                  </h1>
+                                  {previewLoading && (
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="mt-2 text-sm text-muted-foreground">
+                                  {getCustomerName(previewData.customerId)}
+                                  {previewData.orderNumber ?
+                                    ` - Order ${previewData.orderNumber}`
+                                  : ""}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <Badge
+                                  variant="outline"
+                                  className={statusColor[previewData.status]}
+                                >
+                                  {previewData.status}
+                                </Badge>
+                                <div className="mt-3 text-2xl font-bold tabular-nums">
+                                  {formatCurrency(previewData.total)}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  Balance{" "}
+                                  {formatCurrency(previewData.balanceDue)}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-6 grid gap-4 text-sm md:grid-cols-4">
+                              <div>
+                                <div className="text-muted-foreground">
+                                  Invoice Date
+                                </div>
+                                <div className="font-medium">
+                                  {formatDate(previewData.invoiceDate)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground">
+                                  Due Date
+                                </div>
+                                <div className="font-medium">
+                                  {formatDate(previewData.dueDate)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground">
+                                  Terms
+                                </div>
+                                <div className="font-medium">
+                                  {getPaymentTerms(previewData.paymentTermsId)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground">
+                                  Salesperson
+                                </div>
+                                <div className="font-medium">
+                                  {(
+                                    typeof previewData.salesPersonId ===
+                                    "object"
+                                  ) ?
+                                    previewData.salesPersonId?.name || "-"
+                                  : "-"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-6">
+                            <div className="rounded-lg border">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Item & Description</TableHead>
+                                    <TableHead className="text-right">
+                                      Qty
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                      Rate
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                      Tax
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                      Amount
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {previewData.items.map((item, index) => (
+                                    <TableRow key={item._id || index}>
+                                      <TableCell>
+                                        <div className="font-medium">
+                                          {item.name}
+                                        </div>
+                                        {item.description && (
+                                          <div className="text-xs text-muted-foreground">
+                                            {item.description}
+                                          </div>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-right tabular-nums">
+                                        {Number(item.quantity || 0).toFixed(2)}
+                                      </TableCell>
+                                      <TableCell className="text-right tabular-nums">
+                                        {Number(item.rate || 0).toFixed(2)}
+                                      </TableCell>
+                                      <TableCell className="text-right text-xs tabular-nums">
+                                        {Number(item.taxPercent || 0) > 0 ?
+                                          `${Number(item.taxPercent || 0).toFixed(2)}%`
+                                        : "-"}
+                                      </TableCell>
+                                      <TableCell className="text-right font-medium tabular-nums">
+                                        {Number(item.amount || 0).toFixed(2)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+
+                            <div className="mt-6 flex justify-end">
+                              <div className="w-80 space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span>Sub Total</span>
+                                  <span className="tabular-nums">
+                                    {Number(previewData.subTotal || 0).toFixed(
+                                      2,
+                                    )}
+                                  </span>
+                                </div>
+                                {getLineDiscount(previewData) > 0 && (
+                                  <div className="flex justify-between text-muted-foreground">
+                                    <span>Line Item Discount</span>
+                                    <span className="tabular-nums">
+                                      -{" "}
+                                      {getLineDiscount(previewData).toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                                {getLineTax(previewData) > 0 && (
+                                  <div className="flex justify-between text-muted-foreground">
+                                    <span>Line Item Tax</span>
+                                    <span className="tabular-nums">
+                                      + {getLineTax(previewData).toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                                {Number(previewData.discountAmount || 0) >
+                                  0 && (
+                                  <div className="flex justify-between text-muted-foreground">
+                                    <span>Discount</span>
+                                    <span className="tabular-nums">
+                                      -{" "}
+                                      {Number(
+                                        previewData.discountAmount || 0,
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                                {Number(previewData.taxAmount || 0) > 0 && (
+                                  <div className="flex justify-between text-muted-foreground">
+                                    <span>{previewData.taxType}</span>
+                                    <span className="tabular-nums">
+                                      {previewData.taxType === "TDS" ?
+                                        "- "
+                                      : "+ "}
+                                      {Number(
+                                        previewData.taxAmount || 0,
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                                {Number(previewData.adjustmentAmount || 0) !==
+                                  0 && (
+                                  <div className="flex justify-between text-muted-foreground">
+                                    <span>
+                                      {previewData.adjustmentLabel ||
+                                        "Adjustment"}
+                                    </span>
+                                    <span className="tabular-nums">
+                                      {(
+                                        Number(previewData.adjustmentAmount) > 0
+                                      ) ?
+                                        "+ "
+                                      : ""}
+                                      {Number(
+                                        previewData.adjustmentAmount || 0,
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="border-t pt-2">
+                                  <div className="flex justify-between text-base font-bold">
+                                    <span>Total</span>
+                                    <span>
+                                      {formatCurrency(previewData.total)}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex justify-between font-semibold">
+                                    <span>Balance Due</span>
+                                    <span>
+                                      {formatCurrency(previewData.balanceDue)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {(previewData.customerNotes ||
+                              previewData.termsAndConditions) && (
+                              <div className="mt-8 grid gap-4 text-sm md:grid-cols-2">
+                                {previewData.customerNotes && (
+                                  <div>
+                                    <div className="font-semibold">Notes</div>
+                                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                                      {previewData.customerNotes}
+                                    </p>
+                                  </div>
+                                )}
+                                {previewData.termsAndConditions && (
+                                  <div>
+                                    <div className="font-semibold">
+                                      Terms & Conditions
+                                    </div>
+                                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                                      {previewData.termsAndConditions}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
-                        )}
-                      </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

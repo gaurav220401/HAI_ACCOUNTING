@@ -60,6 +60,7 @@ interface FormState {
 }
 
 type AccountFieldKey =
+  | "fixedAssetAccountId"
   | "accumulatedDepreciationAccountId"
   | "depreciationExpenseAccountId";
 
@@ -78,9 +79,9 @@ const defaultState: FormState = {
 
 const NEW_ACCOUNT_VALUE = "__new_account__";
 const FIXED_ASSET_ACCOUNT_TYPES: AccountType[] = ["Fixed Asset"];
+const CONTRA_ASSET_ACCOUNT_TYPES: AccountType[] = ["Contra Asset"];
 const DEPRECIATION_EXPENSE_ACCOUNT_TYPES: AccountType[] = [
   "Expense",
-  "Cost Of Goods Sold",
   "Other Expense",
 ];
 
@@ -154,14 +155,22 @@ export function FixedAssetTypeDialog({
   const createAccountTypes =
     createTargetField === "depreciationExpenseAccountId"
       ? DEPRECIATION_EXPENSE_ACCOUNT_TYPES
-      : FIXED_ASSET_ACCOUNT_TYPES;
+      : createTargetField === "accumulatedDepreciationAccountId"
+        ? CONTRA_ASSET_ACCOUNT_TYPES
+        : FIXED_ASSET_ACCOUNT_TYPES;
 
   function setCreatedAccountOnField(field: AccountFieldKey, accountId: string) {
+    if (field === "fixedAssetAccountId") {
+      setForm((prev) => ({
+        ...prev,
+        fixedAssetAccountId: accountId,
+      }));
+      return;
+    }
     if (field === "accumulatedDepreciationAccountId") {
       setForm((prev) => ({
         ...prev,
         accumulatedDepreciationAccountId: accountId,
-        fixedAssetAccountId: accountId,
       }));
       return;
     }
@@ -207,13 +216,18 @@ export function FixedAssetTypeDialog({
   );
 
   const expenseAccounts = useMemo(
-    () => accounts.filter((a) => a.rootType === "Expense"),
+    () => accounts.filter((a) => a.rootType === "Expense" && a.accountType !== "Cost Of Goods Sold"),
+    [accounts],
+  );
+
+  const contraAssetAccounts = useMemo(
+    () => accounts.filter((a) => a.accountType === "Contra Asset"),
     [accounts],
   );
 
   const accumulatedAccounts = useMemo(() => {
-    return fixedAssetAccounts;
-  }, [fixedAssetAccounts]);
+    return contraAssetAccounts;
+  }, [contraAssetAccounts]);
 
   useEffect(() => {
     if (!open) return;
@@ -222,7 +236,11 @@ export function FixedAssetTypeDialog({
       ...defaultState,
       fixedAssetAccountId: fixedAssetAccounts[0]?._id || "",
       accumulatedDepreciationAccountId: accumulatedAccounts[0]?._id || "",
-      depreciationExpenseAccountId: expenseAccounts[0]?._id || "",
+      depreciationExpenseAccountId:
+        (expenseAccounts.find(
+          (a) => a.name.toLowerCase() === "depreciation expense",
+        ) ?? expenseAccounts[0])
+          ?._id || "",
     };
 
     if ((isEditMode || isCloneMode) && initialType) {
@@ -247,10 +265,6 @@ export function FixedAssetTypeDialog({
       next.depreciationExpenseAccountId =
         getRefId(initialType.depreciationExpenseAccountId) ||
         next.depreciationExpenseAccountId;
-    }
-
-    if (!next.fixedAssetAccountId && next.accumulatedDepreciationAccountId) {
-      next.fixedAssetAccountId = next.accumulatedDepreciationAccountId;
     }
 
     setForm(next);
@@ -284,15 +298,17 @@ export function FixedAssetTypeDialog({
       }
     }
 
-    const effectiveFixedAssetAccountId =
-      form.fixedAssetAccountId || form.accumulatedDepreciationAccountId;
-
     if (
-      !effectiveFixedAssetAccountId ||
+      !form.fixedAssetAccountId ||
       !form.accumulatedDepreciationAccountId ||
       !form.depreciationExpenseAccountId
     ) {
       toast.error("Please select all required account mappings");
+      return;
+    }
+
+    if (form.fixedAssetAccountId === form.accumulatedDepreciationAccountId) {
+      toast.error("Asset Account and Accumulated Depreciation Account cannot be the same GL account");
       return;
     }
 
@@ -309,7 +325,7 @@ export function FixedAssetTypeDialog({
         assetLifeValue: life,
         assetLifeUnit: form.assetLifeUnit,
         computationType: form.computationType,
-        fixedAssetAccountId: effectiveFixedAssetAccountId,
+        fixedAssetAccountId: form.fixedAssetAccountId,
         accumulatedDepreciationAccountId: form.accumulatedDepreciationAccountId,
         depreciationExpenseAccountId: form.depreciationExpenseAccountId,
       };
@@ -480,6 +496,42 @@ export function FixedAssetTypeDialog({
           </div>
 
           <div className="space-y-2 md:col-span-2">
+            <Label className="text-red-500">Fixed Asset Account*</Label>
+            <Select
+              value={form.fixedAssetAccountId}
+              onValueChange={(value) => {
+                if (value === NEW_ACCOUNT_VALUE) {
+                  openCreateAccountFor("fixedAssetAccountId");
+                  return;
+                }
+                setForm((prev) => ({
+                  ...prev,
+                  fixedAssetAccountId: value,
+                }));
+              }}
+              disabled={accountSelectDisabled}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select an account" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                  <Plus className="h-3.5 w-3.5" />
+                  New Account
+                </SelectItem>
+                <SelectSeparator />
+                {fixedAssetAccounts.length === 0 ? (
+                  <SelectItem value="__none_fixed" disabled>
+                    No accounts available
+                  </SelectItem>
+                ) : (
+                  renderGroupedAccountItems(fixedAssetAccounts)
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
             <Label className="text-red-500">
               Accumulated Depreciation Account*
             </Label>
@@ -493,7 +545,6 @@ export function FixedAssetTypeDialog({
                 setForm((prev) => ({
                   ...prev,
                   accumulatedDepreciationAccountId: value,
-                  fixedAssetAccountId: value,
                 }));
               }}
               disabled={accountSelectDisabled}
@@ -580,7 +631,9 @@ export function FixedAssetTypeDialog({
           initialAccountType={
             createTargetField === "depreciationExpenseAccountId"
               ? "Expense"
-              : "Fixed Asset"
+              : createTargetField === "accumulatedDepreciationAccountId"
+                ? "Contra Asset"
+                : "Fixed Asset"
           }
           allowedAccountTypes={createAccountTypes}
           saveLabel="Save and Select"

@@ -2,14 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import {
-  ArrowLeft,
-  Loader2,
-  Plus,
-  Trash2,
-  Settings,
-  Mail,
-} from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2, Settings, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { SendEmailModal } from "../../_components/send-email-modal";
 import { useAuth } from "@/contexts/auth-context";
@@ -340,7 +333,10 @@ export default function EditQuotePage() {
           organizationState: activeOrganization?.address?.state,
           taxes,
         });
-        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+        if (
+          line.taxId === linkedTax.taxId &&
+          Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)
+        ) {
           return line;
         }
         changed = true;
@@ -352,7 +348,13 @@ export default function EditQuotePage() {
       });
       return changed ? next : prev;
     });
-  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
+  }, [
+    customerId,
+    selectedCustomer,
+    activeOrganization?.address?.state,
+    items,
+    taxes,
+  ]);
 
   // Calculations
   const subTotal = sumMoney(lines.map((l) => multiplyMoney(l.quantity, l.rate)));
@@ -458,7 +460,7 @@ export default function EditQuotePage() {
       if (status) payload.status = status;
 
       await quoteApi.update(id, payload);
-      
+
       if (status === "Sent") {
         setShowEmailModal(true);
         setSaving(false);
@@ -663,13 +665,15 @@ export default function EditQuotePage() {
                       DISCOUNT %
                     </TableHead>
                     <TableHead className="w-30 text-right">TAX</TableHead>
-                    <TableHead className="w-30 text-right">AMOUNT</TableHead>
+                    <TableHead className="w-36 text-right">
+                      AMOUNT (EXCL. TAX)
+                    </TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lines.map((line) => {
-                    const { amount } = calcLineAmount(line);
+                    const { afterDisc } = calcLineAmount(line);
                     return (
                       <TableRow key={line.key}>
                         <TableCell>
@@ -799,7 +803,7 @@ export default function EditQuotePage() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {decimalToFixed(amount)}
+                          {decimalToFixed(afterDisc)}
                         </TableCell>
                         <TableCell>
                           <Button

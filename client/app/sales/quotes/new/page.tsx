@@ -2,7 +2,16 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, Trash2, Settings, X, Upload, Mail } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Plus,
+  Trash2,
+  Settings,
+  X,
+  Upload,
+  Mail,
+} from "lucide-react";
 import { SendEmailModal } from "../_components/send-email-modal";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -124,7 +133,11 @@ function newLine(): LineItem {
 export default function NewQuotePage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   // Master data
   const [customers, setCustomers] = useState<Contact[]>([]);
@@ -292,7 +305,10 @@ export default function NewQuotePage() {
           organizationState: activeOrganization?.address?.state,
           taxes,
         });
-        if (line.taxId === linkedTax.taxId && Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)) {
+        if (
+          line.taxId === linkedTax.taxId &&
+          Number(line.taxPercent || 0) === Number(linkedTax.taxPercent || 0)
+        ) {
           return line;
         }
         changed = true;
@@ -304,7 +320,13 @@ export default function NewQuotePage() {
       });
       return changed ? next : prev;
     });
-  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
+  }, [
+    customerId,
+    selectedCustomer,
+    activeOrganization?.address?.state,
+    items,
+    taxes,
+  ]);
 
   useEffect(() => {
     if (selectedCustomer?.billingAddress?.state) {
@@ -394,7 +416,8 @@ export default function NewQuotePage() {
         customerId,
         quoteDate,
         expiryDate: expiryDate || null,
-        salesPersonId: salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
+        salesPersonId:
+          salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
         subject,
         items: lines
           .filter((l) => l.name.trim())
@@ -422,7 +445,7 @@ export default function NewQuotePage() {
         placeOfSupply,
       };
       const res = await quoteApi.create(payload);
-      
+
       if (status === "Sent") {
         setSavedQuoteId(res.data._id);
         setShowEmailModal(true);
@@ -533,17 +556,17 @@ export default function NewQuotePage() {
                     </SelectItem>
                   )}
                   {customers.map((c) => (
-                     <SelectItem key={c._id} value={c._id}>
-                       <div className="flex flex-col">
-                         <span className="font-medium">{c.displayName}</span>
-                         {c.companyName && (
-                           <span className="text-xs text-muted-foreground">
-                             {c.companyName}
-                           </span>
-                         )}
-                       </div>
-                     </SelectItem>
-                   ))}
+                    <SelectItem key={c._id} value={c._id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{c.displayName}</span>
+                        {c.companyName && (
+                          <span className="text-xs text-muted-foreground">
+                            {c.companyName}
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -663,18 +686,16 @@ export default function NewQuotePage() {
                     <TableHead className="w-[100px] text-right">
                       DISCOUNT %
                     </TableHead>
-                    <TableHead className="w-[150px] text-right">
-                      TAX
-                    </TableHead>
-                    <TableHead className="w-[120px] text-right">
-                      AMOUNT
+                    <TableHead className="w-[150px] text-right">TAX</TableHead>
+                    <TableHead className="w-[160px] text-right">
+                      AMOUNT (EXCL. TAX)
                     </TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lines.map((line) => {
-                    const { amount } = calcLineAmount(line);
+                    const { afterDisc } = calcLineAmount(line);
                     return (
                       <TableRow key={line.key}>
                         <TableCell>
@@ -805,7 +826,7 @@ export default function NewQuotePage() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {decimalToFixed(amount)}
+                          {decimalToFixed(afterDisc)}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -1076,7 +1097,7 @@ export default function NewQuotePage() {
             </Button>
           </div>
         </div>
-        
+
         <SendEmailModal
           isOpen={showEmailModal}
           onClose={() => {
@@ -1091,4 +1112,3 @@ export default function NewQuotePage() {
     </SidebarProvider>
   );
 }
-

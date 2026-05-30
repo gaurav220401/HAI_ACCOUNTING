@@ -386,6 +386,23 @@ export default function InvoiceDetailPage() {
   const cName = customerName(invoice.customerId);
   const dueLabel = getDueLabel(invoice);
   const orgName = activeOrganization?.name || "HAI";
+  const lineTaxTotal = invoice.items.reduce((sum, item) => {
+    const storedTax = Number(item.taxAmount || 0);
+    if (storedTax > 0) return sum + storedTax;
+    // Fallback: compute from taxPercent when taxAmount is 0/missing
+    const taxPct = Number(item.taxPercent || 0);
+    if (taxPct <= 0) return sum;
+    const lineTotal =
+      Number(item.quantity || 0) * Number(item.rate || 0);
+    const lineDiscount =
+      Number(item.discountAmount || 0) ||
+      (lineTotal * Number(item.discountPercent || 0)) / 100;
+    return sum + ((lineTotal - lineDiscount) * taxPct) / 100;
+  }, 0);
+  const lineTaxPercent =
+    invoice.items.find((item) => Number(item.taxPercent || 0) > 0)
+      ?.taxPercent || 0;
+  const halfLineTaxPercent = Number(lineTaxPercent || 0) / 2;
 
   return (
     <SidebarProvider>
@@ -727,18 +744,32 @@ export default function InvoiceDetailPage() {
                                 </div>
                               </div>
                             </TableHead>
-                            <TableHead className="w-[120px] text-right font-bold text-slate-700">
-                              Amount
+                            <TableHead className="w-[140px] text-right font-bold text-slate-700">
+                              Amount (excl. tax)
                             </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {invoice.items.map((item, idx) => {
                             const taxPercent = item.taxPercent || 0;
-                            const taxAmount = item.taxAmount || 0;
+                            const lineTotal =
+                              Number(item.quantity || 0) *
+                              Number(item.rate || 0);
+                            const lineDiscount =
+                              Number(item.discountAmount || 0) ||
+                              (lineTotal * Number(item.discountPercent || 0)) /
+                                100;
+                            const taxableAmount = Math.max(
+                              0,
+                              lineTotal - lineDiscount,
+                            );
+                            // Use stored taxAmount if available, otherwise compute from taxPercent
+                            const taxAmount =
+                              Number(item.taxAmount || 0) > 0
+                                ? Number(item.taxAmount)
+                                : (taxableAmount * taxPercent) / 100;
                             const halfTaxPercent = taxPercent / 2;
                             const halfTaxAmount = taxAmount / 2;
-                            const taxableAmount = item.quantity * item.rate;
 
                             return (
                               <TableRow
@@ -836,18 +867,28 @@ export default function InvoiceDetailPage() {
                         </div>
 
                         {/* Itemized Taxes */}
-                        {invoice.items.some((i) => i.taxAmount > 0) && (
+                        {lineTaxTotal > 0 && (
                           <>
                             <div className="flex justify-between text-sm">
-                              <span className="text-slate-500">CGST9 (9%)</span>
+                              <span className="text-slate-500">
+                                CGST
+                                {halfLineTaxPercent > 0 ?
+                                  ` (${halfLineTaxPercent}%)`
+                                : ""}
+                              </span>
                               <span className="font-medium">
-                                {fmtNum(invoice.taxAmount / 2)}
+                                {fmtNum(lineTaxTotal / 2)}
                               </span>
                             </div>
                             <div className="flex justify-between text-sm">
-                              <span className="text-slate-500">SGST9 (9%)</span>
+                              <span className="text-slate-500">
+                                SGST
+                                {halfLineTaxPercent > 0 ?
+                                  ` (${halfLineTaxPercent}%)`
+                                : ""}
+                              </span>
                               <span className="font-medium">
-                                {fmtNum(invoice.taxAmount / 2)}
+                                {fmtNum(lineTaxTotal / 2)}
                               </span>
                             </div>
                           </>

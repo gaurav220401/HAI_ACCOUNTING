@@ -57,7 +57,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { contactApi, type Contact } from "@/lib/api/contacts";
-import { itemApi, type Item, type CreateItemInput, type UnitOfMeasurement } from "@/lib/api/items";
+import {
+  itemApi,
+  type Item,
+  type CreateItemInput,
+  type UnitOfMeasurement,
+} from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
 import {
   decimalToFixed,
@@ -146,14 +151,18 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
       let list = res.data ?? [];
       if (list.length === 0) {
         await itemApi.seedUnits().catch(() => {});
-        const seeded = await itemApi.listUnits().catch(() => ({ data: [] as UnitOfMeasurement[] }));
+        const seeded = await itemApi
+          .listUnits()
+          .catch(() => ({ data: [] as UnitOfMeasurement[] }));
         list = seeded.data ?? [];
       }
       list = [...list].sort((a, b) => a.name.localeCompare(b.name));
       setUnits(list);
-      
+
       if (!unit) {
-        const nos = list.find((u) => String(u.abbreviation).toUpperCase() === "NOS");
+        const nos = list.find(
+          (u) => String(u.abbreviation).toUpperCase() === "NOS",
+        );
         if (nos) {
           setUnit(nos._id);
         } else if (list.length > 0) {
@@ -921,8 +930,33 @@ function NewInvoicePageContent() {
   const [saving, setSaving] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  const saveInvoiceDraft = useCallback((newItemLineKey?: number) => {
-    const draft = {
+  const saveInvoiceDraft = useCallback(
+    (newItemLineKey?: number) => {
+      const draft = {
+        customerId,
+        invoiceNumber,
+        orderNumber,
+        invoiceDate,
+        dueDate,
+        paymentTermsId,
+        salesPersonId,
+        subject,
+        lines,
+        discountType,
+        discountValue,
+        taxType,
+        totalTaxId,
+        adjustmentLabel,
+        adjustmentAmount,
+        customerNotes,
+        termsAndConditions,
+        paymentReceived,
+        emailContacts,
+        newItemLineKey,
+      };
+      sessionStorage.setItem("invoice_draft", JSON.stringify(draft));
+    },
+    [
       customerId,
       invoiceNumber,
       orderNumber,
@@ -942,30 +976,8 @@ function NewInvoicePageContent() {
       termsAndConditions,
       paymentReceived,
       emailContacts,
-      newItemLineKey,
-    };
-    sessionStorage.setItem("invoice_draft", JSON.stringify(draft));
-  }, [
-    customerId,
-    invoiceNumber,
-    orderNumber,
-    invoiceDate,
-    dueDate,
-    paymentTermsId,
-    salesPersonId,
-    subject,
-    lines,
-    discountType,
-    discountValue,
-    taxType,
-    totalTaxId,
-    adjustmentLabel,
-    adjustmentAmount,
-    customerNotes,
-    termsAndConditions,
-    paymentReceived,
-    emailContacts,
-  ]);
+    ],
+  );
 
   const itemsById = useMemo(
     () => new Map(items.map((item) => [item._id, item])),
@@ -1028,28 +1040,39 @@ function NewInvoicePageContent() {
             const createdItemId = searchParams.get("createdItemId");
             let restoredLines = draft.lines || [];
             if (createdItemId && draft.newItemLineKey !== undefined) {
-              const allItems = itemsRes.status === "fulfilled" ? (itemsRes.value.data ?? []) : [];
-              const newItemObj = allItems.find((it: any) => it._id === createdItemId);
+              const allItems =
+                itemsRes.status === "fulfilled" ?
+                  (itemsRes.value.data ?? [])
+                : [];
+              const newItemObj = allItems.find(
+                (it: any) => it._id === createdItemId,
+              );
               if (newItemObj) {
                 const linkedTax = getItemTaxForTransaction({
                   item: newItemObj,
-                  contact: (customersRes.status === "fulfilled" ? (customersRes.value.data ?? []) : []).find((c: any) => c._id === draft.customerId),
+                  contact: (customersRes.status === "fulfilled" ?
+                    (customersRes.value.data ?? [])
+                  : []
+                  ).find((c: any) => c._id === draft.customerId),
                   organizationState: activeOrganization?.address?.state,
-                  taxes: taxesRes.status === "fulfilled" ? (taxesRes.value.data ?? []) : [],
+                  taxes:
+                    taxesRes.status === "fulfilled" ?
+                      (taxesRes.value.data ?? [])
+                    : [],
                 });
                 restoredLines = restoredLines.map((l: any) =>
-                  l.key === draft.newItemLineKey
-                    ? {
-                        ...l,
-                        itemId: createdItemId,
-                        name: newItemObj.name,
-                        description: newItemObj.description || "",
-                        hsnSacCode: newItemObj.hsnSacCode || "",
-                        rate: newItemObj.sellingPrice || 0,
-                        taxId: linkedTax.taxId,
-                        taxPercent: linkedTax.taxPercent,
-                      }
-                    : l
+                  l.key === draft.newItemLineKey ?
+                    {
+                      ...l,
+                      itemId: createdItemId,
+                      name: newItemObj.name,
+                      description: newItemObj.description || "",
+                      hsnSacCode: newItemObj.hsnSacCode || "",
+                      rate: newItemObj.sellingPrice || 0,
+                      taxId: linkedTax.taxId,
+                      taxPercent: linkedTax.taxPercent,
+                    }
+                  : l,
                 );
               }
             }
@@ -1059,11 +1082,15 @@ function NewInvoicePageContent() {
             if (draft.discountValue) setDiscountValue(draft.discountValue);
             if (draft.taxType) setTaxType(draft.taxType);
             if (draft.totalTaxId) setTotalTaxId(draft.totalTaxId);
-            if (draft.adjustmentLabel) setAdjustmentLabel(draft.adjustmentLabel);
-            if (draft.adjustmentAmount) setAdjustmentAmount(draft.adjustmentAmount);
+            if (draft.adjustmentLabel)
+              setAdjustmentLabel(draft.adjustmentLabel);
+            if (draft.adjustmentAmount)
+              setAdjustmentAmount(draft.adjustmentAmount);
             if (draft.customerNotes) setCustomerNotes(draft.customerNotes);
-            if (draft.termsAndConditions) setTermsAndConditions(draft.termsAndConditions);
-            if (draft.paymentReceived) setPaymentReceived(draft.paymentReceived);
+            if (draft.termsAndConditions)
+              setTermsAndConditions(draft.termsAndConditions);
+            if (draft.paymentReceived)
+              setPaymentReceived(draft.paymentReceived);
             if (draft.emailContacts) setEmailContacts(draft.emailContacts);
           } catch (e) {
             console.error("Failed to load invoice draft", e);
@@ -1329,8 +1356,16 @@ function NewInvoicePageContent() {
 
     setSaving(true);
     try {
+      let finalInvoiceNumber = invoiceNumber;
+      if (finalInvoiceNumber) {
+        const match = finalInvoiceNumber.match(/^(INV-\d+)(INV-.*)$/i);
+        if (match) {
+          finalInvoiceNumber = match[2];
+        }
+      }
+
       const payload: CreateInvoiceInput = {
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         orderNumber,
         customerId,
         invoiceDate,
@@ -1497,7 +1532,9 @@ function NewInvoicePageContent() {
                 onValueChange={(v) => {
                   if (v === "__add_new") {
                     saveInvoiceDraft();
-                    router.push("/sales/customers/new?returnUrl=/sales/invoices/new");
+                    router.push(
+                      "/sales/customers/new?returnUrl=/sales/invoices/new",
+                    );
                     return;
                   }
                   setCustomerId(v);
@@ -1711,15 +1748,15 @@ function NewInvoicePageContent() {
                       DISCOUNT %
                     </TableHead>
                     <TableHead className="w-[150px] text-right">TAX</TableHead>
-                    <TableHead className="w-[120px] text-right">
-                      AMOUNT
+                    <TableHead className="w-[160px] text-right">
+                      AMOUNT (EXCL. TAX)
                     </TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lines.map((line) => {
-                    const { amount } = calcLineAmount(line);
+                    const { afterDisc } = calcLineAmount(line);
                     const selectedItem = itemsById.get(line.itemId);
                     const stockOnHand =
                       selectedItem?.inventoryTracked ?
@@ -1737,7 +1774,9 @@ function NewInvoicePageContent() {
                             onValueChange={(v) => {
                               if (v === "__new") {
                                 saveInvoiceDraft(line.key);
-                                router.push("/items/new?returnUrl=/sales/invoices/new");
+                                router.push(
+                                  "/items/new?returnUrl=/sales/invoices/new",
+                                );
                               } else {
                                 handleItemSelect(line.key, v);
                               }
@@ -1894,7 +1933,7 @@ function NewInvoicePageContent() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {decimalToFixed(amount)}
+                          {decimalToFixed(afterDisc)}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5">
@@ -2481,11 +2520,13 @@ function NewInvoicePageContent() {
 
 export default function NewInvoicePage() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
       <NewInvoicePageContent />
     </Suspense>
   );

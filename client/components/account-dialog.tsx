@@ -101,6 +101,11 @@ const ACCOUNT_TYPE_META: Record<AccountType, AccountTypeMeta> = {
     rootType: "Asset",
     description: "Taxes paid in advance or overpaid that can be recovered in future periods.",
   },
+  "Contra Asset": {
+    label: "Contra Asset",
+    rootType: "Asset",
+    description: "Offset accounts that have a credit balance in the asset section, such as accumulated depreciation.",
+  },
   // Liability
   "Other Current Liability": {
     label: "Other Current Liability",
@@ -186,7 +191,7 @@ const ACCOUNT_TYPE_GROUPS: Array<{ rootType: AccountRootType; types: AccountType
     types: [
       "Other Asset", "Other Current Asset", "Cash", "Bank", "Fixed Asset",
       "Accounts Receivable", "Stock", "Payment Clearing Account",
-      "Intangible Asset", "Non Current Asset", "Deferred Tax Asset",
+      "Intangible Asset", "Non Current Asset", "Deferred Tax Asset", "Contra Asset",
     ],
   },
   {

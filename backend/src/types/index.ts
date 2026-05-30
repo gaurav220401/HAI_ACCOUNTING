@@ -246,7 +246,8 @@ export type AssetAccountType =
   | "Payment Clearing Account"
   | "Intangible Asset"
   | "Non Current Asset"
-  | "Deferred Tax Asset";
+  | "Deferred Tax Asset"
+  | "Contra Asset";
 
 /** Liability sub-types */
 export type LiabilityAccountType =

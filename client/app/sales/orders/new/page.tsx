@@ -86,7 +86,11 @@ function getErrorMessage(error: unknown, fallback: string): string {
 export default function NewSalesOrderPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   const [customers, setCustomers] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -142,7 +146,8 @@ export default function NewSalesOrderPage() {
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+      router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
@@ -181,9 +186,13 @@ export default function NewSalesOrderPage() {
       ),
     );
 
-    const taxBreakdown: Array<{ name: string; amount: number; rate: number }> = [];
-    const breakdownMap = new Map<string, { name: string; amount: number; rate: number }>();
-    
+    const taxBreakdown: Array<{ name: string; amount: number; rate: number }> =
+      [];
+    const breakdownMap = new Map<
+      string,
+      { name: string; amount: number; rate: number }
+    >();
+
     lineItems.forEach((li) => {
       const q = Number(li.quantity) || 0;
       const r = Number(li.rate) || 0;
@@ -193,7 +202,11 @@ export default function NewSalesOrderPage() {
 
       if (taxP > 0) {
         const selectedTax = allTaxes.find((t) => t._id === li.taxId);
-        if (selectedTax && selectedTax.components && selectedTax.components.length > 0) {
+        if (
+          selectedTax &&
+          selectedTax.components &&
+          selectedTax.components.length > 0
+        ) {
           selectedTax.components.forEach((comp) => {
             const compAmount = percentMoney(amountBeforeTax, comp.rate);
             const compTax = allTaxes.find(t => t._id === comp.taxId);
@@ -242,7 +255,9 @@ export default function NewSalesOrderPage() {
   }
 
   function updateLine(id: string, patch: Partial<LineItemUi>) {
-    setLineItems((prev) => prev.map((li) => (li.id === id ? recalcLine({ ...li, ...patch }) : li)));
+    setLineItems((prev) =>
+      prev.map((li) => (li.id === id ? recalcLine({ ...li, ...patch }) : li)),
+    );
   }
 
   const getDefaultLineTax = useCallback((item: Item) => {
@@ -278,13 +293,23 @@ export default function NewSalesOrderPage() {
   }
 
   function removeLine(id: string) {
-    setLineItems((prev) => (prev.length === 1 ? prev : prev.filter((li) => li.id !== id)));
+    setLineItems((prev) =>
+      prev.length === 1 ? prev : prev.filter((li) => li.id !== id),
+    );
   }
 
-  function buildPayload(saveStatus: SalesOrderStatus): CreateSalesOrderInput | null {
+  function buildPayload(
+    saveStatus: SalesOrderStatus,
+  ): CreateSalesOrderInput | null {
     setError("");
-    if (!customerId) { setError("Customer Name is required"); return null; }
-    if (!salesOrderNumber.trim()) { setError("Sales Order# is required"); return null; }
+    if (!customerId) {
+      setError("Customer Name is required");
+      return null;
+    }
+    if (!salesOrderNumber.trim()) {
+      setError("Sales Order# is required");
+      return null;
+    }
 
     const cleanedLines = lineItems
       .map((li) => {
@@ -317,7 +342,10 @@ export default function NewSalesOrderPage() {
       })
       .filter((li) => li.itemId);
 
-    if (cleanedLines.length === 0) { setError("Add at least one item"); return null; }
+    if (cleanedLines.length === 0) {
+      setError("Add at least one item");
+      return null;
+    }
 
     return {
       customerId,
@@ -407,27 +435,53 @@ export default function NewSalesOrderPage() {
         <PageHeader
           breadcrumb={
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => router.push("/sales/orders")} aria-label="Back">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push("/sales/orders")}
+                aria-label="Back"
+              >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <span className="text-sm text-muted-foreground">
                 Sales <span className="mx-1">/</span>
                 Sales Orders <span className="mx-1">/</span>
-                <span className="font-medium text-foreground">New Sales Order</span>
+                <span className="font-medium text-foreground">
+                  New Sales Order
+                </span>
               </span>
             </div>
           }
           actions={
             <>
-              <Button variant="outline" size="sm" onClick={() => router.push("/sales/orders")} disabled={saving}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/sales/orders")}
+                disabled={saving}
+              >
                 Cancel
               </Button>
-              <Button variant="outline" size="sm" onClick={onSaveDraft} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onSaveDraft}
+                disabled={saving}
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                : null}
                 Save as Draft
               </Button>
-              <Button size="sm" onClick={onSaveAndSend} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              <Button
+                size="sm"
+                onClick={onSaveAndSend}
+                disabled={saving}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                : <Send className="h-4 w-4 mr-1" />}
                 Save and Send
               </Button>
             </>
@@ -436,11 +490,15 @@ export default function NewSalesOrderPage() {
 
         <div className="flex flex-1 flex-col p-6 gap-6">
           <div className="max-w-5xl">
-            {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
+            {error ?
+              <p className="mb-4 text-sm text-destructive">{error}</p>
+            : null}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Customer Name <span className="text-red-500">*</span></Label>
+                <Label className="md:col-span-4">
+                  Customer Name <span className="text-red-500">*</span>
+                </Label>
                 <div className="md:col-span-8">
                   <Select
                     value={customerId || undefined}
@@ -467,17 +525,17 @@ export default function NewSalesOrderPage() {
                         </SelectItem>
                       )}
                       {customers.map((c) => (
-                         <SelectItem key={c._id} value={c._id}>
-                           <div className="flex flex-col">
-                             <span className="font-medium">{c.displayName}</span>
-                             {c.companyName && (
-                               <span className="text-xs text-muted-foreground">
-                                 {c.companyName}
-                               </span>
-                             )}
-                           </div>
-                         </SelectItem>
-                       ))}
+                        <SelectItem key={c._id} value={c._id}>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{c.displayName}</span>
+                            {c.companyName && (
+                              <span className="text-xs text-muted-foreground">
+                                {c.companyName}
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -486,21 +544,31 @@ export default function NewSalesOrderPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Sales Order#*</Label>
                 <div className="md:col-span-8">
-                  <Input value={salesOrderNumber} onChange={(e) => setSalesOrderNumber(e.target.value)} />
+                  <Input
+                    value={salesOrderNumber}
+                    onChange={(e) => setSalesOrderNumber(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Reference#</Label>
                 <div className="md:col-span-8">
-                  <Input value={reference} onChange={(e) => setReference(e.target.value)} />
+                  <Input
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Sales Order Date*</Label>
                 <div className="md:col-span-8">
-                  <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    value={orderDate}
+                    onChange={(e) => setOrderDate(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -518,7 +586,10 @@ export default function NewSalesOrderPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Payment Terms</Label>
                 <div className="md:col-span-8">
-                  <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
+                  <Select
+                    value={paymentTermsId}
+                    onValueChange={setPaymentTermsId}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Due on Receipt" />
                     </SelectTrigger>
@@ -536,7 +607,11 @@ export default function NewSalesOrderPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Delivery Method</Label>
                 <div className="md:col-span-8">
-                  <Input value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="(optional)" />
+                  <Input
+                    value={deliveryMethod}
+                    onChange={(e) => setDeliveryMethod(e.target.value)}
+                    placeholder="(optional)"
+                  />
                 </div>
               </div>
 
@@ -546,7 +621,12 @@ export default function NewSalesOrderPage() {
             <div className="mt-8">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-medium">Item Table</div>
-                <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addLine}
+                >
                   <Plus className="h-4 w-4 mr-1" />
                   Add New Row
                 </Button>
@@ -561,9 +641,13 @@ export default function NewSalesOrderPage() {
                       <TableHead className="w-20 text-right">Qty</TableHead>
                       <TableHead className="w-24 text-right">Stock</TableHead>
                       <TableHead className="w-24 text-right">Rate</TableHead>
-                      <TableHead className="w-24 text-right">Discount</TableHead>
+                      <TableHead className="w-24 text-right">
+                        Discount
+                      </TableHead>
                       <TableHead className="w-40 text-right">Tax</TableHead>
-                      <TableHead className="w-24 text-right">Amount</TableHead>
+                      <TableHead className="w-32 text-right">
+                        Amount (excl. tax)
+                      </TableHead>
                       <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>
@@ -571,6 +655,9 @@ export default function NewSalesOrderPage() {
                     {lineItems.map((li) => {
                       const selectedItem = itemsById.get(li.itemId);
                       const quantity = Number(li.quantity) || 0;
+                      const amountBeforeTax =
+                        quantity * Number(li.rate || 0) -
+                        Number(li.discount || 0);
                       const stockOnHand =
                         selectedItem?.inventoryTracked ?
                           Number(selectedItem.stockOnHand || 0)
@@ -617,7 +704,11 @@ export default function NewSalesOrderPage() {
                               <Input
                                 placeholder="Description"
                                 value={li.description}
-                                onChange={(e) => updateLine(li.id, { description: e.target.value })}
+                                onChange={(e) =>
+                                  updateLine(li.id, {
+                                    description: e.target.value,
+                                  })
+                                }
                                 className="h-7 text-xs"
                               />
                             </div>
@@ -625,7 +716,11 @@ export default function NewSalesOrderPage() {
                           <TableCell className="text-right">
                             <Input
                               value={li.hsnSacCode}
-                              onChange={(e) => updateLine(li.id, { hsnSacCode: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, {
+                                  hsnSacCode: e.target.value,
+                                })
+                              }
                               className="text-right text-xs w-20"
                               placeholder="HSN"
                             />
@@ -633,7 +728,9 @@ export default function NewSalesOrderPage() {
                           <TableCell className="text-right">
                             <Input
                               value={li.quantity}
-                              onChange={(e) => updateLine(li.id, { quantity: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, { quantity: e.target.value })
+                              }
                               className="text-right"
                             />
                           </TableCell>
@@ -649,14 +746,18 @@ export default function NewSalesOrderPage() {
                           <TableCell className="text-right">
                             <Input
                               value={li.rate}
-                              onChange={(e) => updateLine(li.id, { rate: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, { rate: e.target.value })
+                              }
                               className="text-right"
                             />
                           </TableCell>
                           <TableCell className="text-right">
                             <Input
                               value={li.discount}
-                              onChange={(e) => updateLine(li.id, { discount: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, { discount: e.target.value })
+                              }
                               className="text-right"
                             />
                           </TableCell>
@@ -676,9 +777,15 @@ export default function NewSalesOrderPage() {
                                 <SelectValue placeholder="Select Tax" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="none">Non-Taxable</SelectItem>
+                                <SelectItem value="none">
+                                  Non-Taxable
+                                </SelectItem>
                                 {allTaxes.map((t) => (
-                                  <SelectItem key={t._id} value={t._id} className="text-xs">
+                                  <SelectItem
+                                    key={t._id}
+                                    value={t._id}
+                                    className="text-xs"
+                                  >
                                     {t.name} ({t.rate}%)
                                   </SelectItem>
                                 ))}
@@ -686,10 +793,15 @@ export default function NewSalesOrderPage() {
                             </Select>
                           </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">
-                            {formatMoney(li.amount)}
+                            {formatMoney(amountBeforeTax)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button type="button" variant="ghost" size="icon" onClick={() => removeLine(li.id)}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeLine(li.id)}
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </TableCell>
@@ -704,11 +816,19 @@ export default function NewSalesOrderPage() {
                 <div className="space-y-4">
                   <div>
                     <Label>Customer Notes</Label>
-                    <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" />
+                    <Input
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Notes"
+                    />
                   </div>
                   <div>
                     <Label>Terms & Conditions</Label>
-                    <Input value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Terms" />
+                    <Input
+                      value={terms}
+                      onChange={(e) => setTerms(e.target.value)}
+                      placeholder="Terms"
+                    />
                   </div>
                 </div>
 
@@ -722,10 +842,22 @@ export default function NewSalesOrderPage() {
                     {totals.taxBreakdown.length > 0 && (
                       <div className="py-2 border-y border-dashed space-y-2">
                         {totals.taxBreakdown.map((b, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs">
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between text-xs"
+                          >
                             <span className="text-muted-foreground flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
-                              {b.name} <span className="text-[10px] opacity-70">[{b.rate}%]</span>
+                              {b.name}{" "}
+                              <span className="text-[10px] opacity-70">
+                                [{b.rate}%]
+                              </span>
+                            </span>
+                            <span className="tabular-nums font-medium">
+                              ₹
+                              {b.amount.toLocaleString("en-IN", {
+                                minimumFractionDigits: 2,
+                              })}
                             </span>
                             <span className="tabular-nums font-medium">₹{formatMoney(b.amount)}</span>
                           </div>
@@ -734,9 +866,13 @@ export default function NewSalesOrderPage() {
                     )}
 
                     <div className="flex items-center justify-between gap-4 pt-1">
-                      <span className="text-muted-foreground text-sm">Shipping Charges</span>
+                      <span className="text-muted-foreground text-sm">
+                        Shipping Charges
+                      </span>
                       <div className="w-32 relative group">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">
+                          ₹
+                        </span>
                         <Input
                           value={shippingCharges}
                           onChange={(e) => setShippingCharges(e.target.value)}
@@ -747,9 +883,13 @@ export default function NewSalesOrderPage() {
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
-                      <span className="text-muted-foreground text-sm">Adjustment</span>
+                      <span className="text-muted-foreground text-sm">
+                        Adjustment
+                      </span>
                       <div className="w-32 relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">
+                          ₹
+                        </span>
                         <Input
                           value={adjustment}
                           onChange={(e) => setAdjustment(e.target.value)}
@@ -779,19 +919,32 @@ export default function NewSalesOrderPage() {
                             </label>
                           ))}
                         </div>
-                        
+
                         {taxType !== "none" && (
                           <div className="w-32">
-                            <Select value={taxType === "TDS" ? tdsId : tcsId} onValueChange={taxType === "TDS" ? setTdsId : setTcsId}>
+                            <Select
+                              value={taxType === "TDS" ? tdsId : tcsId}
+                              onValueChange={
+                                taxType === "TDS" ? setTdsId : setTcsId
+                              }
+                            >
                               <SelectTrigger className="h-7 text-[10px]">
-                                <SelectValue placeholder={`Select ${taxType}`} />
+                                <SelectValue
+                                  placeholder={`Select ${taxType}`}
+                                />
                               </SelectTrigger>
                               <SelectContent>
-                                {(taxType === "TDS" ? tdsTaxes : tcsTaxes).map((t) => (
-                                  <SelectItem key={t._id} value={t._id} className="text-xs">
-                                    {t.taxName} ({t.rate}%)
-                                  </SelectItem>
-                                ))}
+                                {(taxType === "TDS" ? tdsTaxes : tcsTaxes).map(
+                                  (t) => (
+                                    <SelectItem
+                                      key={t._id}
+                                      value={t._id}
+                                      className="text-xs"
+                                    >
+                                      {t.taxName} ({t.rate}%)
+                                    </SelectItem>
+                                  ),
+                                )}
                               </SelectContent>
                             </Select>
                           </div>
@@ -808,12 +961,16 @@ export default function NewSalesOrderPage() {
                       )}
 
                       <div className="flex items-center justify-between pt-2">
-                        <span className="text-base font-bold text-foreground">Total</span>
+                        <span className="text-base font-bold text-foreground">
+                          Total
+                        </span>
                         <div className="text-right">
                           <span className="text-xl font-bold text-primary tabular-nums">
                             ₹{formatMoney(totals.total)}
                           </span>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Indian Rupee</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+                            Indian Rupee
+                          </p>
                         </div>
                       </div>
                     </div>
