@@ -287,6 +287,7 @@ const UNIT_ABBREVIATION_OPTIONS: UnitAbbreviationOption[] = [
   { abbreviation: "BDL", name: "Bundles" },
   { abbreviation: "BAL", name: "Bale" },
   { abbreviation: "TGM", name: "Ten Gross" },
+  { abbreviation: "HRS", name: "Hours" },
   { abbreviation: "OTH", name: "Others" },
 ];
 

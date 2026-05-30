@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, PlusCircle } from "lucide-react";
+import { ChevronDown, PlusCircle, Loader2 } from "lucide-react";
+import { itemApi, type Item } from "@/lib/api/items";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -117,6 +118,8 @@ export default function DashboardPage() {
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
   const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [lowStockItems, setLowStockItems] = useState<Item[]>([]);
+  const [loadingLowStock, setLoadingLowStock] = useState(true);
 
   const [cashFlowPeriod, setCashFlowPeriod] = useState<PeriodOption>("this-fy");
   const [incomeExpensePeriod, setIncomeExpensePeriod] = useState<PeriodOption>("this-fy");
@@ -183,13 +186,36 @@ export default function DashboardPage() {
       }
     }
 
+    async function loadLowStockItems() {
+      setLoadingLowStock(true);
+      try {
+        const res = await itemApi.list({ limit: 1000 });
+        if (cancelled) return;
+        const items = res.data || [];
+        const lowStock = items.filter(
+          (item) =>
+            item.itemType === "Goods" &&
+            item.inventoryTracked &&
+            item.reorderPoint != null &&
+            item.stockOnHand <= item.reorderPoint
+        );
+        setLowStockItems(lowStock);
+      } catch (err) {
+        console.error("Failed to load low stock items", err);
+      } finally {
+        if (!cancelled) setLoadingLowStock(false);
+      }
+    }
+
     if (pathname === "/dashboard") {
       loadDashboard();
+      loadLowStockItems();
     }
 
     const handleFocus = () => {
       if (document.visibilityState === "visible" && pathname === "/dashboard") {
         loadDashboard();
+        loadLowStockItems();
       }
     };
 
@@ -508,8 +534,60 @@ export default function DashboardPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
-              <CardHeader><CardTitle className="text-2xl">Projects</CardTitle></CardHeader>
-              <CardContent className="h-[220px] flex items-center justify-center text-muted-foreground text-sm">Add Project(s) to this watchlist</CardContent>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <span>Low Stock Alert</span>
+                  {lowStockItems.length > 0 && (
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700">
+                      {lowStockItems.length}
+                    </span>
+                  )}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-blue-600 hover:text-blue-700"
+                  onClick={() => router.push("/items")}
+                >
+                  View All
+                </Button>
+              </CardHeader>
+              <CardContent className="h-[220px] overflow-y-auto">
+                {loadingLowStock ? (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Loading inventory levels...
+                  </div>
+                ) : lowStockItems.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm gap-2">
+                    <span className="text-emerald-500 font-medium">✓ All stock levels healthy</span>
+                    <span className="text-xs text-muted-foreground">No items are below their reorder points.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {lowStockItems.map((item) => (
+                      <div
+                        key={item._id}
+                        className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0 cursor-pointer hover:bg-slate-50 p-1.5 rounded transition-colors"
+                        onClick={() => router.push(`/items?id=${item._id}`)}
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm text-slate-800">{item.name}</span>
+                          <span className="text-xs text-muted-foreground">SKU: {item.sku || "—"}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-semibold text-red-600 block">
+                            {item.stockOnHand} {typeof item.unit === "object" && item.unit ? (item.unit as any).abbreviation : item.unit || "units"}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            Reorder level: {item.reorderPoint}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-2xl">Bank and Credit Cards</CardTitle></CardHeader>

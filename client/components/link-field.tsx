@@ -34,7 +34,7 @@ interface LinkFieldProps {
   /** Placeholder text */
   placeholder?: string;
   /** Async function to fetch options based on search query */
-  fetchOptions: (query: string) => Promise<LinkFieldOption[]>;
+  fetchOptions?: (query: string) => Promise<LinkFieldOption[]>;
   /** Static options (if provided, fetchOptions is ignored) */
   staticOptions?: LinkFieldOption[];
   /** Debounce delay for search in ms */
@@ -49,6 +49,8 @@ interface LinkFieldProps {
   displayLabel?: string;
   /** Additional CSS classes */
   className?: string;
+  /** Additional classes for trigger button */
+  triggerClassName?: string;
 }
 
 // ─── Hook: useDebounce ──────────────────────────────────────────────────
@@ -78,6 +80,7 @@ export function LinkField({
   clearable = true,
   displayLabel,
   className,
+  triggerClassName,
 }: LinkFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
@@ -91,6 +94,7 @@ export function LinkField({
   // Fetch options when search changes (async mode)
   React.useEffect(() => {
     if (staticOptions) return;
+    if (!fetchOptions) return;
     if (debouncedSearch.length < minChars) {
       setOptions([]);
       return;
@@ -120,6 +124,7 @@ export function LinkField({
   // Load initial options on open (for async mode)
   React.useEffect(() => {
     if (!open || staticOptions) return;
+    if (!fetchOptions) return;
     if (options.length === 0 && minChars === 0) {
       setIsLoading(true);
       fetchOptions("")
@@ -162,6 +167,7 @@ export function LinkField({
             className={cn(
               "w-full justify-between font-normal",
               !value && "text-muted-foreground",
+              triggerClassName,
             )}
           >
             <span className="truncate">

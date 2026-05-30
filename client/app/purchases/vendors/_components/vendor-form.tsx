@@ -39,6 +39,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { LinkField } from "@/components/link-field";
 
 import {
   contactApi,
@@ -212,7 +213,29 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [phone, setPhone] = useState(initialData?.phone ?? "");
   const [mobile, setMobile] = useState(initialData?.mobile ?? "");
   const [language, setLanguage] = useState(initialData?.language ?? "en");
-  const [displayNameManual, setDisplayNameManual] = useState(isEdit);
+  const [displayNameManual, setDisplayNameManual] = useState(() => {
+    if (!initialData) return false;
+    const sal = initialData.salutation || "";
+    const first = initialData.firstName || "";
+    const last = initialData.lastName || "";
+    const comp = initialData.companyName || "";
+
+    const computedWithSal = deriveDisplayName(sal, first, last, comp);
+    const computedWithoutSal = deriveDisplayName("", first, last, comp);
+    const computedPersonalWithSal = [sal, first, last].filter(Boolean).join(" ");
+    const computedPersonalWithoutSal = [first, last].filter(Boolean).join(" ");
+    const computedCompany = comp;
+
+    const isMatched =
+      initialData.displayName?.trim() === computedWithSal.trim() ||
+      initialData.displayName?.trim() === computedWithoutSal.trim() ||
+      initialData.displayName?.trim() === computedPersonalWithSal.trim() ||
+      initialData.displayName?.trim() === computedPersonalWithoutSal.trim() ||
+      initialData.displayName?.trim() === computedCompany.trim() ||
+      !initialData.displayName?.trim();
+
+    return !isMatched;
+  });
   const [displayNameFocused, setDisplayNameFocused] = useState(false);
   const displayNameRef = useRef<HTMLDivElement>(null);
 
@@ -788,7 +811,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
           {/* Salutation + First Name + Last Name */}
           <label className="text-sm font-medium text-muted-foreground pt-2">Primary Contact</label>
           <div className="flex gap-2">
-            <Select value={salutation} onValueChange={setSalutation}>
+            <Select value={salutation || "__none"} onValueChange={(v) => setSalutation(v === "__none" ? "" : v)}>
               <SelectTrigger className="w-28 h-9">
                 <SelectValue placeholder="Salutation" />
               </SelectTrigger>
@@ -1859,6 +1882,13 @@ function AddressFields({
   address: Address;
   onChange: (field: keyof Address, value: string) => void;
 }) {
+  const stateOptions = useMemo(() => {
+    return INDIAN_STATES.map((s) => ({
+      value: s,
+      label: s,
+    }));
+  }, []);
+
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-0.5">
@@ -1880,17 +1910,14 @@ function AddressFields({
       </div>
       <div className="flex flex-col gap-0.5">
         <Label className="text-xs text-muted-foreground">State</Label>
-        <Select value={address.state || "__none"} onValueChange={(v) => onChange("state", v === "__none" ? "" : v)}>
-          <SelectTrigger className="h-8 text-sm">
-            <SelectValue placeholder="Select or type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none">— Select state —</SelectItem>
-            {INDIAN_STATES.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <LinkField
+          value={address.state || ""}
+          onChange={(v) => onChange("state", v)}
+          staticOptions={stateOptions}
+          placeholder="Select state"
+          clearable={true}
+          triggerClassName="h-8 text-sm"
+        />
       </div>
       <div className="flex flex-col gap-0.5">
         <Label className="text-xs text-muted-foreground">Pin Code</Label>

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   Plus, Search, Package, RefreshCw, Pencil, X, MoreHorizontal, Copy,
@@ -82,8 +82,10 @@ const ADJUSTMENT_REASON_OPTIONS = [
   "Other",
 ] as const;
 
-export default function ItemsPage() {
+function ItemsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const idFromUrl = searchParams.get("id");
   const { firebaseUser, loading } = useAuth();
   const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
 
@@ -153,6 +155,15 @@ export default function ItemsPage() {
       void fetchItems();
     }
   }, [firebaseUser, loading, activeOrganization?._id, fetchItems]);
+
+  useEffect(() => {
+    if (idFromUrl && items.length > 0) {
+      const match = items.find((i) => i._id === idFromUrl);
+      if (match) {
+        selectItem(idFromUrl);
+      }
+    }
+  }, [idFromUrl, items]);
 
   const fetchDetail = useCallback(async (id: string) => {
     setDetailLoading(true);
@@ -854,7 +865,20 @@ export default function ItemsPage() {
                         <TableCell className="text-sm text-right tabular-nums">
                           {item.sellingPrice != null ? `₹${Number(item.sellingPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">{formatQuantity(item.stockOnHand)}</TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {item.itemType === "Service" ? (
+                            "—"
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5">
+                              {item.inventoryTracked && item.reorderPoint != null && item.stockOnHand <= item.reorderPoint && (
+                                <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4 bg-red-100 text-red-700 hover:bg-red-100 border-red-200">
+                                  Low Stock
+                                </Badge>
+                              )}
+                              <span>{formatQuantity(item.stockOnHand)}</span>
+                            </div>
+                          )}
+                        </TableCell>
                         <TableCell className="text-sm">{item.hsnSacCode || "—"}</TableCell>
                         <TableCell className="text-sm">
                           {typeof item.unit === "object" && item.unit
@@ -1052,9 +1076,16 @@ export default function ItemsPage() {
                                     <div>
                                       <p className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Accounting Stock</p>
                                       <div className="space-y-2">
-                                        <div className="flex justify-between">
+                                        <div className="flex justify-between items-center">
                                           <span className="text-sm text-gray-600">Stock on Hand</span>
-                                          <span className="text-sm font-medium">{formatQuantity(stockOnHandValue)}</span>
+                                          <div className="flex items-center gap-1.5">
+                                            {detail.reorderPoint != null && stockOnHandValue <= detail.reorderPoint && (
+                                              <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4 bg-red-100 text-red-700 hover:bg-red-100 border-red-200 font-medium">
+                                                Low
+                                              </Badge>
+                                            )}
+                                            <span className="text-sm font-medium">{formatQuantity(stockOnHandValue)}</span>
+                                          </div>
                                         </div>
                                         <div className="flex justify-between">
                                           <span className="text-sm text-gray-600">Committed Stock</span>
@@ -1069,9 +1100,16 @@ export default function ItemsPage() {
                                     <div>
                                       <p className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Physical Stock</p>
                                       <div className="space-y-2">
-                                        <div className="flex justify-between">
+                                        <div className="flex justify-between items-center">
                                           <span className="text-sm text-gray-600">Stock on Hand</span>
-                                          <span className="text-sm font-medium">{formatQuantity(physicalStockOnHandValue)}</span>
+                                          <div className="flex items-center gap-1.5">
+                                            {detail.reorderPoint != null && physicalStockOnHandValue <= detail.reorderPoint && (
+                                              <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4 bg-red-100 text-red-700 hover:bg-red-100 border-red-200 font-medium">
+                                                Low
+                                              </Badge>
+                                            )}
+                                            <span className="text-sm font-medium">{formatQuantity(physicalStockOnHandValue)}</span>
+                                          </div>
                                         </div>
                                         <div className="flex justify-between">
                                           <span className="text-sm text-gray-600">Committed Stock</span>
@@ -1662,5 +1700,19 @@ function StockMetric({
       <p className="text-2xl font-semibold leading-none">{value}</p>
       {unit && unit !== "—" ? <p className="text-xs text-muted-foreground">{unit}</p> : null}
     </div>
+  );
+}
+
+export default function ItemsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <ItemsPageContent />
+    </Suspense>
   );
 }

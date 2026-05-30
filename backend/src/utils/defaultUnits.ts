@@ -66,6 +66,7 @@ export const UNIT_OPTIONS: UnitOption[] = [
   { abbreviation: "BDL", name: "Bundles" },
   { abbreviation: "BAL", name: "Bale" },
   { abbreviation: "TGM", name: "Ten Gross" },
+  { abbreviation: "HRS", name: "Hours" },
   { abbreviation: "OTH", name: "Others" },
 ];
 
@@ -88,6 +89,8 @@ const GST_DEFAULT_CODES = new Set([
   "MTR",
   "PCS",
   "NOS",
+  "HRS",
+  "OTH",
 ]);
 
 export const GST_UNIT_DEFAULTS: UnitOption[] = UNIT_OPTIONS.filter((unit) =>

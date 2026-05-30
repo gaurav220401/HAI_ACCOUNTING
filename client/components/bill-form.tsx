@@ -651,6 +651,193 @@ function AccountDropdown({
    );
 }
 
+function LineTaxDropdown({
+   value,
+   onChange,
+   gstGroupTaxes,
+   otherLineTaxes,
+}: {
+   value: string;
+   onChange: (val: string) => void;
+   gstGroupTaxes: Tax[];
+   otherLineTaxes: Tax[];
+}) {
+   const [open, setOpen] = useState(false);
+   const [q, setQ] = useState("");
+
+   const selectedLabel = useMemo(() => {
+      if (!value) return "Select a Tax";
+      if (value === NEW_LINE_TAX_OPTION) return "+ New Tax";
+      if (value.startsWith("preset:")) {
+         const presetName = value.slice("preset:".length);
+         const preset = LINE_TAX_PRESETS.find((entry) => entry.name === presetName);
+         return preset ? preset.name : presetName;
+      }
+      if (value.startsWith("tax:")) {
+         const taxId = value.slice("tax:".length);
+         const allTaxes = [...gstGroupTaxes, ...otherLineTaxes];
+         const tax = allTaxes.find((entry) => entry._id === taxId);
+         return tax ? `${tax.name} [${Number(tax.rate || 0)}%]` : `Tax [ID: ${taxId}]`;
+      }
+      return value;
+   }, [value, gstGroupTaxes, otherLineTaxes]);
+
+   const filteredPresets = LINE_TAX_PRESETS.filter((p) =>
+      p.name.toLowerCase().includes(q.toLowerCase())
+   );
+   const filteredGst = gstGroupTaxes.filter((t) =>
+      `${t.name} ${t.rate}%`.toLowerCase().includes(q.toLowerCase())
+   );
+   const filteredOther = otherLineTaxes.filter((t) =>
+      `${t.name} ${t.rate}%`.toLowerCase().includes(q.toLowerCase())
+   );
+
+   return (
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+         <DropdownMenuTrigger asChild>
+            <button
+               type="button"
+               className="w-full h-8 px-2 text-xs border rounded-md bg-white text-left flex items-center justify-between hover:bg-muted/30 focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+               <span className={value ? "truncate" : "text-muted-foreground truncate"}>
+                  {selectedLabel}
+               </span>
+               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-1" />
+            </button>
+         </DropdownMenuTrigger>
+         <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-64 p-0 overflow-hidden">
+            <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+               <Input
+                  className="h-7 text-xs"
+                  placeholder="Search tax..."
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  autoFocus
+               />
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+               <button
+                  type="button"
+                  className={cn(
+                     "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 font-normal",
+                     !value && "bg-primary/10 text-primary font-medium"
+                  )}
+                  onClick={() => {
+                     onChange("");
+                     setOpen(false);
+                     setQ("");
+                  }}
+               >
+                  Select a Tax
+               </button>
+
+               {filteredPresets.length > 0 && (
+                  <div>
+                     <div className="px-3 py-1 text-xs font-semibold text-muted-foreground bg-muted/30">
+                        Non Taxable
+                     </div>
+                     {filteredPresets.map((preset) => {
+                        const val = `preset:${preset.name}`;
+                        return (
+                           <button
+                              key={preset.name}
+                              type="button"
+                              className={cn(
+                                 "w-full text-left px-3 py-2 text-sm hover:bg-muted/50",
+                                 value === val && "bg-primary/10 text-primary font-medium"
+                              )}
+                              onClick={() => {
+                                 onChange(val);
+                                 setOpen(false);
+                                 setQ("");
+                              }}
+                           >
+                              <div className="font-medium text-xs">{preset.name}</div>
+                              <div className="text-[10px] text-muted-foreground leading-tight">
+                                 {preset.description}
+                              </div>
+                           </button>
+                        );
+                     })}
+                  </div>
+               )}
+
+               {filteredGst.length > 0 && (
+                  <div>
+                     <div className="px-3 py-1 text-xs font-semibold text-muted-foreground bg-muted/30">
+                        Tax Group
+                     </div>
+                     {filteredGst.map((tax) => {
+                        const val = `tax:${tax._id}`;
+                        return (
+                           <button
+                              key={tax._id}
+                              type="button"
+                              className={cn(
+                                 "w-full text-left px-3 py-2 text-sm hover:bg-muted/50",
+                                 value === val && "bg-primary/10 text-primary font-medium"
+                              )}
+                              onClick={() => {
+                                 onChange(val);
+                                 setOpen(false);
+                                 setQ("");
+                              }}
+                           >
+                              {tax.name} [{Number(tax.rate || 0)}%]
+                           </button>
+                        );
+                     })}
+                  </div>
+               )}
+
+               {filteredOther.length > 0 && (
+                  <div>
+                     <div className="px-3 py-1 text-xs font-semibold text-muted-foreground bg-muted/30">
+                        Other Taxes
+                     </div>
+                     {filteredOther.map((tax) => {
+                        const val = `tax:${tax._id}`;
+                        return (
+                           <button
+                              key={tax._id}
+                              type="button"
+                              className={cn(
+                                 "w-full text-left px-3 py-2 text-sm hover:bg-muted/50",
+                                 value === val && "bg-primary/10 text-primary font-medium"
+                              )}
+                              onClick={() => {
+                                 onChange(val);
+                                 setOpen(false);
+                                 setQ("");
+                              }}
+                           >
+                              {tax.name} [{Number(tax.rate || 0)}%]
+                           </button>
+                        );
+                     })}
+                  </div>
+               )}
+
+               <DropdownMenuSeparator />
+               <button
+                  type="button"
+                  className={cn(
+                     "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 text-primary font-medium"
+                  )}
+                  onClick={() => {
+                     onChange(NEW_LINE_TAX_OPTION);
+                     setOpen(false);
+                     setQ("");
+                  }}
+               >
+                  + New Tax
+               </button>
+            </div>
+         </DropdownMenuContent>
+      </DropdownMenu>
+   );
+}
+
 function VendorSearchDialog({
    open,
    onClose,
@@ -2117,39 +2304,12 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                        />
                                     </td>
                                     <td className="px-3 py-2 align-top">
-                                       <select
-                                          className="w-full h-8 px-2 text-xs border rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                                       <LineTaxDropdown
                                           value={lineTaxSelectValue(row)}
-                                          onChange={(e) => handleLineTaxSelection(row.id, e.target.value)}
-                                       >
-                                          <option value="">Select a Tax</option>
-                                          <optgroup label="Non Taxable">
-                                             {LINE_TAX_PRESETS.map((preset) => (
-                                                <option key={preset.name} value={`preset:${preset.name}`}>
-                                                   {preset.name}
-                                                </option>
-                                             ))}
-                                          </optgroup>
-                                          {gstGroupTaxes.length > 0 && (
-                                             <optgroup label="Tax Group">
-                                                {gstGroupTaxes.map((tax) => (
-                                                   <option key={tax._id} value={`tax:${tax._id}`}>
-                                                      {tax.name} [{Number(tax.rate || 0)}%]
-                                                   </option>
-                                                ))}
-                                             </optgroup>
-                                          )}
-                                          {otherLineTaxes.length > 0 && (
-                                             <optgroup label="Other Taxes">
-                                                {otherLineTaxes.map((tax) => (
-                                                   <option key={tax._id} value={`tax:${tax._id}`}>
-                                                      {tax.name} [{Number(tax.rate || 0)}%]
-                                                   </option>
-                                                ))}
-                                             </optgroup>
-                                          )}
-                                          <option value={NEW_LINE_TAX_OPTION}>+ New Tax</option>
-                                       </select>
+                                          onChange={(val) => handleLineTaxSelection(row.id, val)}
+                                          gstGroupTaxes={gstGroupTaxes}
+                                          otherLineTaxes={otherLineTaxes}
+                                       />
                                        {row.taxName && (
                                           <>
                                              <p className="mt-1 text-[11px] text-muted-foreground truncate" title={row.taxName}>
