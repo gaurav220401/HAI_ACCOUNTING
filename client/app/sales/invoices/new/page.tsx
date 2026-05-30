@@ -1889,9 +1889,6 @@ function NewInvoicePageContent() {
                               )
                             }
                           />
-                          <button className="text-xs text-blue-600 hover:underline mt-0.5">
-                            Recent Transactions
-                          </button>
                         </TableCell>
                         <TableCell>
                           <Input
