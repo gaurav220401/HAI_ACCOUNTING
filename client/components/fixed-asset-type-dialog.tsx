@@ -82,7 +82,6 @@ const FIXED_ASSET_ACCOUNT_TYPES: AccountType[] = ["Fixed Asset"];
 const CONTRA_ASSET_ACCOUNT_TYPES: AccountType[] = ["Contra Asset"];
 const DEPRECIATION_EXPENSE_ACCOUNT_TYPES: AccountType[] = [
   "Expense",
-  "Cost Of Goods Sold",
   "Other Expense",
 ];
 
@@ -217,7 +216,7 @@ export function FixedAssetTypeDialog({
   );
 
   const expenseAccounts = useMemo(
-    () => accounts.filter((a) => a.rootType === "Expense"),
+    () => accounts.filter((a) => a.rootType === "Expense" && a.accountType !== "Cost Of Goods Sold"),
     [accounts],
   );
 
@@ -237,7 +236,11 @@ export function FixedAssetTypeDialog({
       ...defaultState,
       fixedAssetAccountId: fixedAssetAccounts[0]?._id || "",
       accumulatedDepreciationAccountId: accumulatedAccounts[0]?._id || "",
-      depreciationExpenseAccountId: expenseAccounts[0]?._id || "",
+      depreciationExpenseAccountId:
+        (expenseAccounts.find(
+          (a) => a.name.toLowerCase() === "depreciation expense",
+        ) ?? expenseAccounts[0])
+          ?._id || "",
     };
 
     if ((isEditMode || isCloneMode) && initialType) {

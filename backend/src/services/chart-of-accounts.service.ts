@@ -386,7 +386,7 @@ export function getIndianCoATemplate(): ChartTemplateNode[] {
     { name: "Printing and Stationery", rootType: "Expense", accountType: "Expense", description: "Costs of printing, stationery, and office supplies." },
     { name: "Salaries and Employee Wages", rootType: "Expense", accountType: "Expense", description: "Wages and salaries paid to employees." },
     { name: "Meals and Entertainment", rootType: "Expense", accountType: "Expense", description: "Costs for business meals and entertainment." },
-    { name: "Depreciation Expense", rootType: "Expense", accountType: "Expense", description: "Periodic reduction in value of fixed assets." },
+    { name: "Depreciation Expense", rootType: "Expense", accountType: "Expense", description: "Periodic reduction in value of fixed assets.", code: "6022" },
     { name: "Consultant Expense", rootType: "Expense", accountType: "Expense", description: "Fees paid to external consultants and advisors." },
     { name: "Repairs and Maintenance", rootType: "Expense", accountType: "Expense", description: "Costs of repairing and maintaining business assets." },
     { name: "Other Expenses", rootType: "Expense", accountType: "Expense", description: "Miscellaneous business expenses." },

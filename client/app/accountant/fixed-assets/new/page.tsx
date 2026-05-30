@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -75,7 +75,6 @@ const FIXED_ASSET_ACCOUNT_TYPES: AccountType[] = ["Fixed Asset"];
 const CONTRA_ASSET_ACCOUNT_TYPES: AccountType[] = ["Contra Asset"];
 const DEPRECIATION_EXPENSE_ACCOUNT_TYPES: AccountType[] = [
   "Expense",
-  "Cost Of Goods Sold",
   "Other Expense",
 ];
 
@@ -195,6 +194,7 @@ function NewFixedAssetPageContent() {
 
   const [form, setForm] = useState<FormState>(defaultForm);
   const [assetTypes, setAssetTypes] = useState<FixedAssetType[]>([]);
+  const assetTypesRef = useRef<FixedAssetType[]>(assetTypes);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -203,6 +203,7 @@ function NewFixedAssetPageContent() {
   const [createTargetField, setCreateTargetField] =
     useState<AccountFieldKey>("fixedAssetAccountId");
   const [editStatus, setEditStatus] = useState<FixedAssetStatus | null>(null);
+  const initialLoadDone = useRef(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -216,6 +217,10 @@ function NewFixedAssetPageContent() {
 
   const loadInitial = useCallback(async () => {
     if (!activeOrganization?._id) return;
+    // Only show the loading spinner on the very first load.
+    // Subsequent re-fetches (caused by context re-renders) must NOT
+    // unmount the form — doing so causes Radix Select to lose its value.
+    if (initialLoadDone.current) return;
     setLoadingData(true);
     try {
       const [typesRes, accountsRes] = await Promise.all([
@@ -224,9 +229,13 @@ function NewFixedAssetPageContent() {
       ]);
 
       setAssetTypes(typesRes.data ?? []);
+      assetTypesRef.current = typesRes.data ?? [];
       setAccounts(sortAccounts(accountsRes.data ?? []));
 
-      if (!sourceAssetId) return;
+      if (!sourceAssetId) {
+        initialLoadDone.current = true;
+        return;
+      }
 
       const cloned = await fixedAssetApi.getById(sourceAssetId);
       const asset = cloned.data;
@@ -264,6 +273,7 @@ function NewFixedAssetPageContent() {
           asset.depreciationExpenseAccountId,
         ),
       });
+      initialLoadDone.current = true;
     } catch (error) {
       toast.error((error as Error).message || "Failed to load form data");
     } finally {
@@ -288,7 +298,7 @@ function NewFixedAssetPageContent() {
   );
 
   const expenseAccountOptions = useMemo(
-    () => accounts.filter((account) => account.rootType === "Expense"),
+    () => accounts.filter((account) => account.rootType === "Expense" && account.accountType !== "Cost Of Goods Sold"),
     [accounts],
   );
 
@@ -335,8 +345,14 @@ function NewFixedAssetPageContent() {
   }
 
   function applyTypeDefaults(typeId: string) {
-    const selected = assetTypes.find((type) => type._id === typeId);
-    if (!selected) return;
+    // Use the ref to avoid stale-closure issues with the assetTypes array
+    const types = assetTypesRef.current;
+    const selected = types.find((type) => type._id === typeId);
+    if (!selected) {
+      // Still persist the selected typeId even if we can't find its defaults
+      setForm((prev) => ({ ...prev, fixedAssetTypeId: typeId }));
+      return;
+    }
 
     setForm((prev) => ({
       ...prev,
@@ -1024,7 +1040,9 @@ function NewFixedAssetPageContent() {
           onCreated={(created) => {
             setAssetTypes((prev) => {
               const next = [...prev, created];
-              return next.sort((a, b) => a.name.localeCompare(b.name));
+              const sorted = next.sort((a, b) => a.name.localeCompare(b.name));
+              assetTypesRef.current = sorted;
+              return sorted;
             });
             applyTypeDefaults(created._id);
           }}
