@@ -193,6 +193,7 @@ function NewFixedAssetPageContent() {
   } = useOrganization();
 
   const [form, setForm] = useState<FormState>(defaultForm);
+  const [overrideAccounts, setOverrideAccounts] = useState(false);
   const [assetTypes, setAssetTypes] = useState<FixedAssetType[]>([]);
   const assetTypesRef = useRef<FixedAssetType[]>(assetTypes);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -244,6 +245,21 @@ function NewFixedAssetPageContent() {
       } else {
         setEditStatus(null);
       }
+
+      const assetTypeId = getRefId(asset.fixedAssetTypeId);
+      const fixedAssetAccId = getRefId(asset.fixedAssetAccountId);
+      const accumulatedDeprAccId = getRefId(asset.accumulatedDepreciationAccountId);
+      const deprExpenseAccId = getRefId(asset.depreciationExpenseAccountId);
+
+      const selectedType = typesRes.data?.find((t) => t._id === assetTypeId);
+      const hasOverride = selectedType ? (
+        fixedAssetAccId !== getRefId(selectedType.fixedAssetAccountId) ||
+        accumulatedDeprAccId !== getRefId(selectedType.accumulatedDepreciationAccountId) ||
+        deprExpenseAccId !== getRefId(selectedType.depreciationExpenseAccountId)
+      ) : false;
+
+      setOverrideAccounts(hasOverride);
+
       setForm({
         assetName: asset.assetName,
         purchaseValue: String(asset.purchaseValue || ""),
@@ -252,7 +268,7 @@ function NewFixedAssetPageContent() {
         serialNumber: asset.serialNumber || "",
         currentValue: String(asset.currentValue || ""),
         disposalValue: String(asset.disposalValue || ""),
-        fixedAssetTypeId: getRefId(asset.fixedAssetTypeId),
+        fixedAssetTypeId: assetTypeId,
         purchaseDate: asset.purchaseDate?.slice(0, 10) || today,
         warrantyExpirationDate:
           asset.warrantyExpirationDate?.slice(0, 10) || "",
@@ -265,13 +281,9 @@ function NewFixedAssetPageContent() {
         computationType: asset.computationType,
         depreciationStartDate:
           asset.depreciationStartDate?.slice(0, 10) || today,
-        fixedAssetAccountId: getRefId(asset.fixedAssetAccountId),
-        accumulatedDepreciationAccountId: getRefId(
-          asset.accumulatedDepreciationAccountId,
-        ),
-        depreciationExpenseAccountId: getRefId(
-          asset.depreciationExpenseAccountId,
-        ),
+        fixedAssetAccountId: fixedAssetAccId,
+        accumulatedDepreciationAccountId: accumulatedDeprAccId,
+        depreciationExpenseAccountId: deprExpenseAccId,
       });
       initialLoadDone.current = true;
     } catch (error) {
@@ -354,6 +366,8 @@ function NewFixedAssetPageContent() {
       return;
     }
 
+    setOverrideAccounts(false);
+
     setForm((prev) => ({
       ...prev,
       fixedAssetTypeId: typeId,
@@ -379,6 +393,25 @@ function NewFixedAssetPageContent() {
       ),
     }));
   }
+
+  const handleToggleOverride = (checked: boolean) => {
+    setOverrideAccounts(checked);
+    if (!checked && form.fixedAssetTypeId) {
+      const selected = assetTypesRef.current.find((type) => type._id === form.fixedAssetTypeId);
+      if (selected) {
+        setForm((prev) => ({
+          ...prev,
+          fixedAssetAccountId: getRefId(selected.fixedAssetAccountId),
+          accumulatedDepreciationAccountId: getRefId(
+            selected.accumulatedDepreciationAccountId,
+          ),
+          depreciationExpenseAccountId: getRefId(
+            selected.depreciationExpenseAccountId,
+          ),
+        }));
+      }
+    }
+  };
 
   async function handleSaveDraft() {
     if (!form.assetName.trim()) {
@@ -891,119 +924,178 @@ function NewFixedAssetPageContent() {
               <Separator />
 
               <section className="space-y-4">
-                <h2 className="text-2xl font-medium">Account Details</h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label className="text-red-500">Fixed Asset Account*</Label>
-                    <Select
-                      value={form.fixedAssetAccountId}
-                      onValueChange={(value) => {
-                        if (value === NEW_ACCOUNT_VALUE) {
-                          openCreateAccountFor("fixedAssetAccountId");
-                          return;
-                        }
-                        setForm((prev) => ({
-                          ...prev,
-                          fixedAssetAccountId: value,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
-                          <Plus className="h-3.5 w-3.5" />
-                          New Account
-                        </SelectItem>
-                        <SelectSeparator />
-                        {accountOptionsForFixed.length === 0 ? (
-                          <SelectItem value="__none_fixed" disabled>
-                            No accounts available
-                          </SelectItem>
-                        ) : (
-                          renderAccountOptions(accountOptionsForFixed)
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-red-500">
-                      Accumulated Depreciation Account*
-                    </Label>
-                    <Select
-                      value={form.accumulatedDepreciationAccountId}
-                      onValueChange={(value) => {
-                        if (value === NEW_ACCOUNT_VALUE) {
-                          openCreateAccountFor(
-                            "accumulatedDepreciationAccountId",
-                          );
-                          return;
-                        }
-                        setForm((prev) => ({
-                          ...prev,
-                          accumulatedDepreciationAccountId: value,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
-                          <Plus className="h-3.5 w-3.5" />
-                          New Account
-                        </SelectItem>
-                        <SelectSeparator />
-                        {accountOptionsForAccumulated.length === 0 ? (
-                          <SelectItem value="__none_acc" disabled>
-                            No accounts available
-                          </SelectItem>
-                        ) : (
-                          renderAccountOptions(accountOptionsForAccumulated)
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-red-500">
-                      Depreciation Expense Account*
-                    </Label>
-                    <Select
-                      value={form.depreciationExpenseAccountId}
-                      onValueChange={(value) => {
-                        if (value === NEW_ACCOUNT_VALUE) {
-                          openCreateAccountFor("depreciationExpenseAccountId");
-                          return;
-                        }
-                        setForm((prev) => ({
-                          ...prev,
-                          depreciationExpenseAccountId: value,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
-                          <Plus className="h-3.5 w-3.5" />
-                          New Account
-                        </SelectItem>
-                        <SelectSeparator />
-                        {accountOptionsForExpense.length === 0 ? (
-                          <SelectItem value="__none_exp" disabled>
-                            No accounts available
-                          </SelectItem>
-                        ) : (
-                          renderAccountOptions(accountOptionsForExpense)
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-medium">Account Details</h2>
+                  {form.fixedAssetTypeId && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="override-accounts"
+                        checked={overrideAccounts}
+                        onChange={(e) => handleToggleOverride(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                      />
+                      <Label htmlFor="override-accounts" className="cursor-pointer text-sm font-medium">
+                        Override default GL accounts
+                      </Label>
+                    </div>
+                  )}
                 </div>
+
+                {!form.fixedAssetTypeId ? (
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground bg-muted/10">
+                    Please select a Fixed Asset Type to view account details.
+                  </div>
+                ) : !overrideAccounts ? (
+                  <div className="rounded-md bg-muted/40 p-5 border text-sm text-muted-foreground shadow-sm">
+                    <p className="font-semibold text-foreground mb-3 text-sm flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Inherited from Asset Type — override here for this asset only
+                    </p>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div className="bg-background/60 p-3 rounded border">
+                        <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fixed Asset Account</span>
+                        <span className="text-foreground font-medium mt-1.5 block">
+                          {(() => {
+                            const acc = accounts.find(a => a._id === form.fixedAssetAccountId);
+                            return acc ? accountLabel(acc) : "None selected";
+                          })()}
+                        </span>
+                      </div>
+                      <div className="bg-background/60 p-3 rounded border">
+                        <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">Accumulated Depreciation Account</span>
+                        <span className="text-foreground font-medium mt-1.5 block">
+                          {(() => {
+                            const acc = accounts.find(a => a._id === form.accumulatedDepreciationAccountId);
+                            return acc ? accountLabel(acc) : "None selected";
+                          })()}
+                        </span>
+                      </div>
+                      <div className="bg-background/60 p-3 rounded border">
+                        <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">Depreciation Expense Account</span>
+                        <span className="text-foreground font-medium mt-1.5 block">
+                          {(() => {
+                            const acc = accounts.find(a => a._id === form.depreciationExpenseAccountId);
+                            return acc ? accountLabel(acc) : "None selected";
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className="text-red-500">Fixed Asset Account*</Label>
+                      <Select
+                        value={form.fixedAssetAccountId}
+                        onValueChange={(value) => {
+                          if (value === NEW_ACCOUNT_VALUE) {
+                            openCreateAccountFor("fixedAssetAccountId");
+                            return;
+                          }
+                          setForm((prev) => ({
+                            ...prev,
+                            fixedAssetAccountId: value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                            <Plus className="h-3.5 w-3.5" />
+                            New Account
+                          </SelectItem>
+                          <SelectSeparator />
+                          {accountOptionsForFixed.length === 0 ? (
+                            <SelectItem value="__none_fixed" disabled>
+                              No accounts available
+                            </SelectItem>
+                          ) : (
+                            renderAccountOptions(accountOptionsForFixed)
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-red-500">
+                        Accumulated Depreciation Account*
+                      </Label>
+                      <Select
+                        value={form.accumulatedDepreciationAccountId}
+                        onValueChange={(value) => {
+                          if (value === NEW_ACCOUNT_VALUE) {
+                            openCreateAccountFor(
+                              "accumulatedDepreciationAccountId",
+                            );
+                            return;
+                          }
+                          setForm((prev) => ({
+                            ...prev,
+                            accumulatedDepreciationAccountId: value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                            <Plus className="h-3.5 w-3.5" />
+                            New Account
+                          </SelectItem>
+                          <SelectSeparator />
+                          {accountOptionsForAccumulated.length === 0 ? (
+                            <SelectItem value="__none_acc" disabled>
+                              No accounts available
+                            </SelectItem>
+                          ) : (
+                            renderAccountOptions(accountOptionsForAccumulated)
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-red-500">
+                        Depreciation Expense Account*
+                      </Label>
+                      <Select
+                        value={form.depreciationExpenseAccountId}
+                        onValueChange={(value) => {
+                          if (value === NEW_ACCOUNT_VALUE) {
+                            openCreateAccountFor("depreciationExpenseAccountId");
+                            return;
+                          }
+                          setForm((prev) => ({
+                            ...prev,
+                            depreciationExpenseAccountId: value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                            <Plus className="h-3.5 w-3.5" />
+                            New Account
+                          </SelectItem>
+                          <SelectSeparator />
+                          {accountOptionsForExpense.length === 0 ? (
+                            <SelectItem value="__none_exp" disabled>
+                              No accounts available
+                            </SelectItem>
+                          ) : (
+                            renderAccountOptions(accountOptionsForExpense)
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </section>
             </div>
 
@@ -1038,12 +1130,9 @@ function NewFixedAssetPageContent() {
           open={typeDialogOpen}
           onOpenChange={setTypeDialogOpen}
           onCreated={(created) => {
-            setAssetTypes((prev) => {
-              const next = [...prev, created];
-              const sorted = next.sort((a, b) => a.name.localeCompare(b.name));
-              assetTypesRef.current = sorted;
-              return sorted;
-            });
+            const updated = [...assetTypesRef.current, created].sort((a, b) => a.name.localeCompare(b.name));
+            assetTypesRef.current = updated;
+            setAssetTypes(updated);
             applyTypeDefaults(created._id);
           }}
         />
