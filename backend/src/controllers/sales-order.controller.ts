@@ -1727,3 +1727,11 @@ export const convertToPurchaseOrder = asyncHandler(async (req: AuthenticatedRequ
     message: "Sales order converted to purchase order",
   });
 });
+
+export const getNextNumber = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
+    const nextNumber = await nextSalesOrderNumber(organizationId);
+    res.json({ success: true, data: { salesOrderNumber: nextNumber } });
+  }
+);

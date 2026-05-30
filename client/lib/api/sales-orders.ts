@@ -182,6 +182,9 @@ export interface SendSalesOrderEmailInput {
 }
 
 export const salesOrderApi = {
+  getNextNumber: () =>
+    apiFetch<{ data: { salesOrderNumber: string } }>("/sales-orders/next-number"),
+
   list: (params?: SalesOrderListParams) =>
     apiFetch<PaginatedResponse<SalesOrder>>(
       `/sales-orders${buildQuery(params || {})}`,

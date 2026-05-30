@@ -74,11 +74,6 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function genSoNumber() {
-  const n = String(Date.now()).slice(-5);
-  return `SO-${n}`;
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "object" && error !== null && "message" in error) {
@@ -98,7 +93,7 @@ export default function NewSalesOrderPage() {
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
 
   const [customerId, setCustomerId] = useState("");
-  const [salesOrderNumber, setSalesOrderNumber] = useState(genSoNumber());
+  const [salesOrderNumber, setSalesOrderNumber] = useState("");
   const [reference, setReference] = useState("");
   const [orderDate, setOrderDate] = useState(todayISO());
   const [expectedShipmentDate, setExpectedShipmentDate] = useState("");
@@ -171,6 +166,9 @@ export default function NewSalesOrderPage() {
     tdsTaxApi.list().then(res => setTdsTaxes(res.data ?? []));
     tcsTaxApi.list().then(res => setTcsTaxes(res.data ?? []));
     settingsApi.taxes.list().then(res => setAllTaxes(res.data ?? []));
+    salesOrderApi.getNextNumber()
+      .then(res => setSalesOrderNumber(res.data?.salesOrderNumber || "SO-00001"))
+      .catch(() => setSalesOrderNumber("SO-00001"));
   }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   const totals = useMemo(() => {
