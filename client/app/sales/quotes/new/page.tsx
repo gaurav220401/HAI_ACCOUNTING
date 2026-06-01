@@ -60,6 +60,48 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+
+function RateInput({ 
+   value, 
+   onChange, 
+   className 
+}: { 
+   value: number; 
+   onChange: (v: number) => void; 
+   className?: string;
+}) {
+   const [isFocused, setIsFocused] = useState(false);
+   const [localVal, setLocalVal] = useState("");
+
+   const displayVal = isFocused ? localVal : fmt(value);
+
+   return (
+      <Input
+         type="text"
+         className={className}
+         value={displayVal}
+         onChange={(e) => {
+            const val = e.target.value;
+            setLocalVal(val);
+            const cleaned = val.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+         onFocus={() => {
+            setIsFocused(true);
+            setLocalVal(value === 0 ? "" : String(value));
+         }}
+         onBlur={() => {
+            setIsFocused(false);
+            const cleaned = localVal.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+      />
+   );
+}
+
 interface LineItem {
   key: number;
   itemId: string;
@@ -569,7 +611,7 @@ export default function NewQuotePage() {
                     <TableHead className="w-[100px] text-right">
                       QUANTITY
                     </TableHead>
-                    <TableHead className="w-[120px] text-right">RATE</TableHead>
+                    <TableHead className="w-[180px] text-right">RATE</TableHead>
                     <TableHead className="w-[100px] text-right">
                       DISCOUNT %
                     </TableHead>
@@ -593,6 +635,13 @@ export default function NewQuotePage() {
                                 updateLine(line.key, "itemId", "");
                               } else {
                                 handleItemSelect(line.key, v);
+                                requestAnimationFrame(() => {
+                                  const qtyInput = document.querySelector(
+                                    `input[data-quantity-key="${line.key}"]`,
+                                  ) as HTMLInputElement | null;
+                                  qtyInput?.focus();
+                                  qtyInput?.select();
+                                });
                               }
                             }}
                           >
@@ -629,6 +678,7 @@ export default function NewQuotePage() {
                             type="number"
                             min={0}
                             className="h-8 text-right text-sm"
+                            data-quantity-key={line.key}
                             value={line.quantity}
                             onChange={(e) =>
                               updateLine(
@@ -640,20 +690,7 @@ export default function NewQuotePage() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            className="h-8 text-right text-sm"
-                            value={line.rate}
-                            onChange={(e) =>
-                              updateLine(
-                                line.key,
-                                "rate",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
+                          <RateInput value={line.rate} className="h-8 text-right text-sm w-full font-medium" onChange={(val) => updateLine(line.key, "rate", val)} />
                         </TableCell>
                         <TableCell>
                           <Input

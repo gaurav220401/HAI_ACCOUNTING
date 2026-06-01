@@ -30,6 +30,47 @@ import { uploadApi } from "@/lib/api/upload";
 const TODAY = () => new Date().toISOString().slice(0, 10);
 const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 const fmtQty = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
+
+function RateInput({ 
+   value, 
+   onChange, 
+   className 
+}: { 
+   value: number; 
+   onChange: (v: number) => void; 
+   className?: string;
+}) {
+   const [isFocused, setIsFocused] = useState(false);
+   const [localVal, setLocalVal] = useState("");
+
+   const displayVal = isFocused ? localVal : fmt(value);
+
+   return (
+      <Input
+         type="text"
+         className={className}
+         value={displayVal}
+         onChange={(e) => {
+            const val = e.target.value;
+            setLocalVal(val);
+            const cleaned = val.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+         onFocus={() => {
+            setIsFocused(true);
+            setLocalVal(value === 0 ? "" : String(value));
+         }}
+         onBlur={() => {
+            setIsFocused(false);
+            const cleaned = localVal.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+      />
+   );
+}
+
 function getName(v: any): string {
   if (!v) return "";
   if (typeof v === "object") return v.displayName || v.companyName || v.name || "";
@@ -1819,7 +1860,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                         <th className="text-left px-3 py-2.5 font-medium">Item Details</th>
                         <th className="text-left px-3 py-2.5 font-medium w-44">Account</th>
                         <th className="text-right px-3 py-2.5 font-medium w-24">Quantity</th>
-                        <th className="text-right px-3 py-2.5 font-medium w-24">Rate</th>
+                        <th className="text-right px-3 py-2.5 font-medium w-36">Rate</th>
                         <th className="text-left px-3 py-2.5 font-medium w-44">Tax</th>
                         <th className="text-left px-3 py-2.5 font-medium w-44">Customer Details</th>
                         {discountLevel === "line_item" && (
@@ -1921,15 +1962,12 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                        {row.unit && <div className="mt-0.5 text-[11px] text-muted-foreground">{row.unit}</div>}
                                     </td>
                                     <td className="px-3 py-2 align-top text-right">
-                                       <Input
-                                          type="number"
-                                          className="h-8 text-xs text-right"
-                                          value={row.rate}
-                                          min={0}
-                                          step="0.01"
-                                          onChange={(e) => updateRow(row.id, { rate: Number(e.target.value) || 0 })}
-                                       />
-                                    </td>
+                                        <RateInput
+                                           value={row.rate}
+                                           className="h-8 text-xs text-right w-full font-medium"
+                                           onChange={(val) => updateRow(row.id, { rate: val })}
+                                        />
+                                     </td>
                                     <td className="px-3 py-2 align-top">
                                        <select
                                           className="w-full h-8 px-2 text-xs border rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-primary"

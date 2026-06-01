@@ -41,6 +41,46 @@ function findFreqOption(freq: RecurringFrequency, repeatEvery: number) {
 
 const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
+function RateInput({ 
+   value, 
+   onChange, 
+   className 
+}: { 
+   value: number; 
+   onChange: (v: number) => void; 
+   className?: string;
+}) {
+   const [isFocused, setIsFocused] = useState(false);
+   const [localVal, setLocalVal] = useState("");
+
+   const displayVal = isFocused ? localVal : fmt(value);
+
+   return (
+      <Input
+         type="text"
+         className={className}
+         value={displayVal}
+         onChange={(e) => {
+            const val = e.target.value;
+            setLocalVal(val);
+            const cleaned = val.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+         onFocus={() => {
+            setIsFocused(true);
+            setLocalVal(value === 0 ? "" : String(value));
+         }}
+         onBlur={() => {
+            setIsFocused(false);
+            const cleaned = localVal.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+      />
+   );
+}
+
 
 const SUPPLY_STATES = [
   { code: "AN", name: "Andaman and Nicobar Islands" },
@@ -942,7 +982,7 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
                 <th className="text-left px-3 py-2.5 font-medium">Item Details</th>
                 <th className="text-left px-3 py-2.5 font-medium w-44">Account</th>
                 <th className="text-right px-3 py-2.5 font-medium w-24">Quantity</th>
-                <th className="text-right px-3 py-2.5 font-medium w-24">Rate</th>
+                <th className="text-right px-3 py-2.5 font-medium w-36">Rate</th>
                 {discountLevel === "line_item" && (
                   <th className="text-right px-3 py-2.5 font-medium w-28">Discount</th>
                 )}
@@ -987,8 +1027,7 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
                             onChange={(e) => updateRow(row.id, { quantity: Number(e.target.value) || 0 })} />
                         </td>
                         <td className="px-3 py-2 align-top text-right">
-                          <Input type="number" className="h-8 text-right" value={row.rate}
-                            onChange={(e) => updateRow(row.id, { rate: Number(e.target.value) || 0 })} />
+                          <RateInput value={row.rate} className="h-8 text-right w-full font-medium text-xs" onChange={(val) => updateRow(row.id, { rate: val })} />
                         </td>
                         {discountLevel === "line_item" && (
                           <td className="px-3 py-2 align-top text-right">

@@ -59,6 +59,48 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+
+function RateInput({ 
+   value, 
+   onChange, 
+   className 
+}: { 
+   value: number; 
+   onChange: (v: number) => void; 
+   className?: string;
+}) {
+   const [isFocused, setIsFocused] = useState(false);
+   const [localVal, setLocalVal] = useState("");
+
+   const displayVal = isFocused ? localVal : fmt(value);
+
+   return (
+      <Input
+         type="text"
+         className={className}
+         value={displayVal}
+         onChange={(e) => {
+            const val = e.target.value;
+            setLocalVal(val);
+            const cleaned = val.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+         onFocus={() => {
+            setIsFocused(true);
+            setLocalVal(value === 0 ? "" : String(value));
+         }}
+         onBlur={() => {
+            setIsFocused(false);
+            const cleaned = localVal.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+      />
+   );
+}
+
 function calcLineAmount(l: LineItem) {
   const lineTotal = l.quantity * l.rate;
   const discAmt = (lineTotal * l.discountPercent) / 100;
@@ -505,7 +547,7 @@ export default function EditQuotePage() {
                   <TableRow>
                     <TableHead className="min-w-60">ITEM DETAILS</TableHead>
                     <TableHead className="w-25 text-right">QUANTITY</TableHead>
-                    <TableHead className="w-30 text-right">RATE</TableHead>
+                    <TableHead className="w-[180px] text-right">RATE</TableHead>
                     <TableHead className="w-25 text-right">
                       DISCOUNT %
                     </TableHead>
@@ -529,6 +571,13 @@ export default function EditQuotePage() {
                                 updateLine(line.key, "itemId", "");
                               } else {
                                 handleItemSelect(line.key, v);
+                                requestAnimationFrame(() => {
+                                  const qtyInput = document.querySelector(
+                                    `input[data-quantity-key="${line.key}"]`,
+                                  ) as HTMLInputElement | null;
+                                  qtyInput?.focus();
+                                  qtyInput?.select();
+                                });
                               }
                             }}
                           >
@@ -565,6 +614,7 @@ export default function EditQuotePage() {
                             min={0}
                             className="h-8 text-right text-sm"
                             value={line.quantity}
+                            data-quantity-key={line.key}
                             onChange={(e) =>
                               updateLine(
                                 line.key,
@@ -575,20 +625,7 @@ export default function EditQuotePage() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            className="h-8 text-right text-sm"
-                            value={line.rate}
-                            onChange={(e) =>
-                              updateLine(
-                                line.key,
-                                "rate",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                          />
+                          <RateInput value={line.rate} className="h-8 text-right text-sm w-full font-medium" onChange={(val) => updateLine(line.key, "rate", val)} />
                         </TableCell>
                         <TableCell>
                           <Input
