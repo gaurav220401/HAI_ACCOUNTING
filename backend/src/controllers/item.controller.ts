@@ -980,16 +980,19 @@ export const createUnit = asyncHandler(async (req: AuthenticatedRequest, res: Re
     throw new ValidationError("Please select a valid unit abbreviation from the standard list");
   }
 
-  const existing = await UnitOfMeasurement.findOne({
-    organizationId,
-    abbreviation: { $regex: `^${escapeRegex(abbreviation)}$`, $options: "i" },
-  }).lean();
-  if (existing) {
-    throw new ValidationError("A unit with this abbreviation already exists");
-  }
-
   const name = String(req.body.name || "").trim() || option.name;
   if (!name) throw new ValidationError("name is required");
+
+  const existing = await UnitOfMeasurement.findOne({
+    organizationId,
+    $or: [
+      { abbreviation: { $regex: `^${escapeRegex(abbreviation)}$`, $options: "i" } },
+      { name: { $regex: `^${escapeRegex(name)}$`, $options: "i" } },
+    ],
+  }).lean();
+  if (existing) {
+    throw new ValidationError("Unit already exists");
+  }
 
   const unit = new UnitOfMeasurement({ organizationId, name, abbreviation });
   await unit.save();

@@ -527,9 +527,16 @@ export default function EditDeliveryChallanPage() {
                             <TableCell>
                               <Select
                                 value={line.itemId || ""}
-                                onValueChange={(v) =>
-                                  handleItemSelect(line.key, v)
-                                }
+                                onValueChange={(v) => {
+                                  handleItemSelect(line.key, v);
+                                  requestAnimationFrame(() => {
+                                    const qtyInput = document.querySelector(
+                                      `input[data-quantity-key="${line.key}"]`,
+                                    ) as HTMLInputElement | null;
+                                    qtyInput?.focus();
+                                    qtyInput?.select();
+                                  });
+                                }}
                               >
                                 <SelectTrigger className="h-8 text-sm">
                                   <SelectValue placeholder="Select an item" />
@@ -563,6 +570,7 @@ export default function EditDeliveryChallanPage() {
                                 type="number"
                                 min={0}
                                 className="h-8 text-sm text-right"
+                                data-quantity-key={line.key}
                                 value={line.quantity}
                                 onChange={(e) =>
                                   updateLine(

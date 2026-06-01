@@ -723,9 +723,16 @@ export default function EditInvoicePage() {
                             <div className="space-y-2">
                               <Select
                                 value={line.itemId || undefined}
-                                onValueChange={(v) =>
-                                  handleItemSelect(line.key, v)
-                                }
+                                onValueChange={(v) => {
+                                  handleItemSelect(line.key, v);
+                                  requestAnimationFrame(() => {
+                                    const qtyInput = document.querySelector(
+                                      `input[data-quantity-key="${line.key}"]`,
+                                    ) as HTMLInputElement | null;
+                                    qtyInput?.focus();
+                                    qtyInput?.select();
+                                  });
+                                }}
                               >
                                 <SelectTrigger className="h-10 border-slate-200 group-hover:border-slate-300">
                                   <SelectValue placeholder="Select an item" />
@@ -757,6 +764,7 @@ export default function EditInvoicePage() {
                               type="number"
                               min={0}
                               className="h-10 text-right font-medium border-slate-200"
+                              data-quantity-key={line.key}
                               value={line.quantity}
                               onChange={(e) =>
                                 updateLine(

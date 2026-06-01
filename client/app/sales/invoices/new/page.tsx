@@ -1779,6 +1779,14 @@ function NewInvoicePageContent() {
                                 );
                               } else {
                                 handleItemSelect(line.key, v);
+                                // Move focus to quantity input after item selection
+                                requestAnimationFrame(() => {
+                                  const qtyInput = document.querySelector(
+                                    `input[data-quantity-key="${line.key}"]`,
+                                  ) as HTMLInputElement | null;
+                                  qtyInput?.focus();
+                                  qtyInput?.select();
+                                });
                               }
                             }}
                           >
@@ -1855,6 +1863,7 @@ function NewInvoicePageContent() {
                             type="number"
                             min={0}
                             className="h-8 text-right text-sm"
+                            data-quantity-key={line.key}
                             value={line.quantity}
                             onChange={(e) =>
                               updateLine(
