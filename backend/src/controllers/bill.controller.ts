@@ -27,6 +27,13 @@ import {
   syncBillCreationAccounting,
 } from "../services/bill-accounting.service";
 import { findAccountIdByName, postVoucher } from "../services/gl-posting.service";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -50,7 +57,7 @@ async function nextBillNumber(organizationId: any): Promise<string> {
 }
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundMoney(value);
 }
 
 function calcLineItems(items: any[], discountLevel: string) {
@@ -59,11 +66,11 @@ function calcLineItems(items: any[], discountLevel: string) {
     const taxName = String(item.taxName || "").trim();
     if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
     const qty = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = qty * rate;
+    const rate = round2(Number(item.rate) || 0);
+    const lineTotal = multiplyMoney(qty, rate);
     if (discountLevel === "line_item") {
       const discPct = Number(item.discountPercent) || 0;
-      const discAmt = Number(item.discountAmount) || (lineTotal * discPct) / 100;
+      const discAmt = round2(Number(item.discountAmount) || percentMoney(lineTotal, discPct));
       return {
         ...item,
         quantity: qty,
@@ -72,7 +79,7 @@ function calcLineItems(items: any[], discountLevel: string) {
         taxName,
         discountPercent: discPct,
         discountAmount: discAmt,
-        amount: lineTotal - discAmt,
+        amount: Math.max(0, subtractMoney(lineTotal, discAmt)),
       };
     }
     return {
@@ -230,16 +237,22 @@ function computeBillTotals(input: {
   taxAmount: number;
   tcsAmount: number;
   adjustmentAmount: number;
+  taxType?: string;
 }) {
-  const subTotal = input.lineItems
+  const subTotal = sumMoney(input.lineItems
     .filter((i: any) => !i.isHeader)
-    .reduce((s: number, i: any) => s + (i.quantity * i.rate), 0);
+    .map((i: any) => multiplyMoney(i.quantity, i.rate)));
   const discountAmount = input.discountLevel === "transaction"
-    ? (subTotal * input.discountPercent) / 100
-    : input.lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxableAmount = subTotal - discountAmount;
-  const taxTotal = input.taxAmount + input.tcsAmount;
-  const total = taxableAmount + taxTotal + input.adjustmentAmount;
+    ? percentMoney(subTotal, input.discountPercent)
+    : sumMoney(input.lineItems.map((i: any) => i.discountAmount || 0));
+  const taxableAmount = subtractMoney(subTotal, discountAmount);
+  const lineTaxesSum = sumMoney(input.lineItems
+    .filter((i: any) => !i.isHeader)
+    .map((i: any) => percentMoney(toNum(i.amount), toNum(i.taxRate))));
+  const tdsAmt = input.taxType === "TDS" ? round2(input.taxAmount) : 0;
+  const tcsAmt = input.taxType === "TCS" ? round2(input.tcsAmount) : 0;
+  const taxTotal = sumMoney([lineTaxesSum, -tdsAmt, tcsAmt]);
+  const total = sumMoney([taxableAmount, taxTotal, input.adjustmentAmount]);
   return { subTotal, discountAmount, taxableAmount, taxTotal, total };
 }
 
@@ -740,10 +753,10 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent) : 0;
   if (discountPercent < 0) throw new ValidationError("Discount percent cannot be negative");
-  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount) : 0;
-  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount) : 0;
+  const taxAmount = taxType === "TDS" ? round2(toNum(req.body.taxAmount)) : 0;
+  const tcsAmount = taxType === "TCS" ? round2(toNum(req.body.tcsAmount)) : 0;
   if (taxAmount < 0 || tcsAmount < 0) throw new ValidationError("Tax cannot be negative");
-  const adjustmentAmount = toNum(req.body.adjustmentAmount);
+  const adjustmentAmount = round2(toNum(req.body.adjustmentAmount));
   const totals = computeBillTotals({
     lineItems,
     discountLevel,
@@ -751,6 +764,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     taxAmount,
     tcsAmount,
     adjustmentAmount,
+    taxType,
   });
   if (totals.total < 0) throw new ValidationError("Total cannot be negative");
 
@@ -991,10 +1005,10 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent ?? bill.discountPercent) : 0;
   if (discountPercent < 0) throw new ValidationError("Discount percent cannot be negative");
   const taxType = req.body.taxType ?? bill.taxType;
-  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount ?? bill.taxAmount) : 0;
-  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount ?? bill.tcsAmount) : 0;
+  const taxAmount = taxType === "TDS" ? round2(toNum(req.body.taxAmount ?? bill.taxAmount)) : 0;
+  const tcsAmount = taxType === "TCS" ? round2(toNum(req.body.tcsAmount ?? bill.tcsAmount)) : 0;
   if (taxAmount < 0 || tcsAmount < 0) throw new ValidationError("Tax cannot be negative");
-  const adjustmentAmount = toNum(req.body.adjustmentAmount ?? bill.adjustmentAmount);
+  const adjustmentAmount = round2(toNum(req.body.adjustmentAmount ?? bill.adjustmentAmount));
   const totals = computeBillTotals({
     lineItems,
     discountLevel,
@@ -1002,6 +1016,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     taxAmount,
     tcsAmount,
     adjustmentAmount,
+    taxType,
   });
   if (totals.total < 0) throw new ValidationError("Total cannot be negative");
   const nextTdsId = taxType === "TDS"
@@ -1028,8 +1043,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     tcsAmount,
     adjustmentAmount, 
     total: totals.total,
-    balanceDue: totals.total - toNum(bill.amountPaid),
-    amountPaid: toNum(bill.amountPaid),
+    balanceDue: subtractMoney(totals.total, toNum(bill.amountPaid)),
+    amountPaid: round2(toNum(bill.amountPaid)),
   });
 
   if (bill.balanceDue < 0) {

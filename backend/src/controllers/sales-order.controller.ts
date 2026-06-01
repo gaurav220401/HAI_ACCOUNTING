@@ -16,6 +16,13 @@ import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service
 import { sendSalesOrderEmail as sendSalesOrderEmailService } from "../services/email.service";
 import { generateSalesOrderPdf } from "../services/pdf.service";
 import { syncSalesOrderByInvoice } from "../services/status-sync.service";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 import { Types } from "mongoose";
 
 const VALID_SALES_ORDER_STATUSES = new Set<SalesOrderStatus>([
@@ -50,7 +57,7 @@ function orgId(req: AuthenticatedRequest) {
 }
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundMoney(value);
 }
 
 function toNum(value: unknown, fallback = 0): number {
@@ -274,26 +281,34 @@ function computeTotals(
   taxAmountRaw: number = 0,
   tcsAmountRaw: number = 0
 ) {
-  const subTotal = round2((lineItems || []).reduce((sum, li) => sum + toNum(li?.amount), 0));
+  const subTotal = sumMoney(
+    (lineItems || []).map((li) =>
+      subtractMoney(
+        multiplyMoney(toNum(li?.quantity), toNum(li?.rate)),
+        toNum(li?.discount),
+      ),
+    ),
+  );
 
   let globalDiscountAmount = 0;
   let totalDiscountAmount = 0;
 
   if (discountLevel === "transaction") {
-    globalDiscountAmount = toNum(discountAmountRaw) || round2((subTotal * toNum(discountPercent)) / 100);
+    globalDiscountAmount = toNum(discountAmountRaw) || percentMoney(subTotal, toNum(discountPercent));
     totalDiscountAmount = globalDiscountAmount;
   } else {
-    totalDiscountAmount = (lineItems || []).reduce((sum, li) => sum + toNum(li?.discountAmount), 0);
+    totalDiscountAmount = sumMoney((lineItems || []).map((li) => toNum(li?.discountAmount)));
   }
 
-  const taxAmount = taxType === "TDS" ? toNum(taxAmountRaw) : 0;
-  const tcsAmount = taxType === "TCS" ? toNum(tcsAmountRaw) : 0;
+  const taxAmount = taxType === "TDS" ? round2(toNum(taxAmountRaw)) : 0;
+  const tcsAmount = taxType === "TCS" ? round2(toNum(tcsAmountRaw)) : 0;
 
   let total = subTotal;
   if (discountLevel === "transaction") {
-     total -= globalDiscountAmount;
+     total = subtractMoney(total, globalDiscountAmount);
   }
-  total = round2(total - taxAmount + tcsAmount + toNum(shippingCharges) + toNum(adjustment));
+  const itemTaxes = sumMoney((lineItems || []).map((li) => toNum(li?.taxAmount)));
+  total = sumMoney([total, itemTaxes, -taxAmount, tcsAmount, shippingCharges, adjustment]);
 
   return { subTotal, discountAmount: totalDiscountAmount, total };
 }
@@ -320,22 +335,22 @@ function normalizeLineItems(items: any[] = [], discountLevel: string = "transact
       }
 
       const quantity = Math.max(0, toNum(rest.quantity));
-      const rate = Math.max(0, toNum(rest.rate));
-      const lineTotal = round2(quantity * rate);
+      const rate = round2(Math.max(0, toNum(rest.rate)));
+      const lineTotal = multiplyMoney(quantity, rate);
 
       let discountAmount = 0;
       let discountPercent = 0;
       
       if (discountLevel === "line_item") {
         discountPercent = toNum(rest.discountPercent);
-        discountAmount = round2(toNum(rest.discountAmount) || (lineTotal * discountPercent) / 100);
+        discountAmount = round2(toNum(rest.discountAmount) || percentMoney(lineTotal, discountPercent));
         discountAmount = Math.min(discountAmount, lineTotal);
       }
       
-      const afterDiscount = round2(Math.max(0, lineTotal - discountAmount));
+      const afterDiscount = Math.max(0, subtractMoney(lineTotal, discountAmount));
       const taxPercent = toNum(rest.taxPercent);
-      const taxAmount = round2((afterDiscount * taxPercent) / 100);
-      const amount = round2(afterDiscount + taxAmount);
+      const taxAmount = percentMoney(afterDiscount, taxPercent);
+      const amount = sumMoney([afterDiscount, taxAmount]);
 
       return {
         ...rest,
@@ -612,9 +627,9 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
     .map((li: any) => {
       const qty = toNum(li.quantity);
       const rate = toNum(li.rate);
-      const lineTotal = round2(qty * rate);
+      const lineTotal = multiplyMoney(qty, rate);
       const discountAmount = Math.min(round2(toNum(li.discount)), lineTotal);
-      const amount = round2(Math.max(0, lineTotal - discountAmount));
+      const amount = Math.max(0, subtractMoney(lineTotal, discountAmount));
       const item = typeof li.itemId === "object" ? li.itemId : null;
 
       return {
@@ -639,10 +654,10 @@ async function buildPurchaseOrderDraftFromSalesOrder(params: {
     throw new ValidationError("Sales order has no line items to convert");
   }
 
-  const subTotal = round2(lineItems.reduce((s: number, li: any) => s + li.quantity * li.rate, 0));
-  const discountAmount = round2(lineItems.reduce((s: number, li: any) => s + (li.discountAmount || 0), 0));
-  const adjustmentAmount = round2(toNum((order as any).shippingCharges) + toNum((order as any).adjustment));
-  const total = round2(subTotal - discountAmount + adjustmentAmount);
+  const subTotal = sumMoney(lineItems.map((li: any) => multiplyMoney(li.quantity, li.rate)));
+  const discountAmount = sumMoney(lineItems.map((li: any) => li.discountAmount || 0));
+  const adjustmentAmount = sumMoney([toNum((order as any).shippingCharges), toNum((order as any).adjustment)]);
+  const total = sumMoney([subTotal, -discountAmount, adjustmentAmount]);
 
   return {
     order,
@@ -1215,15 +1230,15 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
   const invoiceNumber = await nextInvoiceNumber(oid);
   const invoiceItems = ((order as any).lineItems || []).map((line: any) => {
     const quantity = Number(line.quantity) || 0;
-    const rate = Number(line.rate) || 0;
-    const lineTotal = quantity * rate;
+    const rate = round2(Number(line.rate) || 0);
+    const lineTotal = multiplyMoney(quantity, rate);
     const lineDiscountAmount = Math.max(0, Number(line.discount) || 0);
     const discountPercent = lineTotal > 0 ? (lineDiscountAmount / lineTotal) * 100 : 0;
-    const afterDiscount = Math.max(0, lineTotal - lineDiscountAmount);
+    const afterDiscount = Math.max(0, subtractMoney(lineTotal, lineDiscountAmount));
 
     const taxRef = line.taxId && String(line.taxId) !== "none" ? (line.taxId as any) : null;
     const taxPercent = Number(taxRef?.rate) || Number(line.taxPercent) || 0;
-    const itemTaxAmount = round2((afterDiscount * taxPercent) / 100);
+    const itemTaxAmount = percentMoney(afterDiscount, taxPercent);
 
     const itemRef = line.itemId as any;
     const itemId = itemRef?._id || line.itemId || null;
@@ -1240,7 +1255,7 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
       taxId: taxRef?._id || line.taxId || null,
       taxPercent,
       taxAmount: itemTaxAmount,
-      amount: round2(afterDiscount + itemTaxAmount),
+      amount: sumMoney([afterDiscount, itemTaxAmount]),
       accountId: null,
       projectId: null,
       costRate: 0,
@@ -1252,22 +1267,18 @@ export const convertToInvoice = asyncHandler(async (req: AuthenticatedRequest, r
     throw new ValidationError("Sales order has no line items to convert");
   }
 
-  const subTotal = round2(invoiceItems.reduce(
-    (sum: number, line: any) => sum + (Number(line.quantity) || 0) * (Number(line.rate) || 0),
-    0,
-  ));
-  const lineDiscountAmount = round2(((order as any).lineItems || []).reduce(
-    (sum: number, line: any) => sum + (Number(line.discount) || 0),
-    0,
-  ));
+  const subTotal = sumMoney(
+    invoiceItems.map((line: any) => multiplyMoney(Number(line.quantity) || 0, Number(line.rate) || 0)),
+  );
+  const lineDiscountAmount = sumMoney(((order as any).lineItems || []).map((line: any) => Number(line.discount) || 0));
   const discountType: "amount" = "amount";
   const discountValue = 0;
   const discountAmount = 0;
-  const adjustmentAmount = round2((Number((order as any).shippingCharges) || 0) + (Number((order as any).adjustment) || 0));
-  const totalTaxAmount = round2(invoiceItems.reduce((sum: number, line: any) => sum + (Number(line.taxAmount) || 0), 0));
-  const tdsAmount = (order as any).taxType === "TDS" ? Number((order as any).taxAmount || 0) : 0;
-  const tcsAmount = (order as any).taxType === "TCS" ? Number((order as any).tcsAmount || 0) : 0;
-  const total = round2(subTotal - lineDiscountAmount + totalTaxAmount + adjustmentAmount - tdsAmount + tcsAmount);
+  const adjustmentAmount = sumMoney([Number((order as any).shippingCharges) || 0, Number((order as any).adjustment) || 0]);
+  const totalTaxAmount = sumMoney(invoiceItems.map((line: any) => Number(line.taxAmount) || 0));
+  const tdsAmount = (order as any).taxType === "TDS" ? round2(Number((order as any).taxAmount || 0)) : 0;
+  const tcsAmount = (order as any).taxType === "TCS" ? round2(Number((order as any).tcsAmount || 0)) : 0;
+  const total = sumMoney([subTotal, -lineDiscountAmount, totalTaxAmount, adjustmentAmount, -tdsAmount, tcsAmount]);
 
   const dueDateInput = req.body?.dueDate;
   const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;
@@ -1336,7 +1347,7 @@ export const sendEmail = asyncHandler(async (req: AuthenticatedRequest, res: Res
   const order = await SalesOrder.findOne({ _id: req.params.id, organizationId: oid } as any)
     .populate("customerId", "displayName email companyName")
     .populate("lineItems.itemId", "name hsnSacCode")
-    .populate("lineItems.taxId", "name rate");
+    .populate("lineItems.taxId", "name rate taxAuthority taxType");
 
   if (!order) throw new NotFoundError("Sales Order");
   if (String((order as any).status || "") === "VOID") {
@@ -1413,6 +1424,7 @@ export const downloadPdf = asyncHandler(async (req: AuthenticatedRequest, res: R
   } as any)
     .populate("customerId", "displayName companyName email billingAddress")
     .populate("lineItems.itemId", "name hsnSacCode")
+    .populate("lineItems.taxId", "name rate taxAuthority taxType")
     .lean();
 
   if (!order) throw new NotFoundError("Sales Order");
@@ -1715,3 +1727,11 @@ export const convertToPurchaseOrder = asyncHandler(async (req: AuthenticatedRequ
     message: "Sales order converted to purchase order",
   });
 });
+
+export const getNextNumber = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
+    const nextNumber = await nextSalesOrderNumber(organizationId);
+    res.json({ success: true, data: { salesOrderNumber: nextNumber } });
+  }
+);

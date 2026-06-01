@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Plus, Trash2, Send } from "lucide-react";
 
@@ -32,6 +32,15 @@ import {
 
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import {
+  formatMoney,
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
 import {
   salesOrderApi,
@@ -53,6 +62,7 @@ type LineItemUi = {
   discount: string;
   taxId: string | null;
   taxPercent: string;
+  taxIsManual?: boolean;
   amount: number;
 };
 
@@ -64,22 +74,30 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function genSoNumber() {
-  const n = String(Date.now()).slice(-5);
-  return `SO-${n}`;
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 
 export default function NewSalesOrderPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   const [customers, setCustomers] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
 
   const [customerId, setCustomerId] = useState("");
-  const [salesOrderNumber, setSalesOrderNumber] = useState(genSoNumber());
+  const [salesOrderNumber, setSalesOrderNumber] = useState("");
   const [reference, setReference] = useState("");
   const [orderDate, setOrderDate] = useState(todayISO());
   const [expectedShipmentDate, setExpectedShipmentDate] = useState("");
@@ -91,7 +109,6 @@ export default function NewSalesOrderPage() {
   const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [allTaxes, setAllTaxes] = useState<Tax[]>([]);
-  const [sendAfterSave, setSendAfterSave] = useState(false);
 
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("");
@@ -110,23 +127,10 @@ export default function NewSalesOrderPage() {
       discount: "0",
       taxId: "",
       taxPercent: "0",
+      taxIsManual: false,
       amount: 0,
     },
   ]);
-
-  // Set default tax for initial line once taxes are loaded
-  useEffect(() => {
-    if (allTaxes.length > 0 && lineItems.length === 1 && !lineItems[0].itemId && !lineItems[0].taxId) {
-      const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
-      if (gst18) {
-        setLineItems([{
-          ...lineItems[0],
-          taxId: gst18._id,
-          taxPercent: String(gst18.rate)
-        }]);
-      }
-    }
-  }, [allTaxes]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>("");
@@ -135,13 +139,15 @@ export default function NewSalesOrderPage() {
     () => new Map(items.map((item) => [item._id, item])),
     [items],
   );
+  const selectedCustomer = customers.find((customer) => customer._id === customerId);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+      router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   useEffect(() => {
@@ -165,63 +171,76 @@ export default function NewSalesOrderPage() {
     tdsTaxApi.list().then(res => setTdsTaxes(res.data ?? []));
     tcsTaxApi.list().then(res => setTcsTaxes(res.data ?? []));
     settingsApi.taxes.list().then(res => setAllTaxes(res.data ?? []));
+    salesOrderApi.getNextNumber()
+      .then(res => setSalesOrderNumber(res.data?.salesOrderNumber || "SO-00001"))
+      .catch(() => setSalesOrderNumber("SO-00001"));
   }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   const totals = useMemo(() => {
-    const subTotal = lineItems.reduce((sum, li) => {
-      const q = Number(li.quantity) || 0;
-      const r = Number(li.rate) || 0;
-      const d = Number(li.discount) || 0;
-      return sum + (q * r - d);
-    }, 0);
+    const subTotal = sumMoney(
+      lineItems.map((li) =>
+        subtractMoney(
+          multiplyMoney(Number(li.quantity) || 0, Number(li.rate) || 0),
+          Number(li.discount) || 0,
+        ),
+      ),
+    );
 
-    const taxBreakdown: Array<{ name: string; amount: number; rate: number }> = [];
-    const breakdownMap = new Map<string, { name: string; amount: number; rate: number }>();
-    
+    const taxBreakdown: Array<{ name: string; amount: number; rate: number }> =
+      [];
+    const breakdownMap = new Map<
+      string,
+      { name: string; amount: number; rate: number }
+    >();
+
     lineItems.forEach((li) => {
       const q = Number(li.quantity) || 0;
       const r = Number(li.rate) || 0;
       const d = Number(li.discount) || 0;
-      const amountBeforeTax = q * r - d;
+      const amountBeforeTax = Math.max(0, subtractMoney(multiplyMoney(q, r), d));
       const taxP = Number(li.taxPercent) || 0;
 
       if (taxP > 0) {
         const selectedTax = allTaxes.find((t) => t._id === li.taxId);
-        if (selectedTax && selectedTax.components && selectedTax.components.length > 0) {
+        if (
+          selectedTax &&
+          selectedTax.components &&
+          selectedTax.components.length > 0
+        ) {
           selectedTax.components.forEach((comp) => {
-            const compAmount = (amountBeforeTax * comp.rate) / 100;
+            const compAmount = percentMoney(amountBeforeTax, comp.rate);
             const compTax = allTaxes.find(t => t._id === comp.taxId);
-            const compName = compTax?.name || (comp as any).name || `Tax ${comp.rate}%`;
+            const compName = compTax?.name || comp.name || `Tax ${comp.rate}%`;
             const existing = breakdownMap.get(compName) || { name: compName, amount: 0, rate: comp.rate };
-            existing.amount += compAmount;
+            existing.amount = sumMoney([existing.amount, compAmount]);
             breakdownMap.set(compName, existing);
           });
         } else {
-          const amount = (amountBeforeTax * taxP) / 100;
+          const amount = percentMoney(amountBeforeTax, taxP);
           const name = selectedTax?.name || `Tax ${taxP}%`;
           const existing = breakdownMap.get(name) || { name, amount: 0, rate: taxP };
-          existing.amount += amount;
+          existing.amount = sumMoney([existing.amount, amount]);
           breakdownMap.set(name, existing);
         }
       }
     });
 
     breakdownMap.forEach((v) => taxBreakdown.push(v));
-    const itemTaxes = taxBreakdown.reduce((sum, b) => sum + b.amount, 0);
+    const itemTaxes = sumMoney(taxBreakdown.map((b) => b.amount));
 
-    const shipping = shippingCharges.trim() ? Number(shippingCharges) : 0;
-    const adj = adjustment.trim() ? Number(adjustment) : 0;
+    const shipping = shippingCharges.trim() ? roundMoney(shippingCharges) : 0;
+    const adj = adjustment.trim() ? roundMoney(adjustment) : 0;
 
     let taxAmount = 0;
     if (taxType === "TDS") {
       const selected = tdsTaxes.find((t) => t._id === tdsId);
-      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+      if (selected) taxAmount = percentMoney(subTotal, selected.rate);
     } else if (taxType === "TCS") {
       const selected = tcsTaxes.find((t) => t._id === tcsId);
-      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+      if (selected) taxAmount = percentMoney(subTotal, selected.rate);
     }
 
-    const total = subTotal + itemTaxes + shipping + adj + (taxType === "TCS" ? taxAmount : -taxAmount);
+    const total = sumMoney([subTotal, itemTaxes, shipping, adj, taxType === "TCS" ? taxAmount : -taxAmount]);
     return { subTotal, itemTaxes, taxBreakdown, shipping, adj, taxAmount, total };
   }, [lineItems, allTaxes, shippingCharges, adjustment, taxType, tdsId, tcsId, tdsTaxes, tcsTaxes]);
 
@@ -230,17 +249,31 @@ export default function NewSalesOrderPage() {
     const rate = Number(item.rate) || 0;
     const disc = Number(item.discount) || 0;
     const taxP = Number(item.taxPercent) || 0;
-    const amountBeforeTax = qty * rate - disc;
-    const amount = amountBeforeTax + (amountBeforeTax * taxP) / 100;
+    const amountBeforeTax = Math.max(0, subtractMoney(multiplyMoney(qty, rate), disc));
+    const amount = sumMoney([amountBeforeTax, percentMoney(amountBeforeTax, taxP)]);
     return { ...item, amount };
   }
 
   function updateLine(id: string, patch: Partial<LineItemUi>) {
-    setLineItems((prev) => prev.map((li) => (li.id === id ? recalcLine({ ...li, ...patch }) : li)));
+    setLineItems((prev) =>
+      prev.map((li) => (li.id === id ? recalcLine({ ...li, ...patch }) : li)),
+    );
   }
 
+  const getDefaultLineTax = useCallback((item: Item) => {
+    const linkedTax = getItemTaxForTransaction({
+      item,
+      contact: selectedCustomer,
+      organizationState: activeOrganization?.address?.state,
+      taxes: allTaxes,
+    });
+    return {
+      taxId: linkedTax.taxId || "",
+      taxPercent: linkedTax.taxPercent ? String(linkedTax.taxPercent) : "0",
+    };
+  }, [selectedCustomer, activeOrganization?.address?.state, allTaxes]);
+
   function addLine() {
-    const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
     setLineItems((prev) => [
       ...prev,
       recalcLine({
@@ -251,46 +284,68 @@ export default function NewSalesOrderPage() {
         quantity: "1",
         rate: "0",
         discount: "0",
-        taxId: gst18?._id || "",
-        taxPercent: gst18 ? String(gst18.rate) : "0",
+        taxId: "",
+        taxPercent: "0",
+        taxIsManual: false,
         amount: 0,
       }),
     ]);
   }
 
   function removeLine(id: string) {
-    setLineItems((prev) => (prev.length === 1 ? prev : prev.filter((li) => li.id !== id)));
+    setLineItems((prev) =>
+      prev.length === 1 ? prev : prev.filter((li) => li.id !== id),
+    );
   }
 
-  function buildPayload(saveStatus: SalesOrderStatus): CreateSalesOrderInput | null {
+  function buildPayload(
+    saveStatus: SalesOrderStatus,
+  ): CreateSalesOrderInput | null {
     setError("");
-    if (!customerId) { setError("Customer Name is required"); return null; }
-    if (!salesOrderNumber.trim()) { setError("Sales Order# is required"); return null; }
+    if (!customerId) {
+      setError("Customer Name is required");
+      return null;
+    }
+    if (!salesOrderNumber.trim()) {
+      setError("Sales Order# is required");
+      return null;
+    }
 
     const cleanedLines = lineItems
       .map((li) => {
         const qty = Number(li.quantity);
         const rate = Number(li.rate);
-        const disc = Number(li.discount) || 0;
+        const disc = roundMoney(li.discount || 0);
         const selectedItem = itemsById.get(li.itemId);
-        const taxId = li.taxId && li.taxId !== "none" ? li.taxId : null;
+        const taxId =
+          li.taxId && li.taxId !== "none" ? li.taxId
+          : li.taxIsManual ? "none"
+          : null;
+        const safeQty = Number.isFinite(qty) ? qty : 0;
+        const safeRate = Number.isFinite(rate) ? roundMoney(rate) : 0;
+        const taxPercent = Number(li.taxPercent) || 0;
+        const amountBeforeTax = Math.max(0, subtractMoney(multiplyMoney(safeQty, safeRate), disc));
+        const taxAmount = percentMoney(amountBeforeTax, taxPercent);
         return {
           itemId: li.itemId,
           name: selectedItem?.name || "",
           description: li.description || undefined,
           hsnSacCode: li.hsnSacCode || selectedItem?.hsnSacCode || "",
-          quantity: Number.isFinite(qty) ? qty : 0,
-          rate: Number.isFinite(rate) ? rate : 0,
+          quantity: safeQty,
+          rate: safeRate,
           discount: disc,
           taxId,
-          taxPercent: Number(li.taxPercent) || 0,
-          taxAmount: ((Number(li.quantity) * Number(li.rate) - (Number(li.discount) || 0)) * (Number(li.taxPercent) || 0)) / 100,
-          amount: Number(li.amount) || 0,
+          taxPercent,
+          taxAmount,
+          amount: sumMoney([amountBeforeTax, taxAmount]),
         };
       })
       .filter((li) => li.itemId);
 
-    if (cleanedLines.length === 0) { setError("Add at least one item"); return null; }
+    if (cleanedLines.length === 0) {
+      setError("Add at least one item");
+      return null;
+    }
 
     return {
       customerId,
@@ -314,6 +369,28 @@ export default function NewSalesOrderPage() {
     };
   }
 
+  useEffect(() => {
+    if (!lineItems.some((line) => line.itemId && !line.taxIsManual)) return;
+    setLineItems((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        if (!line.itemId || line.taxIsManual) return line;
+        const item = itemsById.get(line.itemId);
+        if (!item) return line;
+        const linkedTax = getDefaultLineTax(item);
+        if (
+          (line.taxId || "") === linkedTax.taxId &&
+          String(line.taxPercent || "0") === linkedTax.taxPercent
+        ) {
+          return line;
+        }
+        changed = true;
+        return recalcLine({ ...line, ...linkedTax });
+      });
+      return changed ? next : prev;
+    });
+  }, [getDefaultLineTax, itemsById, lineItems]);
+
   async function onSaveDraft() {
     const payload = buildPayload("DRAFT");
     if (!payload) return;
@@ -321,8 +398,8 @@ export default function NewSalesOrderPage() {
     try {
       await salesOrderApi.create(payload);
       router.push("/sales/orders");
-    } catch (e: any) {
-      setError(e?.message || "Failed to create sales order");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to create sales order"));
     } finally { setSaving(false); }
   }
 
@@ -338,8 +415,8 @@ export default function NewSalesOrderPage() {
       } else {
         router.push("/sales/orders");
       }
-    } catch (e: any) {
-      setError(e?.message || "Failed to create sales order");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to create sales order"));
     } finally { setSaving(false); }
   }
 
@@ -358,27 +435,53 @@ export default function NewSalesOrderPage() {
         <PageHeader
           breadcrumb={
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => router.push("/sales/orders")} aria-label="Back">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push("/sales/orders")}
+                aria-label="Back"
+              >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <span className="text-sm text-muted-foreground">
                 Sales <span className="mx-1">/</span>
                 Sales Orders <span className="mx-1">/</span>
-                <span className="font-medium text-foreground">New Sales Order</span>
+                <span className="font-medium text-foreground">
+                  New Sales Order
+                </span>
               </span>
             </div>
           }
           actions={
             <>
-              <Button variant="outline" size="sm" onClick={() => router.push("/sales/orders")} disabled={saving}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/sales/orders")}
+                disabled={saving}
+              >
                 Cancel
               </Button>
-              <Button variant="outline" size="sm" onClick={onSaveDraft} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onSaveDraft}
+                disabled={saving}
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                : null}
                 Save as Draft
               </Button>
-              <Button size="sm" onClick={onSaveAndSend} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              <Button
+                size="sm"
+                onClick={onSaveAndSend}
+                disabled={saving}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                : <Send className="h-4 w-4 mr-1" />}
                 Save and Send
               </Button>
             </>
@@ -387,11 +490,15 @@ export default function NewSalesOrderPage() {
 
         <div className="flex flex-1 flex-col p-6 gap-6">
           <div className="max-w-5xl">
-            {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
+            {error ?
+              <p className="mb-4 text-sm text-destructive">{error}</p>
+            : null}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Customer Name <span className="text-red-500">*</span></Label>
+                <Label className="md:col-span-4">
+                  Customer Name <span className="text-red-500">*</span>
+                </Label>
                 <div className="md:col-span-8">
                   <Select
                     value={customerId || undefined}
@@ -418,17 +525,17 @@ export default function NewSalesOrderPage() {
                         </SelectItem>
                       )}
                       {customers.map((c) => (
-                         <SelectItem key={c._id} value={c._id}>
-                           <div className="flex flex-col">
-                             <span className="font-medium">{c.displayName}</span>
-                             {c.companyName && (
-                               <span className="text-xs text-muted-foreground">
-                                 {c.companyName}
-                               </span>
-                             )}
-                           </div>
-                         </SelectItem>
-                       ))}
+                        <SelectItem key={c._id} value={c._id}>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{c.displayName}</span>
+                            {c.companyName && (
+                              <span className="text-xs text-muted-foreground">
+                                {c.companyName}
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -437,21 +544,31 @@ export default function NewSalesOrderPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Sales Order#*</Label>
                 <div className="md:col-span-8">
-                  <Input value={salesOrderNumber} onChange={(e) => setSalesOrderNumber(e.target.value)} />
+                  <Input
+                    value={salesOrderNumber}
+                    onChange={(e) => setSalesOrderNumber(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Reference#</Label>
                 <div className="md:col-span-8">
-                  <Input value={reference} onChange={(e) => setReference(e.target.value)} />
+                  <Input
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Sales Order Date*</Label>
                 <div className="md:col-span-8">
-                  <Input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    value={orderDate}
+                    onChange={(e) => setOrderDate(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -469,7 +586,10 @@ export default function NewSalesOrderPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Payment Terms</Label>
                 <div className="md:col-span-8">
-                  <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
+                  <Select
+                    value={paymentTermsId}
+                    onValueChange={setPaymentTermsId}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Due on Receipt" />
                     </SelectTrigger>
@@ -487,7 +607,11 @@ export default function NewSalesOrderPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Delivery Method</Label>
                 <div className="md:col-span-8">
-                  <Input value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="(optional)" />
+                  <Input
+                    value={deliveryMethod}
+                    onChange={(e) => setDeliveryMethod(e.target.value)}
+                    placeholder="(optional)"
+                  />
                 </div>
               </div>
 
@@ -497,7 +621,12 @@ export default function NewSalesOrderPage() {
             <div className="mt-8">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-medium">Item Table</div>
-                <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addLine}
+                >
                   <Plus className="h-4 w-4 mr-1" />
                   Add New Row
                 </Button>
@@ -512,9 +641,13 @@ export default function NewSalesOrderPage() {
                       <TableHead className="w-20 text-right">Qty</TableHead>
                       <TableHead className="w-24 text-right">Stock</TableHead>
                       <TableHead className="w-24 text-right">Rate</TableHead>
-                      <TableHead className="w-24 text-right">Discount</TableHead>
+                      <TableHead className="w-24 text-right">
+                        Discount
+                      </TableHead>
                       <TableHead className="w-40 text-right">Tax</TableHead>
-                      <TableHead className="w-24 text-right">Amount</TableHead>
+                      <TableHead className="w-32 text-right">
+                        Amount (excl. tax)
+                      </TableHead>
                       <TableHead className="w-12" />
                     </TableRow>
                   </TableHeader>
@@ -522,6 +655,9 @@ export default function NewSalesOrderPage() {
                     {lineItems.map((li) => {
                       const selectedItem = itemsById.get(li.itemId);
                       const quantity = Number(li.quantity) || 0;
+                      const amountBeforeTax =
+                        quantity * Number(li.rate || 0) -
+                        Number(li.discount || 0);
                       const stockOnHand =
                         selectedItem?.inventoryTracked ?
                           Number(selectedItem.stockOnHand || 0)
@@ -537,14 +673,13 @@ export default function NewSalesOrderPage() {
                                 value={li.itemId}
                                 onValueChange={(v) => {
                                   const selected = itemsById.get(v);
-                                  const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
+                                  const linkedTax = selected && !li.taxIsManual ? getDefaultLineTax(selected) : null;
                                   updateLine(li.id, {
                                     itemId: v,
                                     description: selected?.description || "",
                                     hsnSacCode: selected?.hsnSacCode || "",
                                     rate: selected?.sellingPrice != null ? String(selected.sellingPrice) : li.rate,
-                                    taxId: li.taxId || gst18?._id || "",
-                                    taxPercent: li.taxId ? li.taxPercent : (gst18 ? String(gst18.rate) : "0"),
+                                    ...(linkedTax || {}),
                                   });
                                 }}
                               >
@@ -569,7 +704,11 @@ export default function NewSalesOrderPage() {
                               <Input
                                 placeholder="Description"
                                 value={li.description}
-                                onChange={(e) => updateLine(li.id, { description: e.target.value })}
+                                onChange={(e) =>
+                                  updateLine(li.id, {
+                                    description: e.target.value,
+                                  })
+                                }
                                 className="h-7 text-xs"
                               />
                             </div>
@@ -577,7 +716,11 @@ export default function NewSalesOrderPage() {
                           <TableCell className="text-right">
                             <Input
                               value={li.hsnSacCode}
-                              onChange={(e) => updateLine(li.id, { hsnSacCode: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, {
+                                  hsnSacCode: e.target.value,
+                                })
+                              }
                               className="text-right text-xs w-20"
                               placeholder="HSN"
                             />
@@ -585,7 +728,9 @@ export default function NewSalesOrderPage() {
                           <TableCell className="text-right">
                             <Input
                               value={li.quantity}
-                              onChange={(e) => updateLine(li.id, { quantity: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, { quantity: e.target.value })
+                              }
                               className="text-right"
                             />
                           </TableCell>
@@ -601,14 +746,18 @@ export default function NewSalesOrderPage() {
                           <TableCell className="text-right">
                             <Input
                               value={li.rate}
-                              onChange={(e) => updateLine(li.id, { rate: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, { rate: e.target.value })
+                              }
                               className="text-right"
                             />
                           </TableCell>
                           <TableCell className="text-right">
                             <Input
                               value={li.discount}
-                              onChange={(e) => updateLine(li.id, { discount: e.target.value })}
+                              onChange={(e) =>
+                                updateLine(li.id, { discount: e.target.value })
+                              }
                               className="text-right"
                             />
                           </TableCell>
@@ -619,7 +768,8 @@ export default function NewSalesOrderPage() {
                                 const selectedTax = allTaxes.find(t => t._id === val);
                                 updateLine(li.id, { 
                                   taxId: val === "none" ? null : val, 
-                                  taxPercent: selectedTax ? String(selectedTax.rate) : "0" 
+                                  taxPercent: selectedTax ? String(selectedTax.rate) : "0",
+                                  taxIsManual: true,
                                 });
                               }}
                             >
@@ -627,9 +777,15 @@ export default function NewSalesOrderPage() {
                                 <SelectValue placeholder="Select Tax" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="none">Non-Taxable</SelectItem>
+                                <SelectItem value="none">
+                                  Non-Taxable
+                                </SelectItem>
                                 {allTaxes.map((t) => (
-                                  <SelectItem key={t._id} value={t._id} className="text-xs">
+                                  <SelectItem
+                                    key={t._id}
+                                    value={t._id}
+                                    className="text-xs"
+                                  >
                                     {t.name} ({t.rate}%)
                                   </SelectItem>
                                 ))}
@@ -637,10 +793,15 @@ export default function NewSalesOrderPage() {
                             </Select>
                           </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">
-                            {li.amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {formatMoney(amountBeforeTax)}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button type="button" variant="ghost" size="icon" onClick={() => removeLine(li.id)}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeLine(li.id)}
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </TableCell>
@@ -655,11 +816,19 @@ export default function NewSalesOrderPage() {
                 <div className="space-y-4">
                   <div>
                     <Label>Customer Notes</Label>
-                    <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" />
+                    <Input
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Notes"
+                    />
                   </div>
                   <div>
                     <Label>Terms & Conditions</Label>
-                    <Input value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Terms" />
+                    <Input
+                      value={terms}
+                      onChange={(e) => setTerms(e.target.value)}
+                      placeholder="Terms"
+                    />
                   </div>
                 </div>
 
@@ -667,27 +836,43 @@ export default function NewSalesOrderPage() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Sub Total</span>
-                      <span className="tabular-nums font-medium">₹{totals.subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                      <span className="tabular-nums font-medium">₹{formatMoney(totals.subTotal)}</span>
                     </div>
 
                     {totals.taxBreakdown.length > 0 && (
                       <div className="py-2 border-y border-dashed space-y-2">
                         {totals.taxBreakdown.map((b, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs">
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between text-xs"
+                          >
                             <span className="text-muted-foreground flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
-                              {b.name} <span className="text-[10px] opacity-70">[{b.rate}%]</span>
+                              {b.name}{" "}
+                              <span className="text-[10px] opacity-70">
+                                [{b.rate}%]
+                              </span>
                             </span>
-                            <span className="tabular-nums font-medium">₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                            <span className="tabular-nums font-medium">
+                              ₹
+                              {b.amount.toLocaleString("en-IN", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </span>
+                            <span className="tabular-nums font-medium">₹{formatMoney(b.amount)}</span>
                           </div>
                         ))}
                       </div>
                     )}
 
                     <div className="flex items-center justify-between gap-4 pt-1">
-                      <span className="text-muted-foreground text-sm">Shipping Charges</span>
+                      <span className="text-muted-foreground text-sm">
+                        Shipping Charges
+                      </span>
                       <div className="w-32 relative group">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">
+                          ₹
+                        </span>
                         <Input
                           value={shippingCharges}
                           onChange={(e) => setShippingCharges(e.target.value)}
@@ -698,9 +883,13 @@ export default function NewSalesOrderPage() {
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
-                      <span className="text-muted-foreground text-sm">Adjustment</span>
+                      <span className="text-muted-foreground text-sm">
+                        Adjustment
+                      </span>
                       <div className="w-32 relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">₹</span>
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]">
+                          ₹
+                        </span>
                         <Input
                           value={adjustment}
                           onChange={(e) => setAdjustment(e.target.value)}
@@ -713,7 +902,7 @@ export default function NewSalesOrderPage() {
                     <div className="pt-2 mt-2 border-t">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          {["none", "TDS", "TCS"].map((t) => (
+                          {(["none", "TDS", "TCS"] as const).map((t) => (
                             <label key={t} className={cn(
                               "flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors border",
                               taxType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input hover:bg-muted"
@@ -723,26 +912,39 @@ export default function NewSalesOrderPage() {
                                 name="taxType"
                                 value={t}
                                 checked={taxType === t}
-                                onChange={() => setTaxType(t as any)}
+                                onChange={() => setTaxType(t)}
                                 className="sr-only"
                               />
                               {t.toUpperCase()}
                             </label>
                           ))}
                         </div>
-                        
+
                         {taxType !== "none" && (
                           <div className="w-32">
-                            <Select value={taxType === "TDS" ? tdsId : tcsId} onValueChange={taxType === "TDS" ? setTdsId : setTcsId}>
+                            <Select
+                              value={taxType === "TDS" ? tdsId : tcsId}
+                              onValueChange={
+                                taxType === "TDS" ? setTdsId : setTcsId
+                              }
+                            >
                               <SelectTrigger className="h-7 text-[10px]">
-                                <SelectValue placeholder={`Select ${taxType}`} />
+                                <SelectValue
+                                  placeholder={`Select ${taxType}`}
+                                />
                               </SelectTrigger>
                               <SelectContent>
-                                {(taxType === "TDS" ? tdsTaxes : tcsTaxes).map((t) => (
-                                  <SelectItem key={t._id} value={t._id} className="text-xs">
-                                    {t.taxName} ({t.rate}%)
-                                  </SelectItem>
-                                ))}
+                                {(taxType === "TDS" ? tdsTaxes : tcsTaxes).map(
+                                  (t) => (
+                                    <SelectItem
+                                      key={t._id}
+                                      value={t._id}
+                                      className="text-xs"
+                                    >
+                                      {t.taxName} ({t.rate}%)
+                                    </SelectItem>
+                                  ),
+                                )}
                               </SelectContent>
                             </Select>
                           </div>
@@ -753,18 +955,22 @@ export default function NewSalesOrderPage() {
                         <div className="flex items-center justify-between text-xs py-1 text-muted-foreground bg-muted/50 px-2 rounded mb-3">
                           <span>{taxType} Amount</span>
                           <span className="tabular-nums font-medium">
-                            {taxType === "TDS" ? "-" : "+"} ₹{totals.taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            {taxType === "TDS" ? "-" : "+"} ₹{formatMoney(totals.taxAmount)}
                           </span>
                         </div>
                       )}
 
                       <div className="flex items-center justify-between pt-2">
-                        <span className="text-base font-bold text-foreground">Total</span>
+                        <span className="text-base font-bold text-foreground">
+                          Total
+                        </span>
                         <div className="text-right">
                           <span className="text-xl font-bold text-primary tabular-nums">
-                            ₹{totals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            ₹{formatMoney(totals.total)}
                           </span>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Indian Rupee</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+                            Indian Rupee
+                          </p>
                         </div>
                       </div>
                     </div>

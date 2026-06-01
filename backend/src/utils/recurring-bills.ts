@@ -1,4 +1,11 @@
 import Bill from "../models/bill.model";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "./money";
 
 export function toNum(val: unknown, fallback = 0): number {
   if (val === undefined || val === null || val === "") return fallback;
@@ -10,16 +17,16 @@ export function calcLineItems(items: any[], discountLevel: string) {
   return (items || []).map((item: any) => {
     if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
     const qty = Number(item.quantity);
-    const rate = Number(item.rate);
+    const rate = roundMoney(Number(item.rate));
     if (!Number.isFinite(qty) || qty <= 0) throw new Error("Quantity must be greater than zero");
     if (!Number.isFinite(rate) || rate < 0) throw new Error("Rate cannot be negative");
-    const lineTotal = qty * rate;
+    const lineTotal = multiplyMoney(qty, rate);
     if (discountLevel === "line_item") {
       const discPct = Number(item.discountPercent) || 0;
       if (discPct < 0) throw new Error("Discount percent cannot be negative");
-      const discAmt = Number(item.discountAmount) || (lineTotal * discPct) / 100;
+      const discAmt = roundMoney(Number(item.discountAmount) || percentMoney(lineTotal, discPct));
       if (discAmt < 0) throw new Error("Discount amount cannot be negative");
-      return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: lineTotal - discAmt };
+      return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: Math.max(0, subtractMoney(lineTotal, discAmt)) };
     }
     return { ...item, quantity: qty, rate, discountPercent: 0, discountAmount: 0, amount: lineTotal };
   });
@@ -64,13 +71,17 @@ export function computeRecurringTotals(input: {
   tcsAmount: number;
   adjustmentAmount: number;
 }) {
-  const subTotal = input.lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
+  const subTotal = sumMoney(
+    input.lineItems
+      .filter((i: any) => !i.isHeader)
+      .map((i: any) => multiplyMoney(i.quantity, i.rate)),
+  );
   const discountTotal = input.discountLevel === "transaction"
-    ? (subTotal * input.discountPercent) / 100
-    : input.lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
-  const taxableAmount = subTotal - discountTotal;
-  const taxTotal = input.taxAmount + input.tcsAmount;
-  const totalAmount = taxableAmount + taxTotal + input.adjustmentAmount;
+    ? percentMoney(subTotal, input.discountPercent)
+    : sumMoney(input.lineItems.map((i: any) => i.discountAmount || 0));
+  const taxableAmount = subtractMoney(subTotal, discountTotal);
+  const taxTotal = sumMoney([input.taxAmount, input.tcsAmount]);
+  const totalAmount = sumMoney([taxableAmount, taxTotal, input.adjustmentAmount]);
   return {
     subTotal,
     discountTotal,

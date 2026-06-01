@@ -23,6 +23,7 @@ import {
   type UpdateVendorCreditInput,
 } from "@/lib/api/vendor-credits";
 import { uploadApi } from "@/lib/api/upload";
+import { divideMoney, formatMoney, multiplyMoney, percentMoney, roundMoney, subtractMoney, sumMoney } from "@/lib/money";
 
 const SUPPLY_STATES = [
   "[AN] - Andaman and Nicobar Islands",
@@ -100,10 +101,7 @@ function todayIso() {
 }
 
 function fmt(v: number) {
-  return new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(v || 0);
+  return formatMoney(v || 0);
 }
 
 export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: VendorCreditFormProps) {
@@ -242,34 +240,37 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
       prev.map((row) => {
         if (row.id !== id) return row;
         const next = { ...row, ...patch };
-        const base = Number(next.quantity || 0) * Number(next.rate || 0);
-        const tax = (base * Number(next.taxPercent || 0)) / 100;
-        next.amount = base + tax;
+        const base = multiplyMoney(next.quantity || 0, next.rate || 0);
+        const tax = percentMoney(base, next.taxPercent || 0);
+        next.amount = sumMoney([base, tax]);
         return next;
       }),
     );
   }
 
-  const subTotal = useMemo(() => rows.reduce((sum, row) => sum + row.quantity * row.rate, 0), [rows]);
-  const lineTaxTotal = useMemo(() => rows.reduce((sum, row) => sum + (row.quantity * row.rate * row.taxPercent) / 100, 0), [rows]);
+  const subTotal = useMemo(() => sumMoney(rows.map((row) => multiplyMoney(row.quantity, row.rate))), [rows]);
+  const lineTaxTotal = useMemo(
+    () => sumMoney(rows.map((row) => percentMoney(multiplyMoney(row.quantity, row.rate), row.taxPercent))),
+    [rows],
+  );
   const discountAmount = useMemo(() => {
-    if (discountMode === "percent") return (subTotal * discountValue) / 100;
-    return discountValue;
+    if (discountMode === "percent") return percentMoney(subTotal, discountValue);
+    return roundMoney(discountValue);
   }, [discountMode, discountValue, subTotal]);
-  const taxableAfterDiscount = useMemo(() => Math.max(0, subTotal - discountAmount), [subTotal, discountAmount]);
+  const taxableAfterDiscount = useMemo(() => Math.max(0, subtractMoney(subTotal, discountAmount)), [subTotal, discountAmount]);
   const tdsAmount = useMemo(() => {
     if (taxType !== "TDS") return 0;
     const tax = tdsTaxes.find((t) => t._id === tdsId);
-    return tax ? (taxableAfterDiscount * Number(tax.rate || 0)) / 100 : 0;
+    return tax ? percentMoney(taxableAfterDiscount, Number(tax.rate || 0)) : 0;
   }, [taxType, tdsId, tdsTaxes, taxableAfterDiscount]);
   const tcsAmount = useMemo(() => {
     if (taxType !== "TCS") return 0;
     const tax = tcsTaxes.find((t) => t._id === tcsId);
-    return tax ? (taxableAfterDiscount * Number(tax.rate || 0)) / 100 : 0;
+    return tax ? percentMoney(taxableAfterDiscount, Number(tax.rate || 0)) : 0;
   }, [taxType, tcsId, tcsTaxes, taxableAfterDiscount]);
   const total = useMemo(
-    () => Math.max(0, subTotal - discountAmount + lineTaxTotal - tdsAmount + tcsAmount + adjustmentAmount),
-    [subTotal, discountAmount, lineTaxTotal, tdsAmount, tcsAmount, adjustmentAmount],
+    () => Math.max(0, sumMoney([taxableAfterDiscount, lineTaxTotal, -tdsAmount, tcsAmount, adjustmentAmount])),
+    [taxableAfterDiscount, lineTaxTotal, tdsAmount, tcsAmount, adjustmentAmount],
   );
 
   async function uploadAttachment(file: File) {
@@ -306,7 +307,7 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
         quantity: Number(row.quantity || 0),
         rate: Number(row.rate || 0),
         taxPercent: Number(row.taxPercent || 0),
-        amount: Number(row.amount || 0),
+        amount: roundMoney(row.amount || 0),
       };
     });
 
@@ -321,7 +322,7 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
       orderNumber,
       subject: orderNumber || billType || "",
       discountLevel: "transaction",
-      discountPercent: discountMode === "percent" ? discountValue : subTotal > 0 ? (discountValue / subTotal) * 100 : 0,
+      discountPercent: discountMode === "percent" ? discountValue : subTotal > 0 ? multiplyMoney(divideMoney(discountValue, subTotal, 6), 100) : 0,
       taxType,
       tdsId: taxType === "TDS" ? tdsId || null : null,
       tcsId: taxType === "TCS" ? tcsId || null : null,

@@ -387,6 +387,43 @@ function buildSalesOrderHtml(opts: SendSalesOrderEmailOptions): string {
       year: "numeric",
     });
 
+  const taxMode = (line: any): "igst" | "gst" => {
+    const tax = line?.taxId;
+    if (tax && typeof tax === "object") {
+      const name = String(tax.name || "").trim().toUpperCase();
+      const authority = String(tax.taxAuthority || "").trim().toUpperCase();
+      if (authority === "IGST" || name.startsWith("IGST")) return "igst";
+    }
+    return "gst";
+  };
+
+  const formatRate = (value: number) =>
+    Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+  const taxRows = (() => {
+    const rows = new Map<string, number>();
+    const addRow = (label: string, amount: number) => {
+      rows.set(label, (rows.get(label) || 0) + amount);
+    };
+
+    (opts.order?.lineItems || []).forEach((line: any) => {
+      const taxAmt = Number(line?.taxAmount || 0);
+      const taxPercent = Number(line?.taxPercent || 0);
+      if (taxAmt <= 0) return;
+
+      if (taxMode(line) === "igst") {
+        addRow(taxPercent > 0 ? `IGST (${formatRate(taxPercent)}%)` : "IGST", taxAmt);
+        return;
+      }
+
+      const halfPercent = taxPercent / 2;
+      addRow(taxPercent > 0 ? `CGST (${formatRate(halfPercent)}%)` : "CGST", taxAmt / 2);
+      addRow(taxPercent > 0 ? `SGST (${formatRate(halfPercent)}%)` : "SGST", taxAmt / 2);
+    });
+
+    return Array.from(rows.entries()).map(([label, amount]) => ({ label, amount }));
+  })();
+
   const customerRef = opts.order?.customerId;
   const customerName =
     typeof customerRef === "object"
@@ -441,24 +478,12 @@ function buildSalesOrderHtml(opts: SendSalesOrderEmailOptions): string {
                         <td style="color:#6b7280; border-top: 1px solid #eee; padding-top: 8px;">Sub Total</td>
                         <td align="right" style="font-weight:600; border-top: 1px solid #eee; padding-top: 8px;">${fmt(opts.order?.subTotal || 0)}</td>
                       </tr>
-                      ${
-                        (() => {
-                          const taxAmt = Number(opts.order?.lineItems?.reduce((acc: number, curr: any) => acc + (curr.taxAmount || 0), 0) || 0);
-                          if (taxAmt > 0) {
-                            return `
-                              <tr>
-                                <td style="color:#6b7280;">CGST</td>
-                                <td align="right" style="font-weight:600;">${fmt(taxAmt / 2)}</td>
-                              </tr>
-                              <tr>
-                                <td style="color:#6b7280;">SGST</td>
-                                <td align="right" style="font-weight:600;">${fmt(taxAmt / 2)}</td>
-                              </tr>
-                            `;
-                          }
-                          return "";
-                        })()
-                      }
+                      ${taxRows.map((row) => `
+                        <tr>
+                          <td style="color:#6b7280;">${row.label}</td>
+                          <td align="right" style="font-weight:600;">${fmt(row.amount)}</td>
+                        </tr>
+                      `).join("")}
                       ${
                         (Number(opts.order?.shippingCharges || 0) + Number(opts.order?.adjustment || 0)) !== 0 ?
                           `<tr>

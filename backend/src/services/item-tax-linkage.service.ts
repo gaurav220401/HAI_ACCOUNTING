@@ -26,8 +26,20 @@ function refId(value: unknown): string {
 }
 
 function normalizeTaxSelection(value: unknown): string {
+  if (isExplicitNoTaxSelection(value)) return "";
   const taxId = refId(value);
-  return taxId && taxId.toLowerCase() !== "none" ? taxId : "";
+  return taxId ? taxId : "";
+}
+
+function isExplicitNoTaxSelection(value: unknown): boolean {
+  const taxId = refId(value).trim().toLowerCase();
+  return taxId === "none" || taxId === "__none";
+}
+
+function clearLineTax(line: any): void {
+  line.taxId = null;
+  line.taxPercent = 0;
+  line.taxAmount = 0;
 }
 
 function normalizeState(value: unknown): string {
@@ -40,6 +52,7 @@ function normalizeState(value: unknown): string {
 const PLACE_OF_SUPPLY_STATE_BY_CODE: Record<string, string> = {
   AN: "Andaman and Nicobar Islands",
   AD: "Andhra Pradesh",
+  AP: "Andhra Pradesh",
   AR: "Arunachal Pradesh",
   AS: "Assam",
   BR: "Bihar",
@@ -66,6 +79,7 @@ const PLACE_OF_SUPPLY_STATE_BY_CODE: Record<string, string> = {
   MZ: "Mizoram",
   NL: "Nagaland",
   OD: "Odisha",
+  OR: "Odisha",
   OT: "Other Territory",
   PY: "Puducherry",
   PB: "Punjab",
@@ -76,7 +90,49 @@ const PLACE_OF_SUPPLY_STATE_BY_CODE: Record<string, string> = {
   TR: "Tripura",
   UP: "Uttar Pradesh",
   UK: "Uttarakhand",
+  UA: "Uttarakhand",
   WB: "West Bengal",
+};
+
+const STATE_BY_GST_CODE: Record<string, string> = {
+  "01": "Jammu and Kashmir",
+  "02": "Himachal Pradesh",
+  "03": "Punjab",
+  "04": "Chandigarh",
+  "05": "Uttarakhand",
+  "06": "Haryana",
+  "07": "Delhi",
+  "08": "Rajasthan",
+  "09": "Uttar Pradesh",
+  "10": "Bihar",
+  "11": "Sikkim",
+  "12": "Arunachal Pradesh",
+  "13": "Nagaland",
+  "14": "Manipur",
+  "15": "Mizoram",
+  "16": "Tripura",
+  "17": "Meghalaya",
+  "18": "Assam",
+  "19": "West Bengal",
+  "20": "Jharkhand",
+  "21": "Odisha",
+  "22": "Chhattisgarh",
+  "23": "Madhya Pradesh",
+  "24": "Gujarat",
+  "26": "Dadra and Nagar Haveli and Daman and Diu",
+  "27": "Maharashtra",
+  "29": "Karnataka",
+  "30": "Goa",
+  "31": "Lakshadweep",
+  "32": "Kerala",
+  "33": "Tamil Nadu",
+  "34": "Puducherry",
+  "35": "Andaman and Nicobar Islands",
+  "36": "Telangana",
+  "37": "Andhra Pradesh",
+  "38": "Ladakh",
+  "97": "Other Territory",
+  "99": "Foreign Country",
 };
 
 function placeOfSupplyState(value: unknown): string {
@@ -90,24 +146,85 @@ function placeOfSupplyState(value: unknown): string {
     return PLACE_OF_SUPPLY_STATE_BY_CODE[code];
   }
 
-  const cleaned = raw.replace(/^\[[A-Za-z]{2}\]\s*-\s*/, "").trim();
+  const numericCode =
+    raw.match(/\((\d{2})\)/)?.[1] ||
+    (/^\d{2}$/.test(raw) ? raw : "");
+  if (numericCode && STATE_BY_GST_CODE[numericCode]) {
+    return STATE_BY_GST_CODE[numericCode];
+  }
+
+  const cleaned = raw
+    .replace(/^\[[A-Za-z]{2}\]\s*-\s*/, "")
+    .replace(/\(\d{2}\)/g, "")
+    .trim();
   return cleaned;
 }
 
 function contactState(contact: any): string {
   return (
+    placeOfSupplyState(contact?.placeOfSupply) ||
     contact?.shippingAddress?.state ||
     contact?.billingAddress?.state ||
-    placeOfSupplyState(contact?.placeOfSupply) ||
     ""
   );
 }
 
-function resolveItemDefaultTaxId(item: any, interState: boolean): string {
+function normalizeTaxLabel(value?: unknown): string {
+  return String(value || "").trim().toUpperCase();
+}
+
+function taxMode(tax: any): "igst" | "gst" | "component" | "unknown" {
+  if (!tax) return "unknown";
+  const name = normalizeTaxLabel(tax.name);
+  const authority = normalizeTaxLabel(tax.taxAuthority);
+
+  if (authority === "IGST" || name.startsWith("IGST")) return "igst";
+  if (tax.taxType === "TaxGroup" || authority === "GST" || name.startsWith("GST")) return "gst";
+  if (authority === "CGST" || authority === "SGST" || name.startsWith("CGST") || name.startsWith("SGST")) {
+    return "component";
+  }
+
+  return "unknown";
+}
+
+function taxMatchesSupply(tax: any, interState: boolean): boolean {
+  const mode = taxMode(tax);
+  return interState ? mode === "igst" : mode === "gst";
+}
+
+function resolveItemDefaultTaxIdForSupply(args: {
+  item: any;
+  interState: boolean;
+  taxById: Map<string, any>;
+  taxRateById: Map<string, number>;
+  allTaxes: any[];
+}): string {
+  const { item, interState, taxById, taxRateById, allTaxes } = args;
   const legacyTaxId = refId(item?.taxId);
   const intraTaxId = refId(item?.intraStateTaxId);
   const interTaxId = refId(item?.interStateTaxId);
-  return interState ? interTaxId || legacyTaxId : intraTaxId || legacyTaxId;
+  const specificTaxId = interState ? interTaxId : intraTaxId;
+
+  if (specificTaxId) return specificTaxId;
+
+  const legacyTax = taxById.get(legacyTaxId);
+  if (legacyTaxId && taxMatchesSupply(legacyTax, interState)) {
+    return legacyTaxId;
+  }
+
+  const legacyRate = Number(taxRateById.get(legacyTaxId) || 0);
+  if (legacyRate) {
+    const desiredMode = interState ? "igst" : "gst";
+    const compatibleTax = allTaxes.find(
+      (tax) =>
+        tax?.isActive !== false &&
+        Number(tax?.rate || 0) === legacyRate &&
+        taxMode(tax) === desiredMode,
+    );
+    if (compatibleTax) return refId(compatibleTax._id);
+  }
+
+  return legacyTaxId;
 }
 
 export async function applyItemTaxLinkageToItems(
@@ -159,37 +276,23 @@ export async function applyItemTaxLinkageToItems(
     itemById.set(refId((item as any)?._id), item);
   }
 
-  const allTaxIds = new Set<string>();
-  for (const line of linkedItems) {
-    const lineTaxId = normalizeTaxSelection((line as any)?.taxId);
-    if (lineTaxId) allTaxIds.add(lineTaxId);
+  const taxDocs = await Tax.find({
+    organizationId: oid,
+    isDeleted: { $ne: true },
+  })
+    .select("name rate taxAuthority taxType isActive")
+    .lean();
 
-    const item = itemById.get(refId((line as any)?.itemId));
-    if (!item) continue;
-
-    const defaultTaxId = resolveItemDefaultTaxId(item, interState);
-    if (defaultTaxId) allTaxIds.add(defaultTaxId);
-  }
-
-  const taxDocs =
-    allTaxIds.size > 0
-      ? await Tax.find({
-          organizationId: oid,
-          _id: { $in: Array.from(allTaxIds) },
-          isDeleted: { $ne: true },
-        })
-          .select("rate")
-          .lean()
-      : [];
-
+  const taxById = new Map<string, any>();
   const taxRateById = new Map<string, number>();
   for (const tax of taxDocs) {
-    taxRateById.set(refId((tax as any)?._id), Number((tax as any)?.rate || 0));
+    const taxId = refId((tax as any)?._id);
+    taxById.set(taxId, tax);
+    taxRateById.set(taxId, Number((tax as any)?.rate || 0));
   }
 
   return linkedItems.map((line) => {
     const item = itemById.get(refId((line as any)?.itemId));
-    const rawLineTaxId = refId((line as any)?.taxId);
     const lineTaxId = normalizeTaxSelection((line as any)?.taxId);
     const lineTaxPercent = Number((line as any)?.taxPercent || 0);
 
@@ -199,32 +302,29 @@ export async function applyItemTaxLinkageToItems(
         if (!lineTaxPercent) {
           (line as any).taxPercent = Number(taxRateById.get(lineTaxId) || 0);
         }
-      } else if (rawLineTaxId.toLowerCase() === "none") {
-        (line as any).taxId = null;
-        if ((line as any).taxPercent !== undefined) {
-          (line as any).taxPercent = 0;
-        }
+      } else if (isExplicitNoTaxSelection((line as any)?.taxId)) {
+        clearLineTax(line);
       }
       return line;
     }
 
     if ((item as any).taxPreference && (item as any).taxPreference !== "Taxable") {
-      (line as any).taxId = null;
-      if ((line as any).taxPercent !== undefined) {
-        (line as any).taxPercent = 0;
-      }
+      clearLineTax(line);
       return line;
     }
 
-    if (rawLineTaxId.toLowerCase() === "none") {
-      (line as any).taxId = null;
-      if ((line as any).taxPercent !== undefined) {
-        (line as any).taxPercent = 0;
-      }
+    if (isExplicitNoTaxSelection((line as any)?.taxId)) {
+      clearLineTax(line);
       return line;
     }
 
-    const defaultTaxId = resolveItemDefaultTaxId(item, interState);
+    const defaultTaxId = resolveItemDefaultTaxIdForSupply({
+      item,
+      interState,
+      taxById,
+      taxRateById,
+      allTaxes: taxDocs,
+    });
     const selectedTaxId = lineTaxId || defaultTaxId;
     (line as any).taxId = selectedTaxId || null;
 

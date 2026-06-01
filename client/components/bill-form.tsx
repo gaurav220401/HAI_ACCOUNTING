@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, Fragment, useMemo, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { 
    Plus, Search, Loader2, X, ChevronDown, GripVertical, Settings2, Upload, 
    Trash2, Info, CircleDot, ExternalLink, ShoppingBag as ShoppingBagIcon 
@@ -25,11 +25,61 @@ import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/
 import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { cn } from "@/lib/utils";
 import { uploadApi } from "@/lib/api/upload";
+import { useOrganization } from "@/contexts/organization-context";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 
 // --- Helpers ---
 const TODAY = () => new Date().toISOString().slice(0, 10);
-const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(roundMoney(v));
 const fmtQty = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(v);
+
+function RateInput({ 
+   value, 
+   onChange, 
+   className 
+}: { 
+   value: number; 
+   onChange: (v: number) => void; 
+   className?: string;
+}) {
+   const [isFocused, setIsFocused] = useState(false);
+   const [localVal, setLocalVal] = useState("");
+
+   const displayVal = isFocused ? localVal : fmt(value);
+
+   return (
+      <Input
+         type="text"
+         className={className}
+         value={displayVal}
+         onChange={(e) => {
+            const val = e.target.value;
+            setLocalVal(val);
+            const cleaned = val.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+         onFocus={() => {
+            setIsFocused(true);
+            setLocalVal(value === 0 ? "" : String(value));
+         }}
+         onBlur={() => {
+            setIsFocused(false);
+            const cleaned = localVal.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+      />
+   );
+}
+
 function getName(v: any): string {
   if (!v) return "";
   if (typeof v === "object") return v.displayName || v.companyName || v.name || "";
@@ -114,10 +164,10 @@ const newHeader = (): LineRow => ({ ...newRow(), isHeader: true, headerText: "Ad
 
 function calcRow(row: LineRow, discountLevel: DiscountLevel): LineRow {
    if (row.isHeader) return { ...row, amount: 0 };
-   const lineTotal = row.quantity * row.rate;
+   const lineTotal = multiplyMoney(row.quantity, row.rate);
    if (discountLevel === "line_item") {
-      const discAmt = row.discountPercent > 0 ? (lineTotal * row.discountPercent) / 100 : row.discountAmount;
-      return { ...row, discountAmount: discAmt, amount: lineTotal - discAmt };
+      const discAmt = row.discountPercent > 0 ? percentMoney(lineTotal, row.discountPercent) : roundMoney(row.discountAmount);
+      return { ...row, discountAmount: discAmt, amount: Math.max(0, subtractMoney(lineTotal, discAmt)) };
    }
    return { ...row, discountPercent: 0, discountAmount: 0, amount: lineTotal };
 }
@@ -532,7 +582,7 @@ function ItemSelectorPopup({
    const normalizedQuery = q.trim().toLowerCase();
    const exactExists = normalizedQuery.length > 0
       && items.some((i) => i.name.trim().toLowerCase() === normalizedQuery);
-   const canCreate = Boolean(onCreateItem) && normalizedQuery.length > 0 && !exactExists;
+   const canCreate = Boolean(onCreateItem) && !exactExists;
 
    return (
       <div className="w-full overflow-hidden">
@@ -562,22 +612,21 @@ function ItemSelectorPopup({
                </button>
             ))}
          </div>
-         <div className="p-2 border-t">
+         <div className="p-2 border-t text-center">
             <button
                type="button"
-               className="text-xs text-primary hover:underline disabled:opacity-60 disabled:no-underline"
+               className="text-xs font-semibold text-primary hover:underline disabled:opacity-60 disabled:no-underline"
                disabled={!canCreate}
                onClick={() => {
-                  const nextName = q.trim();
-                  if (!nextName || !onCreateItem) return;
-                  void onCreateItem(nextName);
+                  if (!onCreateItem) return;
+                  void onCreateItem(q.trim());
                }}
             >
                {exactExists
                   ? "Item already exists"
                   : q.trim()
                      ? `+ Create \"${q.trim()}\"`
-                     : "+ Add New Item"}
+                     : "+ Create New Item"}
             </button>
          </div>
       </div>
@@ -643,6 +692,193 @@ function AccountDropdown({
    );
 }
 
+function LineTaxDropdown({
+   value,
+   onChange,
+   gstGroupTaxes,
+   otherLineTaxes,
+}: {
+   value: string;
+   onChange: (val: string) => void;
+   gstGroupTaxes: Tax[];
+   otherLineTaxes: Tax[];
+}) {
+   const [open, setOpen] = useState(false);
+   const [q, setQ] = useState("");
+
+   const selectedLabel = useMemo(() => {
+      if (!value) return "Select a Tax";
+      if (value === NEW_LINE_TAX_OPTION) return "+ New Tax";
+      if (value.startsWith("preset:")) {
+         const presetName = value.slice("preset:".length);
+         const preset = LINE_TAX_PRESETS.find((entry) => entry.name === presetName);
+         return preset ? preset.name : presetName;
+      }
+      if (value.startsWith("tax:")) {
+         const taxId = value.slice("tax:".length);
+         const allTaxes = [...gstGroupTaxes, ...otherLineTaxes];
+         const tax = allTaxes.find((entry) => entry._id === taxId);
+         return tax ? `${tax.name} [${Number(tax.rate || 0)}%]` : `Tax [ID: ${taxId}]`;
+      }
+      return value;
+   }, [value, gstGroupTaxes, otherLineTaxes]);
+
+   const filteredPresets = LINE_TAX_PRESETS.filter((p) =>
+      p.name.toLowerCase().includes(q.toLowerCase())
+   );
+   const filteredGst = gstGroupTaxes.filter((t) =>
+      `${t.name} ${t.rate}%`.toLowerCase().includes(q.toLowerCase())
+   );
+   const filteredOther = otherLineTaxes.filter((t) =>
+      `${t.name} ${t.rate}%`.toLowerCase().includes(q.toLowerCase())
+   );
+
+   return (
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+         <DropdownMenuTrigger asChild>
+            <button
+               type="button"
+               className="w-full h-8 px-2 text-xs border rounded-md bg-white text-left flex items-center justify-between hover:bg-muted/30 focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+               <span className={value ? "truncate" : "text-muted-foreground truncate"}>
+                  {selectedLabel}
+               </span>
+               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-1" />
+            </button>
+         </DropdownMenuTrigger>
+         <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-64 p-0 overflow-hidden">
+            <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+               <Input
+                  className="h-7 text-xs"
+                  placeholder="Search tax..."
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  autoFocus
+               />
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+               <button
+                  type="button"
+                  className={cn(
+                     "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 font-normal",
+                     !value && "bg-primary/10 text-primary font-medium"
+                  )}
+                  onClick={() => {
+                     onChange("");
+                     setOpen(false);
+                     setQ("");
+                  }}
+               >
+                  Select a Tax
+               </button>
+
+               {filteredPresets.length > 0 && (
+                  <div>
+                     <div className="px-3 py-1 text-xs font-semibold text-muted-foreground bg-muted/30">
+                        Non Taxable
+                     </div>
+                     {filteredPresets.map((preset) => {
+                        const val = `preset:${preset.name}`;
+                        return (
+                           <button
+                              key={preset.name}
+                              type="button"
+                              className={cn(
+                                 "w-full text-left px-3 py-2 text-sm hover:bg-muted/50",
+                                 value === val && "bg-primary/10 text-primary font-medium"
+                              )}
+                              onClick={() => {
+                                 onChange(val);
+                                 setOpen(false);
+                                 setQ("");
+                              }}
+                           >
+                              <div className="font-medium text-xs">{preset.name}</div>
+                              <div className="text-[10px] text-muted-foreground leading-tight">
+                                 {preset.description}
+                              </div>
+                           </button>
+                        );
+                     })}
+                  </div>
+               )}
+
+               {filteredGst.length > 0 && (
+                  <div>
+                     <div className="px-3 py-1 text-xs font-semibold text-muted-foreground bg-muted/30">
+                        Tax Group
+                     </div>
+                     {filteredGst.map((tax) => {
+                        const val = `tax:${tax._id}`;
+                        return (
+                           <button
+                              key={tax._id}
+                              type="button"
+                              className={cn(
+                                 "w-full text-left px-3 py-2 text-sm hover:bg-muted/50",
+                                 value === val && "bg-primary/10 text-primary font-medium"
+                              )}
+                              onClick={() => {
+                                 onChange(val);
+                                 setOpen(false);
+                                 setQ("");
+                              }}
+                           >
+                              {tax.name} [{Number(tax.rate || 0)}%]
+                           </button>
+                        );
+                     })}
+                  </div>
+               )}
+
+               {filteredOther.length > 0 && (
+                  <div>
+                     <div className="px-3 py-1 text-xs font-semibold text-muted-foreground bg-muted/30">
+                        Other Taxes
+                     </div>
+                     {filteredOther.map((tax) => {
+                        const val = `tax:${tax._id}`;
+                        return (
+                           <button
+                              key={tax._id}
+                              type="button"
+                              className={cn(
+                                 "w-full text-left px-3 py-2 text-sm hover:bg-muted/50",
+                                 value === val && "bg-primary/10 text-primary font-medium"
+                              )}
+                              onClick={() => {
+                                 onChange(val);
+                                 setOpen(false);
+                                 setQ("");
+                              }}
+                           >
+                              {tax.name} [{Number(tax.rate || 0)}%]
+                           </button>
+                        );
+                     })}
+                  </div>
+               )}
+
+               <DropdownMenuSeparator />
+               <button
+                  type="button"
+                  className={cn(
+                     "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 text-primary font-medium"
+                  )}
+                  onClick={() => {
+                     onChange(NEW_LINE_TAX_OPTION);
+                     setOpen(false);
+                     setQ("");
+                  }}
+               >
+                  + New Tax
+               </button>
+            </div>
+         </DropdownMenuContent>
+      </DropdownMenu>
+   );
+}
+
 function VendorSearchDialog({
    open,
    onClose,
@@ -654,7 +890,7 @@ function VendorSearchDialog({
    onClose: () => void;
    vendors: Contact[];
    onSelect: (vendor: Contact) => void;
-   onCreateNew: () => void;
+   onCreateNew: (qName: string) => void;
 }) {
    const [q, setQ] = useState("");
 
@@ -715,7 +951,7 @@ function VendorSearchDialog({
                   className="gap-1"
                   onClick={() => {
                      onClose();
-                     onCreateNew();
+                     onCreateNew(q.trim());
                   }}
                >
                   <Plus className="h-3.5 w-3.5" />
@@ -935,16 +1171,27 @@ export function BillForm(props: BillFormProps) {
 }
 
 export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFormProps) {
+  const router = useRouter();
+  const { activeOrganization } = useOrganization();
   const searchParams = useSearchParams();
   const cloneId = searchParams.get("clone");
-  const defaultVendorId = searchParams.get("vendorId");
+  const defaultVendorId = searchParams.get("vendorId") || searchParams.get("newVendorId");
   const defaultPurchaseOrderId = searchParams.get("purchaseOrderId");
   const shouldAutoImportFromPurchaseOrder = searchParams.get("autoImport") === "1";
   const [saving, setSaving] = useState(false);
-  const [loadingClone, setLoadingClone] = useState(!!cloneId);
+  const [loadingClone, setLoadingClone] = useState(false);
   
   // Basic Fields
-  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || defaultVendorId || "");
+  const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || "");
+
+  useEffect(() => {
+     if (!initialData && defaultVendorId) {
+        setVendorId(defaultVendorId);
+     }
+     if (cloneId) {
+        setLoadingClone(true);
+     }
+  }, [initialData, defaultVendorId, cloneId]);
   const [billNumber, setBillNumber] = useState(initialData?.billNumber || "");
    const [referenceNumber, setReferenceNumber] = useState(initialData?.referenceNumber || "");
   const [orderNumber, setOrderNumber] = useState(initialData?.orderNumber || "");
@@ -989,6 +1236,90 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
    const [showCreateVendor, setShowCreateVendor] = useState(false);
    const [showCreateLineTax, setShowCreateLineTax] = useState(false);
    const [pendingTaxRowId, setPendingTaxRowId] = useState<string | null>(null);
+
+    const [pendingItemSelection, setPendingItemSelection] = useState<{ rowId: string; itemId: string; rows: LineRow[] } | null>(null);
+
+    const saveDraftToLocalStorage = (pendingRowId?: string) => {
+       const draft = {
+          vendorId,
+          billNumber,
+          referenceNumber,
+          orderNumber,
+          billDate,
+          dueDate,
+          paymentTermsId,
+          accountsPayableId,
+          subject,
+          discountLevel,
+          discountAccountId,
+          discountType,
+          discountPercent,
+          rows,
+          taxType,
+          tdsId,
+          tcsId,
+          adjustmentLabel,
+          adjustmentAmount,
+          notes,
+          terms,
+          attachments,
+          pendingRowId,
+       };
+       localStorage.setItem("draft_bill_form", JSON.stringify(draft));
+    };
+
+    useEffect(() => {
+       const saved = localStorage.getItem("draft_bill_form");
+       if (saved) {
+          try {
+             const draft = JSON.parse(saved);
+             if (draft.vendorId) setVendorId(draft.vendorId);
+             if (draft.billNumber) setBillNumber(draft.billNumber);
+             if (draft.referenceNumber) setReferenceNumber(draft.referenceNumber);
+             if (draft.orderNumber) setOrderNumber(draft.orderNumber);
+             if (draft.billDate) setBillDate(draft.billDate);
+             if (draft.dueDate) setDueDate(draft.dueDate);
+             if (draft.paymentTermsId) setPaymentTermsId(draft.paymentTermsId);
+             if (draft.accountsPayableId) setAccountsPayableId(draft.accountsPayableId);
+             if (draft.subject) setSubject(draft.subject);
+             if (draft.discountLevel) setDiscountLevel(draft.discountLevel);
+             if (draft.discountAccountId) setDiscountAccountId(draft.discountAccountId);
+             if (draft.discountType) setDiscountType(draft.discountType);
+             if (draft.discountPercent !== undefined) setDiscountPercent(draft.discountPercent);
+             if (draft.rows) setRows(draft.rows);
+             if (draft.taxType) setTaxType(draft.taxType);
+             if (draft.tdsId) setTdsId(draft.tdsId);
+             if (draft.tcsId) setTcsId(draft.tcsId);
+             if (draft.adjustmentLabel) setAdjustmentLabel(draft.adjustmentLabel);
+             if (draft.adjustmentAmount !== undefined) setAdjustmentAmount(draft.adjustmentAmount);
+             if (draft.notes) setNotes(draft.notes);
+             if (draft.terms) setTerms(draft.terms);
+             if (draft.attachments) setAttachments(draft.attachments);
+
+             const urlParams = new URLSearchParams(window.location.search);
+             const newVendorId = urlParams.get("newVendorId");
+             const createdItemId = urlParams.get("createdItemId");
+
+             if (newVendorId) {
+                setVendorId(newVendorId);
+             }
+
+             if (createdItemId && draft.pendingRowId && draft.rows) {
+                setPendingItemSelection({
+                   rowId: draft.pendingRowId,
+                   itemId: createdItemId,
+                   rows: draft.rows,
+                });
+             }
+          } catch (e) {
+             console.error("Error restoring draft bill form", e);
+          } finally {
+             localStorage.removeItem("draft_bill_form");
+             const cleanUrl = window.location.pathname + (defaultPurchaseOrderId ? `?purchaseOrderId=${defaultPurchaseOrderId}` : "");
+             window.history.replaceState({}, document.title, cleanUrl);
+          }
+       }
+    }, [defaultPurchaseOrderId]);
 
   // Initialize from initialData or newRow
   useEffect(() => {
@@ -1051,9 +1382,9 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
      const loadData = async () => {
         try {
            const [vRes, cRes, iRes, ptRes, accRes, gstTaxRes, tdsRes, tcsRes] = await Promise.all([
-              contactApi.list({ type: "Vendor" }),
-              contactApi.list({ type: "Customer" }),
-              itemApi.list(),
+              contactApi.list({ type: "Vendor", limit: 1000 }),
+              contactApi.list({ type: "Customer", limit: 1000 }),
+              itemApi.list({ limit: 1000 }),
               settingsApi.paymentTerms.list(),
               accountApi.list({ excludeGroups: true }),
               settingsApi.taxes.list(),
@@ -1141,16 +1472,18 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   }, [mode, cloneId]);
 
   // Calculations
-  const subTotal = rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + r.amount, 0);
+  const subTotal = sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.amount));
   const discountAmt = discountLevel === "transaction"
-    ? (discountType === "%" ? (subTotal * discountPercent) / 100 : discountPercent)
-    : rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + (r.discountAmount || 0), 0);
+    ? (discountType === "%" ? percentMoney(subTotal, discountPercent) : roundMoney(discountPercent))
+    : sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.discountAmount || 0));
 
          const selectedTds = tdsTaxes.find((t) => t._id === tdsId);
          const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
-  const tdsAmount = taxType === "TDS" && selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0;
-  const tcsAmount = taxType === "TCS" && selectedTcs ? ((subTotal - discountAmt + adjustmentAmount) * selectedTcs.rate) / 100 : 0;
-  const total = subTotal - discountAmt - tdsAmount + tcsAmount + adjustmentAmount;
+  const taxableBase = Math.max(0, subtractMoney(subTotal, discountAmt));
+  const tdsAmount = taxType === "TDS" && selectedTds ? percentMoney(taxableBase, selectedTds.rate) : 0;
+  const tcsAmount = taxType === "TCS" && selectedTcs ? percentMoney(sumMoney([taxableBase, adjustmentAmount]), selectedTcs.rate) : 0;
+  const lineTaxesSum = sumMoney(rows.filter((r) => !r.isHeader).map((r) => percentMoney(r.amount, r.taxRate || 0)));
+  const total = sumMoney([taxableBase, lineTaxesSum, -tdsAmount, tcsAmount, adjustmentAmount]);
 
    const gstGroupTaxes = useMemo(
       () => lineTaxes
@@ -1213,13 +1546,29 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
       });
    }
 
-   function handleSelectItem(rowId: string, item: Item) {
-      const row = rows.find((entry) => entry.id === rowId);
+   function handleSelectItem(rowId: string, item: Item, currentRows?: LineRow[]) {
+      const activeRows = currentRows || rows;
+      const row = activeRows.find((entry) => entry.id === rowId);
       const purchaseAccountId = typeof item.purchaseAccountId === "object"
          ? (item.purchaseAccountId as any)?._id || ""
          : item.purchaseAccountId || "";
       const purchaseAccountName = purchaseAccountId
          ? accounts.find((account) => account._id === purchaseAccountId)?.name || ""
+         : "";
+
+      // Auto-apply item's default tax (intra vs inter state), matching Invoice behaviour
+      const selectedVendor = vendors.find((v) => v._id === vendorId);
+      const orgState = activeOrganization?.address?.state;
+      const linkedTax = getItemTaxForTransaction({
+         item,
+         contact: selectedVendor,
+         organizationState: orgState,
+         taxes: lineTaxes,
+      });
+      const autoTaxId = linkedTax.taxId || "";
+      const autoTaxRate = linkedTax.taxPercent || 0;
+      const autoTaxName = autoTaxId
+         ? lineTaxes.find((t) => t._id === autoTaxId)?.name || ""
          : "";
 
       updateRow(rowId, {
@@ -1231,8 +1580,69 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          rate: item.costPrice || 0,
          quantity: row?.quantity && row.quantity > 0 ? row.quantity : 1,
          unit: itemUnitLabel(item),
+         taxId: autoTaxId,
+         taxRate: autoTaxRate,
+         taxName: autoTaxName,
       });
    }
+
+   useEffect(() => {
+      if (pendingItemSelection && items.length > 0) {
+         const selectedItem = items.find((i) => i._id === pendingItemSelection.itemId);
+         if (selectedItem) {
+            handleSelectItem(pendingItemSelection.rowId, selectedItem, pendingItemSelection.rows);
+            setPendingItemSelection(null);
+         }
+      }
+   }, [items, pendingItemSelection]);
+
+   useEffect(() => {
+      const selectedVendor = vendors.find((v) => v._id === vendorId);
+      const orgState = activeOrganization?.address?.state;
+
+      setRows((prev) => {
+         if (!prev.some((row) => row.itemId && !row.isHeader)) return prev;
+
+         let changed = false;
+
+         const next = prev.map((row) => {
+            if (row.isHeader || !row.itemId) return row;
+            const item = items.find((entry) => entry._id === row.itemId);
+            if (!item) return row;
+
+            const linkedTax = getItemTaxForTransaction({
+               item,
+               contact: selectedVendor,
+               organizationState: orgState,
+               taxes: lineTaxes,
+            });
+
+            const nextTaxId = linkedTax.taxId || "";
+            const nextTaxRate = linkedTax.taxPercent || 0;
+            const nextTaxName = nextTaxId
+               ? lineTaxes.find((t) => t._id === nextTaxId)?.name || ""
+               : "";
+
+            if (
+               (row.taxId || "") === nextTaxId &&
+               Number(row.taxRate || 0) === Number(nextTaxRate || 0) &&
+               (row.taxName || "") === nextTaxName
+            ) {
+               return row;
+            }
+
+            changed = true;
+            return {
+               ...row,
+               taxId: nextTaxId,
+               taxRate: nextTaxRate,
+               taxName: nextTaxName,
+            };
+         });
+
+         return changed ? next : prev;
+      });
+   }, [vendorId, vendors, activeOrganization?.address?.state, items, lineTaxes]);
 
    function handleLinkPurchaseOrder(poId: string) {
       setLinkedPurchaseOrderId(poId);
@@ -1651,7 +2061,8 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                      onChange={(e) => {
                         const next = e.target.value;
                         if (next === NEW_VENDOR_OPTION) {
-                           setShowCreateVendor(true);
+                           saveDraftToLocalStorage();
+                           router.push(`/purchases/vendors/new?redirect=${encodeURIComponent(window.location.pathname)}`);
                            return;
                         }
                         const selectedVendor = vendors.find((v) => v._id === next);
@@ -1819,7 +2230,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                         <th className="text-left px-3 py-2.5 font-medium">Item Details</th>
                         <th className="text-left px-3 py-2.5 font-medium w-44">Account</th>
                         <th className="text-right px-3 py-2.5 font-medium w-24">Quantity</th>
-                        <th className="text-right px-3 py-2.5 font-medium w-24">Rate</th>
+                        <th className="text-right px-3 py-2.5 font-medium w-36">Rate</th>
                         <th className="text-left px-3 py-2.5 font-medium w-44">Tax</th>
                         <th className="text-left px-3 py-2.5 font-medium w-44">Customer Details</th>
                         {discountLevel === "line_item" && (
@@ -1878,7 +2289,10 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                                    }}
                                                    onCreateItem={async (name) => {
                                                       setItemSelectorRow(null);
-                                                      await handleCreateItemForRow(row.id, name);
+                                                      saveDraftToLocalStorage(row.id);
+                                                      const path = `/items/new?returnUrl=${encodeURIComponent(window.location.pathname)}`;
+                                                      const url = name ? `${path}&name=${encodeURIComponent(name)}` : path;
+                                                      router.push(url);
                                                    }}
                                                 />
                                              </DropdownMenuContent>
@@ -1921,49 +2335,19 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                                        {row.unit && <div className="mt-0.5 text-[11px] text-muted-foreground">{row.unit}</div>}
                                     </td>
                                     <td className="px-3 py-2 align-top text-right">
-                                       <Input
-                                          type="number"
-                                          className="h-8 text-xs text-right"
-                                          value={row.rate}
-                                          min={0}
-                                          step="0.01"
-                                          onChange={(e) => updateRow(row.id, { rate: Number(e.target.value) || 0 })}
-                                       />
-                                    </td>
+                                        <RateInput
+                                           value={row.rate}
+                                           className="h-8 text-xs text-right w-full font-medium"
+                                           onChange={(val) => updateRow(row.id, { rate: val })}
+                                        />
+                                     </td>
                                     <td className="px-3 py-2 align-top">
-                                       <select
-                                          className="w-full h-8 px-2 text-xs border rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                                       <LineTaxDropdown
                                           value={lineTaxSelectValue(row)}
-                                          onChange={(e) => handleLineTaxSelection(row.id, e.target.value)}
-                                       >
-                                          <option value="">Select a Tax</option>
-                                          <optgroup label="Non Taxable">
-                                             {LINE_TAX_PRESETS.map((preset) => (
-                                                <option key={preset.name} value={`preset:${preset.name}`}>
-                                                   {preset.name}
-                                                </option>
-                                             ))}
-                                          </optgroup>
-                                          {gstGroupTaxes.length > 0 && (
-                                             <optgroup label="Tax Group">
-                                                {gstGroupTaxes.map((tax) => (
-                                                   <option key={tax._id} value={`tax:${tax._id}`}>
-                                                      {tax.name} [{Number(tax.rate || 0)}%]
-                                                   </option>
-                                                ))}
-                                             </optgroup>
-                                          )}
-                                          {otherLineTaxes.length > 0 && (
-                                             <optgroup label="Other Taxes">
-                                                {otherLineTaxes.map((tax) => (
-                                                   <option key={tax._id} value={`tax:${tax._id}`}>
-                                                      {tax.name} [{Number(tax.rate || 0)}%]
-                                                   </option>
-                                                ))}
-                                             </optgroup>
-                                          )}
-                                          <option value={NEW_LINE_TAX_OPTION}>+ New Tax</option>
-                                       </select>
+                                          onChange={(val) => handleLineTaxSelection(row.id, val)}
+                                          gstGroupTaxes={gstGroupTaxes}
+                                          otherLineTaxes={otherLineTaxes}
+                                       />
                                        {row.taxName && (
                                           <>
                                              <p className="mt-1 text-[11px] text-muted-foreground truncate" title={row.taxName}>
@@ -2076,6 +2460,12 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                         </DropdownMenu>
                      </div>
                      <span className="text-sm flex-1 text-right">{fmt(discountAmt)}</span>
+                  </div>
+               )}
+               {lineTaxesSum > 0 && (
+                  <div className="flex justify-between text-sm">
+                     <span className="text-muted-foreground">Tax</span>
+                     <span>+ {fmt(lineTaxesSum)}</span>
                   </div>
                )}
 
@@ -2308,7 +2698,10 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                onClose={() => setShowVendorSearch(false)}
                vendors={vendors}
                onSelect={(vendor) => setVendorId(vendor._id)}
-               onCreateNew={() => setShowCreateVendor(true)}
+               onCreateNew={(searchName) => {
+                  saveDraftToLocalStorage();
+                  router.push(`/purchases/vendors/new?redirect=${encodeURIComponent(window.location.pathname)}` + (searchName ? `&name=${encodeURIComponent(searchName)}` : ""));
+               }}
             />
             <QuickCreateVendorDialog
                open={showCreateVendor}

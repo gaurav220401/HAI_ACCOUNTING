@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -47,6 +47,15 @@ import {
 import { cn } from "@/lib/utils";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import {
+  formatMoney,
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 import { settingsApi, type PaymentTerms, type Tax } from "@/lib/api/settings";
 import {
   salesOrderApi,
@@ -77,6 +86,7 @@ type LineItemUi = {
   discount: string;
   taxId: string | null;
   amount: number;
+  taxIsManual?: boolean;
 };
 
 type RefValue = string | { _id: string } | null | undefined;
@@ -150,6 +160,7 @@ export default function EditSalesOrderPage() {
       hsnSacCode: "",
       taxId: "",
       taxPercent: "0",
+      taxIsManual: false,
       quantity: "1",
       rate: "0",
       discount: "0",
@@ -161,6 +172,7 @@ export default function EditSalesOrderPage() {
     () => new Map(items.map((item) => [item._id, item])),
     [items],
   );
+  const selectedCustomer = contacts.find((contact) => contact._id === formData.customerId);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -221,18 +233,23 @@ export default function EditSalesOrderPage() {
         });
 
         if (orderData.lineItems?.length) {
-          const formattedItems = orderData.lineItems.map((li, idx: number) => ({
-            id: String(idx + 1),
-            itemId: getRefId(li.itemId),
-            description: li.description || "",
-            hsnSacCode: li.hsnSacCode || "",
-            taxId: getRefId(li.taxId) || (Number(li.taxPercent || 0) <= 0 ? null : ""),
-            taxPercent: String(li.taxPercent || 0),
-            quantity: String(li.quantity || 1),
-            rate: String(li.rate || 0),
-            discount: String(li.discount || 0),
-            amount: li.amount || 0,
-          }));
+          const formattedItems = orderData.lineItems.map((li, idx: number) => {
+            const taxId = getRefId(li.taxId);
+            const taxPercent = Number(li.taxPercent || 0);
+            return {
+              id: String(idx + 1),
+              itemId: getRefId(li.itemId),
+              description: li.description || "",
+              hsnSacCode: li.hsnSacCode || "",
+              taxId: taxId || (taxPercent <= 0 ? null : ""),
+              taxPercent: String(taxPercent),
+              taxIsManual: !taxId && taxPercent <= 0,
+              quantity: String(li.quantity || 1),
+              rate: String(li.rate || 0),
+              discount: String(li.discount || 0),
+              amount: li.amount || 0,
+            };
+          });
           setLineItems(
             formattedItems.length > 0 ?
               formattedItems
@@ -244,6 +261,7 @@ export default function EditSalesOrderPage() {
                   hsnSacCode: "",
                   taxId: "",
                   taxPercent: "0",
+                  taxIsManual: false,
                   quantity: "1",
                   rate: "0",
                   discount: "0",
@@ -265,8 +283,8 @@ export default function EditSalesOrderPage() {
     const rate = Number(line.rate) || 0;
     const discount = Number(line.discount) || 0;
     const taxP = Number(line.taxPercent) || 0;
-    const amountBeforeTax = qty * rate - discount;
-    const amount = amountBeforeTax + (amountBeforeTax * taxP) / 100;
+    const amountBeforeTax = Math.max(0, subtractMoney(multiplyMoney(qty, rate), discount));
+    const amount = sumMoney([amountBeforeTax, percentMoney(amountBeforeTax, taxP)]);
     return {
       ...line,
       amount,
@@ -282,9 +300,21 @@ export default function EditSalesOrderPage() {
     );
   }
 
+  const getDefaultLineTax = useCallback((item: Item) => {
+    const linkedTax = getItemTaxForTransaction({
+      item,
+      contact: selectedCustomer,
+      organizationState: activeOrganization?.address?.state,
+      taxes: allTaxes,
+    });
+    return {
+      taxId: linkedTax.taxId || "",
+      taxPercent: linkedTax.taxPercent ? String(linkedTax.taxPercent) : "0",
+    };
+  }, [selectedCustomer, activeOrganization?.address?.state, allTaxes]);
+
   function addLineItem() {
     const newId = String(Math.max(...lineItems.map((li) => Number(li.id))) + 1);
-    const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
     setLineItems((prev) => [
       ...prev,
       recalcLineItem({
@@ -292,8 +322,9 @@ export default function EditSalesOrderPage() {
         itemId: "",
         description: "",
         hsnSacCode: "",
-        taxId: gst18?._id || "",
-        taxPercent: gst18 ? String(gst18.rate) : "0",
+        taxId: "",
+        taxPercent: "0",
+        taxIsManual: false,
         quantity: "1",
         rate: "0",
         discount: "0",
@@ -309,12 +340,14 @@ export default function EditSalesOrderPage() {
   }
 
   const totals = useMemo(() => {
-    const subTotal = lineItems.reduce((sum, li) => {
-      const q = Number(li.quantity) || 0;
-      const r = Number(li.rate) || 0;
-      const d = Number(li.discount) || 0;
-      return sum + (q * r - d);
-    }, 0);
+    const subTotal = sumMoney(
+      lineItems.map((li) =>
+        subtractMoney(
+          multiplyMoney(Number(li.quantity) || 0, Number(li.rate) || 0),
+          Number(li.discount) || 0,
+        ),
+      ),
+    );
 
     const taxBreakdown: Array<{ name: string; amount: number; rate: number }> = [];
     const breakdownMap = new Map<string, { name: string; amount: number; rate: number }>();
@@ -323,48 +356,70 @@ export default function EditSalesOrderPage() {
       const q = Number(li.quantity) || 0;
       const r = Number(li.rate) || 0;
       const d = Number(li.discount) || 0;
-      const amountBeforeTax = q * r - d;
+      const amountBeforeTax = Math.max(0, subtractMoney(multiplyMoney(q, r), d));
       const taxP = Number(li.taxPercent) || 0;
 
       if (taxP > 0) {
         const selectedTax = allTaxes.find((t) => t._id === li.taxId);
         if (selectedTax && selectedTax.components && selectedTax.components.length > 0) {
           selectedTax.components.forEach((comp) => {
-            const compAmount = (amountBeforeTax * comp.rate) / 100;
+            const compAmount = percentMoney(amountBeforeTax, comp.rate);
             const compTax = allTaxes.find(t => t._id === comp.taxId);
-            const compName = compTax?.name || (comp as any).name || `Tax ${comp.rate}%`;
+            const compName = compTax?.name || comp.name || `Tax ${comp.rate}%`;
             const existing = breakdownMap.get(compName) || { name: compName, amount: 0, rate: comp.rate };
-            existing.amount += compAmount;
+            existing.amount = sumMoney([existing.amount, compAmount]);
             breakdownMap.set(compName, existing);
           });
         } else {
-          const amount = (amountBeforeTax * taxP) / 100;
+          const amount = percentMoney(amountBeforeTax, taxP);
           const name = selectedTax?.name || `Tax ${taxP}%`;
           const existing = breakdownMap.get(name) || { name, amount: 0, rate: taxP };
-          existing.amount += amount;
+          existing.amount = sumMoney([existing.amount, amount]);
           breakdownMap.set(name, existing);
         }
       }
     });
 
     breakdownMap.forEach((v) => taxBreakdown.push(v));
-    const itemTaxes = taxBreakdown.reduce((sum, b) => sum + b.amount, 0);
+    const itemTaxes = sumMoney(taxBreakdown.map((b) => b.amount));
 
-    const shipping = Number(formData.shippingCharges) || 0;
-    const adjustment = Number(formData.adjustment) || 0;
+    const shipping = roundMoney(formData.shippingCharges || 0);
+    const adjustment = roundMoney(formData.adjustment || 0);
 
     let taxAmount = 0;
     if (formData.taxType === "TDS") {
       const selected = tdsTaxes.find((t) => t._id === formData.tdsId);
-      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+      if (selected) taxAmount = percentMoney(subTotal, selected.rate);
     } else if (formData.taxType === "TCS") {
       const selected = tcsTaxes.find((t) => t._id === formData.tcsId);
-      if (selected) taxAmount = (subTotal * selected.rate) / 100;
+      if (selected) taxAmount = percentMoney(subTotal, selected.rate);
     }
 
-    const total = subTotal + itemTaxes + shipping + adjustment + (formData.taxType === "TCS" ? taxAmount : -taxAmount);
+    const total = sumMoney([subTotal, itemTaxes, shipping, adjustment, formData.taxType === "TCS" ? taxAmount : -taxAmount]);
     return { subTotal, itemTaxes, taxBreakdown, shipping, adjustment, taxAmount, total };
   }, [lineItems, allTaxes, formData.shippingCharges, formData.adjustment, formData.taxType, formData.tdsId, formData.tcsId, tdsTaxes, tcsTaxes]);
+
+  useEffect(() => {
+    if (!lineItems.some((line) => line.itemId && !line.taxIsManual)) return;
+    setLineItems((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        if (!line.itemId || line.taxIsManual) return line;
+        const item = itemsById.get(line.itemId);
+        if (!item) return line;
+        const linkedTax = getDefaultLineTax(item);
+        if (
+          (line.taxId || "") === linkedTax.taxId &&
+          String(line.taxPercent || "0") === linkedTax.taxPercent
+        ) {
+          return line;
+        }
+        changed = true;
+        return recalcLineItem({ ...line, ...linkedTax });
+      });
+      return changed ? next : prev;
+    });
+  }, [getDefaultLineTax, itemsById, lineItems]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -386,12 +441,15 @@ export default function EditSalesOrderPage() {
           .filter((li) => li.itemId && li.quantity && li.rate)
           .map((li) => {
             const q = Number(li.quantity) || 0;
-            const r = Number(li.rate) || 0;
-            const d = Number(li.discount) || 0;
+            const r = roundMoney(Number(li.rate) || 0);
+            const d = roundMoney(li.discount || 0);
             const taxP = Number(li.taxPercent) || 0;
-            const amountBeforeTax = q * r - d;
-            const lineTaxAmount = (amountBeforeTax * taxP) / 100;
-            const taxId = li.taxId && li.taxId !== "none" ? li.taxId : null;
+            const amountBeforeTax = Math.max(0, subtractMoney(multiplyMoney(q, r), d));
+            const lineTaxAmount = percentMoney(amountBeforeTax, taxP);
+            const taxId =
+              li.taxId && li.taxId !== "none" ? li.taxId
+              : li.taxIsManual ? "none"
+              : null;
             return {
               itemId: li.itemId,
               name: itemsById.get(li.itemId)?.name || "",
@@ -403,7 +461,7 @@ export default function EditSalesOrderPage() {
               taxId,
               taxPercent: taxP,
               taxAmount: lineTaxAmount,
-              amount: amountBeforeTax + lineTaxAmount,
+              amount: sumMoney([amountBeforeTax, lineTaxAmount]),
             };
           }),
         shippingCharges: totals.shipping,
@@ -434,7 +492,7 @@ export default function EditSalesOrderPage() {
       if (invoiceId) {
         router.push(`/sales/invoices/${invoiceId}`);
       }
-    } catch (_err) {
+    } catch {
       // noop
     }
   }
@@ -444,7 +502,7 @@ export default function EditSalesOrderPage() {
     try {
       await salesOrderApi.remove(order._id);
       router.push("/sales/orders");
-    } catch (_err) {
+    } catch {
       // noop
     }
   }
@@ -745,7 +803,7 @@ export default function EditSalesOrderPage() {
                               value={li.itemId}
                               onValueChange={(v) => {
                                 const selected = itemsById.get(v);
-                                const gst18 = allTaxes.find(t => t.name.toUpperCase().includes("GST18"));
+                                const linkedTax = selected && !li.taxIsManual ? getDefaultLineTax(selected) : null;
                                 updateLineItem(li.id, {
                                   itemId: v,
                                   description: selected?.description || li.description,
@@ -754,8 +812,7 @@ export default function EditSalesOrderPage() {
                                     selected?.sellingPrice != null ?
                                       String(selected.sellingPrice)
                                     : li.rate,
-                                  taxId: li.taxId || gst18?._id || "",
-                                  taxPercent: li.taxId ? li.taxPercent : (gst18 ? String(gst18.rate) : "0"),
+                                  ...(linkedTax || {}),
                                 });
                               }}
                             >
@@ -854,7 +911,8 @@ export default function EditSalesOrderPage() {
                               const selectedTax = allTaxes.find(t => t._id === val);
                               updateLineItem(li.id, { 
                                 taxId: val === "none" ? null : val, 
-                                taxPercent: selectedTax ? String(selectedTax.rate) : "0" 
+                                taxPercent: selectedTax ? String(selectedTax.rate) : "0",
+                                taxIsManual: true,
                               });
                             }}
                           >
@@ -872,7 +930,7 @@ export default function EditSalesOrderPage() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right">
-                          ₹{li.amount.toLocaleString("en-IN")}
+                          ₹{formatMoney(li.amount)}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -999,7 +1057,7 @@ export default function EditSalesOrderPage() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>{formData.taxType} Amount</span>
                   <span className="tabular-nums font-medium">
-                    {formData.taxType === "TDS" ? "-" : "+"} ₹{totals.taxAmount.toLocaleString("en-IN", {minimumFractionDigits:2})}
+                    {formData.taxType === "TDS" ? "-" : "+"} ₹{formatMoney(totals.taxAmount)}
                   </span>
                 </div>
               )}
@@ -1008,7 +1066,7 @@ export default function EditSalesOrderPage() {
             <div className="bg-muted/30 rounded-xl border p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Sub Total</span>
-                <span className="tabular-nums font-medium">₹{totals.subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                <span className="tabular-nums font-medium">₹{formatMoney(totals.subTotal)}</span>
               </div>
 
               {totals.taxBreakdown.length > 0 && (
@@ -1019,7 +1077,7 @@ export default function EditSalesOrderPage() {
                         <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
                         {b.name} <span className="text-[10px] opacity-70">[{b.rate}%]</span>
                       </span>
-                      <span className="tabular-nums font-medium">₹{b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                      <span className="tabular-nums font-medium">₹{formatMoney(b.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -1054,7 +1112,7 @@ export default function EditSalesOrderPage() {
               <div className="pt-2 mt-2 border-t">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    {["none", "TDS", "TCS"].map((t) => (
+                    {(["none", "TDS", "TCS"] as const).map((t) => (
                       <label key={t} className={cn(
                         "flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors border",
                         formData.taxType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input hover:bg-muted"
@@ -1064,7 +1122,7 @@ export default function EditSalesOrderPage() {
                           name="taxType"
                           value={t}
                           checked={formData.taxType === t}
-                          onChange={() => setFormData(p => ({...p, taxType: t as any}))}
+                          onChange={() => setFormData((p) => ({...p, taxType: t}))}
                           className="sr-only"
                         />
                         {t.toUpperCase()}
@@ -1094,7 +1152,7 @@ export default function EditSalesOrderPage() {
                   <div className="flex items-center justify-between text-xs py-1 text-muted-foreground bg-muted/50 px-2 rounded mb-3">
                     <span>{formData.taxType} Amount</span>
                     <span className="tabular-nums font-medium">
-                      {formData.taxType === "TDS" ? "-" : "+"} ₹{totals.taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      {formData.taxType === "TDS" ? "-" : "+"} ₹{formatMoney(totals.taxAmount)}
                     </span>
                   </div>
                 )}
@@ -1103,7 +1161,7 @@ export default function EditSalesOrderPage() {
                   <span className="text-base font-bold text-foreground">Total</span>
                   <div className="text-right">
                     <span className="text-xl font-bold text-primary tabular-nums">
-                      ₹{totals.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      ₹{formatMoney(totals.total)}
                     </span>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Indian Rupee</p>
                   </div>

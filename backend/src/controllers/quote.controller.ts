@@ -13,6 +13,13 @@ import { generateQuotePdf } from "../services/quote-pdf.service";
 import { sendQuoteEmail as sendQuoteEmailService } from "../services/email.service";
 import Organization from "../models/organization.model";
 import Invoice from "../models/invoice.model";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -33,14 +40,14 @@ async function normalizeQuoteItems(
 
   return linkedItems.map((item: any) => {
     const qty = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = qty * rate;
+    const rate = roundMoney(Number(item.rate) || 0);
+    const lineTotal = multiplyMoney(qty, rate);
     const discPct = Number(item.discountPercent) || 0;
     const discAmt =
-      Number(item.discountAmount) || (lineTotal * discPct) / 100;
-    const afterDiscount = lineTotal - discAmt;
+      roundMoney(Number(item.discountAmount) || percentMoney(lineTotal, discPct));
+    const afterDiscount = Math.max(0, subtractMoney(lineTotal, discAmt));
     const taxPct = Number(item.taxPercent) || 0;
-    const taxAmt = Number(item.taxAmount) || (afterDiscount * taxPct) / 100;
+    const taxAmt = roundMoney(Number(item.taxAmount) || percentMoney(afterDiscount, taxPct));
     return {
       ...item,
       quantity: qty,
@@ -49,7 +56,7 @@ async function normalizeQuoteItems(
       discountAmount: discAmt,
       taxPercent: taxPct,
       taxAmount: taxAmt,
-      amount: afterDiscount + taxAmt,
+      amount: sumMoney([afterDiscount, taxAmt]),
     };
   });
 }
@@ -85,10 +92,95 @@ async function nextQuoteNumber(organizationId: any): Promise<string> {
 }
 
 function resolveTaxImpact(taxType: string, taxAmount: number): number {
-  const normalizedTaxAmount = Number(taxAmount) || 0;
+  const normalizedTaxAmount = roundMoney(Number(taxAmount) || 0);
   if (taxType === "TCS") return normalizedTaxAmount;
   if (taxType === "TDS") return -normalizedTaxAmount;
   return 0;
+}
+
+function taxRefText(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "object") {
+    const maybe = value as { _id?: unknown; toString?: () => string };
+    if (maybe._id) return taxRefText(maybe._id);
+    if (typeof maybe.toString === "function") {
+      const text = maybe.toString();
+      return text === "[object Object]" ? "" : text;
+    }
+  }
+  return String(value);
+}
+
+function normalizeTaxRef(value: unknown): string | null {
+  const text = taxRefText(value).trim();
+  const normalized = text.toLowerCase();
+  if (!text || normalized === "none" || normalized === "__none") return null;
+  return text;
+}
+
+function normalizeHeaderTax(
+  taxTypeRaw: unknown,
+  taxIdRaw: unknown,
+  taxAmountRaw: unknown,
+): {
+  taxType: "TDS" | "TCS" | "none";
+  taxId: string | null;
+    taxAmount: number;
+} {
+  const taxType =
+    taxTypeRaw === "TDS" || taxTypeRaw === "TCS" ? taxTypeRaw : "none";
+  const taxId = normalizeTaxRef(taxIdRaw);
+
+  if (taxType === "none" || !taxId) {
+    return { taxType: "none", taxId: null, taxAmount: 0 };
+  }
+
+  return {
+    taxType,
+    taxId,
+    taxAmount: roundMoney(Number(taxAmountRaw) || 0),
+  };
+}
+
+function normalizeTaxLabel(value?: string): string {
+  return (value || "").trim().toUpperCase();
+}
+
+function resolveTaxModeFromName(
+  value?: string,
+): "igst" | "cgst" | "sgst" | "gst" | "unknown" {
+  const name = normalizeTaxLabel(value);
+  if (!name) return "unknown";
+  if (name.startsWith("IGST")) return "igst";
+  if (name.startsWith("CGST")) return "cgst";
+  if (name.startsWith("SGST")) return "sgst";
+  if (name.startsWith("GST")) return "gst";
+  return "unknown";
+}
+
+function inferIsIntraState(quote: any, org: any): boolean {
+  const items = (quote?.items || []) as any[];
+  let hasIgst = false;
+  let hasSplit = false;
+
+  for (const item of items) {
+    const taxName =
+      typeof item.taxId === "object" ? item.taxId?.name : item.taxName || "";
+    const mode = resolveTaxModeFromName(taxName);
+    if (mode === "igst") hasIgst = true;
+    if (mode === "cgst" || mode === "sgst" || mode === "gst") hasSplit = true;
+  }
+
+  if (hasSplit && !hasIgst) return true;
+  if (hasIgst && !hasSplit) return false;
+
+  const quoteState = (
+    (quote as any).placeOfSupply || (quote.customerId as any)?.billingAddress?.state || ""
+  )
+    .trim()
+    .toLowerCase();
+  const orgState = ((org as any).address?.state || "").trim().toLowerCase();
+  return quoteState.length > 0 && orgState.length > 0 && quoteState === orgState;
 }
 
 // ─── List Quotes ───────────────────────────────────────────────────────
@@ -184,31 +276,34 @@ export const create = asyncHandler(
       req.body.items || [],
     );
 
-    const subTotal = items.reduce(
-      (s: number, i: any) => s + i.quantity * i.rate,
-      0,
-    );
+    const subTotal = sumMoney(items.map((i: any) => multiplyMoney(i.quantity, i.rate)));
+
+    const lineItemsTotal = sumMoney(items.map((i: any) => Number(i.amount) || 0));
 
     // Discount on total
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
     const discountAmount =
       discountType === "percent" ?
-        (subTotal * discountValue) / 100
-      : discountValue;
+        percentMoney(subTotal, discountValue)
+      : roundMoney(discountValue);
 
     // Tax on total
-    const taxType = req.body.taxType || "none";
-    const taxAmount = Number(req.body.taxAmount) || 0;
+    const headerTax = normalizeHeaderTax(
+      req.body.taxType,
+      req.body.taxId,
+      req.body.taxAmount,
+    );
 
     // Adjustment
-    const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
+    const adjustmentAmount = roundMoney(Number(req.body.adjustmentAmount) || 0);
 
-    const total =
-      subTotal -
-      discountAmount +
-      resolveTaxImpact(taxType, taxAmount) +
-      adjustmentAmount;
+    const total = sumMoney([
+      lineItemsTotal,
+      -discountAmount,
+      resolveTaxImpact(headerTax.taxType, headerTax.taxAmount),
+      adjustmentAmount,
+    ]);
 
     const quote = new Quote({
       organizationId: oid,
@@ -224,9 +319,9 @@ export const create = asyncHandler(
       discountType,
       discountValue,
       discountAmount,
-      taxType,
-      taxId: req.body.taxId || null,
-      taxAmount,
+      taxType: headerTax.taxType,
+      taxId: headerTax.taxId,
+      taxAmount: headerTax.taxAmount,
       adjustmentLabel: req.body.adjustmentLabel || "Adjustment",
       adjustmentAmount,
       total,
@@ -235,6 +330,7 @@ export const create = asyncHandler(
       status: req.body.status || "Draft",
       emailContacts: req.body.emailContacts || [],
       attachments: req.body.attachments || [],
+      placeOfSupply: req.body.placeOfSupply || "",
     });
 
     attachUser(quote, req);
@@ -281,11 +377,25 @@ export const update = asyncHandler(
       "termsAndConditions",
       "emailContacts",
       "attachments",
+      "templateConfig",
+      "placeOfSupply",
     ];
 
+    const headerTaxFields = new Set(["taxType", "taxId", "taxAmount"]);
     allowed.forEach((f) => {
-      if (req.body[f] !== undefined) (quote as any)[f] = req.body[f];
+      if (req.body[f] !== undefined && !headerTaxFields.has(f)) {
+        (quote as any)[f] = req.body[f];
+      }
     });
+
+    const headerTax = normalizeHeaderTax(
+      req.body.taxType !== undefined ? req.body.taxType : quote.taxType,
+      req.body.taxId !== undefined ? req.body.taxId : quote.taxId,
+      req.body.taxAmount !== undefined ? req.body.taxAmount : quote.taxAmount,
+    );
+    quote.taxType = headerTax.taxType;
+    (quote as any).taxId = headerTax.taxId;
+    quote.taxAmount = headerTax.taxAmount;
 
     // Recalculate totals
     if (req.body.items) {
@@ -303,23 +413,23 @@ export const update = asyncHandler(
       );
     }
 
-    quote.subTotal = quote.items.reduce(
-      (s: number, i: any) => s + i.quantity * i.rate,
-      0,
-    );
+    quote.subTotal = sumMoney((quote.items as any[]).map((i: any) => multiplyMoney(i.quantity, i.rate)));
+    const lineItemsTotal = sumMoney((quote.items as any[]).map((i: any) => Number(i.amount) || 0));
     quote.discountAmount =
       quote.discountType === "percent" ?
-        (quote.subTotal * quote.discountValue) / 100
-      : quote.discountValue;
+        percentMoney(quote.subTotal, quote.discountValue)
+      : roundMoney(quote.discountValue);
     const taxImpact = resolveTaxImpact(
       String(quote.taxType || "none"),
       Number(quote.taxAmount) || 0,
     );
-    quote.total =
-      quote.subTotal -
-      quote.discountAmount +
-      taxImpact +
-      quote.adjustmentAmount;
+    quote.adjustmentAmount = roundMoney(quote.adjustmentAmount);
+    quote.total = sumMoney([
+      lineItemsTotal,
+      -quote.discountAmount,
+      taxImpact,
+      quote.adjustmentAmount,
+    ]);
 
     attachUser(quote, req);
     await quote.save();
@@ -401,6 +511,8 @@ export const downloadPdf = asyncHandler(
         org.smtpSettings?.fromEmail || org.smtpSettings?.user || undefined,
       orgTaxId: org.taxId,
       orgLogoUrl: (org as any).logo,
+      orgPhone: (org as any)?.phone || (org as any)?.address?.phone,
+      templateConfig: (quote as any).templateConfig,
 
       customerName,
       customerAddress: [
@@ -447,7 +559,7 @@ export const downloadPdf = asyncHandler(
       termsAndConditions: quote.termsAndConditions,
       currencySymbol: org?.baseCurrency === "INR" ? "₹" : org?.baseCurrency,
       placeOfSupply: (quote as any).placeOfSupply || (quote.customerId as any)?.billingAddress?.state,
-      isIntraState: true, // Default for split CGST/SGST view as per image
+      isIntraState: inferIsIntraState(quote, org),
     });
 
     res.setHeader("Content-Type", "application/pdf");
@@ -502,6 +614,8 @@ export const sendQuoteEmail = asyncHandler(
         orgEmail: org?.smtpSettings?.fromEmail || org?.smtpSettings?.user || undefined,
         orgTaxId: org?.taxId,
         orgLogoUrl: (org as any)?.logo,
+        orgPhone: (org as any)?.phone || (org as any)?.address?.phone,
+        templateConfig: (quote as any).templateConfig,
 
         customerName,
         customerAddress: [
@@ -548,7 +662,7 @@ export const sendQuoteEmail = asyncHandler(
         termsAndConditions: quote.termsAndConditions,
         currencySymbol: org?.baseCurrency === "INR" ? "₹" : org?.baseCurrency,
         placeOfSupply: quote.placeOfSupply || (quote.customerId as any)?.billingAddress?.state,
-        isIntraState: true,
+        isIntraState: inferIsIntraState(quote, org),
       });
 
       attachments.push({

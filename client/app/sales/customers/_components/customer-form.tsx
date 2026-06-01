@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { LinkField } from "@/components/link-field";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { apiFetch } from "@/lib/api/client";
 import {
@@ -239,6 +240,19 @@ function displayNameFromInputs(
   return [salutation, firstName, lastName].map((s) => s.trim()).filter(Boolean).join(" ");
 }
 
+function deriveDisplayName(
+  customerType: CustomerTypeUi,
+  salutation: string,
+  firstName: string,
+  lastName: string,
+  companyName: string,
+): string {
+  if (customerType === "Business" && companyName.trim()) {
+    return companyName.trim();
+  }
+  return displayNameFromInputs(salutation, firstName, lastName);
+}
+
 function normalizeTreatment(value: unknown): TaxTreatment {
   const raw = String(value || "").trim();
   if (!raw) return "Registered Business - Regular";
@@ -334,6 +348,13 @@ function AddressFields({
   address: Address;
   onChange: (field: keyof Address, value: string) => void;
 }) {
+  const stateOptions = useMemo(() => {
+    return PLACE_OF_SUPPLY_OPTIONS.filter((row) => row.code !== "FC").map((row) => ({
+      value: stateNameFromPlaceLabel(row.label),
+      label: row.label,
+    }));
+  }, []);
+
   return (
     <div className="space-y-3">
       <Input
@@ -378,16 +399,14 @@ function AddressFields({
         onChange={(e) => onChange("city", e.target.value)}
       />
 
-      <Select value={address.state || ""} onValueChange={(v) => onChange("state", v)}>
-        <SelectTrigger className="h-9">
-          <SelectValue placeholder="Select or type to add" />
-        </SelectTrigger>
-        <SelectContent>
-          {PLACE_OF_SUPPLY_OPTIONS.filter((row) => row.code !== "FC").map((row) => (
-            <SelectItem key={row.code} value={stateNameFromPlaceLabel(row.label)}>{row.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <LinkField
+        value={address.state || ""}
+        onChange={(v) => onChange("state", v)}
+        staticOptions={stateOptions}
+        placeholder="Select state"
+        clearable={true}
+        triggerClassName="h-9 text-sm"
+      />
 
       <Input
         className="h-9"
@@ -496,8 +515,8 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
   const [error, setError] = useState("");
 
   const computedDisplayName = useMemo(
-    () => displayNameFromInputs(salutation, firstName, lastName),
-    [salutation, firstName, lastName],
+    () => deriveDisplayName(customerType, salutation, firstName, lastName, companyName),
+    [customerType, salutation, firstName, lastName, companyName],
   );
 
   const treatmentMeta = useMemo(() => optionByTreatment(taxTreatment), [taxTreatment]);
@@ -536,21 +555,32 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
     if (!initialData) return;
 
     const initialCustomerType = initialData.companyName ? "Business" : "Individual";
-    const initialComputedDisplayName = displayNameFromInputs(
-      initialData.salutation || "",
-      initialData.firstName || "",
-      initialData.lastName || "",
-    );
+    const sal = initialData.salutation || "";
+    const first = initialData.firstName || "";
+    const last = initialData.lastName || "";
+    const comp = initialData.companyName || "";
+
+    const computedWithSal = deriveDisplayName(initialCustomerType, sal, first, last, comp);
+    const computedWithoutSal = deriveDisplayName(initialCustomerType, "", first, last, comp);
+    const computedPersonalWithSal = [sal, first, last].filter(Boolean).join(" ");
+    const computedPersonalWithoutSal = [first, last].filter(Boolean).join(" ");
+    const computedCompany = comp;
+
+    const isMatched =
+      initialData.displayName?.trim() === computedWithSal.trim() ||
+      initialData.displayName?.trim() === computedWithoutSal.trim() ||
+      initialData.displayName?.trim() === computedPersonalWithSal.trim() ||
+      initialData.displayName?.trim() === computedPersonalWithoutSal.trim() ||
+      initialData.displayName?.trim() === computedCompany.trim() ||
+      !initialData.displayName?.trim();
 
     setCustomerType(initialCustomerType);
-    setSalutation(initialData.salutation || "");
-    setFirstName(initialData.firstName || "");
-    setLastName(initialData.lastName || "");
-    setCompanyName(initialData.companyName || "");
-    setDisplayName(initialData.displayName?.trim() || initialComputedDisplayName);
-    setDisplayNameManual(
-      Boolean(initialData.displayName && initialData.displayName.trim() !== initialComputedDisplayName.trim()),
-    );
+    setSalutation(sal);
+    setFirstName(first);
+    setLastName(last);
+    setCompanyName(comp);
+    setDisplayName(initialData.displayName?.trim() || computedWithSal);
+    setDisplayNameManual(!isMatched);
 
     setEmail(initialData.email || "");
     setPhone(initialData.phone || "");

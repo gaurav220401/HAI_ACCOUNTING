@@ -645,7 +645,7 @@ export const vendorBalanceSummary = asyncHandler(async (req: AuthenticatedReques
     vendorId: String(v._id),
     vendorName: v.displayName || v.companyName || "Unknown",
     openingBalance: round2(toNum(v.openingBalance)),
-    outstandingPayable: round2(toNum(v.outstandingPayable)),
+    outstandingPayable: round2(toNum(v.outstandingPayable) + toNum(v.openingBalance)),
   })).filter(r => Math.abs(r.outstandingPayable) >= 0.01 || Math.abs(r.openingBalance) >= 0.01)
     .sort((a, b) => a.vendorName.localeCompare(b.vendorName));
 
@@ -876,7 +876,7 @@ export const customerBalanceSummary = asyncHandler(async (req: AuthenticatedRequ
     customerId: String(c._id),
     customerName: c.displayName || c.companyName || "Unknown",
     openingBalance: round2(toNum(c.openingBalance)),
-    outstandingReceivable: round2(toNum(c.outstandingReceivable)),
+    outstandingReceivable: round2(toNum(c.outstandingReceivable) + toNum(c.openingBalance)),
   })).filter(r => Math.abs(r.outstandingReceivable) >= 0.01 || Math.abs(r.openingBalance) >= 0.01)
     .sort((a, b) => a.customerName.localeCompare(b.customerName));
 
@@ -2435,7 +2435,7 @@ export const salesByCustomer = asyncHandler(async (req: AuthenticatedRequest, re
       $group: {
         _id: "$customerId",
         invoiceCount: { $sum: 1 },
-        totalSales: { $sum: { $ifNull: ["$total", 0] } },
+        totalSales: { $sum: { $ifNull: ["$subTotal", 0] } },
         totalWithTax: { $sum: { $ifNull: ["$total", 0] } },
       },
     },
@@ -2607,7 +2607,7 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
   const sumMapValues = (map: Map<string, number>): number =>
     round2(Array.from(map.values()).reduce((sum, value) => sum + value, 0));
 
-  const [receivableDocs, payableDocs, paymentInDocs, paymentOutDocs, invoiceIncomeDocs, expenseDocs, allAccountDocs] = await Promise.all([
+  const [receivableDocs, payableDocs, paymentInDocs, paymentOutDocs, invoiceIncomeDocs, expenseDocs, allAccountDocs, contactDocs] = await Promise.all([
     Invoice.find({
       organizationId,
       isDeleted: false,
@@ -2670,6 +2670,14 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
     })
       .select("name accountType rootType openingBalance")
       .lean(),
+
+    Contact.find({
+      organizationId,
+      isDeleted: false,
+      openingBalance: { $ne: 0 }
+    })
+      .select("contactType openingBalance createdAt")
+      .lean(),
   ]);
 
   const allAccounts = allAccountDocs as DashboardAccountRow[];
@@ -2681,11 +2689,28 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
     if (amount <= 0) continue;
 
     const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
-    if (!dueDate || dueDate >= asOfEnd) {
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) {
       receivableBuckets.current = round2(receivableBuckets.current + amount);
       continue;
     }
 
+    const daysOverdue = Math.floor((asOfEnd.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysOverdue <= 15) receivableBuckets["1-15"] = round2(receivableBuckets["1-15"] + amount);
+    else if (daysOverdue <= 30) receivableBuckets["16-30"] = round2(receivableBuckets["16-30"] + amount);
+    else if (daysOverdue <= 45) receivableBuckets["31-45"] = round2(receivableBuckets["31-45"] + amount);
+    else receivableBuckets["above-45"] = round2(receivableBuckets["above-45"] + amount);
+  }
+
+  for (const contact of contactDocs as Array<{ contactType?: string; openingBalance?: number; createdAt?: Date }>) {
+    if (contact.contactType === "Vendor") continue;
+    const amount = round2(toNum(contact.openingBalance));
+    if (amount <= 0) continue;
+
+    const dueDate = contact.createdAt ? new Date(contact.createdAt) : null;
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) {
+      receivableBuckets.current = round2(receivableBuckets.current + amount);
+      continue;
+    }
     const daysOverdue = Math.floor((asOfEnd.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysOverdue <= 15) receivableBuckets["1-15"] = round2(receivableBuckets["1-15"] + amount);
     else if (daysOverdue <= 30) receivableBuckets["16-30"] = round2(receivableBuckets["16-30"] + amount);
@@ -2699,11 +2724,28 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
     if (amount <= 0) continue;
 
     const dueDate = bill.dueDate ? new Date(bill.dueDate) : null;
-    if (!dueDate || dueDate >= asOfEnd) {
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) {
       payableBuckets.current = round2(payableBuckets.current + amount);
       continue;
     }
 
+    const daysOverdue = Math.floor((asOfEnd.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysOverdue <= 15) payableBuckets["1-15"] = round2(payableBuckets["1-15"] + amount);
+    else if (daysOverdue <= 30) payableBuckets["16-30"] = round2(payableBuckets["16-30"] + amount);
+    else if (daysOverdue <= 45) payableBuckets["31-45"] = round2(payableBuckets["31-45"] + amount);
+    else payableBuckets["above-45"] = round2(payableBuckets["above-45"] + amount);
+  }
+
+  for (const contact of contactDocs as Array<{ contactType?: string; openingBalance?: number; createdAt?: Date }>) {
+    if (contact.contactType === "Customer") continue;
+    const amount = round2(toNum(contact.openingBalance));
+    if (amount <= 0) continue;
+
+    const dueDate = contact.createdAt ? new Date(contact.createdAt) : null;
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) {
+      payableBuckets.current = round2(payableBuckets.current + amount);
+      continue;
+    }
     const daysOverdue = Math.floor((asOfEnd.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysOverdue <= 15) payableBuckets["1-15"] = round2(payableBuckets["1-15"] + amount);
     else if (daysOverdue <= 30) payableBuckets["16-30"] = round2(payableBuckets["16-30"] + amount);
@@ -3399,12 +3441,19 @@ export const customerBalanceDetails = asyncHandler(async (req: AuthenticatedRequ
 export const arAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
   const asOf = parseDate(req.query.asOf, 'asOf') || new Date();
-  const invoices = await Invoice.find({
-    organizationId, isDeleted: false,
-    status: { $nin: ["Draft", "Void"] },
-    invoiceDate: { $lte: endOfDay(asOf) },
-    balanceDue: { $gt: 0 },
-  }).populate('customerId', 'displayName companyName').lean();
+  const [invoices, contacts] = await Promise.all([
+    Invoice.find({
+      organizationId, isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      invoiceDate: { $lte: endOfDay(asOf) },
+      balanceDue: { $gt: 0 },
+    }).populate('customerId', 'displayName companyName').lean(),
+    Contact.find({
+      organizationId, isDeleted: false,
+      contactType: { $in: ["Customer", "Both"] },
+      openingBalance: { $gt: 0 }
+    }).lean()
+  ]);
   
   const now = endOfDay(asOf);
   const buckets = {
@@ -3423,13 +3472,30 @@ export const arAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res
     const c = customerMap.get(cid);
     const dueDate = i.dueDate ? new Date(i.dueDate) : null;
     const due = round2(toNum(i.balanceDue));
-    if (!dueDate || dueDate >= now) c.current += due;
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) c.current += due;
     else {
       const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
       if (daysOverdue <= 15) c['1-15'] += due;
       else if (daysOverdue <= 30) c['16-30'] += due;
       else if (daysOverdue <= 45) c['31-45'] += due;
       else c['above-45'] += due;
+    }
+  }
+
+  for (const contact of contacts) {
+    const c: any = contact;
+    const cid = String(c._id);
+    if (!customerMap.has(cid)) customerMap.set(cid, { name: c.displayName || c.companyName || 'Unknown', current: 0, '1-15': 0, '16-30': 0, '31-45': 0, 'above-45': 0 });
+    const cust = customerMap.get(cid);
+    const dueDate = c.createdAt ? new Date(c.createdAt) : null;
+    const due = round2(toNum(c.openingBalance));
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) cust.current += due;
+    else {
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysOverdue <= 15) cust['1-15'] += due;
+      else if (daysOverdue <= 30) cust['16-30'] += due;
+      else if (daysOverdue <= 45) cust['31-45'] += due;
+      else cust['above-45'] += due;
     }
   }
   
@@ -3447,12 +3513,19 @@ export const arAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res
 export const apAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
   const asOf = parseDate(req.query.asOf, 'asOf') || new Date();
-  const bills = await Bill.find({
-    organizationId, isDeleted: false,
-    status: { $nin: ["Draft", "Void"] },
-    billDate: { $lte: endOfDay(asOf) },
-    balanceDue: { $gt: 0 },
-  }).populate('vendorId', 'displayName companyName').lean();
+  const [bills, contacts] = await Promise.all([
+    Bill.find({
+      organizationId, isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      billDate: { $lte: endOfDay(asOf) },
+      balanceDue: { $gt: 0 },
+    }).populate('vendorId', 'displayName companyName').lean(),
+    Contact.find({
+      organizationId, isDeleted: false,
+      contactType: { $in: ["Vendor", "Both"] },
+      openingBalance: { $gt: 0 }
+    }).lean()
+  ]);
   
   const now = endOfDay(asOf);
   const buckets = {
@@ -3471,7 +3544,24 @@ export const apAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res
     const v = vendorMap.get(vid);
     const dueDate = b.dueDate ? new Date(b.dueDate) : null;
     const due = round2(toNum(b.balanceDue));
-    if (!dueDate || dueDate >= now) v.current += due;
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) v.current += due;
+    else {
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysOverdue <= 15) v['1-15'] += due;
+      else if (daysOverdue <= 30) v['16-30'] += due;
+      else if (daysOverdue <= 45) v['31-45'] += due;
+      else v['above-45'] += due;
+    }
+  }
+
+  for (const contact of contacts) {
+    const c: any = contact;
+    const vid = String(c._id);
+    if (!vendorMap.has(vid)) vendorMap.set(vid, { name: c.displayName || c.companyName || 'Unknown', current: 0, '1-15': 0, '16-30': 0, '31-45': 0, 'above-45': 0 });
+    const v = vendorMap.get(vid);
+    const dueDate = c.createdAt ? new Date(c.createdAt) : null;
+    const due = round2(toNum(c.openingBalance));
+    if (!dueDate || startOfDay(dueDate).getTime() >= startOfDay(asOf).getTime()) v.current += due;
     else {
       const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
       if (daysOverdue <= 15) v['1-15'] += due;

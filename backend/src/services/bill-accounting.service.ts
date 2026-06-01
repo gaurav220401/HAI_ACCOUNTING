@@ -99,6 +99,45 @@ export async function postBillLedger(bill: any, req?: AuthenticatedRequest) {
     debitMap.set(accountId, round2((debitMap.get(accountId) || 0) + amount));
   }
 
+  // Sum up line-level taxes and debit them to an asset tax account
+  let lineTaxesSum = 0;
+  for (const line of bill.lineItems || []) {
+    if (!line || line.isHeader) continue;
+    const lineAmount = toNum(line.amount);
+    const lineTax = round2((lineAmount * toNum(line.taxRate)) / 100);
+    lineTaxesSum = round2(lineTaxesSum + lineTax);
+  }
+
+  let inputTaxAccountId: string | null = null;
+  if (lineTaxesSum > 0.009) {
+    try {
+      inputTaxAccountId = await findAccountIdByName({
+        organizationId,
+        names: ["Input Tax Receivable", "Input GST", "GST Input Tax", "Duties & Taxes", "Tax Payable"],
+        rootType: "Asset",
+        accountType: "Other Current Asset",
+      }).then(id => String(id));
+    } catch {
+      try {
+        inputTaxAccountId = await findAccountIdByName({
+          organizationId,
+          names: ["Duties & Taxes", "Tax Payable"],
+          rootType: "Liability",
+          accountType: "Other Current Liability",
+        }).then(id => String(id));
+      } catch {
+        inputTaxAccountId = String(defaultExpenseId);
+      }
+    }
+    
+    if (inputTaxAccountId) {
+      debitMap.set(
+        inputTaxAccountId,
+        round2((debitMap.get(inputTaxAccountId) || 0) + lineTaxesSum),
+      );
+    }
+  }
+
   if (debitMap.size === 0) {
     debitMap.set(String(defaultExpenseId), total);
   }
@@ -131,7 +170,9 @@ export async function postBillLedger(bill: any, req?: AuthenticatedRequest) {
       lines.push({
         accountId,
         debit: rounded,
-        description: `Bill expense ${bill.billNumber}`,
+        description: inputTaxAccountId && accountId === String(inputTaxAccountId)
+          ? `Tax on Bill ${bill.billNumber}`
+          : `Bill expense ${bill.billNumber}`,
         contactType: "Vendor",
         contactId: bill.vendorId,
       });

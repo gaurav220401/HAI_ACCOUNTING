@@ -160,12 +160,10 @@ function NewJournalPageInner() {
         setNextNumber(
           String(Math.max(1, Number(prefs.nextNumber || DEFAULT_NEXT_NUMBER))),
         );
-        if (prefs.mode === "auto") {
-          setJournalNumber(
-            prefs.previewJournalNumber ||
-              formatJournalNumber(prefs.prefix, prefs.nextNumber),
-          );
-        }
+        setJournalNumber(
+          prefs.previewJournalNumber ||
+            formatJournalNumber(prefs.prefix, prefs.nextNumber),
+        );
       } catch {
         toast.error("Failed to load journal numbering preferences");
         setJournalNumber(
@@ -409,6 +407,7 @@ function NewJournalPageInner() {
                     value={journalNumber}
                     onChange={(e) => setJournalNumber(e.target.value)}
                     readOnly={numberingMode === "auto"}
+                    placeholder={formatJournalNumber(numberPrefix, Number(nextNumber))}
                     className="pr-9"
                   />
                   <button

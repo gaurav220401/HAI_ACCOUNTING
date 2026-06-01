@@ -39,6 +39,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { LinkField } from "@/components/link-field";
 
 import {
   contactApi,
@@ -205,15 +206,50 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [salutation, setSalutation] = useState(initialData?.salutation ?? "");
   const [firstName, setFirstName] = useState(initialData?.firstName ?? "");
   const [lastName, setLastName] = useState(initialData?.lastName ?? "");
+  
   const [companyName, setCompanyName] = useState(initialData?.companyName ?? "");
   const [displayName, setDisplayName] = useState(initialData?.displayName ?? "");
   const [email, setEmail] = useState(initialData?.email ?? "");
   const [phone, setPhone] = useState(initialData?.phone ?? "");
   const [mobile, setMobile] = useState(initialData?.mobile ?? "");
   const [language, setLanguage] = useState(initialData?.language ?? "en");
-  const [displayNameManual, setDisplayNameManual] = useState(isEdit);
+  const [displayNameManual, setDisplayNameManual] = useState(() => {
+    if (!initialData) return false;
+    const sal = initialData.salutation || "";
+    const first = initialData.firstName || "";
+    const last = initialData.lastName || "";
+    const comp = initialData.companyName || "";
+
+    const computedWithSal = deriveDisplayName(sal, first, last, comp);
+    const computedWithoutSal = deriveDisplayName("", first, last, comp);
+    const computedPersonalWithSal = [sal, first, last].filter(Boolean).join(" ");
+    const computedPersonalWithoutSal = [first, last].filter(Boolean).join(" ");
+    const computedCompany = comp;
+
+    const isMatched =
+      initialData.displayName?.trim() === computedWithSal.trim() ||
+      initialData.displayName?.trim() === computedWithoutSal.trim() ||
+      initialData.displayName?.trim() === computedPersonalWithSal.trim() ||
+      initialData.displayName?.trim() === computedPersonalWithoutSal.trim() ||
+      initialData.displayName?.trim() === computedCompany.trim() ||
+      !initialData.displayName?.trim();
+
+    return !isMatched;
+  });
   const [displayNameFocused, setDisplayNameFocused] = useState(false);
   const displayNameRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!initialData) {
+      const searchParams = new URLSearchParams(window.location.search);
+      const initialName = searchParams.get("name") || "";
+      if (initialName) {
+        setCompanyName(initialName);
+        setDisplayName(initialName);
+        setDisplayNameManual(true);
+      }
+    }
+  }, [initialData]);
 
   // ── GSTIN Prefill Dialog ─────────────────────────────────────────────────
   const [gstinDialogOpen, setGstinDialogOpen] = useState(false);
@@ -699,14 +735,27 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
     setSaving(true);
     try {
+      let createdContactId = "";
       if (isEdit && initialData?._id) {
         await contactApi.update(initialData._id, payload);
         toast.success("Vendor updated");
       } else {
-        await contactApi.create(payload);
+        const res = await contactApi.create(payload);
+        createdContactId = res.data?._id || "";
         toast.success("Vendor created");
       }
-      router.push("/purchases/vendors");
+
+      const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const redirectUrl = searchParams?.get("redirect");
+      if (redirectUrl) {
+        const url = new URL(redirectUrl, window.location.origin);
+        if (createdContactId) {
+          url.searchParams.set("newVendorId", createdContactId);
+        }
+        router.push(url.pathname + url.search);
+      } else {
+        router.push("/purchases/vendors");
+      }
     } catch (err: any) {
       toast.error(err?.message ?? "Failed to save vendor");
     } finally {
@@ -723,7 +772,15 @@ export function VendorForm({ initialData }: VendorFormProps) {
       <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
         <h1 className="text-lg font-semibold tracking-tight">{isEdit ? "Edit Vendor" : "New Vendor"}</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push("/purchases/vendors")} disabled={saving}>
+          <Button variant="outline" size="sm" onClick={() => {
+            const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+            const redirectUrl = searchParams?.get("redirect");
+            if (redirectUrl) {
+              router.push(redirectUrl);
+            } else {
+              router.push("/purchases/vendors");
+            }
+          }} disabled={saving}>
             Cancel
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
@@ -754,7 +811,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
           {/* Salutation + First Name + Last Name */}
           <label className="text-sm font-medium text-muted-foreground pt-2">Primary Contact</label>
           <div className="flex gap-2">
-            <Select value={salutation} onValueChange={setSalutation}>
+            <Select value={salutation || "__none"} onValueChange={(v) => setSalutation(v === "__none" ? "" : v)}>
               <SelectTrigger className="w-28 h-9">
                 <SelectValue placeholder="Salutation" />
               </SelectTrigger>
@@ -1825,6 +1882,13 @@ function AddressFields({
   address: Address;
   onChange: (field: keyof Address, value: string) => void;
 }) {
+  const stateOptions = useMemo(() => {
+    return INDIAN_STATES.map((s) => ({
+      value: s,
+      label: s,
+    }));
+  }, []);
+
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-0.5">
@@ -1846,17 +1910,14 @@ function AddressFields({
       </div>
       <div className="flex flex-col gap-0.5">
         <Label className="text-xs text-muted-foreground">State</Label>
-        <Select value={address.state || "__none"} onValueChange={(v) => onChange("state", v === "__none" ? "" : v)}>
-          <SelectTrigger className="h-8 text-sm">
-            <SelectValue placeholder="Select or type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none">— Select state —</SelectItem>
-            {INDIAN_STATES.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <LinkField
+          value={address.state || ""}
+          onChange={(v) => onChange("state", v)}
+          staticOptions={stateOptions}
+          placeholder="Select state"
+          clearable={true}
+          triggerClassName="h-8 text-sm"
+        />
       </div>
       <div className="flex flex-col gap-0.5">
         <Label className="text-xs text-muted-foreground">Pin Code</Label>

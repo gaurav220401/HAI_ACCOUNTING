@@ -52,6 +52,7 @@ import {
 } from "@/lib/api/delivery-challans";
 import { settingsApi, type Tax } from "@/lib/api/settings";
 import { toast } from "sonner";
+import { decimalToFixed, multiplyMoney, percentMoney, roundMoney, subtractMoney, sumMoney } from "@/lib/money";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -71,11 +72,11 @@ interface LineItem {
 }
 
 function calcLineAmount(l: LineItem) {
-  const lineTotal = l.quantity * l.rate;
-  const discAmt = (lineTotal * l.discountPercent) / 100;
-  const afterDisc = lineTotal - discAmt;
-  const taxAmt = (afterDisc * l.taxPercent) / 100;
-  return { lineTotal, discAmt, afterDisc, taxAmt, amount: afterDisc + taxAmt };
+  const lineTotal = multiplyMoney(l.quantity, l.rate);
+  const discAmt = percentMoney(lineTotal, l.discountPercent);
+  const afterDisc = Math.max(0, subtractMoney(lineTotal, discAmt));
+  const taxAmt = percentMoney(afterDisc, l.taxPercent);
+  return { lineTotal, discAmt, afterDisc, taxAmt, amount: sumMoney([afterDisc, taxAmt]) };
 }
 
 let lineKeyCounter = 1;
@@ -351,7 +352,7 @@ function BulkItemsModal({
                         <div className="text-sm font-medium">{item.name}</div>
                         {item.sellingPrice != null && (
                           <div className="text-xs text-muted-foreground">
-                            Rate: ₹{item.sellingPrice.toFixed(2)}
+                            Rate: ₹{decimalToFixed(item.sellingPrice)}
                           </div>
                         )}
                       </div>
@@ -613,16 +614,16 @@ export default function NewDeliveryChallanPage() {
 
   // ─── Computed totals ──────────────────────────────────────────────
 
-  const subTotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
+  const subTotal = sumMoney(lines.map((l) => multiplyMoney(l.quantity, l.rate)));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
   const lineTaxAmount = lines.reduce(
-    (sum, line) => sum + calcLineAmount(line).taxAmt,
+    (sum, line) => sumMoney([sum, calcLineAmount(line).taxAmt]),
     0,
   );
-  const total = subTotal - discountAmount + lineTaxAmount + adjustmentAmount;
+  const total = sumMoney([subTotal, -discountAmount, lineTaxAmount, adjustmentAmount]);
 
   // ─── Save handler ─────────────────────────────────────────────────
 
@@ -861,9 +862,16 @@ export default function NewDeliveryChallanPage() {
                             <TableCell>
                               <Select
                                 value={line.itemId || ""}
-                                onValueChange={(v) =>
-                                  handleItemSelect(line.key, v)
-                                }
+                                onValueChange={(v) => {
+                                  handleItemSelect(line.key, v);
+                                  requestAnimationFrame(() => {
+                                    const qtyInput = document.querySelector(
+                                      `input[data-quantity-key="${line.key}"]`,
+                                    ) as HTMLInputElement | null;
+                                    qtyInput?.focus();
+                                    qtyInput?.select();
+                                  });
+                                }}
                               >
                                 <SelectTrigger className="h-8 text-sm">
                                   <SelectValue placeholder="Type or click to select an item." />
@@ -897,6 +905,7 @@ export default function NewDeliveryChallanPage() {
                                 type="number"
                                 min={0}
                                 className="h-8 text-sm text-right"
+                                data-quantity-key={line.key}
                                 value={line.quantity}
                                 onChange={(e) =>
                                   updateLine(
@@ -949,7 +958,7 @@ export default function NewDeliveryChallanPage() {
                               />
                             </TableCell>
                             <TableCell className="text-right text-sm font-medium tabular-nums">
-                              {amount.toFixed(2)}
+                              {decimalToFixed(amount)}
                             </TableCell>
                             <TableCell>
                               <Button
@@ -1008,7 +1017,7 @@ export default function NewDeliveryChallanPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span>Sub Total</span>
                     <span className="font-medium tabular-nums">
-                      {subTotal.toFixed(2)}
+                      {decimalToFixed(subTotal)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm gap-2">
@@ -1038,14 +1047,14 @@ export default function NewDeliveryChallanPage() {
                         </SelectContent>
                       </Select>
                       <span className="font-medium tabular-nums w-20 text-right">
-                        {discountAmount.toFixed(2)}
+                        {decimalToFixed(discountAmount)}
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-sm gap-2">
                     <span>Tax</span>
                     <span className="font-medium tabular-nums w-20 text-right">
-                      +{lineTaxAmount.toFixed(2)}
+                      +{decimalToFixed(lineTaxAmount)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm gap-2">
@@ -1064,14 +1073,14 @@ export default function NewDeliveryChallanPage() {
                         }
                       />
                       <span className="font-medium tabular-nums w-20 text-right">
-                        {adjustmentAmount.toFixed(2)}
+                        {decimalToFixed(adjustmentAmount)}
                       </span>
                     </div>
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between font-semibold">
                     <span>Total ( ₹ )</span>
-                    <span className="tabular-nums">{total.toFixed(2)}</span>
+                    <span className="tabular-nums">{decimalToFixed(total)}</span>
                   </div>
                 </div>
               </div>

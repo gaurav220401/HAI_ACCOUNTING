@@ -2,12 +2,34 @@
 
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import {
-  Plus, Search, Loader2, MoreHorizontal, Trash2, RefreshCw,
-  ChevronDown, Pencil, Printer, CheckCircle,
-  Copy, X, Paperclip, MessageSquare, Sparkles,
-  FileText, Upload, History, ArrowUpDown, Download,
-  Settings, Columns, ChevronRight, CreditCard, PackageCheck,
+  Plus,
+  Search,
+  Loader2,
+  MoreHorizontal,
+  Trash2,
+  RefreshCw,
+  ChevronDown,
+  Pencil,
+  Printer,
+  CheckCircle,
+  Copy,
+  X,
+  Paperclip,
+  MessageSquare,
+  Sparkles,
+  FileText,
+  Upload,
+  History,
+  ArrowUpDown,
+  Download,
+  Settings,
+  Columns,
+  ChevronRight,
+  CreditCard,
+  PackageCheck,
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,32 +42,57 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub,
-  DropdownMenuSubTrigger, DropdownMenuSubContent,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { billApi, type Bill, type BillStatus } from "@/lib/api/bills";
 import { ApiError } from "@/lib/api/client";
 import { uploadApi } from "@/lib/api/upload";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtCur = (v: number) =>
-  new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(v);
 
 const statusColor: Record<BillStatus, string> = {
   Draft: "text-gray-500",
@@ -79,7 +126,8 @@ function getBillStatusLabel(bill: Pick<Bill, "status" | "dueDate">): string {
 
 function getName(v: any): string {
   if (!v) return "";
-  if (typeof v === "object") return v.displayName || v.companyName || v.name || "";
+  if (typeof v === "object")
+    return v.displayName || v.companyName || v.name || "";
   return String(v);
 }
 
@@ -116,7 +164,10 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-async function uploadImage(file: File, folder: string = "general"): Promise<string> {
+async function uploadImage(
+  file: File,
+  folder: string = "general",
+): Promise<string> {
   try {
     const res = await uploadApi.upload(file, folder);
     return res.url;
@@ -127,7 +178,11 @@ async function uploadImage(file: File, folder: string = "general"): Promise<stri
 }
 
 // ── Journal builder ─────────────────────────────────────────────────────────
-interface JournalLine { account: string; debit: number; credit: number }
+interface JournalLine {
+  account: string;
+  debit: number;
+  credit: number;
+}
 
 function buildJournal(b: Bill): JournalLine[] {
   const vendor = getName(b.vendorId) || "Vendor";
@@ -136,20 +191,28 @@ function buildJournal(b: Bill): JournalLine[] {
   // Debit side (Expenses/Items)
   (b.lineItems || []).forEach((li) => {
     if (li.isHeader) return;
-    const accName = typeof li.accountId === "object" && li.accountId
-      ? (li.accountId as any).name : "Expense Account";
+    const accName =
+      typeof li.accountId === "object" && li.accountId ?
+        (li.accountId as any).name
+      : "Expense Account";
     lines.push({ account: accName, debit: li.amount, credit: 0 });
   });
 
   // Credit side (Accounts Payable)
-  lines.push({ account: `Accounts Payable - ${vendor}`, debit: 0, credit: b.total });
+  lines.push({
+    account: `Accounts Payable - ${vendor}`,
+    debit: 0,
+    credit: b.total,
+  });
 
   return lines;
 }
 
 // ── Void Dialog ───────────────────────────────────────────────────────────────
 function VoidDialog({
-  open, onClose, onConfirm,
+  open,
+  onClose,
+  onConfirm,
 }: {
   open: boolean;
   onClose: () => void;
@@ -161,14 +224,19 @@ function VoidDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 py-4 border-b">
-          <DialogTitle className="text-lg font-medium text-gray-800">Void Transaction</DialogTitle>
+          <DialogTitle className="text-lg font-medium text-gray-800">
+            Void Transaction
+          </DialogTitle>
         </DialogHeader>
         <div className="p-6 space-y-4">
           <p className="text-sm text-gray-600 leading-relaxed italic border-l-4 border-amber-400 pl-4 py-1 bg-amber-50/50">
-            Voiding a transaction will reverse all its accounting entries. This action cannot be undone.
+            Voiding a transaction will reverse all its accounting entries. This
+            action cannot be undone.
           </p>
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700">Reason for voiding*</Label>
+            <Label className="text-sm font-medium text-gray-700">
+              Reason for voiding*
+            </Label>
             <textarea
               className="w-full h-24 border border-gray-200 rounded-md p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               placeholder="e.g. Duplicate entry, incorrect details, order cancelled"
@@ -179,7 +247,11 @@ function VoidDialog({
           </div>
         </div>
         <div className="px-6 py-4 bg-gray-50 flex gap-3 justify-end border-t">
-          <Button variant="outline" className="border-gray-200 text-gray-600 px-6 h-9" onClick={onClose}>
+          <Button
+            variant="outline"
+            className="border-gray-200 text-gray-600 px-6 h-9"
+            onClick={onClose}
+          >
             Cancel
           </Button>
           <Button
@@ -197,25 +269,36 @@ function VoidDialog({
 
 // ── Expected Payment Date Dialog ──────────────────────────────────────────────
 function ExpectedPaymentDialog({
-  open, onClose, onSave, initialDate,
+  open,
+  onClose,
+  onSave,
+  initialDate,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (date: string, notes: string) => void;
   initialDate: string;
 }) {
-  const [date, setDate] = useState(initialDate ? initialDate.split("T")[0] : new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(
+    initialDate ?
+      initialDate.split("T")[0]
+    : new Date().toISOString().split("T")[0],
+  );
   const [notes, setNotes] = useState("");
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 py-4 border-b">
-          <DialogTitle className="text-lg font-medium text-gray-800">Expected Payment Date</DialogTitle>
+          <DialogTitle className="text-lg font-medium text-gray-800">
+            Expected Payment Date
+          </DialogTitle>
         </DialogHeader>
         <div className="p-6 space-y-6">
           <div className="space-y-2">
-            <Label className="text-sm text-gray-500 font-normal">Payment Date</Label>
+            <Label className="text-sm text-gray-500 font-normal">
+              Payment Date
+            </Label>
             <Input
               type="date"
               value={date}
@@ -234,10 +317,17 @@ function ExpectedPaymentDialog({
           </div>
         </div>
         <div className="px-6 py-4 bg-gray-50 flex gap-3">
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-9" onClick={() => onSave(date, notes)}>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-9"
+            onClick={() => onSave(date, notes)}
+          >
             Save
           </Button>
-          <Button variant="outline" className="border-gray-200 text-gray-600 px-6 h-9" onClick={onClose}>
+          <Button
+            variant="outline"
+            className="border-gray-200 text-gray-600 px-6 h-9"
+            onClick={onClose}
+          >
             Cancel
           </Button>
         </div>
@@ -248,7 +338,10 @@ function ExpectedPaymentDialog({
 
 // ── Record Payment Dialog ───────────────────────────────────────────────────
 function RecordPaymentDialog({
-  open, onClose, onSave, bill,
+  open,
+  onClose,
+  onSave,
+  bill,
 }: {
   open: boolean;
   onClose: () => void;
@@ -256,28 +349,38 @@ function RecordPaymentDialog({
   bill: Bill;
 }) {
   const [amount, setAmount] = useState(bill.balanceDue || 0);
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);
+  const [paymentDate, setPaymentDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
   const [paymentMode, setPaymentMode] = useState("Cash");
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 py-4 border-b">
-          <DialogTitle className="text-lg font-medium text-gray-800">Record Payment</DialogTitle>
+          <DialogTitle className="text-lg font-medium text-gray-800">
+            Record Payment
+          </DialogTitle>
         </DialogHeader>
         <div className="p-6 space-y-4">
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700">Amount Paid*</Label>
+            <Label className="text-sm font-medium text-gray-700">
+              Amount Paid*
+            </Label>
             <Input
               type="number"
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
               className="w-full border-gray-200 focus:ring-blue-500 rounded-md"
             />
-            <p className="text-[11px] text-muted-foreground italic">Balance Due: ₹{fmtCur(bill.balanceDue || 0)}</p>
+            <p className="text-[11px] text-muted-foreground italic">
+              Balance Due: ₹{fmtCur(bill.balanceDue || 0)}
+            </p>
           </div>
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700">Payment Date</Label>
+            <Label className="text-sm font-medium text-gray-700">
+              Payment Date
+            </Label>
             <Input
               type="date"
               value={paymentDate}
@@ -286,7 +389,9 @@ function RecordPaymentDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700">Payment Mode</Label>
+            <Label className="text-sm font-medium text-gray-700">
+              Payment Mode
+            </Label>
             <Select value={paymentMode} onValueChange={setPaymentMode}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Mode" />
@@ -301,7 +406,11 @@ function RecordPaymentDialog({
           </div>
         </div>
         <div className="px-6 py-4 bg-gray-50 flex gap-3 justify-end border-t">
-          <Button variant="outline" className="border-gray-200 text-gray-600 px-6 h-9" onClick={onClose}>
+          <Button
+            variant="outline"
+            className="border-gray-200 text-gray-600 px-6 h-9"
+            onClick={onClose}
+          >
             Cancel
           </Button>
           <Button
@@ -318,19 +427,49 @@ function RecordPaymentDialog({
 }
 
 // ── Bill PDF View ─────────────────────────────────────────────────────────────
-function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
+function BillPdfView({
+  bill,
+  orgName,
+  orgAddress,
+  orgPhone,
+  orgEmail,
+}: {
   bill: Bill;
   orgName: string;
   orgAddress: string;
   orgPhone: string;
   orgEmail: string;
 }) {
-  const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
   const lineItems = (bill.lineItems || []).filter((li) => !li.isHeader);
   const vendorName = getName(bill.vendorId);
-  const paymentMadeApplied = (bill.payment_applications || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  const vendorCreditApplied = (bill.vendor_credit_applications || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  const totalApplied = Number(bill.amountPaid || paymentMadeApplied + vendorCreditApplied || 0);
+  const paymentMadeApplied = (bill.payment_applications || []).reduce(
+    (sum, row) => sum + Number(row.amount || 0),
+    0,
+  );
+  const vendorCreditApplied = (bill.vendor_credit_applications || []).reduce(
+    (sum, row) => sum + Number(row.amount || 0),
+    0,
+  );
+  const totalApplied = Number(
+    bill.amountPaid || paymentMadeApplied + vendorCreditApplied || 0,
+  );
+
+  // Group line taxes
+  const taxGroups: Record<string, number> = {};
+  lineItems.forEach((li) => {
+    if (li.taxRate && li.taxRate > 0) {
+      const taxName = li.taxName || `Tax (${li.taxRate}%)`;
+      const taxAmt = (Number(li.amount || 0) * Number(li.taxRate)) / 100;
+      taxGroups[taxName] = (taxGroups[taxName] || 0) + taxAmt;
+    }
+  });
+  const hasLineTaxes = lineItems.some((li) => li.taxRate && li.taxRate > 0);
 
   const appliedRows: Array<{
     key: string;
@@ -358,29 +497,57 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
   return (
     <div
       className="bg-white shadow-xl rounded border mx-auto"
-      style={{ width: "680px", minHeight: "880px", fontFamily: "serif", fontSize: "13px", position: "relative" }}
+      style={{
+        width: "680px",
+        minHeight: "880px",
+        fontFamily: "serif",
+        fontSize: "13px",
+        position: "relative",
+      }}
     >
       {/* Status ribbon */}
       {bill.status === "Draft" && (
-        <div style={{ position: "absolute", top: 24, left: -18, zIndex: 10, transform: "rotate(-45deg)" }}>
-          <div className="bg-gray-600/80 text-white text-xs font-bold px-8 py-1 shadow">Draft</div>
+        <div
+          style={{
+            position: "absolute",
+            top: 24,
+            left: -18,
+            zIndex: 10,
+            transform: "rotate(-45deg)",
+          }}
+        >
+          <div className="bg-gray-600/80 text-white text-xs font-bold px-8 py-1 shadow">
+            Draft
+          </div>
         </div>
       )}
       {bill.status === "Void" && (
-        <div style={{ position: "absolute", top: 24, left: -18, zIndex: 10, transform: "rotate(-45deg)" }}>
-          <div className="bg-red-600/80 text-white text-xs font-bold px-8 py-1 shadow">Void</div>
+        <div
+          style={{
+            position: "absolute",
+            top: 24,
+            left: -18,
+            zIndex: 10,
+            transform: "rotate(-45deg)",
+          }}
+        >
+          <div className="bg-red-600/80 text-white text-xs font-bold px-8 py-1 shadow">
+            Void
+          </div>
         </div>
       )}
       {bill.status === "Paid" && (
-        <div style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%) rotate(-30deg)",
-          zIndex: 5,
-          opacity: 0.15,
-          pointerEvents: "none",
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%) rotate(-30deg)",
+            zIndex: 5,
+            opacity: 0.15,
+            pointerEvents: "none",
+          }}
+        >
           <div className="border-[12px] border-green-700 text-green-700 text-8xl font-black px-12 py-6 rounded-2xl uppercase tracking-[0.2em]">
             PAID
           </div>
@@ -400,26 +567,34 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold tracking-wide text-gray-800 uppercase">Bill</div>
-            <div className="text-sm text-gray-600 mt-1"># {bill.billNumber}</div>
+            <div className="text-3xl font-bold tracking-wide text-gray-800 uppercase">
+              Bill
+            </div>
+            <div className="text-sm text-gray-600 mt-1">
+              # {bill.billNumber}
+            </div>
           </div>
         </div>
 
         {/* Vendor + Dates */}
         <div className="grid grid-cols-2 gap-6 mb-6">
           <div>
-            <div className="text-xs font-medium text-gray-500 mb-1">Vendor Address</div>
-            <div className="text-blue-600 text-sm font-medium">{vendorName}</div>
+            <div className="text-xs font-medium text-gray-500 mb-1">
+              Vendor Address
+            </div>
+            <div className="text-blue-600 text-sm font-medium">
+              {vendorName}
+            </div>
           </div>
           <div className="space-y-1 text-sm text-right">
             <div className="flex justify-end gap-8">
               <span className="text-gray-500">Date</span>
-              <span className="font-medium">{fmtDate(bill.billDate)}</span>
+              <span className="font-medium" suppressHydrationWarning>{fmtDate(bill.billDate)}</span>
             </div>
             {bill.dueDate && (
               <div className="flex justify-end gap-8">
                 <span className="text-gray-500">Due Date</span>
-                <span className="font-medium">{fmtDate(bill.dueDate)}</span>
+                <span className="font-medium" suppressHydrationWarning>{fmtDate(bill.dueDate)}</span>
               </div>
             )}
             {bill.referenceNumber && (
@@ -439,21 +614,41 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
               <th className="text-left px-3 py-2 text-xs font-medium">Item &amp; Description</th>
               <th className="text-right px-3 py-2 text-xs font-medium w-20">Qty</th>
               <th className="text-right px-3 py-2 text-xs font-medium w-24">Rate</th>
+              {hasLineTaxes && <th className="text-right px-3 py-2 text-xs font-medium w-24">Tax</th>}
               <th className="text-right px-3 py-2 text-xs font-medium w-24">Amount</th>
             </tr>
           </thead>
           <tbody>
             {lineItems.map((li, idx) => {
-              const itemName = typeof li.itemId === "object" && li.itemId ? (li.itemId as any).name : li.name;
+              const itemName =
+                typeof li.itemId === "object" && li.itemId ?
+                  (li.itemId as any).name
+                : li.name;
               return (
                 <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb" }}>
                   <td className="px-3 py-2.5 text-xs align-top">{idx + 1}</td>
                   <td className="px-3 py-2.5 text-xs align-top">
                     <div className="font-medium text-gray-800">{itemName}</div>
-                    {li.description && <div className="text-gray-500 mt-0.5">{li.description}</div>}
+                    {li.description && (
+                      <div className="text-gray-500 mt-0.5">
+                        {li.description}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-xs text-right align-top">{li.quantity?.toFixed(2)}</td>
                   <td className="px-3 py-2.5 text-xs text-right align-top">{li.rate?.toFixed(2)}</td>
+                  {hasLineTaxes && (
+                    <td className="px-3 py-2.5 text-xs text-right align-top text-gray-600">
+                      {li.taxRate && li.taxRate > 0 ? (
+                        <>
+                          <div className="font-medium">{li.taxName || "Tax"}</div>
+                          <div className="text-[10px] text-gray-400">({li.taxRate}%)</div>
+                        </>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  )}
                   <td className="px-3 py-2.5 text-xs text-right align-top">{li.amount?.toFixed(2)}</td>
                 </tr>
               );
@@ -474,15 +669,23 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
                 <span>-{(bill.discountAmount || 0).toFixed(2)}</span>
               </div>
             )}
+            {Object.entries(taxGroups).map(([taxName, amt]) => (
+              <div key={taxName} className="flex justify-between text-sm">
+                <span className="text-gray-600">{taxName}</span>
+                <span>+{amt.toFixed(2)}</span>
+              </div>
+            ))}
             {(bill.taxAmount || 0) > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">{bill.taxType?.toUpperCase() || "TAX"}</span>
-                <span>{(bill.taxAmount || 0).toFixed(2)}</span>
+                <span>{(bill.taxType === "TDS" ? "-" : "")}{(bill.taxAmount || 0).toFixed(2)}</span>
               </div>
             )}
             {(bill.adjustmentAmount || 0) !== 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">{bill.adjustmentLabel || "Adjustment"}</span>
+                <span className="text-gray-600">
+                  {bill.adjustmentLabel || "Adjustment"}
+                </span>
                 <span>{(bill.adjustmentAmount || 0).toFixed(2)}</span>
               </div>
             )}
@@ -493,47 +696,78 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
             {paymentMadeApplied > 0 && (
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Payments Made</span>
-                <span className="text-red-600">(-) {(paymentMadeApplied || 0).toFixed(2)}</span>
+                <span className="text-red-600">
+                  (-) {(paymentMadeApplied || 0).toFixed(2)}
+                </span>
               </div>
             )}
             {vendorCreditApplied > 0 && (
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Vendor Credits</span>
-                <span className="text-red-600">(-) {(vendorCreditApplied || 0).toFixed(2)}</span>
+                <span className="text-red-600">
+                  (-) {(vendorCreditApplied || 0).toFixed(2)}
+                </span>
               </div>
             )}
-            {totalApplied > 0 && paymentMadeApplied === 0 && vendorCreditApplied === 0 && (
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>Payments Applied</span>
-                <span className="text-red-600">(-) {(totalApplied || 0).toFixed(2)}</span>
-              </div>
-            )}
+            {totalApplied > 0 &&
+              paymentMadeApplied === 0 &&
+              vendorCreditApplied === 0 && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Payments Applied</span>
+                  <span className="text-red-600">
+                    (-) {(totalApplied || 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
             <div className="flex justify-between text-sm text-gray-600">
               <span>Balance Due</span>
-              <span className="font-bold text-gray-900">₹{(bill.balanceDue !== undefined ? bill.balanceDue : bill.total || 0).toFixed(2)}</span>
+              <span className="font-bold text-gray-900">
+                ₹
+                {(bill.balanceDue !== undefined ?
+                  bill.balanceDue
+                : bill.total || 0
+                ).toFixed(2)}
+              </span>
             </div>
           </div>
         </div>
 
         {appliedRows.length > 0 && (
           <div className="mt-7">
-            <div className="font-medium mb-2 text-xs text-gray-700 uppercase tracking-wide">Applied Transactions</div>
+            <div className="font-medium mb-2 text-xs text-gray-700 uppercase tracking-wide">
+              Applied Transactions
+            </div>
             <table className="w-full" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f5f5f5" }}>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold">Date</th>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold">Type</th>
-                  <th className="text-left px-3 py-2 text-[11px] font-semibold">Reference</th>
-                  <th className="text-right px-3 py-2 text-[11px] font-semibold">Amount</th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold">
+                    Date
+                  </th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold">
+                    Type
+                  </th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold">
+                    Reference
+                  </th>
+                  <th className="text-right px-3 py-2 text-[11px] font-semibold">
+                    Amount
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {appliedRows.map((row) => (
-                  <tr key={row.key} style={{ borderBottom: "1px solid #ececec" }}>
-                    <td className="px-3 py-2 text-xs">{row.date ? fmtDate(row.date) : "-"}</td>
+                  <tr
+                    key={row.key}
+                    style={{ borderBottom: "1px solid #ececec" }}
+                  >
+                    <td className="px-3 py-2 text-xs">
+                      {row.date ? fmtDate(row.date) : "-"}
+                    </td>
                     <td className="px-3 py-2 text-xs">{row.type}</td>
                     <td className="px-3 py-2 text-xs">{row.reference}</td>
-                    <td className="px-3 py-2 text-xs text-right">₹{row.amount.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-xs text-right">
+                      ₹{row.amount.toFixed(2)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -561,8 +795,19 @@ function BillPdfView({ bill, orgName, orgAddress, orgPhone, orgEmail }: {
 
 // ── Bill Detail Panel ─────────────────────────────────────────────────────────
 function BillDetailPanel({
-  bill, onClose, onStatusChange, onDelete, onEdit, onPrint, onDownloadPdf,
-  orgName, orgAddress, orgPhone, orgEmail, orgCurrency, onRecordPayment,
+  bill,
+  onClose,
+  onStatusChange,
+  onDelete,
+  onEdit,
+  onPrint,
+  onDownloadPdf,
+  orgName,
+  orgAddress,
+  orgPhone,
+  orgEmail,
+  orgCurrency,
+  onRecordPayment,
 }: {
   bill: Bill;
   onClose: () => void;
@@ -583,11 +828,16 @@ function BillDetailPanel({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showPrintMenu, setShowPrintMenu] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
-  const [showExpectedPaymentDialog, setShowExpectedPaymentDialog] = useState(false);
+  const [showExpectedPaymentDialog, setShowExpectedPaymentDialog] =
+    useState(false);
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const [showRecordPaymentDialog, setShowRecordPaymentDialog] = useState(false);
-  const canVoidFromActions = bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid";
-  const overdueDays = bill.status === "Overdue" ? getOverdueDays(bill.dueDate || null) : 0;
+  const canVoidFromActions =
+    bill.status === "Open" ||
+    bill.status === "Overdue" ||
+    bill.status === "Partially Paid";
+  const overdueDays =
+    bill.status === "Overdue" ? getOverdueDays(bill.dueDate || null) : 0;
 
   // Journal data
   const journalLines = buildJournal(bill);
@@ -607,11 +857,15 @@ function BillDetailPanel({
           author: c.author,
           text: c.text,
           time: new Date(c.time).toLocaleString("en-IN", {
-            day: "2-digit", month: "2-digit", year: "numeric",
-            hour: "2-digit", minute: "2-digit", hour12: true,
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
           }),
           isSystem: c.isSystem,
-        }))
+        })),
       );
     } else {
       setComments([]);
@@ -625,7 +879,7 @@ function BillDetailPanel({
       url,
       publicId: "",
       name: decodeURIComponent(url.split("/").pop() || "File"),
-    }))
+    })),
   );
   const [uploading, setUploading] = useState(false);
   const attachFileRef = useRef<HTMLInputElement>(null);
@@ -636,7 +890,11 @@ function BillDetailPanel({
       await billApi.update(bill._id, { status: "Open" });
       onStatusChange(bill._id, "Open");
       toast.success("Marked as Open");
-    } catch { toast.error("Failed to update status"); } finally { setUpdatingStatus(false); }
+    } catch {
+      toast.error("Failed to update status");
+    } finally {
+      setUpdatingStatus(false);
+    }
   }
 
   async function handleMarkAsVoid() {
@@ -653,7 +911,9 @@ function BillDetailPanel({
       setShowVoidDialog(false);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to void bill"));
-    } finally { setUpdatingStatus(false); }
+    } finally {
+      setUpdatingStatus(false);
+    }
   }
 
   function goToPaymentsMade() {
@@ -672,7 +932,11 @@ function BillDetailPanel({
       await billApi.clone(bill._id);
       toast.success("Bill cloned successfully");
       window.location.reload();
-    } catch { toast.error("Failed to clone"); } finally { setUpdatingStatus(false); }
+    } catch {
+      toast.error("Failed to clone");
+    } finally {
+      setUpdatingStatus(false);
+    }
   }
 
   async function handleSaveExpectedPaymentDate(date: string, notes: string) {
@@ -684,7 +948,11 @@ function BillDetailPanel({
       await billApi.addComment(bill._id, commentTxt, true);
       toast.success(`Payment expected on ${dateStr}`);
       setShowExpectedPaymentDialog(false);
-    } catch { toast.error("Failed to update"); } finally { setUpdatingStatus(false); }
+    } catch {
+      toast.error("Failed to update");
+    } finally {
+      setUpdatingStatus(false);
+    }
   }
 
   return (
@@ -706,16 +974,31 @@ function BillDetailPanel({
         <div className="flex items-center px-2">
           <DropdownMenu open={showPrintMenu} onOpenChange={setShowPrintMenu}>
             <DropdownMenuTrigger asChild>
-              <button type="button" className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium">
-                <Printer className="h-3.5 w-3.5" /> PDF/Print <ChevronDown className="h-3 w-3 opacity-50" />
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium"
+              >
+                <Printer className="h-3.5 w-3.5" /> PDF/Print{" "}
+                <ChevronDown className="h-3 w-3 opacity-50" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52 shadow-xl border-gray-200 mt-1">
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => onPrint(bill._id)}>
-                <Printer className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Print
+            <DropdownMenuContent
+              align="start"
+              className="w-52 shadow-xl border-gray-200 mt-1"
+            >
+              <DropdownMenuItem
+                className="text-xs py-2.5 cursor-pointer"
+                onClick={() => onPrint(bill._id)}
+              >
+                <Printer className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" />{" "}
+                Print
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={() => onDownloadPdf(bill._id)}>
-                <FileText className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Download PDF
+              <DropdownMenuItem
+                className="text-xs py-2.5 cursor-pointer"
+                onClick={() => onDownloadPdf(bill._id)}
+              >
+                <FileText className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" />{" "}
+                Download PDF
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -724,17 +1007,26 @@ function BillDetailPanel({
         <div className="w-px h-6 bg-gray-200" />
 
         <div className="flex items-center px-2">
-          {bill.status === "Draft" ? (
+          {bill.status === "Draft" ?
             <button
               type="button"
               disabled={updatingStatus}
               onClick={handleMarkAsOpen}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-600 hover:text-foreground transition-colors font-medium hover:bg-muted/30 rounded"
             >
-              <CheckCircle className={cn("h-3.5 w-3.5", updatingStatus ? "animate-spin" : "")} />
+              <CheckCircle
+                className={cn(
+                  "h-3.5 w-3.5",
+                  updatingStatus ? "animate-spin" : "",
+                )}
+              />
               Mark as Open
             </button>
-          ) : bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid" ? (
+          : (
+            bill.status === "Open" ||
+            bill.status === "Overdue" ||
+            bill.status === "Partially Paid"
+          ) ?
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -749,13 +1041,17 @@ function BillDetailPanel({
                 </span>
               )}
             </div>
-          ) : (
-            <div className={cn("px-3 py-1.5 text-xs font-bold uppercase tracking-wider mx-1 rounded",
-              bill.status === "Paid" ? "text-green-600 bg-green-50" : "text-slate-500 bg-slate-50"
-            )}>
+          : <div
+              className={cn(
+                "px-3 py-1.5 text-xs font-bold uppercase tracking-wider mx-1 rounded",
+                bill.status === "Paid" ?
+                  "text-green-600 bg-green-50"
+                : "text-slate-500 bg-slate-50",
+              )}
+            >
               {bill.status}
             </div>
-          )}
+          }
         </div>
 
         <div className="w-px h-6 bg-gray-200" />
@@ -763,11 +1059,17 @@ function BillDetailPanel({
         <div className="flex items-center px-2">
           <DropdownMenu open={showMoreMenu} onOpenChange={setShowMoreMenu}>
             <DropdownMenuTrigger asChild>
-              <button type="button" className="flex items-center gap-1 text-xs px-2.5 py-1.5 text-gray-600 hover:text-foreground transition-colors">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 text-gray-600 hover:text-foreground transition-colors"
+              >
                 <MoreHorizontal className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 shadow-xl border-gray-200 mt-1">
+            <DropdownMenuContent
+              align="end"
+              className="w-56 shadow-xl border-gray-200 mt-1"
+            >
               {canVoidFromActions && (
                 <DropdownMenuItem
                   className="text-xs py-2.5 cursor-pointer text-blue-600 font-semibold bg-blue-50/50 hover:bg-blue-50 focus:bg-blue-50 focus:text-blue-600"
@@ -778,21 +1080,33 @@ function BillDetailPanel({
               )}
               <DropdownMenuItem
                 className="text-xs py-2.5 cursor-pointer"
-                onClick={() => { setShowMoreMenu(false); setShowExpectedPaymentDialog(true); }}
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setShowExpectedPaymentDialog(true);
+                }}
               >
-                <CreditCard className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Expected Payment Date
+                <CreditCard className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" />{" "}
+                Expected Payment Date
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleClone}>
-                <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Clone
+              <DropdownMenuItem
+                className="text-xs py-2.5 cursor-pointer"
+                onClick={handleClone}
+              >
+                <Copy className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" />{" "}
+                Clone
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-xs py-2.5 cursor-pointer"
                 onClick={() => {
                   setShowMoreMenu(false);
-                  journalRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  journalRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
                 }}
               >
-                <History className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> View Journal
+                <History className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" />{" "}
+                View Journal
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-xs py-2.5 cursor-pointer"
@@ -800,12 +1114,16 @@ function BillDetailPanel({
                   window.location.href = `/purchases/vendor-credits/new?billId=${bill._id}`;
                 }}
               >
-                <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" /> Create Vendor Credits
+                <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" />{" "}
+                Create Vendor Credits
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-xs py-2.5 cursor-pointer text-destructive focus:text-destructive"
-                onClick={() => { setShowMoreMenu(false); onDelete(bill); }}
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  onDelete(bill);
+                }}
               >
                 <Trash2 className="h-3.5 w-3.5 mr-2.5" /> Delete
               </DropdownMenuItem>
@@ -817,18 +1135,34 @@ function BillDetailPanel({
         <div className="ml-auto flex items-center relative gap-1">
           <button
             type="button"
-            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showAttachments ? "text-primary bg-muted/30" : "text-muted-foreground")}
+            className={cn(
+              "p-2 transition-colors relative hover:text-foreground rounded",
+              showAttachments ?
+                "text-primary bg-muted/30"
+              : "text-muted-foreground",
+            )}
             title="Attachments"
-            onClick={() => { setShowAttachments((v) => !v); setShowComments(false); }}
+            onClick={() => {
+              setShowAttachments((v) => !v);
+              setShowComments(false);
+            }}
           >
             <Paperclip className="h-4 w-4" />
           </button>
 
           <button
             type="button"
-            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showComments ? "text-primary bg-muted/30" : "text-muted-foreground")}
+            className={cn(
+              "p-2 transition-colors relative hover:text-foreground rounded",
+              showComments ?
+                "text-primary bg-muted/30"
+              : "text-muted-foreground",
+            )}
             title="Comments & History"
-            onClick={() => { setShowComments((v) => !v); setShowAttachments(false); }}
+            onClick={() => {
+              setShowComments((v) => !v);
+              setShowAttachments(false);
+            }}
           >
             <MessageSquare className="h-4 w-4" />
             {comments.length > 0 && (
@@ -855,23 +1189,45 @@ function BillDetailPanel({
               <div className="absolute -top-2 right-4 w-4 h-4 bg-white border-l border-t transform rotate-45 z-[-1]" />
               <div className="px-4 py-3 border-b flex items-center justify-between bg-white z-10 relative">
                 <h3 className="text-sm font-semibold">Attachments</h3>
-                <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setShowAttachments(false)}>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowAttachments(false)}
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 max-h-[300px] bg-white relative z-10">
                 {attachments.length === 0 && (
-                  <p className="text-xs text-muted-foreground py-6 text-center border-b border-dashed">No Files Attached</p>
+                  <p className="text-xs text-muted-foreground py-6 text-center border-b border-dashed">
+                    No Files Attached
+                  </p>
                 )}
                 {attachments.map((a, idx) => {
-                  const isImg = ["jpg", "jpeg", "png", "gif", "webp"].some((e) => a.url.toLowerCase().includes(`.${e}`));
+                  const isImg = ["jpg", "jpeg", "png", "gif", "webp"].some(
+                    (e) => a.url.toLowerCase().includes(`.${e}`),
+                  );
                   return (
-                    <div key={idx} className="flex items-center gap-2 border rounded-md px-3 py-2 text-xs group">
-                      {isImg
-                        ? <img src={a.url} className="h-8 w-8 object-cover rounded shrink-0" alt={a.name} />
-                        : <span className="text-red-500 text-base shrink-0">📄</span>
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 border rounded-md px-3 py-2 text-xs group"
+                    >
+                      {isImg ?
+                        <img
+                          src={a.url}
+                          className="h-8 w-8 object-cover rounded shrink-0"
+                          alt={a.name}
+                        />
+                      : <span className="text-red-500 text-base shrink-0">
+                          📄
+                        </span>
                       }
-                      <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate flex-1">
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline truncate flex-1"
+                      >
                         {a.name}
                       </a>
                       {a.publicId && (
@@ -881,8 +1237,12 @@ function BillDetailPanel({
                           onClick={async () => {
                             try {
                               await uploadApi.remove(a.publicId);
-                              setAttachments((prev) => prev.filter((_, i) => i !== idx));
-                            } catch { toast.error("Failed to remove file"); }
+                              setAttachments((prev) =>
+                                prev.filter((_, i) => i !== idx),
+                              );
+                            } catch {
+                              toast.error("Failed to remove file");
+                            }
                           }}
                         >
                           <X className="h-3.5 w-3.5" />
@@ -893,13 +1253,17 @@ function BillDetailPanel({
                 })}
                 <div className="pt-2">
                   <Button
-                    variant="outline" size="sm"
+                    variant="outline"
+                    size="sm"
                     className="gap-2 text-primary border-primary/20 text-xs w-full py-4 bg-blue-50/30 hover:bg-blue-50/50 border-dashed"
                     disabled={uploading || attachments.length >= 10}
                     onClick={() => attachFileRef.current?.click()}
                   >
-                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    {uploading ? "Uploading..." : "Upload your Files"} <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    {uploading ?
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Upload className="h-4 w-4" />}
+                    {uploading ? "Uploading..." : "Upload your Files"}{" "}
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
                   </Button>
                   <input
                     ref={attachFileRef}
@@ -912,17 +1276,32 @@ function BillDetailPanel({
                       setUploading(true);
                       try {
                         const results = await Promise.all(
-                          files.slice(0, 10 - attachments.length).map((f) => uploadApi.upload(f, "bills"))
+                          files
+                            .slice(0, 10 - attachments.length)
+                            .map((f) => uploadApi.upload(f, "bills")),
                         );
                         setAttachments((prev) => [
                           ...prev,
-                          ...results.map((r) => ({ url: r.url, publicId: r.publicId, name: decodeURIComponent(r.url.split("/").pop() || "File") })),
+                          ...results.map((r) => ({
+                            url: r.url,
+                            publicId: r.publicId,
+                            name: decodeURIComponent(
+                              r.url.split("/").pop() || "File",
+                            ),
+                          })),
                         ]);
                         toast.success("Files uploaded");
-                      } catch { toast.error("Upload failed"); } finally { setUploading(false); e.target.value = ""; }
+                      } catch {
+                        toast.error("Upload failed");
+                      } finally {
+                        setUploading(false);
+                        e.target.value = "";
+                      }
                     }}
                   />
-                  <p className="text-[10px] text-muted-foreground mt-2 text-center">You can upload a maximum of 10 files, 10MB each</p>
+                  <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                    You can upload a maximum of 10 files, 10MB each
+                  </p>
                 </div>
               </div>
             </div>
@@ -931,9 +1310,14 @@ function BillDetailPanel({
 
         {/* Comments & History Sheet */}
         <Sheet open={showComments} onOpenChange={setShowComments}>
-          <SheetContent side="right" className="p-0 sm:max-w-[400px] flex flex-col gap-0 border-l shadow-xl">
+          <SheetContent
+            side="right"
+            className="p-0 sm:max-w-[400px] flex flex-col gap-0 border-l shadow-xl"
+          >
             <SheetHeader className="px-5 py-4 border-b">
-              <SheetTitle className="text-base font-semibold">Comments &amp; History</SheetTitle>
+              <SheetTitle className="text-base font-semibold">
+                Comments &amp; History
+              </SheetTitle>
             </SheetHeader>
             <div className="flex-1 flex flex-col overflow-hidden bg-white">
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -948,7 +1332,10 @@ function BillDetailPanel({
                 />
                 <div className="px-3 py-2.5 bg-gray-50/50 flex justify-start border-t">
                   <button
-                    disabled={!commentText.replace(/<[^>]*>/g, "").trim() || updatingStatus}
+                    disabled={
+                      !commentText.replace(/<[^>]*>/g, "").trim() ||
+                      updatingStatus
+                    }
                     className="h-8 px-5 py-0 text-xs font-semibold border border-primary/20 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all shadow-sm"
                     onClick={async () => {
                       const txt = commentText.trim();
@@ -961,16 +1348,26 @@ function BillDetailPanel({
                           id: Date.now().toString(),
                           author: added.author || orgEmail || "me",
                           text: added.text || txt,
-                          time: new Date(added.time || Date.now()).toLocaleString("en-IN", {
-                            day: "2-digit", month: "2-digit", year: "numeric",
-                            hour: "2-digit", minute: "2-digit", hour12: true,
+                          time: new Date(
+                            added.time || Date.now(),
+                          ).toLocaleString("en-IN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
                           }),
                           isSystem: !!added.isSystem,
                         };
                         setComments((prev) => [newComment, ...prev]);
                         setCommentText("");
                         toast.success("Comment added");
-                      } catch { toast.error("Failed to add comment"); } finally { setUpdatingStatus(false); }
+                      } catch {
+                        toast.error("Failed to add comment");
+                      } finally {
+                        setUpdatingStatus(false);
+                      }
                     }}
                   >
                     Add Comment
@@ -980,47 +1377,86 @@ function BillDetailPanel({
 
               <div className="flex-1 overflow-y-auto px-5 py-6 scrollbar-thin">
                 <div className="flex items-center justify-between mb-6">
-                  <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/80">ALL COMMENTS</h4>
-                  <span className="bg-primary/10 text-primary rounded-full text-[11px] px-2.5 py-0.5 font-bold">{comments.length}</span>
+                  <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/80">
+                    ALL COMMENTS
+                  </h4>
+                  <span className="bg-primary/10 text-primary rounded-full text-[11px] px-2.5 py-0.5 font-bold">
+                    {comments.length}
+                  </span>
                 </div>
 
                 <div className="space-y-6 relative pb-10">
                   <div className="absolute left-[13px] top-2 bottom-4 w-px bg-border/60" />
                   {comments.map((c, idx) => {
-                    const isCreation = c.text.toLowerCase().includes("created") || c.text.toLowerCase().includes("cloned");
-                    const isStatus = c.text.toLowerCase().includes("status changed") || c.text.toLowerCase().includes("marked as");
+                    const isCreation =
+                      c.text.toLowerCase().includes("created") ||
+                      c.text.toLowerCase().includes("cloned");
+                    const isStatus =
+                      c.text.toLowerCase().includes("status changed") ||
+                      c.text.toLowerCase().includes("marked as");
 
                     let Icon = MessageSquare;
                     let iconBg = "bg-blue-50 text-blue-600 border-blue-200";
                     if (c.isSystem) {
-                      if (isCreation) { Icon = FileText; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
-                      else if (isStatus) { Icon = CheckCircle; iconBg = "bg-green-50 text-green-600 border-green-200"; }
-                      else { Icon = History; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
+                      if (isCreation) {
+                        Icon = FileText;
+                        iconBg = "bg-amber-50 text-amber-600 border-amber-200";
+                      } else if (isStatus) {
+                        Icon = CheckCircle;
+                        iconBg = "bg-green-50 text-green-600 border-green-200";
+                      } else {
+                        Icon = History;
+                        iconBg = "bg-amber-50 text-amber-600 border-amber-200";
+                      }
                     }
 
                     return (
                       <div key={c.id} className="relative pl-10 group">
                         <div className="absolute left-0 top-0.5 z-10">
-                          <div className={cn("h-7 w-7 rounded flex items-center justify-center border transition-transform group-hover:scale-110 shadow-sm", iconBg)}>
+                          <div
+                            className={cn(
+                              "h-7 w-7 rounded flex items-center justify-center border transition-transform group-hover:scale-110 shadow-sm",
+                              iconBg,
+                            )}
+                          >
                             <Icon className="h-3.5 w-3.5" />
                           </div>
                         </div>
                         <div className="flex flex-col gap-1 pb-4">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-gray-800">{c.author.split("@")[0]}</span>
-                            <span className="text-[11px] text-muted-foreground font-medium">• {c.time}</span>
+                            <span className="font-bold text-sm text-gray-800">
+                              {c.author.split("@")[0]}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-medium">
+                              • {c.time}
+                            </span>
                           </div>
-                          <div className={cn("text-[13px] leading-relaxed p-3.5 rounded-lg border relative group/msg shadow-sm whitespace-pre-wrap",
-                            c.isSystem ? "bg-gray-50/50 border-gray-100 text-gray-600 italic" : "bg-white border-gray-100 text-gray-800"
-                          )}>
+                          <div
+                            className={cn(
+                              "text-[13px] leading-relaxed p-3.5 rounded-lg border relative group/msg shadow-sm whitespace-pre-wrap",
+                              c.isSystem ?
+                                "bg-gray-50/50 border-gray-100 text-gray-600 italic"
+                              : "bg-white border-gray-100 text-gray-800",
+                            )}
+                          >
                             <div
-                              dangerouslySetInnerHTML={{ __html: c.isSystem ? linkifySystemComment(c.text) : c.text }}
+                              dangerouslySetInnerHTML={{
+                                __html:
+                                  c.isSystem ?
+                                    linkifySystemComment(c.text)
+                                  : c.text,
+                              }}
                               className="rich-text-content"
                             />
                             {!c.isSystem && (
                               <button
                                 className="absolute right-3 top-3 opacity-0 group-hover/msg:opacity-100 text-muted-foreground hover:text-destructive transition-all"
-                                onClick={() => { setComments((prev) => prev.filter((p) => p.id !== c.id)); toast.success("Comment removed"); }}
+                                onClick={() => {
+                                  setComments((prev) =>
+                                    prev.filter((p) => p.id !== c.id),
+                                  );
+                                  toast.success("Comment removed");
+                                }}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -1033,7 +1469,9 @@ function BillDetailPanel({
                   {comments.length === 0 && (
                     <div className="text-center py-10">
                       <MessageSquare className="h-8 w-8 text-border mx-auto mb-3" />
-                      <p className="text-sm text-muted-foreground">No comments yet</p>
+                      <p className="text-sm text-muted-foreground">
+                        No comments yet
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1048,20 +1486,34 @@ function BillDetailPanel({
         <div className="flex items-center gap-3 px-5 py-3 border-b bg-white shrink-0">
           <Sparkles className="h-4 w-4 text-primary shrink-0" />
           <span className="text-sm text-muted-foreground">
-            <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Mark this bill as open to start tracking payments.
+            <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Mark
+            this bill as open to start tracking payments.
           </span>
-          <Button size="sm" variant="outline" className="shrink-0 ml-auto" onClick={handleMarkAsOpen} disabled={updatingStatus}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 ml-auto"
+            onClick={handleMarkAsOpen}
+            disabled={updatingStatus}
+          >
             Mark as Open
           </Button>
         </div>
       )}
-      {(bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid") && (
+      {(bill.status === "Open" ||
+        bill.status === "Overdue" ||
+        bill.status === "Partially Paid") && (
         <div className="flex items-center gap-3 px-5 py-3 border-b bg-white shrink-0">
           <CreditCard className="h-4 w-4 text-blue-600 shrink-0" />
           <span className="text-sm text-muted-foreground">
-            <strong className="text-foreground">WHAT&apos;S NEXT?</strong> Record a payment for this bill.
+            <strong className="text-foreground">WHAT&apos;S NEXT?</strong>{" "}
+            Record a payment for this bill.
           </span>
-          <Button size="sm" className="ml-auto shrink-0 bg-blue-600 hover:bg-blue-700" onClick={goToPaymentsMade}>
+          <Button
+            size="sm"
+            className="ml-auto shrink-0 bg-blue-600 hover:bg-blue-700"
+            onClick={goToPaymentsMade}
+          >
             Record Payment
           </Button>
         </div>
@@ -1095,73 +1547,137 @@ function BillDetailPanel({
         <div className="flex-1 overflow-y-auto bg-gray-50">
           <div className="flex items-center justify-between px-6 py-3">
             <div className="flex items-center gap-2">
-              <div className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                bill.status === "Paid" ? "bg-green-100 text-green-700" :
-                  bill.status === "Void" ? "bg-slate-100 text-slate-600" :
-                    "bg-blue-100 text-blue-700"
-              )}>
+              <div
+                className={cn(
+                  "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                  bill.status === "Paid" ? "bg-green-100 text-green-700"
+                  : bill.status === "Void" ? "bg-slate-100 text-slate-600"
+                  : "bg-blue-100 text-blue-700",
+                )}
+              >
                 {bill.status}
               </div>
-              <span className="text-xs text-muted-foreground italic truncate max-w-[200px]" title={bill.notes}>
+              <span
+                className="text-xs text-muted-foreground italic truncate max-w-[200px]"
+                title={bill.notes}
+              >
                 {bill.notes}
               </span>
             </div>
             <div className="flex items-center">
-              <span className="text-sm text-muted-foreground mr-2">Show PDF View</span>
+              <span className="text-sm text-muted-foreground mr-2">
+                Show PDF View
+              </span>
               <button
                 type="button"
                 className={cn(
                   "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                  showPdf ? "bg-primary" : "bg-muted-foreground/30"
+                  showPdf ? "bg-primary" : "bg-muted-foreground/30",
                 )}
                 onClick={() => setShowPdf((v) => !v)}
               >
-                <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform", showPdf ? "translate-x-6" : "translate-x-1")} />
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                    showPdf ? "translate-x-6" : "translate-x-1",
+                  )}
+                />
               </button>
             </div>
           </div>
 
           <div className="px-6 pb-8">
-            {showPdf ? (
+            {showPdf ?
               <div className="flex justify-center w-full" id="bill-pdf-view">
-                <BillPdfView bill={bill} orgName={orgName} orgAddress={orgAddress} orgPhone={orgPhone} orgEmail={orgEmail} />
+                <BillPdfView
+                  bill={bill}
+                  orgName={orgName}
+                  orgAddress={orgAddress}
+                  orgPhone={orgPhone}
+                  orgEmail={orgEmail}
+                />
               </div>
-            ) : (
-              <div className="max-w-[700px] mx-auto space-y-4">
+            : <div className="max-w-[700px] mx-auto space-y-4">
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                   <div className="bg-gray-50/50 border-b px-6 py-4 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-800">Bill Details</h3>
-                    <div className="text-xs text-gray-500">#{bill.billNumber}</div>
+                    <h3 className="text-sm font-semibold text-gray-800">
+                      Bill Details
+                    </h3>
+                    <div className="text-xs text-gray-500">
+                      #{bill.billNumber}
+                    </div>
                   </div>
                   <div className="p-6">
                     <div className="grid grid-cols-2 gap-y-6 gap-x-12 mt-1">
                       <div className="space-y-1">
-                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Vendor</Label>
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">
+                          Vendor
+                        </Label>
                         <div className="text-sm font-semibold text-blue-600 hover:underline cursor-pointer flex items-center gap-1.5">
                           {getName(bill.vendorId)}
                           <ChevronRight className="h-3 w-3" />
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Bill Date</Label>
-                        <div className="text-sm font-medium">{new Date(bill.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div>
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">
+                          Bill Date
+                        </Label>
+                        <div className="text-sm font-medium">
+                          {new Date(bill.billDate).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Total Amount</Label>
-                        <div className="text-xl font-black text-gray-900">₹{fmtCur(bill.total || 0)}</div>
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">
+                          Total Amount
+                        </Label>
+                        <div className="text-xl font-black text-gray-900">
+                          ₹{fmtCur(bill.total || 0)}
+                        </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Balance Due</Label>
-                        <div className="text-xl font-black text-red-600">₹{fmtCur(bill.balanceDue ?? bill.total ?? 0)}</div>
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">
+                          Balance Due
+                        </Label>
+                        <div className="text-xl font-black text-red-600">
+                          ₹{fmtCur(bill.balanceDue ?? bill.total ?? 0)}
+                        </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Due Date</Label>
-                        <div className="text-sm font-medium">{bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "No due date set"}</div>
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">
+                          Due Date
+                        </Label>
+                        <div className="text-sm font-medium">
+                          {bill.dueDate ?
+                            new Date(bill.dueDate).toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "long",
+                              year: "numeric",
+                            })
+                          : "No due date set"}
+                        </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">Status</Label>
-                        <div className={cn("text-xs font-bold uppercase flex items-center gap-1.5", statusColor[bill.status])}>
-                          <div className={cn("w-2 h-2 rounded-full", bill.status === "Paid" ? "bg-green-600" : bill.status === "Void" ? "bg-gray-400" : "bg-blue-600")} />
+                        <Label className="text-[11px] uppercase tracking-wider text-gray-400 font-bold">
+                          Status
+                        </Label>
+                        <div
+                          className={cn(
+                            "text-xs font-bold uppercase flex items-center gap-1.5",
+                            statusColor[bill.status],
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "w-2 h-2 rounded-full",
+                              bill.status === "Paid" ? "bg-green-600"
+                              : bill.status === "Void" ? "bg-gray-400"
+                              : "bg-blue-600",
+                            )}
+                          />
                           {bill.status}
                         </div>
                       </div>
@@ -1172,7 +1688,9 @@ function BillDetailPanel({
                 {(bill.lineItems || []).length > 0 && (
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="bg-gray-50/50 border-b px-6 py-3">
-                      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Line Items</h3>
+                      <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                        Line Items
+                      </h3>
                     </div>
                     <table className="w-full text-sm">
                       <thead>
@@ -1185,14 +1703,31 @@ function BillDetailPanel({
                       </thead>
                       <tbody>
                         {(bill.lineItems || []).map((li, i) => (
-                          <tr key={i} className="border-b last:border-0 hover:bg-gray-50/50 transition-colors">
+                          <tr
+                            key={i}
+                            className="border-b last:border-0 hover:bg-gray-50/50 transition-colors"
+                          >
                             <td className="px-6 py-3.5">
-                              <div className="font-semibold text-gray-800">{typeof li.itemId === "object" && li.itemId ? (li.itemId as any).name : li.name}</div>
-                              {li.description && <div className="text-xs text-gray-400 mt-0.5 leading-tight">{li.description}</div>}
+                              <div className="font-semibold text-gray-800">
+                                {typeof li.itemId === "object" && li.itemId ?
+                                  (li.itemId as any).name
+                                : li.name}
+                              </div>
+                              {li.description && (
+                                <div className="text-xs text-gray-400 mt-0.5 leading-tight">
+                                  {li.description}
+                                </div>
+                              )}
                             </td>
-                            <td className="px-6 py-3.5 text-right font-medium tabular-nums">{li.quantity.toFixed(2)}</td>
-                            <td className="px-6 py-3.5 text-right font-medium tabular-nums">₹{fmtCur(li.rate)}</td>
-                            <td className="px-6 py-3.5 text-right font-bold tabular-nums">₹{fmtCur(li.amount)}</td>
+                            <td className="px-6 py-3.5 text-right font-medium tabular-nums">
+                              {li.quantity.toFixed(2)}
+                            </td>
+                            <td className="px-6 py-3.5 text-right font-medium tabular-nums">
+                              ₹{fmtCur(li.rate)}
+                            </td>
+                            <td className="px-6 py-3.5 text-right font-bold tabular-nums">
+                              ₹{fmtCur(li.amount)}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1200,40 +1735,62 @@ function BillDetailPanel({
                   </div>
                 )}
               </div>
-            )}
+            }
 
             <div ref={journalRef} className="max-w-[900px] mx-auto mt-10">
-              <div className="text-sm font-semibold text-gray-800 border-b pb-2">Journal</div>
+              <div className="text-sm font-semibold text-gray-800 border-b pb-2">
+                Journal
+              </div>
               <div className="text-[11px] text-muted-foreground mt-2">
                 Amount is displayed in your base currency{" "}
                 <span className="ml-1 inline-flex items-center rounded-sm bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
                   {orgCurrency}
                 </span>
               </div>
-              <div className="mt-4 text-sm font-semibold text-gray-800">Bill</div>
+              <div className="mt-4 text-sm font-semibold text-gray-800">
+                Bill
+              </div>
               <div className="mt-2 overflow-x-auto bg-white rounded-md border border-gray-200">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-[11px] text-gray-500">
-                      <th className="text-left px-4 py-2.5 font-semibold">ACCOUNT</th>
-                      <th className="text-right px-4 py-2.5 font-semibold w-32">DEBIT</th>
-                      <th className="text-right px-4 py-2.5 font-semibold w-32">CREDIT</th>
+                      <th className="text-left px-4 py-2.5 font-semibold">
+                        ACCOUNT
+                      </th>
+                      <th className="text-right px-4 py-2.5 font-semibold w-32">
+                        DEBIT
+                      </th>
+                      <th className="text-right px-4 py-2.5 font-semibold w-32">
+                        CREDIT
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {journalLines.map((l, i) => (
                       <tr key={i} className="border-b last:border-0">
-                        <td className="px-4 py-2.5 text-gray-800">{l.account}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">{l.debit > 0 ? fmtCur(l.debit) : "0.00"}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">{l.credit > 0 ? fmtCur(l.credit) : "0.00"}</td>
+                        <td className="px-4 py-2.5 text-gray-800">
+                          {l.account}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {l.debit > 0 ? fmtCur(l.debit) : "0.00"}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {l.credit > 0 ? fmtCur(l.credit) : "0.00"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="font-semibold">
-                      <td className="px-4 py-2.5 text-right text-gray-800">&nbsp;</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{fmtCur(totalD)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{fmtCur(totalC)}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-800">
+                        &nbsp;
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {fmtCur(totalD)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {fmtCur(totalC)}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1242,7 +1799,10 @@ function BillDetailPanel({
           </div>
 
           <div className="text-center text-xs text-muted-foreground pb-6 mt-4">
-            PDF Template : &apos;Standard Template&apos; <button type="button" className="text-primary hover:underline ml-1">Change</button>
+            PDF Template : &apos;Standard Template&apos;{" "}
+            <button type="button" className="text-primary hover:underline ml-1">
+              Change
+            </button>
           </div>
         </div>
       </div>
@@ -1255,7 +1815,11 @@ function BillsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firebaseUser, loading } = useAuth();
-  const { needsOrgSetup, loading: orgLoading, activeOrganization } = useOrganization();
+  const {
+    needsOrgSetup,
+    loading: orgLoading,
+    activeOrganization,
+  } = useOrganization();
 
   const [bills, setBills] = useState<Bill[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -1263,7 +1827,9 @@ function BillsPageContent() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | BillStatus>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedBillDetails, setSelectedBillDetails] = useState<Bill | null>(null);
+  const [selectedBillDetails, setSelectedBillDetails] = useState<Bill | null>(
+    null,
+  );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [toDelete, setToDelete] = useState<Bill | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -1274,7 +1840,8 @@ function BillsPageContent() {
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
+      router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
   const fetchBills = useCallback(async () => {
@@ -1282,7 +1849,11 @@ function BillsPageContent() {
     try {
       const res = await billApi.list({ page: 1, limit: 100 });
       setBills(res.data ?? []);
-    } catch { /* noop */ } finally { setFetching(false); }
+    } catch {
+      /* noop */
+    } finally {
+      setFetching(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -1295,7 +1866,9 @@ function BillsPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    setSelectedIds((prev) => prev.filter((id) => bills.some((bill) => bill._id === id)));
+    setSelectedIds((prev) =>
+      prev.filter((id) => bills.some((bill) => bill._id === id)),
+    );
   }, [bills]);
 
   useEffect(() => {
@@ -1328,15 +1901,23 @@ function BillsPageContent() {
     if (filterStatus && b.status !== filterStatus) return false;
     if (!search) return true;
     const s = search.toLowerCase();
-    return [(b.billNumber || ""), (b.referenceNumber || ""), getName(b.vendorId)].some((v) => v.toLowerCase().includes(s));
+    return [
+      b.billNumber || "",
+      b.referenceNumber || "",
+      getName(b.vendorId),
+    ].some((v) => v.toLowerCase().includes(s));
   });
 
   const visibleBillIds = filtered.map((bill) => bill._id);
-  const allVisibleSelected = visibleBillIds.length > 0 && visibleBillIds.every((id) => selectedIds.includes(id));
+  const allVisibleSelected =
+    visibleBillIds.length > 0 &&
+    visibleBillIds.every((id) => selectedIds.includes(id));
 
   function toggleSelectAllVisible(checked: boolean) {
     if (checked) {
-      setSelectedIds((prev) => Array.from(new Set([...prev, ...visibleBillIds])));
+      setSelectedIds((prev) =>
+        Array.from(new Set([...prev, ...visibleBillIds])),
+      );
       return;
     }
     setSelectedIds((prev) => prev.filter((id) => !visibleBillIds.includes(id)));
@@ -1347,12 +1928,15 @@ function BillsPageContent() {
       setSelectedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
       return;
     }
-    setSelectedIds((prev) => prev.filter((selectedIdValue) => selectedIdValue !== id));
+    setSelectedIds((prev) =>
+      prev.filter((selectedIdValue) => selectedIdValue !== id),
+    );
   }
 
   const selectedBillFromList = bills.find((b) => b._id === selectedId) ?? null;
-  const selectedBill = selectedBillDetails && selectedBillDetails._id === selectedId
-    ? selectedBillDetails
+  const selectedBill =
+    selectedBillDetails && selectedBillDetails._id === selectedId ?
+      selectedBillDetails
     : selectedBillFromList;
 
   const org = activeOrganization as any;
@@ -1373,12 +1957,17 @@ function BillsPageContent() {
       if (selectedId === toDelete._id) setSelectedId(null);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to delete"));
-    } finally { setDeleting(false); setToDelete(null); }
+    } finally {
+      setDeleting(false);
+      setToDelete(null);
+    }
   }
 
   function handleStatusChange(id: string, status: BillStatus) {
-    setBills((prev) => prev.map((b) => b._id === id ? { ...b, status } : b));
-    setSelectedBillDetails((prev) => prev && prev._id === id ? { ...prev, status } : prev);
+    setBills((prev) => prev.map((b) => (b._id === id ? { ...b, status } : b)));
+    setSelectedBillDetails((prev) =>
+      prev && prev._id === id ? { ...prev, status } : prev,
+    );
   }
 
   async function handleQuickVoidFromList(bill: Bill) {
@@ -1392,7 +1981,9 @@ function BillsPageContent() {
   }
 
   async function handleBulkDeleteSelected() {
-    const selectedBills = bills.filter((bill) => selectedIds.includes(bill._id));
+    const selectedBills = bills.filter((bill) =>
+      selectedIds.includes(bill._id),
+    );
     if (selectedBills.length === 0) {
       toast.error("Select at least one bill to delete");
       return;
@@ -1400,7 +1991,9 @@ function BillsPageContent() {
 
     setDeleting(true);
     try {
-      const results = await Promise.allSettled(selectedBills.map((bill) => billApi.remove(bill._id)));
+      const results = await Promise.allSettled(
+        selectedBills.map((bill) => billApi.remove(bill._id)),
+      );
       const deletedIds: string[] = [];
       let failedCount = 0;
 
@@ -1413,7 +2006,9 @@ function BillsPageContent() {
       });
 
       if (deletedIds.length > 0) {
-        setBills((prev) => prev.filter((bill) => !deletedIds.includes(bill._id)));
+        setBills((prev) =>
+          prev.filter((bill) => !deletedIds.includes(bill._id)),
+        );
         setSelectedIds((prev) => prev.filter((id) => !deletedIds.includes(id)));
         if (selectedId && deletedIds.includes(selectedId)) {
           setSelectedId(null);
@@ -1424,7 +2019,9 @@ function BillsPageContent() {
       if (failedCount === 0) {
         toast.success(`Deleted ${deletedIds.length} bill(s)`);
       } else {
-        toast.error(`Deleted ${deletedIds.length} bill(s), failed ${failedCount}`);
+        toast.error(
+          `Deleted ${deletedIds.length} bill(s), failed ${failedCount}`,
+        );
       }
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to delete selected bills"));
@@ -1434,9 +2031,14 @@ function BillsPageContent() {
   }
 
   async function handleBulkVoidSelected() {
-    const selectedBills = bills.filter((bill) => selectedIds.includes(bill._id));
+    const selectedBills = bills.filter((bill) =>
+      selectedIds.includes(bill._id),
+    );
     const voidableBills = selectedBills.filter(
-      (bill) => bill.status === "Open" || bill.status === "Overdue" || bill.status === "Partially Paid",
+      (bill) =>
+        bill.status === "Open" ||
+        bill.status === "Overdue" ||
+        bill.status === "Partially Paid",
     );
 
     if (voidableBills.length === 0) {
@@ -1447,7 +2049,9 @@ function BillsPageContent() {
     setDeleting(true);
     try {
       const results = await Promise.allSettled(
-        voidableBills.map((bill) => billApi.void(bill._id, "Voided from bills bulk actions")),
+        voidableBills.map((bill) =>
+          billApi.void(bill._id, "Voided from bills bulk actions"),
+        ),
       );
 
       const voidedIds: string[] = [];
@@ -1461,14 +2065,24 @@ function BillsPageContent() {
       });
 
       if (voidedIds.length > 0) {
-        setBills((prev) => prev.map((bill) => (voidedIds.includes(bill._id) ? { ...bill, status: "Void" } : bill)));
-        setSelectedBillDetails((prev) => prev && voidedIds.includes(prev._id) ? { ...prev, status: "Void" } : prev);
+        setBills((prev) =>
+          prev.map((bill) =>
+            voidedIds.includes(bill._id) ? { ...bill, status: "Void" } : bill,
+          ),
+        );
+        setSelectedBillDetails((prev) =>
+          prev && voidedIds.includes(prev._id) ?
+            { ...prev, status: "Void" }
+          : prev,
+        );
       }
 
       if (failedCount === 0) {
         toast.success(`Voided ${voidedIds.length} bill(s)`);
       } else {
-        toast.error(`Voided ${voidedIds.length} bill(s), failed ${failedCount}`);
+        toast.error(
+          `Voided ${voidedIds.length} bill(s), failed ${failedCount}`,
+        );
       }
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to void selected bills"));
@@ -1479,7 +2093,10 @@ function BillsPageContent() {
 
   function handlePrint(id: string) {
     const printContents = document.getElementById("bill-pdf-view")?.innerHTML;
-    if (!printContents) { toast.error("Please show the PDF View before printing."); return; }
+    if (!printContents) {
+      toast.error("Please show the PDF View before printing.");
+      return;
+    }
     const printWindow = window.open("", "_blank");
     if (printWindow) {
       printWindow.document.write(`
@@ -1507,7 +2124,78 @@ function BillsPageContent() {
   }
 
   async function handleDownloadPdf(id: string) {
-    toast.info("PDF download coming soon");
+    const el = document.getElementById("bill-pdf-view");
+    if (!el) {
+      toast.error("Please enable Show PDF View first, then try downloading again.");
+      return;
+    }
+    const safeNo = (selectedBill?.billNumber || "bill").replace(/[^a-zA-Z0-9-_]/g, "-");
+    const fileName = `Bill-${safeNo}.pdf`;
+
+    try {
+      // Build a sanitized off-screen clone to avoid unsupported CSS color functions
+      const cloneWrap = document.createElement("div");
+      cloneWrap.style.position = "fixed";
+      cloneWrap.style.left = "-100000px";
+      cloneWrap.style.top = "0";
+      cloneWrap.style.width = "680px";
+      cloneWrap.style.background = "#ffffff";
+      cloneWrap.style.pointerEvents = "none";
+
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.style.boxShadow = "none";
+      clone.style.background = "#ffffff";
+
+      // Remove no-print markers and utility classes so renderer relies on inline styles only.
+      clone.querySelectorAll(".no-print").forEach((n) => n.remove());
+      clone.querySelectorAll("*").forEach((node) => {
+        if (node instanceof HTMLElement) {
+          node.removeAttribute("class");
+        }
+      });
+
+      cloneWrap.appendChild(clone);
+      document.body.appendChild(cloneWrap);
+
+      try {
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+        });
+
+        const imageData = canvas.toDataURL("image/png");
+        const pdf = new jsPDF("p", "mm", "a4");
+        const pageW = 210;
+        const pageH = 297;
+        const imgW = pageW;
+        const imgH = (canvas.height * imgW) / canvas.width;
+
+        if (imgH <= pageH) {
+          pdf.addImage(imageData, "PNG", 0, 0, imgW, imgH, undefined, "FAST");
+        } else {
+          let heightLeft = imgH;
+          let y = 0;
+          pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
+          heightLeft -= pageH;
+
+          while (heightLeft > 0) {
+            y = heightLeft - imgH;
+            pdf.addPage();
+            pdf.addImage(imageData, "PNG", 0, y, imgW, imgH, undefined, "FAST");
+            heightLeft -= pageH;
+          }
+        }
+
+        pdf.save(fileName);
+        toast.success("PDF downloaded successfully");
+      } finally {
+        cloneWrap.remove();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to download PDF");
+    }
   }
 
   return (
@@ -1516,35 +2204,71 @@ function BillsPageContent() {
       <SidebarInset>
         <div className="flex flex-col h-screen overflow-hidden">
           <PageHeader
-            breadcrumb={(
+            breadcrumb={
               <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
                 <DropdownMenuTrigger asChild>
-                  <button type="button" className="flex items-center gap-1 text-base font-semibold hover:text-primary">
-                    {filterStatus ? `${filterStatus} Bills` : "All Bills"} <ChevronDown className="h-4 w-4" />
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-base font-semibold hover:text-primary"
+                  >
+                    {filterStatus ? `${filterStatus} Bills` : "All Bills"}{" "}
+                    <ChevronDown className="h-4 w-4" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuItem onClick={() => { setFilterStatus(""); setShowFilterDD(false); }}>All Bills</DropdownMenuItem>
-                  {(["Draft", "Open", "Overdue", "Partially Paid", "Paid", "Void"] as BillStatus[]).map((s) => (
-                    <DropdownMenuItem key={s} onClick={() => { setFilterStatus(s); setShowFilterDD(false); }}>{s}</DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setFilterStatus("");
+                      setShowFilterDD(false);
+                    }}
+                  >
+                    All Bills
+                  </DropdownMenuItem>
+                  {(
+                    [
+                      "Draft",
+                      "Open",
+                      "Overdue",
+                      "Partially Paid",
+                      "Paid",
+                      "Void",
+                    ] as BillStatus[]
+                  ).map((s) => (
+                    <DropdownMenuItem
+                      key={s}
+                      onClick={() => {
+                        setFilterStatus(s);
+                        setShowFilterDD(false);
+                      }}
+                    >
+                      {s}
+                    </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
-            actions={(
+            }
+            actions={
               <div className="flex items-center gap-1.5">
                 {selectedIds.length > 0 && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8 gap-1 text-sm border-blue-200 text-blue-700">
-                        {selectedIds.length} Selected <ChevronDown className="h-3.5 w-3.5" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 text-sm border-blue-200 text-blue-700"
+                      >
+                        {selectedIds.length} Selected{" "}
+                        <ChevronDown className="h-3.5 w-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                       <DropdownMenuItem onClick={handleBulkVoidSelected}>
                         <X className="h-3.5 w-3.5 mr-2" /> Void Selected
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleBulkDeleteSelected} className="text-destructive focus:text-destructive">
+                      <DropdownMenuItem
+                        onClick={handleBulkDeleteSelected}
+                        className="text-destructive focus:text-destructive"
+                      >
                         <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete Selected
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
@@ -1563,11 +2287,18 @@ function BillsPageContent() {
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-8 w-8 border-gray-200">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 border-gray-200"
+                    >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-[200px] p-0 overflow-hidden">
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-[200px] p-0 overflow-hidden"
+                  >
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-blue-600 hover:text-white group">
                         <ArrowUpDown className="h-4 w-4 text-blue-600 group-hover:text-white" />
@@ -1576,10 +2307,23 @@ function BillsPageContent() {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent className="w-[180px] p-0">
                         <DropdownMenuItem className="px-3 py-2 text-[13px] bg-blue-600 text-white flex justify-between">
-                          Created Time <ChevronDown className="h-4 w-4 rotate-180" />
+                          Created Time{" "}
+                          <ChevronDown className="h-4 w-4 rotate-180" />
                         </DropdownMenuItem>
-                        {["Date", "Bill#", "Vendor Name", "Amount", "Due Date", "Last Modified Time"].map((s) => (
-                          <DropdownMenuItem key={s} className="px-3 py-2 text-[13px] hover:bg-gray-100">{s}</DropdownMenuItem>
+                        {[
+                          "Date",
+                          "Bill#",
+                          "Vendor Name",
+                          "Amount",
+                          "Due Date",
+                          "Last Modified Time",
+                        ].map((s) => (
+                          <DropdownMenuItem
+                            key={s}
+                            className="px-3 py-2 text-[13px] hover:bg-gray-100"
+                          >
+                            {s}
+                          </DropdownMenuItem>
                         ))}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
@@ -1598,8 +2342,12 @@ function BillsPageContent() {
                         <ChevronRight className="h-4 w-4" />
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent className="w-[180px]">
-                        <DropdownMenuItem className="px-3 py-2 text-[13px]">Export as CSV</DropdownMenuItem>
-                        <DropdownMenuItem className="px-3 py-2 text-[13px]">Export as PDF</DropdownMenuItem>
+                        <DropdownMenuItem className="px-3 py-2 text-[13px]">
+                          Export as CSV
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="px-3 py-2 text-[13px]">
+                          Export as PDF
+                        </DropdownMenuItem>
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
 
@@ -1617,23 +2365,28 @@ function BillsPageContent() {
 
                     <DropdownMenuSeparator className="m-0" />
 
-                    <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50" onClick={fetchBills}>
+                    <DropdownMenuItem
+                      className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50"
+                      onClick={fetchBills}
+                    >
                       <RefreshCw className="h-4 w-4 text-blue-600" />
                       <span>Refresh List</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            )}
+            }
           />
 
           {/* Body */}
           <div className="flex flex-1 overflow-hidden">
             {/* Left list panel */}
-            <div className={cn(
-              "flex flex-col border-r bg-white overflow-hidden transition-all duration-200",
-              selectedBill ? "w-[320px] shrink-0" : "flex-1"
-            )}>
+            <div
+              className={cn(
+                "flex flex-col border-r bg-white overflow-hidden transition-all duration-200",
+                selectedBill ? "w-[320px] shrink-0" : "flex-1",
+              )}
+            >
               {/* List header / search */}
               <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
                 {!selectedBill && (
@@ -1644,22 +2397,36 @@ function BillsPageContent() {
                       checked={allVisibleSelected}
                       onChange={(e) => toggleSelectAllVisible(e.target.checked)}
                     />
-                    <span className="ml-1 font-medium uppercase tracking-wide">DATE</span>
-                    <span className="ml-auto font-medium uppercase tracking-wide">BILL#</span>
+                    <span className="ml-1 font-medium uppercase tracking-wide">
+                      DATE
+                    </span>
+                    <span className="ml-auto font-medium uppercase tracking-wide">
+                      BILL#
+                    </span>
                   </div>
                 )}
                 {!selectedBill && (
                   <div className="flex items-center gap-1 ml-2">
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input className="h-7 pl-7 text-xs w-40" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                      <Input
+                        className="h-7 pl-7 text-xs w-40"
+                        placeholder="Search..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
                     </div>
                   </div>
                 )}
                 {selectedBill && (
                   <div className="relative flex-1">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input className="h-7 pl-7 text-xs w-full" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                    <Input
+                      className="h-7 pl-7 text-xs w-full"
+                      placeholder="Search..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
                   </div>
                 )}
               </div>
@@ -1668,7 +2435,10 @@ function BillsPageContent() {
               {!selectedBill && (
                 <div
                   className="grid text-[11px] uppercase tracking-wide text-muted-foreground font-medium border-b bg-muted/10 shrink-0"
-                  style={{ gridTemplateColumns: "36px 90px 150px 130px 1fr 120px 100px 110px 36px" }}
+                  style={{
+                    gridTemplateColumns:
+                      "36px 90px 150px 130px 1fr 120px 100px 110px 36px",
+                  }}
                 >
                   <div className="px-3 py-2 flex items-center">
                     <input
@@ -1691,19 +2461,28 @@ function BillsPageContent() {
 
               {/* List content */}
               <div className="flex-1 overflow-y-auto">
-                {fetching ? (
+                {fetching ?
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                ) : filtered.length === 0 && !search && !filterStatus ? (
+                : filtered.length === 0 && !search && !filterStatus ?
                   <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
-                    <h2 className="text-xl font-semibold mb-2">Start Managing Your Bills!</h2>
-                    <p className="text-muted-foreground text-sm mb-6">Record bills from vendors and track payments easily.</p>
-                    <Button className="px-6 py-2 text-sm font-semibold uppercase tracking-wide bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/purchases/bills/new")}>
+                    <h2 className="text-xl font-semibold mb-2">
+                      Start Managing Your Bills!
+                    </h2>
+                    <p className="text-muted-foreground text-sm mb-6">
+                      Record bills from vendors and track payments easily.
+                    </p>
+                    <Button
+                      className="px-6 py-2 text-sm font-semibold uppercase tracking-wide bg-blue-600 hover:bg-blue-700"
+                      onClick={() => router.push("/purchases/bills/new")}
+                    >
                       Create New Bill
                     </Button>
                     <div className="mt-10 w-full max-w-2xl">
-                      <p className="text-sm font-medium text-muted-foreground mb-5">Life cycle of a Bill</p>
+                      <p className="text-sm font-medium text-muted-foreground mb-5">
+                        Life cycle of a Bill
+                      </p>
                       <div className="flex items-center justify-center flex-wrap gap-0">
                         {[
                           { icon: "🧾", label: "CREATE BILL" },
@@ -1712,28 +2491,33 @@ function BillsPageContent() {
                           { label: "MARK AS PAID", dash: true },
                           { icon: "✅", label: "BILL CLOSED" },
                         ].map((step, i) =>
-                          step.dash ? (
+                          step.dash ?
                             <div key={i} className="flex items-center">
                               <div className="w-6 border-t border-dashed border-gray-400" />
-                              <div className="bg-white border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-500 max-w-[80px] text-center leading-tight">{step.label}</div>
+                              <div className="bg-white border border-gray-300 rounded px-2 py-1.5 text-xs text-gray-500 max-w-[80px] text-center leading-tight">
+                                {step.label}
+                              </div>
                               <div className="w-6 border-t border-dashed border-gray-400" />
                             </div>
-                          ) : (
-                            <div key={i} className="flex flex-col items-center bg-white border border-gray-300 rounded-md px-3 py-2.5 text-xs font-medium text-gray-600 min-w-[100px]">
+                          : <div
+                              key={i}
+                              className="flex flex-col items-center bg-white border border-gray-300 rounded-md px-3 py-2.5 text-xs font-medium text-gray-600 min-w-[100px]"
+                            >
                               <span className="text-lg mb-1">{step.icon}</span>
-                              <span className="text-center leading-tight">{step.label}</span>
-                            </div>
-                          )
+                              <span className="text-center leading-tight">
+                                {step.label}
+                              </span>
+                            </div>,
                         )}
                       </div>
                     </div>
                   </div>
-                ) : filtered.length === 0 ? (
+                : filtered.length === 0 ?
                   <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                     <FileText className="h-8 w-8 text-muted-foreground/40" />
                     <p className="text-sm">No bills match your filter.</p>
                   </div>
-                ) : selectedBill ? (
+                : selectedBill ?
                   /* Compact list when detail panel is open */
                   <div className="divide-y">
                     {filtered.map((b) => (
@@ -1742,66 +2526,125 @@ function BillsPageContent() {
                         type="button"
                         className={cn(
                           "w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors",
-                          selectedId === b._id && "bg-blue-50 border-l-2 border-l-primary"
+                          selectedId === b._id &&
+                            "bg-blue-50 border-l-2 border-l-primary",
                         )}
                         onClick={() => setSelectedId(b._id)}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="font-medium text-sm text-foreground truncate">{getName(b.vendorId) || "—"}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">
+                            <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
                               {b.billNumber} • {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>
-                            <div className={cn("text-xs font-medium mt-0.5 uppercase tracking-wide", statusColor[b.status])}>{getBillStatusLabel(b)}</div>
+                            <div
+                              className={cn(
+                                "text-xs font-medium mt-0.5 uppercase tracking-wide",
+                                statusColor[b.status],
+                              )}
+                            >
+                              {getBillStatusLabel(b)}
+                            </div>
                           </div>
-                          <div className="text-sm font-semibold shrink-0">₹{fmtCur(b.total)}</div>
+                          <div className="text-sm font-semibold shrink-0">
+                            ₹{fmtCur(b.total)}
+                          </div>
                         </div>
                       </button>
                     ))}
                   </div>
-                ) : (
-                  /* Full-width table rows */
+                : /* Full-width table rows */
                   <div>
                     {filtered.map((b) => (
                       <div
                         key={b._id}
                         className="grid items-center border-b hover:bg-muted/20 cursor-pointer transition-colors text-sm group"
-                        style={{ gridTemplateColumns: "36px 90px 150px 130px 1fr 120px 100px 110px 36px" }}
+                        style={{
+                          gridTemplateColumns:
+                            "36px 90px 150px 130px 1fr 120px 100px 110px 36px",
+                        }}
                         onClick={() => setSelectedId(b._id)}
                       >
-                        <div className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="px-3 py-2.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <input
                             type="checkbox"
                             className="rounded border"
                             checked={selectedIds.includes(b._id)}
-                            onChange={(e) => toggleSelectBill(b._id, e.target.checked)}
+                            onChange={(e) =>
+                              toggleSelectBill(b._id, e.target.checked)
+                            }
                           />
                         </div>
-                        <div className="px-2 py-2.5 text-muted-foreground text-xs">
+                        <div className="px-2 py-2.5 text-muted-foreground text-xs" suppressHydrationWarning>
                           {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </div>
-                        <div className="px-2 py-2.5 text-primary font-medium">{b.billNumber}</div>
-                        <div className="px-2 py-2.5 text-muted-foreground">{b.referenceNumber || ""}</div>
+                        <div className="px-2 py-2.5 text-primary font-medium">
+                          {b.billNumber}
+                        </div>
+                        <div className="px-2 py-2.5 text-muted-foreground">
+                          {b.referenceNumber || ""}
+                        </div>
                         <div className="px-2 py-2.5">{getName(b.vendorId)}</div>
-                        <div className={cn("px-2 py-2.5 text-xs font-medium uppercase tracking-wide", statusColor[b.status])}>{getBillStatusLabel(b)}</div>
-                        <div className="px-2 py-2.5 text-right font-medium">₹{fmtCur(b.total)}</div>
-                        <div className="px-2 py-2.5 text-right text-muted-foreground">₹{fmtCur(b.balanceDue ?? b.total ?? 0)}</div>
-                        <div className="px-2 py-2.5 opacity-0 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className={cn(
+                            "px-2 py-2.5 text-xs font-medium uppercase tracking-wide",
+                            statusColor[b.status],
+                          )}
+                        >
+                          {getBillStatusLabel(b)}
+                        </div>
+                        <div className="px-2 py-2.5 text-right font-medium">
+                          ₹{fmtCur(b.total)}
+                        </div>
+                        <div className="px-2 py-2.5 text-right text-muted-foreground">
+                          ₹{fmtCur(b.balanceDue ?? b.total ?? 0)}
+                        </div>
+                        <div
+                          className="px-2 py-2.5 opacity-0 group-hover:opacity-100"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-6 w-6">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                              >
                                 <MoreHorizontal className="h-3.5 w-3.5" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => router.push(`/purchases/bills/${b._id}/edit`)}>Edit</DropdownMenuItem>
-                              {(b.status === "Open" || b.status === "Overdue" || b.status === "Partially Paid") && (
-                                <DropdownMenuItem onClick={() => router.push(`/purchases/payments-made/new?billId=${b._id}`)}>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(`/purchases/bills/${b._id}/edit`)
+                                }
+                              >
+                                Edit
+                              </DropdownMenuItem>
+                              {(b.status === "Open" ||
+                                b.status === "Overdue" ||
+                                b.status === "Partially Paid") && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    router.push(
+                                      `/purchases/payments-made/new?billId=${b._id}`,
+                                    )
+                                  }
+                                >
                                   Record Payment
                                 </DropdownMenuItem>
                               )}
-                              {(b.status === "Open" || b.status === "Overdue" || b.status === "Partially Paid") && (
-                                <DropdownMenuItem onClick={() => { void handleQuickVoidFromList(b); }}>
+                              {(b.status === "Open" ||
+                                b.status === "Overdue" ||
+                                b.status === "Partially Paid") && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    void handleQuickVoidFromList(b);
+                                  }}
+                                >
                                   Void
                                 </DropdownMenuItem>
                               )}
@@ -1818,46 +2661,54 @@ function BillsPageContent() {
                       </div>
                     ))}
                   </div>
-                )}
+                }
               </div>
             </div>
 
             {/* Right detail panel */}
             {selectedBill && (
               <div className="flex-1 overflow-hidden">
-                {fetchingSelected && !selectedBillDetails ? (
+                {fetchingSelected && !selectedBillDetails ?
                   <div className="h-full flex items-center justify-center bg-white">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
-                ) : (
-                  <BillDetailPanel
+                : <BillDetailPanel
                     bill={selectedBill}
                     onClose={() => setSelectedId(null)}
                     onStatusChange={handleStatusChange}
-                    onDelete={(o) => { setToDelete(o); setSelectedId(null); }}
+                    onDelete={(o) => {
+                      setToDelete(o);
+                      setSelectedId(null);
+                    }}
                     onEdit={(id) => router.push(`/purchases/bills/${id}/edit`)}
                     onPrint={handlePrint}
                     onDownloadPdf={handleDownloadPdf}
-                    onRecordPayment={(id) => router.push(`/purchases/payments-made/new?billId=${id}`)}
+                    onRecordPayment={(id) =>
+                      router.push(`/purchases/payments-made/new?billId=${id}`)
+                    }
                     orgName={orgName}
                     orgAddress={orgAddress}
                     orgPhone={orgPhone}
                     orgEmail={orgEmail}
                     orgCurrency={orgCurrency}
                   />
-                )}
+                }
               </div>
             )}
           </div>
         </div>
 
         {/* Delete confirmation */}
-        <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
+        <AlertDialog
+          open={!!toDelete}
+          onOpenChange={(o) => !o && setToDelete(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Bill?</AlertDialogTitle>
               <AlertDialogDescription>
-                {toDelete?.billNumber} will be permanently deleted. This action cannot be undone.
+                {toDelete?.billNumber} will be permanently deleted. This action
+                cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1879,7 +2730,13 @@ function BillsPageContent() {
 
 export default function BillsPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading bills...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-6 text-sm text-muted-foreground">
+          Loading bills...
+        </div>
+      }
+    >
       <BillsPageContent />
     </Suspense>
   );

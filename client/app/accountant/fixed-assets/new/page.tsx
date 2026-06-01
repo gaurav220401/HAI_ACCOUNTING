@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -40,6 +40,12 @@ import {
 } from "@/lib/api/fixed-assets";
 import { FixedAssetTypeDialog } from "@/components/fixed-asset-type-dialog";
 import { AccountDialog } from "@/components/account-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type FormState = {
   assetName: string;
@@ -72,9 +78,9 @@ type AccountFieldKey =
 
 const NEW_ACCOUNT_VALUE = "__new_account__";
 const FIXED_ASSET_ACCOUNT_TYPES: AccountType[] = ["Fixed Asset"];
+const CONTRA_ASSET_ACCOUNT_TYPES: AccountType[] = ["Contra Asset"];
 const DEPRECIATION_EXPENSE_ACCOUNT_TYPES: AccountType[] = [
   "Expense",
-  "Cost Of Goods Sold",
   "Other Expense",
 ];
 
@@ -138,6 +144,202 @@ function sortAccounts(rows: Account[]): Account[] {
   });
 }
 
+type ForecastRow = {
+  depreciationDate: string;
+  depreciationValue: number;
+  cumulativeDepreciationValue: number;
+  currentValue: number;
+};
+
+type ForecastPoint = {
+  date: string;
+  label: string;
+  currentValue: number;
+};
+
+type DepreciationProjection = {
+  rows: ForecastRow[];
+  points: ForecastPoint[];
+};
+
+function monthEnd(date: Date) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  return new Date(year, month + 1, 0);
+}
+
+function yearEnd(date: Date) {
+  return new Date(date.getFullYear(), 11, 31);
+}
+
+function daysInYear(date: Date) {
+  const year = date.getFullYear();
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  const diff = end.getTime() - start.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function round2(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function getPeriods(asset: {
+  assetLifeValue: string;
+  assetLifeUnit: string;
+  depreciationFrequency: string;
+}) {
+  const life = Math.max(1, Number(asset.assetLifeValue || 1));
+  const unit = asset.assetLifeUnit;
+  const frequency = asset.depreciationFrequency;
+
+  if (frequency === "Monthly") {
+    if (unit === "Months") return life;
+    return Math.max(1, Math.ceil(life / 30));
+  }
+
+  if (unit === "Months") return Math.max(1, Math.ceil(life / 12));
+  return Math.max(1, Math.ceil(life / 365));
+}
+
+function buildDepreciationProjection(form: FormState): DepreciationProjection {
+  const periods = getPeriods({
+    assetLifeValue: form.assetLifeValue,
+    assetLifeUnit: form.assetLifeUnit,
+    depreciationFrequency: form.depreciationFrequency,
+  });
+  const startDate = new Date(form.depreciationStartDate || form.purchaseDate || new Date().toISOString());
+
+  const openingValue = Math.max(0, toNumber(form.currentValue || form.purchaseValue || "0"));
+  const floorValue = Math.max(0, toNumber(form.disposalValue || "0"));
+  let remainingValue = openingValue;
+  let cumulative = 0;
+
+  const rows: ForecastRow[] = [];
+  const points: ForecastPoint[] = [];
+
+  const straightLineBase = periods > 0 ? (openingValue - floorValue) / periods : 0;
+  const decliningPercentage = toNumber(form.depreciationPercentage || "0");
+  const fallbackDecliningRate = Math.min(0.95, Math.max(0.01, 2 / Math.max(1, periods)));
+  const annualDecliningRate = decliningPercentage > 0 ? Math.max(0, Math.min(1, decliningPercentage / 100)) : fallbackDecliningRate;
+
+  const monthBasedDecliningRate = form.depreciationFrequency === "Monthly" ? annualDecliningRate / 12 : annualDecliningRate;
+
+  const computeDecliningValue = (index: number, available: number, periodDate: Date) => {
+    const isProRata = form.computationType === "Pro Rata";
+
+    if (!isProRata) {
+      return round2(available * monthBasedDecliningRate);
+    }
+
+    if (form.depreciationFrequency === "Monthly") {
+      const totalMonthDays = monthEnd(periodDate).getDate();
+      let periodDays = totalMonthDays;
+      if (index === 0) {
+        periodDays = Math.max(1, totalMonthDays - startDate.getDate() + 1);
+      }
+      const ratio = periodDays / daysInYear(periodDate);
+      return round2(available * annualDecliningRate * ratio);
+    }
+
+    const totalYearDays = daysInYear(periodDate);
+    let periodDays = totalYearDays;
+    if (index === 0) {
+      const end = yearEnd(startDate);
+      periodDays = Math.max(
+        1,
+        Math.floor((end.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      );
+    }
+    const ratio = periodDays / totalYearDays;
+    return round2(available * annualDecliningRate * ratio);
+  };
+
+  for (let index = 0; index < periods; index += 1) {
+    let periodDate = new Date(startDate);
+    if (form.depreciationFrequency === "Monthly") {
+      periodDate.setMonth(periodDate.getMonth() + index);
+      periodDate = monthEnd(periodDate);
+    } else {
+      periodDate.setFullYear(periodDate.getFullYear() + index);
+      periodDate = yearEnd(periodDate);
+    }
+
+    const remainingPeriods = periods - index;
+    const available = Math.max(0, remainingValue - floorValue);
+
+    let depreciationValue = 0;
+    if (form.depreciationMethod === "Declining Balance") {
+      depreciationValue = computeDecliningValue(index, available, periodDate);
+    } else {
+      depreciationValue = round2(straightLineBase);
+    }
+
+    if (form.depreciationMethod !== "Declining Balance" && remainingPeriods === 1) {
+      depreciationValue = round2(available);
+    }
+
+    depreciationValue = Math.min(depreciationValue, available);
+    depreciationValue = Math.max(0, depreciationValue);
+
+    cumulative = round2(cumulative + depreciationValue);
+    remainingValue = round2(Math.max(floorValue, remainingValue - depreciationValue));
+
+    rows.push({
+      depreciationDate: periodDate.toISOString(),
+      depreciationValue,
+      cumulativeDepreciationValue: cumulative,
+      currentValue: remainingValue,
+    });
+
+    points.push({
+      date: periodDate.toISOString(),
+      label: periodDate.toLocaleDateString("en-US", { month: "short" }),
+      currentValue: remainingValue,
+    });
+  }
+
+  // Declining balance can leave residual value; add one balancing row to close at disposal value.
+  const residual = round2(Math.max(0, remainingValue - floorValue));
+  if (form.depreciationMethod === "Declining Balance" && residual > 0.009) {
+    let finalDate = new Date(startDate);
+    if (form.depreciationFrequency === "Monthly") {
+      finalDate.setMonth(finalDate.getMonth() + periods);
+      finalDate = monthEnd(finalDate);
+    } else {
+      finalDate.setFullYear(finalDate.getFullYear() + periods);
+      finalDate = yearEnd(finalDate);
+    }
+
+    cumulative = round2(cumulative + residual);
+    remainingValue = round2(Math.max(floorValue, remainingValue - residual));
+
+    rows.push({
+      depreciationDate: finalDate.toISOString(),
+      depreciationValue: residual,
+      cumulativeDepreciationValue: cumulative,
+      currentValue: remainingValue,
+    });
+
+    points.push({
+      date: finalDate.toISOString(),
+      label: finalDate.toLocaleDateString("en-US", { month: "short" }),
+      currentValue: remainingValue,
+    });
+  }
+
+  return { rows, points };
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
 function MoneyInput({
   value,
   onChange,
@@ -193,7 +395,9 @@ function NewFixedAssetPageContent() {
   } = useOrganization();
 
   const [form, setForm] = useState<FormState>(defaultForm);
+  const [overrideAccounts, setOverrideAccounts] = useState(false);
   const [assetTypes, setAssetTypes] = useState<FixedAssetType[]>([]);
+  const assetTypesRef = useRef<FixedAssetType[]>(assetTypes);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -202,6 +406,31 @@ function NewFixedAssetPageContent() {
   const [createTargetField, setCreateTargetField] =
     useState<AccountFieldKey>("fixedAssetAccountId");
   const [editStatus, setEditStatus] = useState<FixedAssetStatus | null>(null);
+  const initialLoadDone = useRef(false);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [projection, setProjection] = useState<DepreciationProjection | null>(null);
+
+  const handlePreview = () => {
+    const purchaseVal = toNumber(form.purchaseValue);
+    const lifeVal = toNumber(form.assetLifeValue);
+    if (!form.purchaseValue || Number.isNaN(purchaseVal) || purchaseVal <= 0) {
+      toast.error("Please enter a valid Purchase Value before previewing.");
+      return;
+    }
+    if (!form.assetLifeValue || Number.isNaN(lifeVal) || lifeVal <= 0) {
+      toast.error("Please enter a valid Asset Life before previewing.");
+      return;
+    }
+
+    try {
+      const proj = buildDepreciationProjection(form);
+      setProjection(proj);
+      setPreviewOpen(true);
+    } catch (error) {
+      toast.error("Failed to generate depreciation schedule preview.");
+    }
+  };
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -215,6 +444,10 @@ function NewFixedAssetPageContent() {
 
   const loadInitial = useCallback(async () => {
     if (!activeOrganization?._id) return;
+    // Only show the loading spinner on the very first load.
+    // Subsequent re-fetches (caused by context re-renders) must NOT
+    // unmount the form — doing so causes Radix Select to lose its value.
+    if (initialLoadDone.current) return;
     setLoadingData(true);
     try {
       const [typesRes, accountsRes] = await Promise.all([
@@ -223,9 +456,13 @@ function NewFixedAssetPageContent() {
       ]);
 
       setAssetTypes(typesRes.data ?? []);
+      assetTypesRef.current = typesRes.data ?? [];
       setAccounts(sortAccounts(accountsRes.data ?? []));
 
-      if (!sourceAssetId) return;
+      if (!sourceAssetId) {
+        initialLoadDone.current = true;
+        return;
+      }
 
       const cloned = await fixedAssetApi.getById(sourceAssetId);
       const asset = cloned.data;
@@ -234,6 +471,21 @@ function NewFixedAssetPageContent() {
       } else {
         setEditStatus(null);
       }
+
+      const assetTypeId = getRefId(asset.fixedAssetTypeId);
+      const fixedAssetAccId = getRefId(asset.fixedAssetAccountId);
+      const accumulatedDeprAccId = getRefId(asset.accumulatedDepreciationAccountId);
+      const deprExpenseAccId = getRefId(asset.depreciationExpenseAccountId);
+
+      const selectedType = typesRes.data?.find((t) => t._id === assetTypeId);
+      const hasOverride = selectedType ? (
+        fixedAssetAccId !== getRefId(selectedType.fixedAssetAccountId) ||
+        accumulatedDeprAccId !== getRefId(selectedType.accumulatedDepreciationAccountId) ||
+        deprExpenseAccId !== getRefId(selectedType.depreciationExpenseAccountId)
+      ) : false;
+
+      setOverrideAccounts(hasOverride);
+
       setForm({
         assetName: asset.assetName,
         purchaseValue: String(asset.purchaseValue || ""),
@@ -242,7 +494,7 @@ function NewFixedAssetPageContent() {
         serialNumber: asset.serialNumber || "",
         currentValue: String(asset.currentValue || ""),
         disposalValue: String(asset.disposalValue || ""),
-        fixedAssetTypeId: getRefId(asset.fixedAssetTypeId),
+        fixedAssetTypeId: assetTypeId,
         purchaseDate: asset.purchaseDate?.slice(0, 10) || today,
         warrantyExpirationDate:
           asset.warrantyExpirationDate?.slice(0, 10) || "",
@@ -255,14 +507,11 @@ function NewFixedAssetPageContent() {
         computationType: asset.computationType,
         depreciationStartDate:
           asset.depreciationStartDate?.slice(0, 10) || today,
-        fixedAssetAccountId: getRefId(asset.fixedAssetAccountId),
-        accumulatedDepreciationAccountId: getRefId(
-          asset.accumulatedDepreciationAccountId,
-        ),
-        depreciationExpenseAccountId: getRefId(
-          asset.depreciationExpenseAccountId,
-        ),
+        fixedAssetAccountId: fixedAssetAccId,
+        accumulatedDepreciationAccountId: accumulatedDeprAccId,
+        depreciationExpenseAccountId: deprExpenseAccId,
       });
+      initialLoadDone.current = true;
     } catch (error) {
       toast.error((error as Error).message || "Failed to load form data");
     } finally {
@@ -281,22 +530,29 @@ function NewFixedAssetPageContent() {
     [accounts],
   );
 
+  const contraAssetAccountOptions = useMemo(
+    () => accounts.filter((account) => account.accountType === "Contra Asset"),
+    [accounts],
+  );
+
   const expenseAccountOptions = useMemo(
-    () => accounts.filter((account) => account.rootType === "Expense"),
+    () => accounts.filter((account) => account.rootType === "Expense" && account.accountType !== "Cost Of Goods Sold"),
     [accounts],
   );
 
   const accountOptionsForFixed =
     fixedAssetAccountOptions.length > 0 ? fixedAssetAccountOptions : accounts;
   const accountOptionsForAccumulated =
-    fixedAssetAccountOptions.length > 0 ? fixedAssetAccountOptions : accounts;
+    contraAssetAccountOptions.length > 0 ? contraAssetAccountOptions : accounts;
   const accountOptionsForExpense =
     expenseAccountOptions.length > 0 ? expenseAccountOptions : accounts;
 
   const createAccountTypes =
     createTargetField === "depreciationExpenseAccountId"
       ? DEPRECIATION_EXPENSE_ACCOUNT_TYPES
-      : FIXED_ASSET_ACCOUNT_TYPES;
+      : createTargetField === "accumulatedDepreciationAccountId"
+        ? CONTRA_ASSET_ACCOUNT_TYPES
+        : FIXED_ASSET_ACCOUNT_TYPES;
 
   function openCreateAccountFor(field: AccountFieldKey) {
     setCreateTargetField(field);
@@ -327,8 +583,16 @@ function NewFixedAssetPageContent() {
   }
 
   function applyTypeDefaults(typeId: string) {
-    const selected = assetTypes.find((type) => type._id === typeId);
-    if (!selected) return;
+    // Use the ref to avoid stale-closure issues with the assetTypes array
+    const types = assetTypesRef.current;
+    const selected = types.find((type) => type._id === typeId);
+    if (!selected) {
+      // Still persist the selected typeId even if we can't find its defaults
+      setForm((prev) => ({ ...prev, fixedAssetTypeId: typeId }));
+      return;
+    }
+
+    setOverrideAccounts(false);
 
     setForm((prev) => ({
       ...prev,
@@ -355,6 +619,25 @@ function NewFixedAssetPageContent() {
       ),
     }));
   }
+
+  const handleToggleOverride = (checked: boolean) => {
+    setOverrideAccounts(checked);
+    if (!checked && form.fixedAssetTypeId) {
+      const selected = assetTypesRef.current.find((type) => type._id === form.fixedAssetTypeId);
+      if (selected) {
+        setForm((prev) => ({
+          ...prev,
+          fixedAssetAccountId: getRefId(selected.fixedAssetAccountId),
+          accumulatedDepreciationAccountId: getRefId(
+            selected.accumulatedDepreciationAccountId,
+          ),
+          depreciationExpenseAccountId: getRefId(
+            selected.depreciationExpenseAccountId,
+          ),
+        }));
+      }
+    }
+  };
 
   async function handleSaveDraft() {
     if (!form.assetName.trim()) {
@@ -394,6 +677,11 @@ function NewFixedAssetPageContent() {
       !form.depreciationExpenseAccountId
     ) {
       toast.error("Please select all account details");
+      return;
+    }
+
+    if (form.fixedAssetAccountId === form.accumulatedDepreciationAccountId) {
+      toast.error("Asset Account and Accumulated Depreciation Account cannot be the same GL account");
       return;
     }
 
@@ -862,126 +1150,186 @@ function NewFixedAssetPageContent() {
               <Separator />
 
               <section className="space-y-4">
-                <h2 className="text-2xl font-medium">Account Details</h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label className="text-red-500">Fixed Asset Account*</Label>
-                    <Select
-                      value={form.fixedAssetAccountId}
-                      onValueChange={(value) => {
-                        if (value === NEW_ACCOUNT_VALUE) {
-                          openCreateAccountFor("fixedAssetAccountId");
-                          return;
-                        }
-                        setForm((prev) => ({
-                          ...prev,
-                          fixedAssetAccountId: value,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
-                          <Plus className="h-3.5 w-3.5" />
-                          New Account
-                        </SelectItem>
-                        <SelectSeparator />
-                        {accountOptionsForFixed.length === 0 ? (
-                          <SelectItem value="__none_fixed" disabled>
-                            No accounts available
-                          </SelectItem>
-                        ) : (
-                          renderAccountOptions(accountOptionsForFixed)
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-red-500">
-                      Accumulated Depreciation Account*
-                    </Label>
-                    <Select
-                      value={form.accumulatedDepreciationAccountId}
-                      onValueChange={(value) => {
-                        if (value === NEW_ACCOUNT_VALUE) {
-                          openCreateAccountFor(
-                            "accumulatedDepreciationAccountId",
-                          );
-                          return;
-                        }
-                        setForm((prev) => ({
-                          ...prev,
-                          accumulatedDepreciationAccountId: value,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
-                          <Plus className="h-3.5 w-3.5" />
-                          New Account
-                        </SelectItem>
-                        <SelectSeparator />
-                        {accountOptionsForAccumulated.length === 0 ? (
-                          <SelectItem value="__none_acc" disabled>
-                            No accounts available
-                          </SelectItem>
-                        ) : (
-                          renderAccountOptions(accountOptionsForAccumulated)
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-red-500">
-                      Depreciation Expense Account*
-                    </Label>
-                    <Select
-                      value={form.depreciationExpenseAccountId}
-                      onValueChange={(value) => {
-                        if (value === NEW_ACCOUNT_VALUE) {
-                          openCreateAccountFor("depreciationExpenseAccountId");
-                          return;
-                        }
-                        setForm((prev) => ({
-                          ...prev,
-                          depreciationExpenseAccountId: value,
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
-                          <Plus className="h-3.5 w-3.5" />
-                          New Account
-                        </SelectItem>
-                        <SelectSeparator />
-                        {accountOptionsForExpense.length === 0 ? (
-                          <SelectItem value="__none_exp" disabled>
-                            No accounts available
-                          </SelectItem>
-                        ) : (
-                          renderAccountOptions(accountOptionsForExpense)
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-medium">Account Details</h2>
+                  {form.fixedAssetTypeId && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="override-accounts"
+                        checked={overrideAccounts}
+                        onChange={(e) => handleToggleOverride(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                      />
+                      <Label htmlFor="override-accounts" className="cursor-pointer text-sm font-medium">
+                        Override default GL accounts
+                      </Label>
+                    </div>
+                  )}
                 </div>
+
+                {!form.fixedAssetTypeId ? (
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground bg-muted/10">
+                    Please select a Fixed Asset Type to view account details.
+                  </div>
+                ) : !overrideAccounts ? (
+                  <div className="rounded-md bg-muted/40 p-5 border text-sm text-muted-foreground shadow-sm">
+                    <p className="font-semibold text-foreground mb-3 text-sm flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Inherited from Asset Type — override here for this asset only
+                    </p>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div className="bg-background/60 p-3 rounded border">
+                        <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fixed Asset Account</span>
+                        <span className="text-foreground font-medium mt-1.5 block">
+                          {(() => {
+                            const acc = accounts.find(a => a._id === form.fixedAssetAccountId);
+                            return acc ? accountLabel(acc) : "None selected";
+                          })()}
+                        </span>
+                      </div>
+                      <div className="bg-background/60 p-3 rounded border">
+                        <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">Accumulated Depreciation Account</span>
+                        <span className="text-foreground font-medium mt-1.5 block">
+                          {(() => {
+                            const acc = accounts.find(a => a._id === form.accumulatedDepreciationAccountId);
+                            return acc ? accountLabel(acc) : "None selected";
+                          })()}
+                        </span>
+                      </div>
+                      <div className="bg-background/60 p-3 rounded border">
+                        <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">Depreciation Expense Account</span>
+                        <span className="text-foreground font-medium mt-1.5 block">
+                          {(() => {
+                            const acc = accounts.find(a => a._id === form.depreciationExpenseAccountId);
+                            return acc ? accountLabel(acc) : "None selected";
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className="text-red-500">Fixed Asset Account*</Label>
+                      <Select
+                        value={form.fixedAssetAccountId}
+                        onValueChange={(value) => {
+                          if (value === NEW_ACCOUNT_VALUE) {
+                            openCreateAccountFor("fixedAssetAccountId");
+                            return;
+                          }
+                          setForm((prev) => ({
+                            ...prev,
+                            fixedAssetAccountId: value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                            <Plus className="h-3.5 w-3.5" />
+                            New Account
+                          </SelectItem>
+                          <SelectSeparator />
+                          {accountOptionsForFixed.length === 0 ? (
+                            <SelectItem value="__none_fixed" disabled>
+                              No accounts available
+                            </SelectItem>
+                          ) : (
+                            renderAccountOptions(accountOptionsForFixed)
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-red-500">
+                        Accumulated Depreciation Account*
+                      </Label>
+                      <Select
+                        value={form.accumulatedDepreciationAccountId}
+                        onValueChange={(value) => {
+                          if (value === NEW_ACCOUNT_VALUE) {
+                            openCreateAccountFor(
+                              "accumulatedDepreciationAccountId",
+                            );
+                            return;
+                          }
+                          setForm((prev) => ({
+                            ...prev,
+                            accumulatedDepreciationAccountId: value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                            <Plus className="h-3.5 w-3.5" />
+                            New Account
+                          </SelectItem>
+                          <SelectSeparator />
+                          {accountOptionsForAccumulated.length === 0 ? (
+                            <SelectItem value="__none_acc" disabled>
+                              No accounts available
+                            </SelectItem>
+                          ) : (
+                            renderAccountOptions(accountOptionsForAccumulated)
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-red-500">
+                        Depreciation Expense Account*
+                      </Label>
+                      <Select
+                        value={form.depreciationExpenseAccountId}
+                        onValueChange={(value) => {
+                          if (value === NEW_ACCOUNT_VALUE) {
+                            openCreateAccountFor("depreciationExpenseAccountId");
+                            return;
+                          }
+                          setForm((prev) => ({
+                            ...prev,
+                            depreciationExpenseAccountId: value,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NEW_ACCOUNT_VALUE} className="text-primary font-medium">
+                            <Plus className="h-3.5 w-3.5" />
+                            New Account
+                          </SelectItem>
+                          <SelectSeparator />
+                          {accountOptionsForExpense.length === 0 ? (
+                            <SelectItem value="__none_exp" disabled>
+                              No accounts available
+                            </SelectItem>
+                          ) : (
+                            renderAccountOptions(accountOptionsForExpense)
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </section>
             </div>
 
             <div className="px-5 py-4 border-t flex items-center justify-between">
               <button
                 type="button"
-                className="text-sm text-primary hover:underline"
+                onClick={handlePreview}
+                className="text-sm text-primary hover:underline font-semibold"
               >
                 Preview Depreciation Entries
               </button>
@@ -1005,14 +1353,96 @@ function NewFixedAssetPageContent() {
           </div>
         </main>
 
+        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+          <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+                <span className="p-1.5 rounded-md bg-primary/10 text-primary">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calendar-range"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>
+                </span>
+                Depreciation Schedule Preview
+              </DialogTitle>
+            </DialogHeader>
+
+            {projection && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-lg bg-muted/30 border text-xs">
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Method</span>
+                    <span className="font-semibold text-foreground">{form.depreciationMethod || "N/A"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Frequency</span>
+                    <span className="font-semibold text-foreground">{form.depreciationFrequency || "N/A"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Asset Life</span>
+                    <span className="font-semibold text-foreground">{form.assetLifeValue} {form.assetLifeUnit}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block font-medium">Comp. Type</span>
+                    <span className="font-semibold text-foreground">{form.computationType || "N/A"}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto max-h-[45vh] scrollbar-thin">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-muted/50 text-muted-foreground sticky top-0 backdrop-blur-xs border-b">
+                        <tr>
+                          <th className="text-left px-4 py-3 font-semibold">Period</th>
+                          <th className="text-left px-4 py-3 font-semibold">Depreciation Date</th>
+                          <th className="text-right px-4 py-3 font-semibold">Depreciation Amount</th>
+                          <th className="text-right px-4 py-3 font-semibold">Accumulated Depr.</th>
+                          <th className="text-right px-4 py-3 font-semibold">Book Value</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y bg-background">
+                        {projection.rows.map((row, index) => (
+                          <tr key={index} className="hover:bg-muted/10 transition-colors">
+                            <td className="px-4 py-2.5 font-medium text-muted-foreground">
+                              #{index + 1}
+                            </td>
+                            <td className="px-4 py-2.5 text-foreground">
+                              {new Date(row.depreciationDate).toLocaleDateString("en-IN", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              })}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-medium text-foreground">
+                              {formatCurrency(row.depreciationValue)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-muted-foreground">
+                              {formatCurrency(row.cumulativeDepreciationValue)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                              {formatCurrency(row.currentValue)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+                Close Preview
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <FixedAssetTypeDialog
           open={typeDialogOpen}
           onOpenChange={setTypeDialogOpen}
           onCreated={(created) => {
-            setAssetTypes((prev) => {
-              const next = [...prev, created];
-              return next.sort((a, b) => a.name.localeCompare(b.name));
-            });
+            const updated = [...assetTypesRef.current, created].sort((a, b) => a.name.localeCompare(b.name));
+            assetTypesRef.current = updated;
+            setAssetTypes(updated);
             applyTypeDefaults(created._id);
           }}
         />

@@ -287,6 +287,7 @@ const UNIT_ABBREVIATION_OPTIONS: UnitAbbreviationOption[] = [
   { abbreviation: "BDL", name: "Bundles" },
   { abbreviation: "BAL", name: "Bale" },
   { abbreviation: "TGM", name: "Ten Gross" },
+  { abbreviation: "HRS", name: "Hours" },
   { abbreviation: "OTH", name: "Others" },
 ];
 
@@ -959,7 +960,15 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   const [otherUploading, setOtherUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const autoTaxDefaultsAppliedRef = useRef(false);
+
+  useEffect(() => {
+    const nameParam = searchParams?.get("name");
+    if (nameParam && !initialData) {
+      setForm((prev) => ({ ...prev, name: nameParam }));
+    }
+  }, [searchParams, initialData]);
 
   const uploading = frontUploading || rearUploading || otherUploading;
 
@@ -995,6 +1004,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   }
 
   const loadDropdowns = useCallback(async () => {
+    setLoadingDropdowns(true);
     try {
       const [
         salesRes,
@@ -1075,6 +1085,8 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       setUnits(unitList);
     } catch {
       // non-fatal
+    } finally {
+      setLoadingDropdowns(false);
     }
   }, [initialData]);
 
@@ -1247,7 +1259,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
     if (form.hasInventoryInfo && (Number(form.stockOnHand || 0) < 0)) errs.stockOnHand = "Stock cannot be negative";
     if (form.hasInventoryInfo && (Number(form.averageCost || 0) < 0)) errs.averageCost = "Cost cannot be negative";
     if (form.hasSalesInfo && !form.salesAccountId) errs.salesAccountId = "Sales account is required";
-    if (form.hasPurchaseInfo && !form.purchaseAccountId) errs.purchaseAccountId = "Purchase account is required";
+    if (form.hasPurchaseInfo && form.itemType !== "Service" && !form.purchaseAccountId) errs.purchaseAccountId = "Purchase account is required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -1273,8 +1285,8 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         identifiers: form.identifiers.filter((value) => value.trim().length > 0),
         itemMode: form.itemMode,
         itemType: form.hasInventoryInfo ? "Goods" : form.itemType,
-        brand: form.brand.trim(),
-        manufacturer: form.manufacturer.trim(),
+        brand: form.itemType === "Service" ? "" : form.brand.trim(),
+        manufacturer: form.itemType === "Service" ? "" : form.manufacturer.trim(),
         unit: form.unit || undefined,
         sku: form.sku || undefined,
         hsnSacCode: form.hsnSacCode || undefined,
@@ -1330,7 +1342,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         payload.salesAccountId = null;
         payload.sellingDescription = "";
       }
-      if (form.hasPurchaseInfo) {
+      if (form.hasPurchaseInfo && form.itemType !== "Service") {
         payload.costPrice = parseFloat(form.costPrice) || 0;
         payload.purchaseAccountId = form.purchaseAccountId || undefined;
         payload.purchaseDescription = form.purchaseDescription || undefined;
@@ -1414,7 +1426,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
       <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
         <h1 className="text-lg font-semibold tracking-tight">{isEdit ? "Edit Item" : "New Item"}</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push("/items")} disabled={saving}>
+          <Button variant="outline" size="sm" onClick={() => router.push(returnUrl)} disabled={saving}>
             Cancel
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving || uploading}>
@@ -1465,23 +1477,27 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
               </RadioGroup>
             </Row>
 
-            <Row label="Brand">
-              <Input
-                className="h-9 text-sm"
-                value={form.brand}
-                onChange={(e) => set("brand", e.target.value)}
-                placeholder="Select or add brand"
-              />
-            </Row>
+            {form.itemType !== "Service" && (
+              <>
+                <Row label="Brand">
+                  <Input
+                    className="h-9 text-sm"
+                    value={form.brand}
+                    onChange={(e) => set("brand", e.target.value)}
+                    placeholder="Select or add brand"
+                  />
+                </Row>
 
-            <Row label="Manufacturer">
-              <Input
-                className="h-9 text-sm"
-                value={form.manufacturer}
-                onChange={(e) => set("manufacturer", e.target.value)}
-                placeholder="Select or add manufacturer"
-              />
-            </Row>
+                <Row label="Manufacturer">
+                  <Input
+                    className="h-9 text-sm"
+                    value={form.manufacturer}
+                    onChange={(e) => set("manufacturer", e.target.value)}
+                    placeholder="Select or add manufacturer"
+                  />
+                </Row>
+              </>
+            )}
           </div>
 
           <div className="rounded-lg border p-4 space-y-4">
@@ -1544,20 +1560,27 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
               <label className="text-sm text-destructive font-medium">Unit<span className="text-destructive">*</span></label>
               <Select
                 value={form.unit}
+                disabled={loadingDropdowns}
                 onValueChange={(v) => {
                   if (v === "__new_unit__") { setCreateUnitOpen(true); return; }
                   set("unit", v);
                 }}
               >
                 <SelectTrigger className="h-9 text-sm w-full">
-                  <SelectValue placeholder="Select or type to add" />
+                  <SelectValue placeholder={loadingDropdowns ? "Loading units..." : "Select or type to add"} />
                 </SelectTrigger>
                 <SelectContent className="max-h-72">
-                  {units.map((u) => (
-                    <SelectItem key={u._id} value={u._id}>
-                      {u.name} ({u.abbreviation})
+                  {units.length === 0 ? (
+                    <SelectItem value="__none" disabled className="text-muted-foreground text-xs py-2 px-3">
+                      No units yet — create one
                     </SelectItem>
-                  ))}
+                  ) : (
+                    units.map((u) => (
+                      <SelectItem key={u._id} value={u._id}>
+                        {u.name} ({u.abbreviation})
+                      </SelectItem>
+                    ))
+                  )}
                   <SelectSeparator />
                   <SelectItem value="__new_unit__" className="text-primary font-medium">
                     <Plus className="h-3.5 w-3.5" />
@@ -1824,87 +1847,91 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
         )}
 
         {/* ── Purchase Information ──────────────────────────────────────────── */}
-        <SectionHeader
-          id="purchase-info"
-          label="Purchase Information"
-          checked={form.hasPurchaseInfo}
-          onToggle={(v) => set("hasPurchaseInfo", v)}
-        />
-        {form.hasPurchaseInfo && (
-          <div className="grid grid-cols-2 gap-x-8 gap-y-3 pl-6 pb-2">
-            {/* Cost Price */}
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-destructive font-medium">
-                Cost Price<span className="text-destructive">*</span>
-              </label>
-              <div className="flex h-9">
-                <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-muted text-muted-foreground">INR</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className="rounded-l-none h-9 text-sm"
-                  value={form.costPrice}
-                  onChange={(e) => set("costPrice", e.target.value)}
-                  onWheel={preventNumberWheelChange}
-                  placeholder="0.00"
-                />
+        {form.itemType !== "Service" && (
+          <>
+            <SectionHeader
+              id="purchase-info"
+              label="Purchase Information"
+              checked={form.hasPurchaseInfo}
+              onToggle={(v) => set("hasPurchaseInfo", v)}
+            />
+            {form.hasPurchaseInfo && (
+              <div className="grid grid-cols-2 gap-x-8 gap-y-3 pl-6 pb-2">
+                {/* Cost Price */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-destructive font-medium">
+                    Cost Price<span className="text-destructive">*</span>
+                  </label>
+                  <div className="flex h-9">
+                    <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-muted text-muted-foreground">INR</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="rounded-l-none h-9 text-sm"
+                      value={form.costPrice}
+                      onChange={(e) => set("costPrice", e.target.value)}
+                      onWheel={preventNumberWheelChange}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                {/* Purchase Account */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-destructive font-medium">
+                    Account<span className="text-destructive">*</span>
+                  </label>
+                  <AccountSelect
+                    value={form.purchaseAccountId}
+                    onChange={(v) => set("purchaseAccountId", v)}
+                    grouped={purchaseAccounts}
+                    error={errors.purchaseAccountId}
+                    section="purchase"
+                    parentAccounts={allPurchaseAccounts}
+                    onAccountCreated={handlePurchaseAccountCreated}
+                  />
+                </div>
+
+                {/* Purchase Description */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-muted-foreground">Description</label>
+                  <Textarea
+                    rows={2}
+                    className="text-sm resize-none"
+                    value={form.purchaseDescription}
+                    onChange={(e) => set("purchaseDescription", e.target.value)}
+                    placeholder="Description for purchase orders"
+                  />
+                </div>
+
+                {/* Preferred Vendor — now linked to real vendor list */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-muted-foreground">Preferred Vendor</label>
+                  <Select
+                    value={form.preferredVendorId || "__none"}
+                    onValueChange={(v) => set("preferredVendorId", v === "__none" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select vendor" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      <SelectItem value="__none">— None —</SelectItem>
+                      {vendors.length === 0 ? (
+                        <SelectItem value="__empty" disabled>No vendors yet</SelectItem>
+                      ) : (
+                        vendors.map((v) => (
+                          <SelectItem key={v._id} value={v._id}>
+                            {v.displayName || v.companyName || `${v.firstName} ${v.lastName}`.trim()}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-
-            {/* Purchase Account */}
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-destructive font-medium">
-                Account<span className="text-destructive">*</span>
-              </label>
-              <AccountSelect
-                value={form.purchaseAccountId}
-                onChange={(v) => set("purchaseAccountId", v)}
-                grouped={purchaseAccounts}
-                error={errors.purchaseAccountId}
-                section="purchase"
-                parentAccounts={allPurchaseAccounts}
-                onAccountCreated={handlePurchaseAccountCreated}
-              />
-            </div>
-
-            {/* Purchase Description */}
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-muted-foreground">Description</label>
-              <Textarea
-                rows={2}
-                className="text-sm resize-none"
-                value={form.purchaseDescription}
-                onChange={(e) => set("purchaseDescription", e.target.value)}
-                placeholder="Description for purchase orders"
-              />
-            </div>
-
-            {/* Preferred Vendor — now linked to real vendor list */}
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-muted-foreground">Preferred Vendor</label>
-              <Select
-                value={form.preferredVendorId || "__none"}
-                onValueChange={(v) => set("preferredVendorId", v === "__none" ? "" : v)}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Select vendor" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  <SelectItem value="__none">— None —</SelectItem>
-                  {vendors.length === 0 ? (
-                    <SelectItem value="__empty" disabled>No vendors yet</SelectItem>
-                  ) : (
-                    vendors.map((v) => (
-                      <SelectItem key={v._id} value={v._id}>
-                        {v.displayName || v.companyName || `${v.firstName} ${v.lastName}`.trim()}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            )}
+          </>
         )}
 
         {/* ── Inventory Information ──────────────────────────────────────── */}

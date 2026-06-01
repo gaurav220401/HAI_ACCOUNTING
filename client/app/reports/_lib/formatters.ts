@@ -35,6 +35,7 @@ export function formatTotalMetricValue(key: string, value: unknown): string {
     metric.includes("items") ||
     metric.includes("lines") ||
     metric.includes("days") ||
+    metric.includes("invoice") ||
     stockLike;
 
   if (percentLike) return `${numericValue.toFixed(2)}%`;

@@ -28,7 +28,7 @@ const accountSchema = new Schema<IAccount>(
         "Other Asset", "Other Current Asset", "Cash", "Bank",
         "Fixed Asset", "Accounts Receivable", "Stock",
         "Payment Clearing Account", "Intangible Asset",
-        "Non Current Asset", "Deferred Tax Asset",
+        "Non Current Asset", "Deferred Tax Asset", "Contra Asset",
         // Liability
         "Other Current Liability", "Credit Card", "Non Current Liability",
         "Other Liability", "Accounts Payable", "Overseas Tax Payable",

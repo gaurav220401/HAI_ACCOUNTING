@@ -58,7 +58,14 @@ export default function TaxesSettingsPage() {
     setFetching(true);
     try {
       const res = await settingsApi.taxes.list();
-      setTaxes(res.data || []);
+      let items = res.data || [];
+      // Auto-seed defaults if list is empty (first visit or after reset)
+      if (items.length === 0) {
+        await settingsApi.taxes.seed();
+        const res2 = await settingsApi.taxes.list();
+        items = res2.data || [];
+      }
+      setTaxes(items);
     } catch {
       toast.error("Failed to load taxes");
     } finally {
@@ -242,7 +249,7 @@ export default function TaxesSettingsPage() {
                 {taxes.length === 0 && (
                   <tr>
                     <td className="px-3 py-4 text-muted-foreground" colSpan={5}>
-                      No taxes available. Click Seed Defaults to initialize.
+                      {fetching ? "Loading taxes…" : "No taxes available. Click Seed Defaults to initialize."}
                     </td>
                   </tr>
                 )}

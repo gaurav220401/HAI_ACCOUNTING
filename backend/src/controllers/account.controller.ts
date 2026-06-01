@@ -728,6 +728,24 @@ export const getOpeningBalances = asyncHandler(async (req: AuthenticatedRequest,
 
   const totalEntries: Array<{ debit: number; credit: number }> = [];
 
+  const obEntries = await GlEntry.aggregate([
+    {
+      $match: {
+        organizationId,
+        voucherType: "System",
+        voucherNo: { $regex: /^OB-/ },
+        isDeleted: false,
+      }
+    },
+    {
+      $group: {
+        _id: "$accountId",
+        netAmount: { $sum: { $subtract: [{ $ifNull: ["$debit", 0] }, { $ifNull: ["$credit", 0] }] } }
+      }
+    }
+  ]);
+  const obGlMap = new Map(obEntries.map((e: any) => [String(e._id), e.netAmount]));
+
   for (const account of accounts) {
     if (
       account.name === OPENING_BALANCE_ADJUSTMENT_ACCOUNT ||
@@ -736,7 +754,10 @@ export const getOpeningBalances = asyncHandler(async (req: AuthenticatedRequest,
       continue;
     }
 
-    const signed = round2(Number(account.openingBalance ?? account.balance ?? 0));
+    const manualOB = round2(Number(account.openingBalance || 0));
+    const glOB = round2(obGlMap.get(String(account._id)) || 0);
+    const signed = round2(manualOB + glOB);
+
     const debit = signed > 0 ? signed : 0;
     const credit = signed < 0 ? Math.abs(signed) : 0;
     const availableSide: BalanceSide | null = signed === 0 ? null : (signed > 0 ? "Debit" : "Credit");
@@ -822,6 +843,26 @@ export const saveOpeningBalances = asyncHandler(async (req: AuthenticatedRequest
   const accountMap = new Map(accounts.map((account) => [String(account._id), account]));
   const appliedEntries: Array<{ debit: number; credit: number }> = [];
 
+  const obEntries = await GlEntry.aggregate([
+    {
+      $match: {
+        organizationId,
+        voucherType: "System",
+        voucherNo: { $regex: /^OB-/ },
+        isDeleted: false,
+      }
+    },
+    {
+      $group: {
+        _id: "$accountId",
+        netAmount: { $sum: { $subtract: [{ $ifNull: ["$debit", 0] }, { $ifNull: ["$credit", 0] }] } }
+      }
+    }
+  ]);
+  const obGlMap = new Map(obEntries.map((e: any) => [String(e._id), e.netAmount]));
+
+  let manualNetSum = 0;
+
   for (const entry of sanitizedEntries) {
     const account = accountMap.get(entry.accountId);
     if (!account) continue;
@@ -833,11 +874,21 @@ export const saveOpeningBalances = asyncHandler(async (req: AuthenticatedRequest
       continue;
     }
 
-    const signed = round2(entry.debit - entry.credit);
-    account.openingBalance = signed;
-    account.balance = signed;
-    attachUser(account, req);
-    await account.save();
+    const totalSignedInput = round2(entry.debit - entry.credit);
+    const glOB = round2(obGlMap.get(String(account._id)) || 0);
+    const newManualOB = round2(totalSignedInput - glOB);
+    
+    manualNetSum = round2(manualNetSum + newManualOB);
+
+    const previousManualOB = Number(account.openingBalance || 0);
+    const delta = round2(newManualOB - previousManualOB);
+
+    if (Math.abs(delta) > 0.001) {
+      account.openingBalance = newManualOB;
+      account.balance = round2(Number(account.balance || 0) + delta);
+      attachUser(account, req);
+      await account.save();
+    }
 
     appliedEntries.push({ debit: entry.debit, credit: entry.credit });
   }
@@ -854,10 +905,16 @@ export const saveOpeningBalances = asyncHandler(async (req: AuthenticatedRequest
   });
 
   if (adjustmentAccount) {
-    adjustmentAccount.openingBalance = adjustmentSigned;
-    adjustmentAccount.balance = adjustmentSigned;
-    attachUser(adjustmentAccount, req);
-    await adjustmentAccount.save();
+    const targetAdjustmentOB = round2(-manualNetSum);
+    const prevAdjOB = Number(adjustmentAccount.openingBalance || 0);
+    const delta = round2(targetAdjustmentOB - prevAdjOB);
+
+    if (Math.abs(delta) > 0.001) {
+      adjustmentAccount.openingBalance = targetAdjustmentOB;
+      adjustmentAccount.balance = round2(Number(adjustmentAccount.balance || 0) + delta);
+      attachUser(adjustmentAccount, req);
+      await adjustmentAccount.save();
+    }
   }
 
   const organization = await Organization.findById(organizationId);

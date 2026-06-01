@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import * as fs from "fs";
-
+import { divideMoney, formatMoney, sumMoney } from "../utils/money";
+  
 export interface QuoteItemRow {
   name: string;
   description?: string;
@@ -26,6 +27,8 @@ export interface QuotePdfData {
   orgEmail?: string;
   orgTaxId?: string; // GSTIN
   orgLogoUrl?: string; // Dynamic user logo
+  orgPhone?: string;
+  templateConfig?: Record<string, any>;
 
   customerName: string;
   customerAddress?: string;
@@ -94,20 +97,11 @@ const _sysBold = findFont(FONT_CANDIDATES.bold);
 const _sysBoldItalic = findFont(FONT_CANDIDATES.boldItalic);
 
 function fmt(n: number, symbol = "₹"): string {
-  return (
-    symbol +
-    n.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
+  return symbol + formatMoney(n);
 }
 
 function fmtNum(n: number): string {
-  return n.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatMoney(n);
 }
 
 function fmtDate(d: string): string {
@@ -163,66 +157,149 @@ function numberToWords(num: number): string {
   return res + "Only";
 }
 
+const DEFAULT_CONFIG = {
+  templateName: "Standard",
+  paperSize: "A4",
+  orientation: "Portrait",
+  margins: { top: 0.7, bottom: 0.7, left: 0.55, right: 0.4 },
+  fontFamily: "Inter, sans-serif",
+  fontSize: 12,
+  backgroundColor: "#ffffff",
+  headerBgColor: "#ffffff",
+  headerBgColorEnabled: false,
+  headerTextColor: "#1e293b",
+  headerFontSize: 7.5,
+  headerDividerColor: "#f59e0b",
+  showHeaderDivider: true,
+  gstinLabel: "GSTIN",
+  contactLabel: "Contact",
+  emailLabel: "Email",
+  factoryLabel: "Factory",
+  showContact: true,
+  showEmail: true,
+  showFooter: true,
+  showFooterPageNumber: true,
+  showFooterLines: true,
+  footerFontSize: 9,
+  footerFontColor: "#666666",
+  footerDividerColor: "#f59e0b",
+  footerLine1: "Solar Solutions : On grid & Off grid Power Plants | Water Heater | Street Lights | Home Lighting",
+  footerLine2: "LED Lighting Solution : Domestic | Commercial | Industrial | Customized industrial",
+  footerLine3: "Industrial Automation: DRIVES | PLC | SCADA | HMI",
+  footerLine4: "",
+  footerLine5: "",
+  footerBgColor: "#ffffff",
+  footerBgColorEnabled: false,
+  footerCustomContent: "",
+  showOrgLogo: true,
+  orgLogoSize: 60,
+  showOrgName: true,
+  orgNameColor: "#333333",
+  orgNameFontSize: 10,
+  showOrgAddress: true,
+  showGstin: true,
+  orgNameOverride: "",
+  gstinValueOverride: "",
+  contactValueOverride: "",
+  emailValueOverride: "",
+  factoryValueOverride: "",
+  customerNameFontColor: "#333333",
+  customerNameFontSize: 9,
+  showBillTo: true,
+  billToLabel: "To,",
+  showDocTitle: true,
+  docTitle: "TECHNO-COMMERCIAL QUOTATION",
+  docTitleFontSize: 11,
+  docTitleFontColor: "#000000",
+  quoteNumberLabel: "Ref No.",
+  quoteDateLabel: "Date",
+  expiryDateLabel: "Expiry Date",
+  showSignature: true,
+  signatureLabel: "Authorized Signatory",
+  colItem: true, itemLabel: "Item & Description",
+  colHsn: true, hsnLabel: "HSN/SAC",
+  colQty: true, qtyLabel: "Qty",
+  colRate: true, rateLabel: "Rate",
+  colDiscount: true, discountLabel: "Discount",
+  colTax: true, taxLabel: "Tax",
+  colAmount: true, amountLabel: "Amount",
+  tableHeaderFontSize: 9,
+  tableHeaderBgColor: "#ffffff",
+  tableHeaderFontColor: "#000000",
+  oddRowColor: "#ffffff",
+  evenRowColor: "#ffffff",
+  showNotes: true,
+  notesLabel: "Notes",
+  showTerms: true,
+  termsLabel: "Terms & conditions",
+  colorTheme: "default",
+  primaryColor: "#1a1a1a",
+};
+
+function normalizeConfig(raw?: Record<string, any> | null): Record<string, any> {
+  const merged = {
+    ...DEFAULT_CONFIG,
+    ...(raw || {}),
+    margins: { ...DEFAULT_CONFIG.margins, ...(raw?.margins ?? {}) },
+  };
+
+  const TEXT_FALLBACK_KEYS = [
+    "templateName",
+    "billToLabel",
+    "docTitle",
+    "quoteNumberLabel",
+    "quoteDateLabel",
+    "expiryDateLabel",
+    "signatureLabel",
+    "gstinLabel",
+    "contactLabel",
+    "emailLabel",
+    "factoryLabel",
+    "itemLabel",
+    "hsnLabel",
+    "qtyLabel",
+    "rateLabel",
+    "discountLabel",
+    "taxLabel",
+    "amountLabel",
+    "notesLabel",
+    "termsLabel",
+    "footerLine1",
+    "footerLine2",
+    "footerLine3",
+    "footerCustomContent",
+  ];
+
+  TEXT_FALLBACK_KEYS.forEach((key) => {
+    const value = (merged as any)[key];
+    if (typeof value === "string" && value.trim() === "") {
+      (merged as any)[key] = (DEFAULT_CONFIG as any)[key];
+    }
+  });
+
+  return merged;
+}
+
 // ── Watermark helper ────────────────
-function drawWatermark(doc: PDFKit.PDFDocument, F_BOLD: string) {
+function drawWatermark(doc: PDFKit.PDFDocument, F_BOLD: string, orgName?: string) {
+  const text = (orgName || "").trim();
+  if (!text) return;
+
+  const prevFont = (doc as any)._font;
+  const prevFontSize = (doc as any)._fontSize;
+  const prevFillColor = (doc as any)._fillColor;
+
   doc.save();
   doc.translate(595 / 2, 842 / 2);
   doc.opacity(0.035); // Light watermark exactly like image
-  
-  // Icon block
-  doc.save();
-  doc.translate(-50, -60);
-  doc.scale(2.5);
-  doc.lineWidth(2.5);
-  doc.strokeColor("#2dd4bf");
-  
-  doc.moveTo(35, 12)
-     .lineTo(15, 12)
-     .bezierCurveTo(5, 12, 5, 28, 15, 28)
-     .lineTo(35, 28)
-     .bezierCurveTo(45, 28, 45, 12, 35, 12)
-     .stroke();
-     
-  doc.moveTo(28, 20).lineTo(35, 20).stroke();
-  
-  doc.strokeColor("#84cc16");
-  doc.lineWidth(2);
-  doc.moveTo(35, 6).lineTo(35, 14).stroke();
-  doc.moveTo(31, 10).lineTo(39, 10).stroke();
-  doc.restore();
-  
-  // Text block
-  doc.font(F_BOLD).fontSize(26).fillColor("#0f172a");
-  doc.text("PIKA G ENERGY PVT. LTD.", -250, 40, { width: 500, align: "center" });
-  
-  doc.restore();
-}
 
-// ── Default vector logo drawing ─────
-function drawDefaultVectorLogo(doc: PDFKit.PDFDocument, logoX: number, logoY: number, F_BOLD: string) {
-  doc.save();
-  doc.translate(logoX, logoY);
-  doc.lineWidth(2.2);
-  doc.strokeColor("#2dd4bf"); // Teal
-  
-  doc.moveTo(32, 11)
-     .lineTo(14, 11)
-     .bezierCurveTo(5, 11, 5, 25, 14, 25)
-     .lineTo(32, 25)
-     .bezierCurveTo(41, 25, 41, 11, 32, 11)
-     .stroke();
-  
-  doc.moveTo(26, 18).lineTo(32, 18).stroke();
-  
-  doc.strokeColor("#84cc16"); // Lime green
-  doc.lineWidth(1.8);
-  doc.moveTo(32, 6).lineTo(32, 13).stroke();
-  doc.moveTo(28, 9).lineTo(36, 9).stroke();
+  doc.font(F_BOLD).fontSize(26).fillColor("#0f172a");
+  doc.text(text.toUpperCase(), -250, 40, { width: 500, align: "center" });
   doc.restore();
-  
-  // Text under logo
-  doc.font(F_BOLD).fontSize(7.5).fillColor("#1e293b");
-  doc.text("PIKA G ENERGY PVT. LTD.", logoX, logoY + 32, { width: 140, align: "left" });
+
+  if (prevFont) (doc as any)._font = prevFont;
+  if (prevFontSize !== undefined) (doc as any)._fontSize = prevFontSize;
+  if (prevFillColor !== undefined) (doc as any)._fillColor = prevFillColor;
 }
 
 // ── Header helper ──────────────────
@@ -233,110 +310,266 @@ function drawHeader(
   data: QuotePdfData, 
   F_REG: string, 
   F_BOLD: string,
-  logoBuffer: Buffer | null
+  logoBuffer: Buffer | null,
+  cfg: Record<string, any>
 ) {
   doc.save();
-  
-  // Draw Logo (Left side)
-  const logoX = 45;
-  const logoY = 20;
-  
-  if (logoBuffer) {
-    try {
-      const logoH = 40;
-      const logoW = logoH * 1.9;
-      doc.image(logoBuffer, logoX, logoY, { fit: [logoW, logoH] });
-      // Draw Organization name below the dynamic logo if it's not default PIKA G
-      if (!data.orgName.toLowerCase().includes("pika")) {
-        doc.font(F_BOLD).fontSize(7.5).fillColor("#1e293b");
-        doc.text(data.orgName.toUpperCase(), logoX, logoY + 42, { width: 145, align: "left" });
-      }
-    } catch {
-      drawDefaultVectorLogo(doc, logoX, logoY, F_BOLD);
-    }
-  } else {
-    drawDefaultVectorLogo(doc, logoX, logoY, F_BOLD);
+  const oldBottomMargin = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
+
+  const headerBgEnabled = cfg.headerBgColorEnabled === true;
+  const headerBgColor = typeof cfg.headerBgColor === "string" && cfg.headerBgColor.trim() ? cfg.headerBgColor : "#ffffff";
+  const headerTextColor = typeof cfg.headerTextColor === "string" && cfg.headerTextColor.trim() ? cfg.headerTextColor : "#1e293b";
+  let headerFontSize = Number(cfg.headerFontSize);
+  if (isNaN(headerFontSize) || headerFontSize <= 0) headerFontSize = 7.5;
+  headerFontSize = Math.max(6, Math.min(12, headerFontSize));
+  const headerDividerColor = typeof cfg.headerDividerColor === "string" && cfg.headerDividerColor.trim() ? cfg.headerDividerColor : "#f59e0b";
+  const showHeaderDivider = cfg.showHeaderDivider !== false;
+  if (headerBgEnabled) {
+    doc.rect(45, 18, 505, 77).fill(headerBgColor);
   }
   
-  // Right side corporate details
-  const rightX = 300;
-  const rightY = 20;
-  const rightW = 250;
-  
-  doc.fontSize(7.5).fillColor("#1e293b");
-  
-  const drawHeaderLine = (label: string, value: string, isLink = false, ly: number) => {
-    doc.font(F_BOLD).text(label, rightX, ly, { width: 45, align: "left" });
-    doc.font(F_REG);
-    if (isLink) {
-      doc.fillColor("#0284c7").text(value, rightX + 45, ly, { underline: true }).fillColor("#1e293b");
-    } else {
-      doc.text(value, rightX + 45, ly, { width: rightW - 45, align: "left" });
-    }
-  };
-  
-  const gstin = data.orgTaxId || "22AAJCP7742A1ZP";
-  const contact = "+91- 8349873989";
-  const email = data.orgEmail || "pikagenergy@gmail.com";
-  
-  let factory = "Plot No. 173 , Engineering Park , Hathkhoj , Bhilai , 490026";
-  if (data.orgAddress) {
+  // Resolve overrides
+  const displayOrgName = String(typeof cfg.orgNameOverride === "string" && cfg.orgNameOverride.trim()
+    ? cfg.orgNameOverride.trim()
+    : (data.orgName || "")).trim();
+    
+  const displayGstin = String(typeof cfg.gstinValueOverride === "string" && cfg.gstinValueOverride.trim()
+    ? cfg.gstinValueOverride.trim()
+    : (data.orgTaxId || "")).trim();
+    
+  const displayContact = String(typeof cfg.contactValueOverride === "string" && cfg.contactValueOverride.trim()
+    ? cfg.contactValueOverride.trim()
+    : (data.orgPhone || "")).trim();
+    
+  const displayEmail = String(typeof cfg.emailValueOverride === "string" && cfg.emailValueOverride.trim()
+    ? cfg.emailValueOverride.trim()
+    : (data.orgEmail || "")).trim();
+    
+  let factory = "";
+  if (typeof cfg.factoryValueOverride === "string" && cfg.factoryValueOverride.trim()) {
+    factory = cfg.factoryValueOverride.trim();
+  } else if (cfg.showOrgAddress !== false && data.orgAddress) {
     const addr = data.orgAddress;
     const parts = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean);
     if (parts.length > 0) factory = parts.join(", ");
   }
+  factory = String(factory).trim();
+
+  // Draw Logo (Left side)
+  const logoX = 45;
+  const logoY = 20;
+  const showOrgLogo = cfg.showOrgLogo !== false;
+  const showOrgName = cfg.showOrgName !== false;
+  const orgNameColor = typeof cfg.orgNameColor === "string" && cfg.orgNameColor.trim() ? cfg.orgNameColor : "#1e293b";
+  let orgNameFontSize = Number(cfg.orgNameFontSize);
+  if (isNaN(orgNameFontSize) || orgNameFontSize <= 0) orgNameFontSize = 7.5;
+  orgNameFontSize = Math.max(7, Math.min(16, orgNameFontSize));
   
-  drawHeaderLine("GSTIN : ", gstin, false, rightY);
-  drawHeaderLine("Contact : ", contact, false, rightY + 10);
-  drawHeaderLine("Email : ", email, true, rightY + 20);
+  let logoH = 40;
+  let logoRendered = false;
+  if (logoBuffer) {
+    try {
+      logoH = Number(cfg.orgLogoSize);
+      if (isNaN(logoH) || logoH <= 0) logoH = 40;
+      logoH = Math.max(30, Math.min(80, logoH));
+      const logoW = logoH * 1.9;
+      if (showOrgLogo) {
+        doc.image(logoBuffer, logoX, logoY, { fit: [logoW, logoH] });
+        logoRendered = true;
+      }
+    } catch {
+      logoRendered = false;
+    }
+  }
+
+  if (showOrgName && displayOrgName) {
+    const nameY = logoRendered ? logoY + logoH + 4 : logoY + 2;
+    doc.font(F_BOLD).fontSize(orgNameFontSize).fillColor(orgNameColor);
+    doc.text(displayOrgName.toUpperCase(), logoX, nameY, { width: 145, align: "left" });
+  }
   
-  doc.font(F_BOLD).text("Factory : ", rightX, rightY + 30, { width: 45 });
-  doc.font(F_REG).text(factory, rightX + 45, rightY + 30, { width: rightW - 45 });
+  // Right side corporate details
+  doc.fontSize(headerFontSize).fillColor(headerTextColor);
   
-  // Gold Divider Line
-  doc.moveTo(45, 78)
-     .lineTo(550, 78)
-     .strokeColor("#f59e0b")
-     .lineWidth(1)
-     .stroke();
-     
+  const drawHeaderLine = (label: string, value: string, isLink: boolean, ly: number): number => {
+    const cleanLabel = String(label);
+    const cleanValue = String(value);
+    doc.font(F_REG).fontSize(headerFontSize);
+    const valW = doc.widthOfString(cleanValue) || 0;
+    doc.font(F_BOLD).fontSize(headerFontSize);
+    const labelW = doc.widthOfString(cleanLabel) || 0;
+    const maxW = 250;
+    
+    if (valW + labelW <= maxW) {
+      const startX = 550 - valW - labelW;
+      doc.font(F_BOLD).fillColor(headerTextColor).text(cleanLabel, startX, ly, { lineBreak: false });
+      doc.font(F_REG);
+      if (isLink) {
+        doc.fillColor("#0284c7").text(cleanValue, startX + labelW, ly, { lineBreak: false }).fillColor(headerTextColor);
+      } else {
+        doc.fillColor(headerTextColor).text(cleanValue, startX + labelW, ly, { lineBreak: false });
+      }
+      return ly + 10;
+    } else {
+      doc.font(F_BOLD).fillColor(headerTextColor).text(cleanLabel, 300, ly, { width: 250, align: "right" });
+      const labelHeight = doc.heightOfString(cleanLabel, { width: 250 }) || 0;
+      
+      doc.font(F_REG);
+      if (isLink) {
+        doc.fillColor("#0284c7");
+      } else {
+        doc.fillColor(headerTextColor);
+      }
+      doc.text(cleanValue, 300, ly + labelHeight, { width: 250, align: "right" }).fillColor(headerTextColor);
+      const valHeight = doc.heightOfString(cleanValue, { width: 250 }) || 0;
+      return ly + labelHeight + valHeight + 2;
+    }
+  };
+
+  const labelWithColon = (label: string, fallback: string) => {
+    const raw = String(typeof label === "string" && label.trim() ? label.trim() : fallback);
+    return raw.endsWith(":") ? `${raw} ` : `${raw}: `;
+  };
+
+  const headerLines: Array<{ label: string; value: string; isLink: boolean }> = [];
+  if (cfg.showGstin !== false && displayGstin) {
+    headerLines.push({ label: labelWithColon(cfg.gstinLabel, "GSTIN"), value: displayGstin, isLink: false });
+  }
+  if (cfg.showContact !== false && displayContact) {
+    headerLines.push({ label: labelWithColon(cfg.contactLabel, "Contact"), value: displayContact, isLink: false });
+  }
+  if (cfg.showEmail !== false && displayEmail) {
+    headerLines.push({ label: labelWithColon(cfg.emailLabel, "Email"), value: displayEmail, isLink: true });
+  }
+  if (cfg.showOrgAddress !== false && factory) {
+    headerLines.push({ label: labelWithColon(cfg.factoryLabel, "Factory"), value: factory, isLink: false });
+  }
+
+  let totalHeaderHeight = 0;
+  headerLines.forEach((line) => {
+    doc.font(F_REG).fontSize(headerFontSize);
+    const valW = doc.widthOfString(line.value) || 0;
+    doc.font(F_BOLD).fontSize(headerFontSize);
+    const labelW = doc.widthOfString(line.label) || 0;
+    const maxW = 250;
+    if (valW + labelW <= maxW) {
+      totalHeaderHeight += 10;
+    } else {
+      const labelHeight = doc.heightOfString(line.label, { width: 250 }) || 0;
+      const valHeight = doc.heightOfString(line.value, { width: 250 }) || 0;
+      totalHeaderHeight += labelHeight + valHeight + 2;
+    }
+  });
+
+  let currentHeaderY = 90 - totalHeaderHeight;
+  if (currentHeaderY < 18) currentHeaderY = 18;
+
+  headerLines.forEach((line) => {
+    currentHeaderY = drawHeaderLine(line.label, line.value, line.isLink, currentHeaderY);
+  });
+  
+  if (showHeaderDivider) {
+    doc.moveTo(45, 95)
+      .lineTo(550, 95)
+      .strokeColor(headerDividerColor)
+      .lineWidth(1.2)
+      .stroke();
+  }
+   
+  doc.page.margins.bottom = oldBottomMargin;
   doc.restore();
 }
 
 // ── Footer helper ──────────────────
-function drawFooter(doc: PDFKit.PDFDocument, pageNum: number, totalPages: number, F_REG: string, F_BOLD: string) {
+function drawFooter(
+  doc: PDFKit.PDFDocument,
+  pageNum: number,
+  totalPages: number,
+  F_REG: string,
+  F_BOLD: string,
+  cfg: Record<string, any>
+) {
   doc.save();
+  const oldBottomMargin = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
   
   const footerStartY = 842 - 90;
+  let footerFontSize = Number(cfg.footerFontSize);
+  if (isNaN(footerFontSize) || footerFontSize <= 0) footerFontSize = 8.5;
+  footerFontSize = Math.max(7, Math.min(12, footerFontSize));
+  const footerFontColor = typeof cfg.footerFontColor === "string" && cfg.footerFontColor.trim() ? cfg.footerFontColor : "#1e293b";
+  const footerBgEnabled = cfg.footerBgColorEnabled === true;
+  const footerBgColor = typeof cfg.footerBgColor === "string" && cfg.footerBgColor.trim() ? cfg.footerBgColor : "#ffffff";
+  const footerCustom = typeof cfg.footerCustomContent === "string" ? cfg.footerCustomContent.trim() : "";
+  const footerDividerColor = typeof cfg.footerDividerColor === "string" && cfg.footerDividerColor.trim() ? cfg.footerDividerColor : "#f59e0b";
+  const showFooterLines = cfg.showFooterLines !== false;
+
+  if (footerBgEnabled) {
+    doc.rect(0, footerStartY, 595, 90).fill(footerBgColor);
+  }
   
   // Page number right above the line
-  doc.font(F_REG).fontSize(8.5).fillColor("#1e293b");
+  doc.font(F_REG).fontSize(footerFontSize).fillColor(footerFontColor);
   doc.text(`Page ${pageNum} of ${totalPages}`, 45, footerStartY + 15, { width: 505, align: "right" });
   
-  // Gold Divider Line
+  // Divider Line
   doc.moveTo(45, footerStartY + 28)
      .lineTo(550, footerStartY + 28)
-     .strokeColor("#f59e0b")
+     .strokeColor(footerDividerColor)
      .lineWidth(1.2)
      .stroke();
      
   // Services footer line details
   let fy = footerStartY + 35;
   
-  const drawFooterCenterLine = (label: string, val: string, yPos: number) => {
-    doc.font(F_REG).fontSize(7.5).fillColor("#1e293b");
-    doc.text(`${label}${val}`, 45, yPos, { width: 505, align: "center" });
+  const drawFooterCenterLine = (text: string, yPos: number) => {
+    doc.font(F_REG).fontSize(footerFontSize - 1).fillColor(footerFontColor);
+    doc.text(text, 45, yPos, { width: 505, align: "center" });
   };
   
-  drawFooterCenterLine("Solar Solutions : ", "On grid & Off grid Power Plants | Water Heater | Street Lights | Home Lighting", fy);
-  drawFooterCenterLine("LED Lighting Solution : ", "Domestic | Commercial | Industrial | Customized industrial", fy + 11);
-  drawFooterCenterLine("Industrial Automation: ", "DRIVES | PLC | SCADA | HMI", fy + 22);
+  if (showFooterLines) {
+    const lines = [
+      cfg.footerLine1,
+      cfg.footerLine2,
+      cfg.footerLine3,
+      cfg.footerLine4,
+      cfg.footerLine5,
+    ].filter((l) => typeof l === "string" && l.trim() !== "");
+
+    if (lines.length === 0) {
+      drawFooterCenterLine("Solar Solutions : On grid & Off grid Power Plants | Water Heater | Street Lights | Home Lighting", fy);
+      drawFooterCenterLine("LED Lighting Solution : Domestic | Commercial | Industrial | Customized industrial", fy + 11);
+      drawFooterCenterLine("Industrial Automation: DRIVES | PLC | SCADA | HMI", fy + 22);
+      fy += 33;
+    } else {
+      lines.forEach((line, index) => {
+        drawFooterCenterLine(line, fy + index * 11);
+      });
+      fy += lines.length * 11;
+    }
+  }
+
+  if (footerCustom) {
+    doc.font(F_REG).fontSize(footerFontSize - 1).fillColor(footerFontColor);
+    doc.text(footerCustom, 45, fy, { width: 505, align: "center" });
+  }
   
+  doc.page.margins.bottom = oldBottomMargin;
   doc.restore();
 }
 
 export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
   const logoBuffer = await fetchImageBuffer(data.orgLogoUrl);
+  const cfg = normalizeConfig(data.templateConfig);
+  const pickColor = (value: string | undefined, fallback: string) =>
+    typeof value === "string" && value.trim() ? value : fallback;
+  const showDocTitle = cfg.showDocTitle !== false;
+  const showBillTo = cfg.showBillTo !== false;
+  const showNotes = cfg.showNotes !== false;
+  const showTerms = cfg.showTerms !== false;
+  const showSignature = cfg.showSignature !== false;
+  const showFooter = cfg.showFooter !== false;
 
   return new Promise((resolve, reject) => {
     // bottom margin set to 15 to completely prevent PDFKit from triggering auto-page-breaks.
@@ -363,31 +596,52 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     }
     const sym = canRenderRupee ? (data.currencySymbol ?? "₹") : "Rs.";
 
-    // Pre-draw watermark on first page background
-    drawWatermark(doc, F_BOLD);
+    const bgColor = pickColor(cfg.backgroundColor, "#ffffff");
+    if (bgColor !== "#ffffff") {
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill(bgColor);
+    }
 
-    // Auto draw watermark on any newly added pages in background
-    doc.on('pageAdded', () => {
-      drawWatermark(doc, F_BOLD);
-    });
+    const displayOrgName = typeof cfg.orgNameOverride === "string" && cfg.orgNameOverride.trim()
+      ? cfg.orgNameOverride.trim()
+      : (data.orgName || "");
+
+    const displayContact = typeof cfg.contactValueOverride === "string" && cfg.contactValueOverride.trim()
+      ? cfg.contactValueOverride.trim()
+      : (data.orgPhone || "");
+      
+    const displayEmail = typeof cfg.emailValueOverride === "string" && cfg.emailValueOverride.trim()
+      ? cfg.emailValueOverride.trim()
+      : (data.orgEmail || "");
 
     let nextY = 105;
 
     // Header Title (techno commercial quotation)
-    doc.rect(45, nextY, doc.widthOfString("TECHNO-COMMERCIAL QUOTATION") + 12, 16).fill("#e2e8f0");
-    doc.fillColor("#000000").font(F_BOLD).fontSize(10.5).text("TECHNO-COMMERCIAL QUOTATION", 51, nextY + 3);
-    nextY += 20;
+    if (showDocTitle) {
+      const title = typeof cfg.docTitle === "string" && cfg.docTitle.trim() ? cfg.docTitle : "TECHNO-COMMERCIAL QUOTATION";
+      let titleFontSize = Number(cfg.docTitleFontSize);
+      if (isNaN(titleFontSize) || titleFontSize <= 0) titleFontSize = 10.5;
+      titleFontSize = Math.max(8, Math.min(18, titleFontSize));
+      const titleColor = pickColor(cfg.docTitleFontColor, "#000000");
+      doc.rect(45, nextY, doc.widthOfString(title) + 12, 16).fill("#e2e8f0");
+      doc.fillColor(titleColor).font(F_BOLD).fontSize(titleFontSize).text(title, 51, nextY + 3);
+      nextY += 20;
+    }
 
     // Reference details
     doc.fontSize(9.5).fillColor("#000000");
-    doc.font(F_BOLD).text("Ref No.: ", 45, nextY, { continued: true }).font(F_REG).text(data.quoteNumber);
+    const refLabel = typeof cfg.quoteNumberLabel === "string" && cfg.quoteNumberLabel.trim() ? cfg.quoteNumberLabel : "Ref No.";
+    doc.font(F_BOLD).text(`${refLabel}: `, 45, nextY, { continued: true }).font(F_REG).text(data.quoteNumber);
     nextY += 13;
-    doc.font(F_BOLD).text("Date: ", 45, nextY, { continued: true }).font(F_REG).text(fmtDate(data.quoteDate));
+    const dateLabel = typeof cfg.quoteDateLabel === "string" && cfg.quoteDateLabel.trim() ? cfg.quoteDateLabel : "Date";
+    doc.font(F_BOLD).text(`${dateLabel}: `, 45, nextY, { continued: true }).font(F_REG).text(fmtDate(data.quoteDate));
     nextY += 16;
 
     // Recipient "To" details
-    doc.font(F_BOLD).text("To,", 45, nextY);
-    nextY += 12;
+    if (showBillTo) {
+      const billTo = typeof cfg.billToLabel === "string" && cfg.billToLabel.trim() ? cfg.billToLabel : "To,";
+      doc.font(F_BOLD).text(billTo, 45, nextY);
+      nextY += 12;
+    }
     doc.font(F_BOLD).text(data.customerName, 45, nextY);
     nextY += 13;
 
@@ -435,39 +689,101 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     const isIntra = data.isIntraState !== false;
     
     // Check if quote has non-zero tax to determine whether to render tax columns
-    const hasTax = data.items.some(item => (item.taxPercent || 0) > 0);
+    const hasTax = data.items.some(item => (item.taxPercent || 0) > 0) && cfg.colTax !== false;
     
-    const cols = (hasTax) ? (
-      isIntra ? [
-        { id: "num", label: "#", x: 45, width: 20, align: "center" as const },
-        { id: "item", label: "Item & Description", x: 65, width: 145, align: "left" as const },
-        { id: "hsn", label: "HSN/SAC", x: 210, width: 45, align: "left" as const },
-        { id: "qty", label: "Qty", x: 255, width: 25, align: "right" as const },
-        { id: "rate", label: "Rate", x: 280, width: 65, align: "right" as const },
-        { id: "cgst", label: "CGST", x: 345, width: 65, align: "center" as const },
-        { id: "sgst", label: "SGST", x: 410, width: 65, align: "center" as const },
-        { id: "amount", label: "Amount", x: 475, width: 75, align: "right" as const },
-      ] : [
-        { id: "num", label: "#", x: 45, width: 20, align: "center" as const },
-        { id: "item", label: "Item & Description", x: 65, width: 190, align: "left" as const },
-        { id: "hsn", label: "HSN/SAC", x: 255, width: 45, align: "left" as const },
-        { id: "qty", label: "Qty", x: 300, width: 25, align: "right" as const },
-        { id: "rate", label: "Rate", x: 325, width: 70, align: "right" as const },
-        { id: "igst", label: "IGST", x: 395, width: 75, align: "center" as const },
-        { id: "amount", label: "Amount", x: 470, width: 80, align: "right" as const },
-      ]
-    ) : [
-      { id: "num", label: "#", x: 45, width: 20, align: "center" as const },
-      { id: "item", label: "Item & Description", x: 65, width: 255, align: "left" as const },
-      { id: "hsn", label: "HSN/SAC", x: 320, width: 55, align: "left" as const },
-      { id: "qty", label: "Qty", x: 375, width: 30, align: "right" as const },
-      { id: "rate", label: "Rate", x: 405, width: 75, align: "right" as const },
-      { id: "amount", label: "Amount", x: 480, width: 70, align: "right" as const },
-    ];
+    // Build columns dynamically
+    const cols: Array<{ id: string; label: string; x: number; width: number; align: "center" | "left" | "right" }> = [];
+    
+    // First, collect all active columns except 'item' to compute 'item' width
+    let totalOtherWidths = 15; // '#' is always 15
+    if (cfg.colHsn !== false) totalOtherWidths += 35;
+    if (cfg.colQty !== false) totalOtherWidths += 25;
+    if (cfg.colRate !== false) totalOtherWidths += (hasTax ? (isIntra ? 60 : 65) : 70);
+    if (cfg.colDiscount === true) totalOtherWidths += 40;
+    if (hasTax) {
+      if (isIntra) {
+        totalOtherWidths += 60; // CGST
+        totalOtherWidths += 60; // SGST
+      } else {
+        totalOtherWidths += 65; // IGST
+      }
+    }
+    if (cfg.colAmount !== false) totalOtherWidths += (hasTax ? 70 : 65);
+
+    const itemWidth = Math.max(100, 505 - totalOtherWidths);
+
+    // Now construct the actual cols array with precise X positions
+    let currentX = 45;
+    
+    // 1. Num
+    cols.push({ id: "num", label: "#", x: currentX, width: 15, align: "center" });
+    currentX += 15;
+
+    // 2. Item
+    if (cfg.colItem !== false) {
+      cols.push({ id: "item", label: cfg.itemLabel || "Item & Description", x: currentX, width: itemWidth, align: "left" });
+      currentX += itemWidth;
+    }
+
+    // 3. HSN
+    if (cfg.colHsn !== false) {
+      cols.push({ id: "hsn", label: cfg.hsnLabel || "HSN/SAC", x: currentX, width: 35, align: "left" });
+      currentX += 35;
+    }
+
+    // 4. Qty
+    if (cfg.colQty !== false) {
+      const w = 25;
+      cols.push({ id: "qty", label: cfg.qtyLabel || "Qty", x: currentX, width: w, align: "right" });
+      currentX += w;
+    }
+
+    // 5. Rate
+    if (cfg.colRate !== false) {
+      const w = hasTax ? (isIntra ? 60 : 65) : 70;
+      cols.push({ id: "rate", label: cfg.rateLabel || "Rate", x: currentX, width: w, align: "right" });
+      currentX += w;
+    }
+
+    // 6. Discount
+    if (cfg.colDiscount === true) {
+      cols.push({ id: "discount", label: cfg.discountLabel || "Discount", x: currentX, width: 40, align: "right" });
+      currentX += 40;
+    }
+
+    // 7. Taxes
+    if (hasTax) {
+      if (isIntra) {
+        cols.push({ id: "cgst", label: "CGST", x: currentX, width: 60, align: "center" });
+        currentX += 60;
+        cols.push({ id: "sgst", label: "SGST", x: currentX, width: 60, align: "center" });
+        currentX += 60;
+      } else {
+        cols.push({ id: "igst", label: "IGST", x: currentX, width: 65, align: "center" });
+        currentX += 65;
+      }
+    }
+
+    // 8. Amount
+    if (cfg.colAmount !== false) {
+      const w = hasTax ? 70 : 65;
+      cols.push({ id: "amount", label: cfg.amountLabel || "Amount", x: currentX, width: w, align: "right" });
+      currentX += w;
+    }
 
     const headerH = 26;
+    const headerBg = pickColor(cfg.tableHeaderBgColor, "#ffffff");
+    const headerFontColor = pickColor(cfg.tableHeaderFontColor, "#000000");
+    let tableHeaderFontSize = Number(cfg.tableHeaderFontSize);
+    if (isNaN(tableHeaderFontSize) || tableHeaderFontSize <= 0) tableHeaderFontSize = 8.5;
+    const headerFontSize = Math.max(7, Math.min(12, tableHeaderFontSize));
+    const oddRowColor = pickColor(cfg.oddRowColor, "#ffffff");
+    const evenRowColor = pickColor(cfg.evenRowColor, "#ffffff");
 
     const drawTableHeaderRow = (startY: number) => {
+      if (headerBg !== "#ffffff") {
+        doc.rect(45, startY, 505, headerH).fill(headerBg);
+      }
       doc.rect(45, startY, 505, headerH).strokeColor("#000000").lineWidth(0.75).stroke();
       cols.forEach((col, idx) => {
         if (idx > 0) {
@@ -475,17 +791,21 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
         }
       });
 
-      doc.fillColor("#000000").fontSize(8.5).font(F_BOLD);
+      doc.fillColor(headerFontColor).fontSize(headerFontSize).font(F_BOLD);
       cols.forEach(col => {
         if (col.id === "cgst" || col.id === "sgst" || col.id === "igst") {
           doc.text(col.label, col.x, startY + 3, { width: col.width, align: "center" });
           doc.moveTo(col.x, startY + 13).lineTo(col.x + col.width, startY + 13).stroke();
           doc.moveTo(col.x + 18, startY + 13).lineTo(col.x + 18, startY + headerH).stroke();
-          doc.fontSize(7).text("%", col.x, startY + 16, { width: 18, align: "center" });
-          doc.text("Amt", col.x + 18, startY + 16, { width: col.width - 18, align: "center" });
-          doc.fontSize(8.5);
+          doc.fontSize(Math.max(6, headerFontSize - 1.5)).text("%", col.x, startY + 16, { width: 18, align: "center" });
+          doc.text("Amt", col.x + 18, startY + 16, { width: col.width - 18 - 4, align: "right" });
+          doc.fontSize(headerFontSize);
+        } else if (col.align === "left") {
+          doc.text(col.label, col.x + 4, startY + 8, { width: col.width - 8, align: "left" });
+        } else if (col.align === "right") {
+          doc.text(col.label, col.x, startY + 8, { width: col.width - 4, align: "right" });
         } else {
-          doc.text(col.label, col.x, startY + 8, { width: col.width, align: col.align });
+          doc.text(col.label, col.x, startY + 8, { width: col.width, align: "center" });
         }
       });
     };
@@ -497,10 +817,9 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     // Items rendering loop
     let totalTaxAmount = 0;
     data.items.forEach((item, idx) => {
-      const itemColWidth = hasTax ? (isIntra ? 145 : 190) : 255;
-      const nameH = doc.heightOfString(item.name, { width: itemColWidth - 10 });
-      const descH = item.description ? doc.heightOfString(item.description, { width: itemColWidth - 10 }) : 0;
-      const itemH = Math.max(20, nameH + descH + 4);
+      const nameH = cfg.colItem !== false ? doc.heightOfString(item.name, { width: itemWidth - 8 }) : 0;
+      const descH = (cfg.colItem !== false && item.description) ? doc.heightOfString(item.description, { width: itemWidth - 8 }) : 0;
+      const itemH = Math.max(20, nameH + descH + 8);
 
       // Page break check (prevents content row clipping across page borders)
       if (nextY + itemH > 842 - 95) {
@@ -508,6 +827,12 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
         nextY = 105;
         drawTableHeaderRow(nextY);
         nextY += headerH;
+      }
+
+      // Row background
+      const rowBg = idx % 2 === 0 ? oddRowColor : evenRowColor;
+      if (rowBg !== "#ffffff") {
+        doc.rect(45, nextY, 505, itemH).fill(rowBg);
       }
 
       // Draw cell boxes
@@ -537,56 +862,75 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
       doc.font(F_REG).fontSize(8.5).text(String(idx + 1), 45, nextY + 4, { width: 20, align: "center" });
 
       // Name & description
-      doc.font(F_BOLD).fontSize(8.5).text(item.name, 65, nextY + 4, { width: itemColWidth - 10 });
-      if (item.description) {
-        doc.font(F_REG).fontSize(7.5).fillColor("#475569").text(item.description, 65, nextY + 4 + nameH + 1, { width: itemColWidth - 10 });
+      if (cfg.colItem !== false) {
+        const itemCol = cols.find(c => c.id === "item")!;
+        doc.font(F_BOLD).fontSize(8.5).text(item.name, itemCol.x + 4, nextY + 4, { width: itemCol.width - 8 });
+        if (item.description) {
+          doc.font(F_REG).fontSize(7.5).fillColor("#475569").text(item.description, itemCol.x + 4, nextY + 4 + nameH + 1, { width: itemCol.width - 8 });
+        }
       }
 
       doc.font(F_REG).fontSize(7.5).fillColor("#000000");
 
       // HSN
-      const hsnCol = cols.find(c => c.id === "hsn")!;
-      doc.text(item.hsnSacCode || "—", hsnCol.x + 4, nextY + 4, { width: hsnCol.width - 4, align: "left" });
+      if (cfg.colHsn !== false) {
+        const hsnCol = cols.find(c => c.id === "hsn")!;
+        doc.text(item.hsnSacCode || "—", hsnCol.x + 4, nextY + 4, { width: hsnCol.width - 8, align: "left" });
+      }
 
       // Qty
-      const qtyCol = cols.find(c => c.id === "qty")!;
-      doc.text(fmtNum(item.quantity), qtyCol.x, nextY + 4, { width: qtyCol.width - 2, align: "right" });
+      if (cfg.colQty !== false) {
+        const qtyCol = cols.find(c => c.id === "qty")!;
+        doc.text(fmtNum(item.quantity), qtyCol.x, nextY + 4, { width: qtyCol.width - 4, align: "right" });
+      }
 
       // Rate
-      const rateCol = cols.find(c => c.id === "rate")!;
-      doc.text(fmtNum(item.rate), rateCol.x, nextY + 4, { width: rateCol.width - 4, align: "right" });
+      if (cfg.colRate !== false) {
+        const rateCol = cols.find(c => c.id === "rate")!;
+        doc.text(fmtNum(item.rate), rateCol.x, nextY + 4, { width: rateCol.width - 4, align: "right" });
+      }
+
+      // Discount
+      if (cfg.colDiscount === true) {
+        const discountCol = cols.find(c => c.id === "discount")!;
+        doc.text(item.discountPercent ? `${item.discountPercent}%` : "—", discountCol.x, nextY + 4, { width: discountCol.width - 4, align: "right" });
+      }
 
       const taxPercent = item.taxPercent || 0;
       const taxAmount = item.taxAmount || 0;
-      totalTaxAmount += taxAmount;
+      totalTaxAmount = sumMoney([totalTaxAmount, taxAmount]);
 
       if (hasTax) {
         if (isIntra) {
           const cgstCol = cols.find(c => c.id === "cgst")!;
           const sgstCol = cols.find(c => c.id === "sgst")!;
           const splitTaxP = taxPercent / 2;
-          const splitTaxA = taxAmount / 2;
+          const splitTaxA = divideMoney(taxAmount, 2);
 
-          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", cgstCol.x, nextY + 4, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", cgstCol.x + 18, nextY + 4, { width: 45, align: "right" });
+          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", cgstCol.x, nextY + 4, { width: 18, align: "center" });
+          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", cgstCol.x + 18, nextY + 4, { width: cgstCol.width - 18 - 4, align: "right" });
 
-          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", sgstCol.x, nextY + 4, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", sgstCol.x + 18, nextY + 4, { width: 45, align: "right" });
+          doc.text(taxPercent > 0 ? `${splitTaxP}%` : "—", sgstCol.x, nextY + 4, { width: 18, align: "center" });
+          doc.text(taxPercent > 0 ? fmtNum(splitTaxA) : "—", sgstCol.x + 18, nextY + 4, { width: sgstCol.width - 18 - 4, align: "right" });
         } else {
           const igstCol = cols.find(c => c.id === "igst")!;
-          doc.text(taxPercent > 0 ? `${taxPercent}%` : "—", igstCol.x, nextY + 4, { width: 18, align: "right" });
-          doc.text(taxPercent > 0 ? fmtNum(taxAmount) : "—", igstCol.x + 18, nextY + 4, { width: 55, align: "right" });
+          doc.text(taxPercent > 0 ? `${taxPercent}%` : "—", igstCol.x, nextY + 4, { width: 18, align: "center" });
+          doc.text(taxPercent > 0 ? fmtNum(taxAmount) : "—", igstCol.x + 18, nextY + 4, { width: igstCol.width - 18 - 4, align: "right" });
         }
       }
 
       // Amount
-      const amountCol = cols.find(c => c.id === "amount")!;
-      doc.text(fmtNum(item.amount), amountCol.x, nextY + 4, { width: amountCol.width - 4, align: "right" });
+      if (cfg.colAmount !== false) {
+        const amountCol = cols.find(c => c.id === "amount")!;
+        doc.text(fmtNum(item.amount), amountCol.x, nextY + 4, { width: amountCol.width - 4, align: "right" });
+      }
 
       nextY += itemH;
     });
 
-    const finalTotal = data.subTotal + totalTaxAmount + (data.adjustmentAmount || 0) - (data.discountAmount || 0);
+    const finalTotal = data.total !== undefined && data.total !== null
+      ? data.total
+      : sumMoney([data.subTotal, totalTaxAmount, data.adjustmentAmount || 0, -(data.discountAmount || 0)]);
 
     // Totals grid rows inline at the bottom of the table
     const addTotalGridRow = (label: string, value: string, isBold = false) => {
@@ -598,7 +942,7 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
 
       doc.rect(45, nextY, 505, rowHeight).strokeColor("#000000").lineWidth(0.5).stroke();
       
-      const amtCol = cols.find(c => c.id === "amount")!;
+      const amtCol = cols.find(c => c.id === "amount") || cols[cols.length - 1];
       doc.moveTo(amtCol.x, nextY).lineTo(amtCol.x, nextY + rowHeight).stroke();
 
       doc.font(isBold ? F_BOLD : F_REG).fontSize(8.5).fillColor("#000000");
@@ -671,58 +1015,72 @@ export async function generateQuotePdf(data: QuotePdfData): Promise<Buffer> {
     };
 
     // Notes
-    if (data.customerNotes) {
-      drawShadedHeading("Notes:");
+    if (showNotes && data.customerNotes) {
+      const notesLabel = typeof cfg.notesLabel === "string" && cfg.notesLabel.trim() ? cfg.notesLabel : "Notes";
+      drawShadedHeading(`${notesLabel}:`);
       drawFormattedParagraph(data.customerNotes);
       nextY += 5;
     }
 
     // Terms
-    if (data.termsAndConditions) {
-      drawShadedHeading("Terms & conditions:");
+    if (showTerms && data.termsAndConditions) {
+      const termsLabel = typeof cfg.termsLabel === "string" && cfg.termsLabel.trim() ? cfg.termsLabel : "Terms & conditions";
+      drawShadedHeading(`${termsLabel}:`);
       drawFormattedParagraph(data.termsAndConditions);
       nextY += 5;
     }
 
     // Signature Area on the bottom right
-    const sigHeight = 65;
-    if (nextY + sigHeight > 842 - 90) {
-      doc.addPage();
-      nextY = 105;
-    } else {
-      // Position at the bottom of the page only if it's the first/only page, but leave some spacing.
-      // If we are already near the bottom, don't force it to a specific point that is higher than current nextY.
-      nextY = Math.max(nextY, 842 - 165);
+    if (showSignature) {
+      const sigHeight = 65;
+      if (nextY + sigHeight > 842 - 90) {
+        doc.addPage();
+        nextY = 105;
+      } else {
+        // Position at the bottom of the page only if it's the first/only page, but leave some spacing.
+        // If we are already near the bottom, don't force it to a specific point that is higher than current nextY.
+        nextY = Math.max(nextY, 842 - 165);
+      }
+
+      const sigX = 350;
+      const sigW = 200;
+      doc.font(F_BOLD).fontSize(8.5).fillColor("#000000");
+      if (displayOrgName) {
+        doc.text(`For ${displayOrgName.toUpperCase()}`, sigX, nextY, { width: sigW, align: "right" });
+        nextY += 10;
+      }
+
+      const signatureLabel = typeof cfg.signatureLabel === "string" && cfg.signatureLabel.trim()
+        ? cfg.signatureLabel
+        : "Authorized Signatory";
+      doc.font(F_REG).fontSize(8);
+      doc.text(signatureLabel, sigX, nextY, { width: sigW, align: "right" });
+      nextY += 14;
+
+      if (data.salesPersonName) {
+        doc.font(F_BOLD).text(data.salesPersonName, sigX, nextY, { width: sigW, align: "right" });
+        nextY += 10;
+      }
+
+      doc.font(F_REG).fontSize(7.5).fillColor("#475569");
+      if (displayEmail) {
+        doc.text(`Email: ${displayEmail}`, sigX, nextY, { width: sigW, align: "right" });
+        nextY += 9;
+      }
+      if (displayContact) {
+        doc.text(`Phone: ${displayContact}`, sigX, nextY, { width: sigW, align: "right" });
+      }
     }
 
-    const sigX = 350;
-    const sigW = 200;
-    doc.font(F_BOLD).fontSize(8.5).fillColor("#000000");
-    const org = data.orgName || "PIKA G ENERGY PVT. LTD.";
-    doc.text(`For ${org.toUpperCase()}`, sigX, nextY, { width: sigW, align: "right" });
-    nextY += 10;
-
-    doc.font(F_REG).fontSize(8);
-    doc.text("Authorized Signatory", sigX, nextY, { width: sigW, align: "right" });
-    nextY += 14;
-
-    const contactPerson = data.salesPersonName || "Gautam Kumar Haldar";
-    doc.font(F_BOLD).text(contactPerson, sigX, nextY, { width: sigW, align: "right" });
-    nextY += 10;
-
-    doc.font(F_REG).fontSize(7.5).fillColor("#475569");
-    if (data.orgEmail) {
-      doc.text(`Email: ${data.orgEmail}`, sigX, nextY, { width: sigW, align: "right" });
-      nextY += 9;
-    }
-    doc.text("Phone: +91 97550 21473", sigX, nextY, { width: sigW, align: "right" });
-
-    // Second pass - switch pages to draw header and footer
+    // Second pass - switch pages to draw header, footer and watermark
     const range = doc.bufferedPageRange();
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(i);
-      drawHeader(doc, i + 1, range.count, data, F_REG, F_BOLD, logoBuffer);
-      drawFooter(doc, i + 1, range.count, F_REG, F_BOLD);
+      drawWatermark(doc, F_BOLD, displayOrgName);
+      drawHeader(doc, i + 1, range.count, data, F_REG, F_BOLD, logoBuffer, cfg);
+      if (showFooter) {
+        drawFooter(doc, i + 1, range.count, F_REG, F_BOLD, cfg);
+      }
     }
 
     doc.end();

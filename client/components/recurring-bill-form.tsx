@@ -22,6 +22,13 @@ import { tdsTaxApi, type TdsTax, type CreateTdsTaxInput, TDS_SECTIONS } from "@/
 import { tcsTaxApi, type TcsTax, type CreateTcsTaxInput, TCS_SECTIONS } from "@/lib/api/tcs-taxes";
 import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 
 interface FreqOption { label: string; frequency: RecurringFrequency; repeatEvery: number }
 const FREQ_OPTIONS: FreqOption[] = [
@@ -39,7 +46,47 @@ function findFreqOption(freq: RecurringFrequency, repeatEvery: number) {
   return FREQ_OPTIONS.find((o) => o.frequency === freq && o.repeatEvery === repeatEvery) ?? FREQ_OPTIONS[1];
 }
 
-const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+const fmt = (v: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(roundMoney(v));
+
+function RateInput({ 
+   value, 
+   onChange, 
+   className 
+}: { 
+   value: number; 
+   onChange: (v: number) => void; 
+   className?: string;
+}) {
+   const [isFocused, setIsFocused] = useState(false);
+   const [localVal, setLocalVal] = useState("");
+
+   const displayVal = isFocused ? localVal : fmt(value);
+
+   return (
+      <Input
+         type="text"
+         className={className}
+         value={displayVal}
+         onChange={(e) => {
+            const val = e.target.value;
+            setLocalVal(val);
+            const cleaned = val.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+         onFocus={() => {
+            setIsFocused(true);
+            setLocalVal(value === 0 ? "" : String(value));
+         }}
+         onBlur={() => {
+            setIsFocused(false);
+            const cleaned = localVal.replace(/[^0-9.-]/g, "");
+            const num = parseFloat(cleaned);
+            onChange(isNaN(num) ? 0 : num);
+         }}
+      />
+   );
+}
 
 
 const SUPPLY_STATES = [
@@ -120,10 +167,10 @@ const newHeader = (): LineRow => ({ ...newRow(), isHeader: true, headerText: "Ad
 
 function calcRow(row: LineRow, discountLevel: "transaction" | "line_item"): LineRow {
   if (row.isHeader) return { ...row, amount: 0 };
-  const lineTotal = row.quantity * row.rate;
+  const lineTotal = multiplyMoney(row.quantity, row.rate);
   if (discountLevel === "line_item") {
-    const discAmt = row.discountPercent > 0 ? (lineTotal * row.discountPercent) / 100 : row.discountAmount;
-    return { ...row, discountAmount: discAmt, amount: lineTotal - discAmt };
+    const discAmt = row.discountPercent > 0 ? percentMoney(lineTotal, row.discountPercent) : roundMoney(row.discountAmount);
+    return { ...row, discountAmount: discAmt, amount: Math.max(0, subtractMoney(lineTotal, discAmt)) };
   }
   return { ...row, discountPercent: 0, discountAmount: 0, amount: lineTotal };
 }
@@ -686,15 +733,16 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
   );
 
   const selectedFreq = FREQ_OPTIONS.find((o) => freqKey(o) === freqKeyValue) ?? FREQ_OPTIONS[1];
-  const subTotal = rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + r.amount, 0);
+  const subTotal = sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.amount));
   const discountAmt = discountLevel === "transaction"
-    ? (discountType === "%" ? (subTotal * discountPercent) / 100 : discountPercent)
-    : rows.filter((r) => !r.isHeader).reduce((acc, r) => acc + (r.discountAmount || 0), 0);
+    ? (discountType === "%" ? percentMoney(subTotal, discountPercent) : roundMoney(discountPercent))
+    : sumMoney(rows.filter((r) => !r.isHeader).map((r) => r.discountAmount || 0));
   const selectedTds = tdsTaxes.find((t) => t._id === tdsId);
   const selectedTcs = tcsTaxes.find((t) => t._id === tcsId);
-  const tdsAmount = taxType === "TDS" && selectedTds ? ((subTotal - discountAmt) * selectedTds.rate) / 100 : 0;
-  const tcsAmount = taxType === "TCS" && selectedTcs ? ((subTotal - discountAmt + adjustmentAmount) * selectedTcs.rate) / 100 : 0;
-  const total = subTotal - discountAmt - tdsAmount + tcsAmount + adjustmentAmount;
+  const taxableBase = Math.max(0, subtractMoney(subTotal, discountAmt));
+  const tdsAmount = taxType === "TDS" && selectedTds ? percentMoney(taxableBase, selectedTds.rate) : 0;
+  const tcsAmount = taxType === "TCS" && selectedTcs ? percentMoney(sumMoney([taxableBase, adjustmentAmount]), selectedTcs.rate) : 0;
+  const total = sumMoney([taxableBase, -tdsAmount, tcsAmount, adjustmentAmount]);
 
   useEffect(() => {
     const load = async () => {
@@ -942,7 +990,7 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
                 <th className="text-left px-3 py-2.5 font-medium">Item Details</th>
                 <th className="text-left px-3 py-2.5 font-medium w-44">Account</th>
                 <th className="text-right px-3 py-2.5 font-medium w-24">Quantity</th>
-                <th className="text-right px-3 py-2.5 font-medium w-24">Rate</th>
+                <th className="text-right px-3 py-2.5 font-medium w-36">Rate</th>
                 {discountLevel === "line_item" && (
                   <th className="text-right px-3 py-2.5 font-medium w-28">Discount</th>
                 )}
@@ -987,8 +1035,7 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
                             onChange={(e) => updateRow(row.id, { quantity: Number(e.target.value) || 0 })} />
                         </td>
                         <td className="px-3 py-2 align-top text-right">
-                          <Input type="number" className="h-8 text-right" value={row.rate}
-                            onChange={(e) => updateRow(row.id, { rate: Number(e.target.value) || 0 })} />
+                          <RateInput value={row.rate} className="h-8 text-right w-full font-medium text-xs" onChange={(val) => updateRow(row.id, { rate: val })} />
                         </td>
                         {discountLevel === "line_item" && (
                           <td className="px-3 py-2 align-top text-right">

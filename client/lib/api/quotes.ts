@@ -60,6 +60,7 @@ export interface Quote {
   total: number;
   customerNotes: string;
   termsAndConditions: string;
+  templateConfig?: Record<string, unknown>;
   status: QuoteStatus;
   placeOfSupply?: string;
   emailContacts: string[];
@@ -92,6 +93,7 @@ export interface CreateQuoteInput {
   adjustmentAmount?: number;
   customerNotes?: string;
   termsAndConditions?: string;
+  templateConfig?: Record<string, unknown>;
   status?: "Draft" | "Sent";
   emailContacts?: string[];
   attachments?: string[];

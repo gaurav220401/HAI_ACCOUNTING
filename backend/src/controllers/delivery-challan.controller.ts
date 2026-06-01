@@ -12,6 +12,13 @@ import {
   ValidationError,
 } from "../utils/errors";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -20,7 +27,7 @@ function orgId(req: AuthenticatedRequest) {
 }
 
 function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundMoney(value);
 }
 
 function toNum(value: unknown): number {
@@ -45,19 +52,19 @@ async function normalizeItems(
 
   return linkedItems.map((item) => {
     const quantity = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = quantity * rate;
+    const rate = roundMoney(Number(item.rate) || 0);
+    const lineTotal = multiplyMoney(quantity, rate);
     const discountPercent = Number(item.discountPercent) || 0;
     const discountAmount =
       item.discountAmount !== undefined && item.discountAmount !== null ?
-        Number(item.discountAmount)
-      : (lineTotal * discountPercent) / 100;
-    const afterDiscount = lineTotal - discountAmount;
+        roundMoney(Number(item.discountAmount))
+      : percentMoney(lineTotal, discountPercent);
+    const afterDiscount = Math.max(0, subtractMoney(lineTotal, discountAmount));
     const taxPercent = Number(item.taxPercent) || 0;
     const taxAmount =
       item.taxAmount !== undefined && item.taxAmount !== null ?
-        Number(item.taxAmount)
-      : (afterDiscount * taxPercent) / 100;
+        roundMoney(Number(item.taxAmount))
+      : percentMoney(afterDiscount, taxPercent);
 
     return {
       ...item,
@@ -67,7 +74,7 @@ async function normalizeItems(
       discountAmount,
       taxPercent,
       taxAmount,
-      amount: afterDiscount + taxAmount,
+      amount: sumMoney([afterDiscount, taxAmount]),
     };
   });
 }
@@ -79,15 +86,12 @@ function summarizeTotals(
   taxAmount: number,
   adjustmentAmount: number,
 ) {
-  const subTotal = items.reduce(
-    (sum, item) => sum + item.quantity * item.rate,
-    0,
-  );
+  const subTotal = sumMoney(items.map((item) => multiplyMoney(item.quantity, item.rate)));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
-  const total = subTotal - discountAmount + taxAmount + adjustmentAmount;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
+  const total = sumMoney([subTotal, -discountAmount, taxAmount, adjustmentAmount]);
   return { subTotal, discountAmount, total };
 }
 
@@ -214,15 +218,12 @@ export const create = asyncHandler(
     const items = await normalizeItems(oid, req.body.customerId, req.body.items || []);
     const discountType = req.body.discountType || "percent";
     const discountValue = Number(req.body.discountValue) || 0;
-    const derivedTaxAmount = items.reduce(
-      (sum: number, item: any) => sum + (Number(item.taxAmount) || 0),
-      0,
-    );
+    const derivedTaxAmount = sumMoney(items.map((item: any) => Number(item.taxAmount) || 0));
     const taxAmount =
       req.body.taxAmount !== undefined && req.body.taxAmount !== null ?
-        Number(req.body.taxAmount) || 0
+        roundMoney(Number(req.body.taxAmount) || 0)
       : derivedTaxAmount;
-    const adjustmentAmount = Number(req.body.adjustmentAmount) || 0;
+    const adjustmentAmount = roundMoney(Number(req.body.adjustmentAmount) || 0);
     const { subTotal, discountAmount, total } = summarizeTotals(
       items,
       discountType,
@@ -323,29 +324,29 @@ export const update = asyncHandler(
       );
     }
 
-    challan.subTotal = challan.items.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.rate,
-      0,
+    challan.subTotal = sumMoney(
+      (challan.items as any[]).map((item: any) => multiplyMoney(item.quantity, item.rate)),
     );
     challan.discountAmount =
       challan.discountType === "percent" ?
-        (challan.subTotal * challan.discountValue) / 100
-      : challan.discountValue;
+        percentMoney(challan.subTotal, challan.discountValue)
+      : roundMoney(challan.discountValue);
     if (req.body.items || req.body.customerId !== undefined || req.body.taxAmount !== undefined) {
-      const derivedTaxAmount = (challan.items as any[]).reduce(
-        (sum: number, item: any) => sum + (Number(item.taxAmount) || 0),
-        0,
+      const derivedTaxAmount = sumMoney(
+        (challan.items as any[]).map((item: any) => Number(item.taxAmount) || 0),
       );
       challan.taxAmount =
         req.body.taxAmount !== undefined && req.body.taxAmount !== null ?
-          Number(req.body.taxAmount) || 0
+          roundMoney(Number(req.body.taxAmount) || 0)
         : derivedTaxAmount;
     }
-    challan.total =
-      challan.subTotal -
-      challan.discountAmount +
-      (challan.taxAmount || 0) +
-      (challan.adjustmentAmount || 0);
+    challan.adjustmentAmount = roundMoney(challan.adjustmentAmount || 0);
+    challan.total = sumMoney([
+      challan.subTotal,
+      -challan.discountAmount,
+      challan.taxAmount || 0,
+      challan.adjustmentAmount || 0,
+    ]);
 
     attachUser(challan, req);
     await challan.save();
@@ -518,21 +519,21 @@ export const convertToInvoice = asyncHandler(
     const invoiceNumber = await nextInvoiceNumber(oid);
     const invoiceItems = challanItems.map((line: any) => {
       const quantity = toNum(line.quantity) || 0;
-      const rate = toNum(line.rate) || 0;
-      const lineTotal = quantity * rate;
+      const rate = roundMoney(toNum(line.rate) || 0);
+      const lineTotal = multiplyMoney(quantity, rate);
       const discountPercent = toNum(line.discountPercent) || 0;
       const discountAmount =
         line.discountAmount !== undefined && line.discountAmount !== null ?
-          toNum(line.discountAmount)
-        : round2((lineTotal * discountPercent) / 100);
-      const afterDiscount = round2(Math.max(0, lineTotal - discountAmount));
+          roundMoney(toNum(line.discountAmount))
+        : percentMoney(lineTotal, discountPercent);
+      const afterDiscount = Math.max(0, subtractMoney(lineTotal, discountAmount));
 
       const taxRef = line.taxId as any;
       const taxPercent = toNum(line.taxPercent) || toNum(taxRef?.rate);
       const taxAmount =
         line.taxAmount !== undefined && line.taxAmount !== null ?
-          toNum(line.taxAmount)
-        : round2((afterDiscount * taxPercent) / 100);
+          roundMoney(toNum(line.taxAmount))
+        : percentMoney(afterDiscount, taxPercent);
 
       const itemRef = line.itemId as any;
       const itemId = itemRef?._id || line.itemId || null;
@@ -549,7 +550,7 @@ export const convertToInvoice = asyncHandler(
         taxId: taxRef?._id || line.taxId || null,
         taxPercent,
         taxAmount,
-        amount: round2(afterDiscount + taxAmount),
+        amount: sumMoney([afterDiscount, taxAmount]),
         accountId: null,
         projectId: null,
         costRate: 0,
@@ -557,18 +558,17 @@ export const convertToInvoice = asyncHandler(
       };
     });
 
-    const subTotal = round2(invoiceItems.reduce(
-      (sum: number, line: any) => sum + toNum(line.quantity) * toNum(line.rate),
-      0,
-    ));
+    const subTotal = sumMoney(
+      invoiceItems.map((line: any) => multiplyMoney(toNum(line.quantity), toNum(line.rate))),
+    );
     const discountValue = round2(toNum((challan as any).discountValue));
     const discountType: "percent" | "amount" =
       (challan as any).discountType === "amount" ? "amount" : "percent";
     const discountAmount =
-      discountType === "percent" ? round2((subTotal * discountValue) / 100) : discountValue;
+      discountType === "percent" ? percentMoney(subTotal, discountValue) : discountValue;
     const taxAmount = round2(toNum((challan as any).taxAmount));
     const adjustmentAmount = round2(toNum((challan as any).adjustmentAmount));
-    const total = round2(subTotal - discountAmount + taxAmount + adjustmentAmount);
+    const total = sumMoney([subTotal, -discountAmount, taxAmount, adjustmentAmount]);
 
     const dueDateInput = req.body?.dueDate;
     const dueDateCandidate = dueDateInput ? new Date(dueDateInput) : null;

@@ -18,6 +18,7 @@ import {
   cloneOrder,
   getPurchaseOrderDraft,
   convertToPurchaseOrder,
+  getNextNumber,
 } from "../controllers/sales-order.controller";
 
 const router = Router();
@@ -25,6 +26,7 @@ router.use(authenticate);
 
 router.get("/", list);
 router.post("/", create);
+router.get("/next-number", getNextNumber);
 router.post("/:id/convert-to-invoice", convertToInvoice);
 router.post("/:id/instant-invoice", instantInvoice);
 router.get("/:id/purchase-order-draft", getPurchaseOrderDraft);

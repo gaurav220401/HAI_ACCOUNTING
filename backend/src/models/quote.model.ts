@@ -64,6 +64,7 @@ const quoteSchema = new Schema<IQuote>(
     total: { type: Number, default: 0 },
     customerNotes: { type: String, default: "" },
     termsAndConditions: { type: String, default: "" },
+    templateConfig: { type: Schema.Types.Mixed, default: {} },
     status: {
       type: String,
       enum: ["Draft", "Sent", "Accepted", "Rejected", "Invoiced", "Expired"],

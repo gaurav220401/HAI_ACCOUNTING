@@ -52,6 +52,7 @@ import {
   type Tax,
 } from "@/lib/api/settings";
 import { toast } from "sonner";
+import { formatMoney, multiplyMoney, percentMoney, roundMoney, subtractMoney, sumMoney } from "@/lib/money";
 
 interface RecurringInvoiceFormProps {
   mode: "create" | "edit";
@@ -119,17 +120,13 @@ function getRefId(value: unknown): string {
 }
 
 function calcLineAmount(line: LineItem) {
-  const lineTotal = line.quantity * line.rate;
-  const discountAmount = (lineTotal * line.discountPercent) / 100;
-  return lineTotal - discountAmount;
+  const lineTotal = multiplyMoney(line.quantity, line.rate);
+  const discountAmount = percentMoney(lineTotal, line.discountPercent);
+  return Math.max(0, subtractMoney(lineTotal, discountAmount));
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-  }).format(value);
+  return `₹${formatMoney(value)}`;
 }
 
 function addDays(dateString: string, days: number) {
@@ -416,22 +413,19 @@ export function RecurringInvoiceForm({
     });
   }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
-  const subTotal = lines.reduce(
-    (sum, line) => sum + line.quantity * line.rate,
-    0,
-  );
+  const subTotal = sumMoney(lines.map((line) => multiplyMoney(line.quantity, line.rate)));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
   const selectedTax = taxes.find((tax) => tax._id === totalTaxId);
   const taxAmount =
-    selectedTax ? (subTotal * (selectedTax.rate || 0)) / 100 : 0;
+    selectedTax ? percentMoney(subTotal, selectedTax.rate || 0) : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total = subTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total = sumMoney([subTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
   const nextRunPreview = getNextRunPreview(startDate, frequency);
 
   async function handleSave() {

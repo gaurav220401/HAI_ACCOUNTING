@@ -13,6 +13,13 @@ import { generatePurchaseOrderPdf } from "../services/pdf.service";
 import { findAccountIdByName } from "../services/gl-posting.service";
 import { syncBillCreationAccounting } from "../services/bill-accounting.service";
 import { applyStockDeltas } from "../services/accounting-sync.service";
+import {
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "../utils/money";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -55,12 +62,12 @@ function calcLineItems(items: any[], discountLevel: string) {
   return (items || []).map((item: any) => {
     if (item.isHeader) return { ...item, quantity: 0, rate: 0, amount: 0 };
     const qty = Number(item.quantity) || 1;
-    const rate = Number(item.rate) || 0;
-    const lineTotal = qty * rate;
+    const rate = roundMoney(Number(item.rate) || 0);
+    const lineTotal = multiplyMoney(qty, rate);
     if (discountLevel === "line_item") {
       const discPct = Number(item.discountPercent) || 0;
-      const discAmt = Number(item.discountAmount) || (lineTotal * discPct) / 100;
-      return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: lineTotal - discAmt };
+      const discAmt = roundMoney(Number(item.discountAmount) || percentMoney(lineTotal, discPct));
+      return { ...item, quantity: qty, rate, discountPercent: discPct, discountAmount: discAmt, amount: Math.max(0, subtractMoney(lineTotal, discAmt)) };
     }
     return { ...item, quantity: qty, rate, discountPercent: 0, discountAmount: 0, amount: lineTotal };
   });
@@ -93,7 +100,7 @@ function parseUploadedAttachments(input: unknown): { filename: string; path: str
     .filter((att): att is { filename: string; path: string } => Boolean(att));
 }
 
-const fmtCur = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtCur = (v: number) => roundMoney(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function toNum(val: unknown, fallback = 0): number {
   if (val === undefined || val === null || val === "") return fallback;
@@ -181,16 +188,16 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const purchaseOrderNumber = req.body.purchaseOrderNumber || (await nextPONumber(oid));
   const discountLevel = req.body.discountLevel || "transaction";
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
-  const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
+  const subTotal = sumMoney(lineItems.filter((i: any) => !i.isHeader).map((i: any) => multiplyMoney(i.quantity, i.rate)));
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent) : 0;
-  const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
+  const discountAmount = discountLevel === "transaction" ? percentMoney(subTotal, discountPercent) : sumMoney(lineItems.map((i: any) => i.discountAmount || 0));
   const taxType = req.body.taxType || "none";
   const tdsId = taxType === "TDS" ? (req.body.tdsId || null) : null;
   const tcsId = taxType === "TCS" ? (req.body.tcsId || null) : null;
-  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount) : 0;
-  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount) : 0;
-  const adjustmentAmount = toNum(req.body.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
+  const taxAmount = taxType === "TDS" ? roundMoney(toNum(req.body.taxAmount)) : 0;
+  const tcsAmount = taxType === "TCS" ? roundMoney(toNum(req.body.tcsAmount)) : 0;
+  const adjustmentAmount = roundMoney(toNum(req.body.adjustmentAmount));
+  const total = sumMoney([subTotal, -discountAmount, -taxAmount, tcsAmount, adjustmentAmount]);
 
   const po = new PurchaseOrder({
     organizationId: oid,
@@ -240,14 +247,14 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   const discountLevel = req.body.discountLevel || po.discountLevel;
   const lineItems = req.body.lineItems ? calcLineItems(req.body.lineItems, discountLevel) : po.lineItems;
-  const subTotal = lineItems.filter((i: any) => !i.isHeader).reduce((s: number, i: any) => s + i.quantity * i.rate, 0);
+  const subTotal = sumMoney(lineItems.filter((i: any) => !i.isHeader).map((i: any) => multiplyMoney(i.quantity, i.rate)));
   const discountPercent = discountLevel === "transaction" ? toNum(req.body.discountPercent, po.discountPercent) : 0;
-  const discountAmount = discountLevel === "transaction" ? (subTotal * discountPercent) / 100 : lineItems.reduce((s: number, i: any) => s + (i.discountAmount || 0), 0);
+  const discountAmount = discountLevel === "transaction" ? percentMoney(subTotal, discountPercent) : sumMoney(lineItems.map((i: any) => i.discountAmount || 0));
   const taxType = req.body.taxType ?? po.taxType;
-  const taxAmount = taxType === "TDS" ? toNum(req.body.taxAmount, po.taxAmount) : 0;
-  const tcsAmount = taxType === "TCS" ? toNum(req.body.tcsAmount, (po as any).tcsAmount) : 0;
-  const adjustmentAmount = toNum(req.body.adjustmentAmount, po.adjustmentAmount);
-  const total = subTotal - discountAmount - taxAmount + tcsAmount + adjustmentAmount;
+  const taxAmount = taxType === "TDS" ? roundMoney(toNum(req.body.taxAmount, po.taxAmount)) : 0;
+  const tcsAmount = taxType === "TCS" ? roundMoney(toNum(req.body.tcsAmount, (po as any).tcsAmount)) : 0;
+  const adjustmentAmount = roundMoney(toNum(req.body.adjustmentAmount, po.adjustmentAmount));
+  const total = sumMoney([subTotal, -discountAmount, -taxAmount, tcsAmount, adjustmentAmount]);
   const nextTdsId = taxType === "TDS"
     ? (req.body.tdsId !== undefined ? req.body.tdsId : po.tdsId)
     : null;

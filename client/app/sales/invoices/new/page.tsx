@@ -57,8 +57,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { contactApi, type Contact } from "@/lib/api/contacts";
-import { itemApi, type Item, type CreateItemInput, type UnitOfMeasurement } from "@/lib/api/items";
+import {
+  itemApi,
+  type Item,
+  type CreateItemInput,
+  type UnitOfMeasurement,
+} from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import {
+  decimalToFixed,
+  multiplyMoney,
+  percentMoney,
+  roundMoney,
+  subtractMoney,
+  sumMoney,
+} from "@/lib/money";
 import { invoiceApi, type CreateInvoiceInput } from "@/lib/api/invoices";
 import {
   settingsApi,
@@ -87,11 +100,11 @@ interface LineItem {
 }
 
 function calcLineAmount(l: LineItem) {
-  const lineTotal = l.quantity * l.rate;
-  const discAmt = (lineTotal * l.discountPercent) / 100;
-  const afterDisc = lineTotal - discAmt;
-  const taxAmt = (afterDisc * l.taxPercent) / 100;
-  return { lineTotal, discAmt, afterDisc, taxAmt, amount: afterDisc + taxAmt };
+  const lineTotal = multiplyMoney(l.quantity, l.rate);
+  const discAmt = percentMoney(lineTotal, l.discountPercent);
+  const afterDisc = Math.max(0, subtractMoney(lineTotal, discAmt));
+  const taxAmt = percentMoney(afterDisc, l.taxPercent);
+  return { lineTotal, discAmt, afterDisc, taxAmt, amount: sumMoney([afterDisc, taxAmt]) };
 }
 
 let lineKeyCounter = 1;
@@ -138,14 +151,18 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
       let list = res.data ?? [];
       if (list.length === 0) {
         await itemApi.seedUnits().catch(() => {});
-        const seeded = await itemApi.listUnits().catch(() => ({ data: [] as UnitOfMeasurement[] }));
+        const seeded = await itemApi
+          .listUnits()
+          .catch(() => ({ data: [] as UnitOfMeasurement[] }));
         list = seeded.data ?? [];
       }
       list = [...list].sort((a, b) => a.name.localeCompare(b.name));
       setUnits(list);
-      
+
       if (!unit) {
-        const nos = list.find((u) => String(u.abbreviation).toUpperCase() === "NOS");
+        const nos = list.find(
+          (u) => String(u.abbreviation).toUpperCase() === "NOS",
+        );
         if (nos) {
           setUnit(nos._id);
         } else if (list.length > 0) {
@@ -913,8 +930,33 @@ function NewInvoicePageContent() {
   const [saving, setSaving] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  const saveInvoiceDraft = useCallback((newItemLineKey?: number) => {
-    const draft = {
+  const saveInvoiceDraft = useCallback(
+    (newItemLineKey?: number) => {
+      const draft = {
+        customerId,
+        invoiceNumber,
+        orderNumber,
+        invoiceDate,
+        dueDate,
+        paymentTermsId,
+        salesPersonId,
+        subject,
+        lines,
+        discountType,
+        discountValue,
+        taxType,
+        totalTaxId,
+        adjustmentLabel,
+        adjustmentAmount,
+        customerNotes,
+        termsAndConditions,
+        paymentReceived,
+        emailContacts,
+        newItemLineKey,
+      };
+      sessionStorage.setItem("invoice_draft", JSON.stringify(draft));
+    },
+    [
       customerId,
       invoiceNumber,
       orderNumber,
@@ -934,30 +976,8 @@ function NewInvoicePageContent() {
       termsAndConditions,
       paymentReceived,
       emailContacts,
-      newItemLineKey,
-    };
-    sessionStorage.setItem("invoice_draft", JSON.stringify(draft));
-  }, [
-    customerId,
-    invoiceNumber,
-    orderNumber,
-    invoiceDate,
-    dueDate,
-    paymentTermsId,
-    salesPersonId,
-    subject,
-    lines,
-    discountType,
-    discountValue,
-    taxType,
-    totalTaxId,
-    adjustmentLabel,
-    adjustmentAmount,
-    customerNotes,
-    termsAndConditions,
-    paymentReceived,
-    emailContacts,
-  ]);
+    ],
+  );
 
   const itemsById = useMemo(
     () => new Map(items.map((item) => [item._id, item])),
@@ -1020,28 +1040,39 @@ function NewInvoicePageContent() {
             const createdItemId = searchParams.get("createdItemId");
             let restoredLines = draft.lines || [];
             if (createdItemId && draft.newItemLineKey !== undefined) {
-              const allItems = itemsRes.status === "fulfilled" ? (itemsRes.value.data ?? []) : [];
-              const newItemObj = allItems.find((it: any) => it._id === createdItemId);
+              const allItems =
+                itemsRes.status === "fulfilled" ?
+                  (itemsRes.value.data ?? [])
+                : [];
+              const newItemObj = allItems.find(
+                (it: any) => it._id === createdItemId,
+              );
               if (newItemObj) {
                 const linkedTax = getItemTaxForTransaction({
                   item: newItemObj,
-                  contact: (customersRes.status === "fulfilled" ? (customersRes.value.data ?? []) : []).find((c: any) => c._id === draft.customerId),
+                  contact: (customersRes.status === "fulfilled" ?
+                    (customersRes.value.data ?? [])
+                  : []
+                  ).find((c: any) => c._id === draft.customerId),
                   organizationState: activeOrganization?.address?.state,
-                  taxes: taxesRes.status === "fulfilled" ? (taxesRes.value.data ?? []) : [],
+                  taxes:
+                    taxesRes.status === "fulfilled" ?
+                      (taxesRes.value.data ?? [])
+                    : [],
                 });
                 restoredLines = restoredLines.map((l: any) =>
-                  l.key === draft.newItemLineKey
-                    ? {
-                        ...l,
-                        itemId: createdItemId,
-                        name: newItemObj.name,
-                        description: newItemObj.description || "",
-                        hsnSacCode: newItemObj.hsnSacCode || "",
-                        rate: newItemObj.sellingPrice || 0,
-                        taxId: linkedTax.taxId,
-                        taxPercent: linkedTax.taxPercent,
-                      }
-                    : l
+                  l.key === draft.newItemLineKey ?
+                    {
+                      ...l,
+                      itemId: createdItemId,
+                      name: newItemObj.name,
+                      description: newItemObj.description || "",
+                      hsnSacCode: newItemObj.hsnSacCode || "",
+                      rate: newItemObj.sellingPrice || 0,
+                      taxId: linkedTax.taxId,
+                      taxPercent: linkedTax.taxPercent,
+                    }
+                  : l,
                 );
               }
             }
@@ -1051,11 +1082,15 @@ function NewInvoicePageContent() {
             if (draft.discountValue) setDiscountValue(draft.discountValue);
             if (draft.taxType) setTaxType(draft.taxType);
             if (draft.totalTaxId) setTotalTaxId(draft.totalTaxId);
-            if (draft.adjustmentLabel) setAdjustmentLabel(draft.adjustmentLabel);
-            if (draft.adjustmentAmount) setAdjustmentAmount(draft.adjustmentAmount);
+            if (draft.adjustmentLabel)
+              setAdjustmentLabel(draft.adjustmentLabel);
+            if (draft.adjustmentAmount)
+              setAdjustmentAmount(draft.adjustmentAmount);
             if (draft.customerNotes) setCustomerNotes(draft.customerNotes);
-            if (draft.termsAndConditions) setTermsAndConditions(draft.termsAndConditions);
-            if (draft.paymentReceived) setPaymentReceived(draft.paymentReceived);
+            if (draft.termsAndConditions)
+              setTermsAndConditions(draft.termsAndConditions);
+            if (draft.paymentReceived)
+              setPaymentReceived(draft.paymentReceived);
             if (draft.emailContacts) setEmailContacts(draft.emailContacts);
           } catch (e) {
             console.error("Failed to load invoice draft", e);
@@ -1287,25 +1322,24 @@ function NewInvoicePageContent() {
   // ─── Calculations ────────────────────────────────────────────────
 
   const lineTotals = lines.map(calcLineAmount);
-  const subTotal = lineTotals.reduce((s, l) => s + l.lineTotal, 0);
-  const lineDiscountAmount = lineTotals.reduce((s, l) => s + l.discAmt, 0);
-  const lineTaxAmount = lineTotals.reduce((s, l) => s + l.taxAmt, 0);
-  const lineItemsTotal = lineTotals.reduce((s, l) => s + l.amount, 0);
+  const subTotal = sumMoney(lineTotals.map((l) => l.lineTotal));
+  const lineDiscountAmount = sumMoney(lineTotals.map((l) => l.discAmt));
+  const lineTaxAmount = sumMoney(lineTotals.map((l) => l.taxAmt));
+  const lineItemsTotal = sumMoney(lineTotals.map((l) => l.amount));
   const discountAmount =
     discountType === "percent" ?
-      (subTotal * discountValue) / 100
-    : discountValue;
+      percentMoney(subTotal, discountValue)
+    : roundMoney(discountValue);
   const selectedTax = taxes.find((t) => t._id === totalTaxId);
   const taxAmount =
     selectedTax && taxType !== "none" ?
-      (subTotal * (selectedTax.rate || 0)) / 100
+      percentMoney(subTotal, selectedTax.rate || 0)
     : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
     : 0;
-  const total =
-    lineItemsTotal - discountAmount + taxSignedAmount + adjustmentAmount;
+  const total = sumMoney([lineItemsTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
 
   // ─── Submit ──────────────────────────────────────────────────────
 
@@ -1322,8 +1356,16 @@ function NewInvoicePageContent() {
 
     setSaving(true);
     try {
+      let finalInvoiceNumber = invoiceNumber;
+      if (finalInvoiceNumber) {
+        const match = finalInvoiceNumber.match(/^(INV-\d+)(INV-.*)$/i);
+        if (match) {
+          finalInvoiceNumber = match[2];
+        }
+      }
+
       const payload: CreateInvoiceInput = {
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         orderNumber,
         customerId,
         invoiceDate,
@@ -1490,7 +1532,9 @@ function NewInvoicePageContent() {
                 onValueChange={(v) => {
                   if (v === "__add_new") {
                     saveInvoiceDraft();
-                    router.push("/sales/customers/new?returnUrl=/sales/invoices/new");
+                    router.push(
+                      "/sales/customers/new?returnUrl=/sales/invoices/new",
+                    );
                     return;
                   }
                   setCustomerId(v);
@@ -1704,15 +1748,15 @@ function NewInvoicePageContent() {
                       DISCOUNT %
                     </TableHead>
                     <TableHead className="w-[150px] text-right">TAX</TableHead>
-                    <TableHead className="w-[120px] text-right">
-                      AMOUNT
+                    <TableHead className="w-[160px] text-right">
+                      AMOUNT (EXCL. TAX)
                     </TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lines.map((line) => {
-                    const { amount } = calcLineAmount(line);
+                    const { afterDisc } = calcLineAmount(line);
                     const selectedItem = itemsById.get(line.itemId);
                     const stockOnHand =
                       selectedItem?.inventoryTracked ?
@@ -1730,9 +1774,19 @@ function NewInvoicePageContent() {
                             onValueChange={(v) => {
                               if (v === "__new") {
                                 saveInvoiceDraft(line.key);
-                                router.push("/items/new?returnUrl=/sales/invoices/new");
+                                router.push(
+                                  "/items/new?returnUrl=/sales/invoices/new",
+                                );
                               } else {
                                 handleItemSelect(line.key, v);
+                                // Move focus to quantity input after item selection
+                                requestAnimationFrame(() => {
+                                  const qtyInput = document.querySelector(
+                                    `input[data-quantity-key="${line.key}"]`,
+                                  ) as HTMLInputElement | null;
+                                  qtyInput?.focus();
+                                  qtyInput?.select();
+                                });
                               }
                             }}
                           >
@@ -1809,6 +1863,7 @@ function NewInvoicePageContent() {
                             type="number"
                             min={0}
                             className="h-8 text-right text-sm"
+                            data-quantity-key={line.key}
                             value={line.quantity}
                             onChange={(e) =>
                               updateLine(
@@ -1843,9 +1898,6 @@ function NewInvoicePageContent() {
                               )
                             }
                           />
-                          <button className="text-xs text-blue-600 hover:underline mt-0.5">
-                            Recent Transactions
-                          </button>
                         </TableCell>
                         <TableCell>
                           <Input
@@ -1887,7 +1939,7 @@ function NewInvoicePageContent() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium tabular-nums">
-                          {amount.toFixed(2)}
+                          {decimalToFixed(afterDisc)}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5">
@@ -1990,7 +2042,7 @@ function NewInvoicePageContent() {
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">Sub Total</span>
                 <span className="font-medium tabular-nums">
-                  {subTotal.toFixed(2)}
+                  {decimalToFixed(subTotal)}
                 </span>
               </div>
 
@@ -1998,7 +2050,7 @@ function NewInvoicePageContent() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Line Item Discount</span>
                   <span className="tabular-nums">
-                    - {lineDiscountAmount.toFixed(2)}
+                    - {decimalToFixed(lineDiscountAmount)}
                   </span>
                 </div>
               )}
@@ -2007,7 +2059,7 @@ function NewInvoicePageContent() {
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Line Item Tax</span>
                   <span className="tabular-nums">
-                    + {lineTaxAmount.toFixed(2)}
+                    + {decimalToFixed(lineTaxAmount)}
                   </span>
                 </div>
               )}
@@ -2040,7 +2092,7 @@ function NewInvoicePageContent() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm tabular-nums w-20 text-right">
-                    {discountAmount.toFixed(2)}
+                    {decimalToFixed(discountAmount)}
                   </span>
                 </div>
               </div>
@@ -2113,7 +2165,7 @@ function NewInvoicePageContent() {
                     : taxType === "TDS" ?
                       "-"
                     : ""}{" "}
-                    {taxAmount.toFixed(2)}
+                    {decimalToFixed(taxAmount)}
                   </span>
                 </div>
               </div>
@@ -2136,7 +2188,7 @@ function NewInvoicePageContent() {
                     }
                   />
                   <span className="text-sm tabular-nums w-20 text-right">
-                    {adjustmentAmount.toFixed(2)}
+                    {decimalToFixed(adjustmentAmount)}
                   </span>
                 </div>
               </div>
@@ -2146,7 +2198,7 @@ function NewInvoicePageContent() {
               {/* Total */}
               <div className="flex items-center justify-between text-base font-bold">
                 <span>Total ( &#8377; )</span>
-                <span className="tabular-nums">{total.toFixed(2)}</span>
+                <span className="tabular-nums">{decimalToFixed(total)}</span>
               </div>
             </div>
           </div>
@@ -2420,7 +2472,7 @@ function NewInvoicePageContent() {
               </button>
               <div className="text-right">
                 <div className="text-sm font-semibold">
-                  Total Amount: &#8377; {total.toFixed(2)}
+                  Total Amount: &#8377; {decimalToFixed(total)}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Total Quantity:{" "}
@@ -2474,11 +2526,13 @@ function NewInvoicePageContent() {
 
 export default function NewInvoicePage() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
       <NewInvoicePageContent />
     </Suspense>
   );
