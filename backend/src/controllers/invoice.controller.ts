@@ -12,7 +12,7 @@ import {
   ValidationError,
 } from "../utils/errors";
 import { sendInvoiceEmail as sendInvoiceEmailService } from "../services/email.service";
-import { generateInvoicePdf } from "../services/pdf.service";
+import { generateInvoicePdf } from "../services/invoice-pdf.service";
 import Organization from "../models/organization.model";
 import {
   applyStockDeltas,
@@ -400,6 +400,9 @@ export const downloadPdf = asyncHandler(
         (org as any).smtpSettings?.user ||
         undefined,
       orgTaxId: (org as any).taxId,
+      orgLogoUrl: (org as any).logo,
+      orgPhone: (org as any).phone,
+      templateConfig: (invoice as any).templateConfig || {},
 
       customerName,
       customerAddress: customerAddress || undefined,
@@ -541,6 +544,7 @@ export const create = asyncHandler(
       isRecurring: req.body.isRecurring === true,
       journalEntries: req.body.journalEntries || [],
       pdfTemplateId: req.body.pdfTemplateId || null,
+      templateConfig: req.body.templateConfig || {},
       sentAt: req.body.sentAt || null,
       paidAt: req.body.paidAt || null,
     });
@@ -629,6 +633,7 @@ export const update = asyncHandler(
       "isRecurring",
       "journalEntries",
       "pdfTemplateId",
+      "templateConfig",
       "sentAt",
       "paidAt",
       "balanceDue",
@@ -933,6 +938,9 @@ export const sendInvoiceEmail = asyncHandler(
         orgEmail:
           org?.smtpSettings?.fromEmail || org?.smtpSettings?.user || undefined,
         orgTaxId: org?.taxId,
+        orgLogoUrl: (org as any)?.logo,
+        orgPhone: (org as any)?.phone,
+        templateConfig: (invoice as any).templateConfig || {},
 
         customerName,
         customerAddress: custAddr || customer?.address || undefined,

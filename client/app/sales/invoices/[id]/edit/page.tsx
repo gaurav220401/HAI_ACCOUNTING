@@ -422,6 +422,7 @@ export default function EditInvoicePage() {
         adjustmentAmount,
         customerNotes,
         termsAndConditions,
+        templateConfig: invoice?.templateConfig || {},
       };
       await invoiceApi.update(id, payload);
 
