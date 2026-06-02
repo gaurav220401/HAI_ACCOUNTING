@@ -1106,6 +1106,7 @@ export const addStatementToBank = asyncHandler(async (req: AuthenticatedRequest,
 export const getSignedPreviewUrl = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
   const ttl = Math.max(30, Math.min(900, Number(req.query.ttl || 300)));
+  const download = req.query.download === "true";
   const document = await DocumentModel.findOne({ _id: req.params.id, organizationId, isDeleted: false });
   if (!document) throw new NotFoundError("Document");
   await ensureDocumentAccess(req, document, "read");
@@ -1119,7 +1120,12 @@ export const getSignedPreviewUrl = asyncHandler(async (req: AuthenticatedRequest
   }
 
   const resourceType = document.mimeType?.startsWith("image/") ? "image" : "raw";
-  const signedUrl = buildSignedAssetUrl(document.cloudinaryPublicId, resourceType, ttl);
+  const signedUrl = buildSignedAssetUrl(
+    document.cloudinaryPublicId, 
+    resourceType, 
+    ttl,
+    download ? document.fileName : undefined
+  );
   res.json({ success: true, data: { url: signedUrl, ttl } });
 });
 

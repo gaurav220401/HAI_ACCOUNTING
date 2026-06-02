@@ -5,6 +5,7 @@ import {
   ArrowRight,
   ChevronLeft,
   Copy,
+  Download,
   FileText,
   Landmark,
   Mail,
@@ -585,6 +586,24 @@ export default function DocumentsPage() {
     }
   };
 
+  const onDownloadDocument = async (doc: DocumentItem) => {
+    try {
+      const res = await documentsApi.getSignedUrl(doc._id, 60, true);
+      // Create a temporary link element to trigger the download
+      const a = document.createElement("a");
+      a.href = res.data.url;
+      a.download = doc.fileName;
+      // Note: download attribute might be ignored if cross-origin, but we've added the fl_attachment flag in the backend so it should force download anyway.
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success("Download started");
+    } catch (error) {
+      console.error(error);
+      toast.error("Download failed");
+    }
+  };
+
   const canRender = !authLoading && !orgLoading;
 
   return (
@@ -1008,16 +1027,18 @@ export default function DocumentsPage() {
                             <TableCell>{doc.uploadedBy?.name || doc.uploadedBy?.email || "-"}</TableCell>
                             {isTrashView ? (
                               <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onRestoreDocumentById(doc._id);
-                                  }}
-                                >
-                                  Restore
-                                </Button>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onRestoreDocumentById(doc._id);
+                                    }}
+                                  >
+                                    Restore
+                                  </Button>
+                                </div>
                               </TableCell>
                             ) : inbox === "bank_statements" ? (
                               <TableCell>
@@ -1047,7 +1068,23 @@ export default function DocumentsPage() {
                                 </div>
                               </TableCell>
                             ) : (
-                              <TableCell>{doc.links?.[0]?.entityType || "-"}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <span>{doc.links?.[0]?.entityType || "-"}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0"
+                                    title="Download"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onDownloadDocument(doc);
+                                    }}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
                             )}
                             {!isTrashView && inbox !== "bank_statements" ? <TableCell>{doc.folderId?.name || "-"}</TableCell> : null}
                           </TableRow>
@@ -1309,6 +1346,14 @@ export default function DocumentsPage() {
                         }}
                       >
                         Secure Preview URL
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => selectedDocument && onDownloadDocument(selectedDocument)}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download File
                       </Button>
                       <Button variant="outline" className="w-full" onClick={() => onReprocess()}>
                         <RefreshCw className="h-4 w-4" />

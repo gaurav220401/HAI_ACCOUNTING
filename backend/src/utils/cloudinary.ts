@@ -77,15 +77,22 @@ export function buildSignedAssetUrl(
   publicId: string,
   resourceType: "image" | "raw" | "video" | "auto" = "raw",
   ttlSeconds = 300,
+  downloadFilename?: string,
 ): string {
   const safeTtl = Math.max(30, Math.min(900, Number(ttlSeconds) || 300));
   const expiresAt = Math.floor(Date.now() / 1000) + safeTtl;
 
-  return cloudinary.url(publicId, {
+  const opts: Record<string, unknown> = {
     secure: true,
     sign_url: true,
     type: "authenticated",
     resource_type: resourceType,
     expires_at: expiresAt,
-  });
+  };
+
+  if (downloadFilename) {
+    opts.flags = `attachment:${encodeURIComponent(downloadFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_"))}`;
+  }
+
+  return cloudinary.url(publicId, opts);
 }
