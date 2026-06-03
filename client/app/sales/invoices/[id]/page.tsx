@@ -445,6 +445,14 @@ export default function InvoiceDetailPage() {
                 <Pencil className="h-4 w-4 mr-1.5" /> Edit
               </Button>
 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/sales/invoices/${id}/edit-template`)}
+              >
+                <Pencil className="h-4 w-4 mr-1.5" /> Customize
+              </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">

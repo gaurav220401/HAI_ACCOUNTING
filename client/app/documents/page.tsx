@@ -589,11 +589,11 @@ export default function DocumentsPage() {
   const onDownloadDocument = async (doc: DocumentItem) => {
     try {
       const res = await documentsApi.getSignedUrl(doc._id, 60, true);
-      // Create a temporary link element to trigger the download
       const a = document.createElement("a");
       a.href = res.data.url;
-      a.download = doc.fileName;
-      // Note: download attribute might be ignored if cross-origin, but we've added the fl_attachment flag in the backend so it should force download anyway.
+      a.target = "_blank";
+      // This forces the browser to attempt download; 
+      // the backend Cloudinary signed URL 'fl_attachment' does the rest.
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1064,6 +1064,18 @@ export default function DocumentsPage() {
                                     }}
                                   >
                                     Add to Bank
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="px-2"
+                                    title="Download"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onDownloadDocument(doc);
+                                    }}
+                                  >
+                                    <Download className="h-4 w-4" />
                                   </Button>
                                 </div>
                               </TableCell>

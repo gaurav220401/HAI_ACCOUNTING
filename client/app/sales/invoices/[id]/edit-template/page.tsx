@@ -143,11 +143,15 @@ export default function EditInvoiceTemplatePage() {
   const updateMargin = (k: keyof InvoiceTemplateConfig["margins"], v: number) => { setConfig(p=>({...p,margins:{...p.margins,[k]:v}})); setIsDirty(true); setSyncStatus("idle"); };
 
   async function handleSave() {
-    if (!params?.id) return;
+    if (!params?.id || !activeOrganization?._id) return;
     setSyncStatus("saving");
     localStorage.setItem(STORAGE_KEY(params.id), JSON.stringify(config));
     try {
-      await invoiceApi.update(params.id, { templateConfig: config as any });
+      await Promise.all([
+        invoiceApi.update(params.id, { templateConfig: config as any }),
+        organizationApi.update(activeOrganization._id, { templateConfig: config }),
+      ]);
+      await refreshOrganizations();
       setIsDirty(false);
       setSyncStatus("synced");
       toast.success("Template saved");

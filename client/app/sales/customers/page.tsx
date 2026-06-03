@@ -302,7 +302,7 @@ export default function CustomersPage() {
                         {row.isActive === false ? <p className="text-[10px] text-muted-foreground">Inactive</p> : null}
                       </div>
                       <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                        {fmt(row.openingBalance ?? 0, row.currency || "INR")}
+                        {fmt((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0), row.currency || "INR")}
                       </span>
                     </div>
                   </button>
@@ -376,7 +376,7 @@ export default function CustomersPage() {
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">{row.taxTreatment || "-"}</td>
                             <td className="px-4 py-3 text-right tabular-nums font-medium">
-                              {fmt(row.openingBalance ?? 0, row.currency || "INR")}
+                              {fmt((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0), row.currency || "INR")}
                             </td>
                           </tr>
                         );

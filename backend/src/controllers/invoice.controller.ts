@@ -481,6 +481,9 @@ export const create = asyncHandler(
       throw new ValidationError("At least one item is required");
     }
 
+    const org = await Organization.findById(oid).lean();
+    if (!org) throw new NotFoundError("Organization");
+
     let invoiceNumber =
       req.body.invoiceNumber || (await nextInvoiceNumber(oid));
 
@@ -544,7 +547,7 @@ export const create = asyncHandler(
       isRecurring: req.body.isRecurring === true,
       journalEntries: req.body.journalEntries || [],
       pdfTemplateId: req.body.pdfTemplateId || null,
-      templateConfig: req.body.templateConfig || {},
+      templateConfig: req.body.templateConfig && Object.keys(req.body.templateConfig).length > 0 ? req.body.templateConfig : ((org as any).templateConfig || {}),
       sentAt: req.body.sentAt || null,
       paidAt: req.body.paidAt || null,
     });
