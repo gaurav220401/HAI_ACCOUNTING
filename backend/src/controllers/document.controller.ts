@@ -6,7 +6,7 @@ import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 import admin from "../config/firebase";
-import { buildSignedAssetUrl, uploadBuffer } from "../utils/cloudinary";
+import { buildSignedAssetUrl, buildDownloadUrl, uploadBuffer, getCloudinaryResourceType } from "../utils/cloudinary";
 import { upload } from "../middlewares/upload";
 import { attachUser } from "../plugins";
 import DocumentModel from "../models/document.model";
@@ -1119,13 +1119,28 @@ export const getSignedPreviewUrl = asyncHandler(async (req: AuthenticatedRequest
     throw new ValidationError("Preview is unavailable for this document");
   }
 
-  const resourceType = document.mimeType?.startsWith("image/") ? "image" : "raw";
-  const signedUrl = buildSignedAssetUrl(
-    document.cloudinaryPublicId, 
-    resourceType, 
-    ttl,
-    download ? document.fileName : undefined
-  );
+  const resourceType = getCloudinaryResourceType(document.extension, document.mimeType);
+
+  let signedUrl: string;
+  if (download) {
+    // Use Admin API download URL — the only method that works for `authenticated` delivery type.
+    signedUrl = buildDownloadUrl(
+      document.cloudinaryPublicId,
+      resourceType,
+      ttl,
+      document.fileName,
+      document.extension
+    );
+  } else {
+    // Preview-only signed URL (no forced attachment)
+    signedUrl = buildSignedAssetUrl(
+      document.cloudinaryPublicId,
+      resourceType,
+      ttl,
+      undefined,
+      document.extension
+    );
+  }
   res.json({ success: true, data: { url: signedUrl, ttl } });
 });
 

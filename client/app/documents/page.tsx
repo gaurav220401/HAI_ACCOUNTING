@@ -588,21 +588,32 @@ export default function DocumentsPage() {
 
   const onDownloadDocument = async (doc: DocumentItem) => {
     try {
-      const res = await documentsApi.getSignedUrl(doc._id, 60, true);
+      toast.info("Preparing download…");
+      const res = await documentsApi.getSignedUrl(doc._id, 120, true);
+      const downloadUrl = res.data.url;
+
+      // Fetch the file as a blob so it downloads even when the URL is the Cloudinary Admin API endpoint.
+      const fileRes = await fetch(downloadUrl);
+      if (!fileRes.ok) {
+        throw new Error(`Cloudinary returned ${fileRes.status}`);
+      }
+      const blob = await fileRes.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
       const a = document.createElement("a");
-      a.href = res.data.url;
-      a.target = "_blank";
-      // This forces the browser to attempt download; 
-      // the backend Cloudinary signed URL 'fl_attachment' does the rest.
+      a.href = objectUrl;
+      a.download = doc.fileName || "download";
       document.body.appendChild(a);
       a.click();
       a.remove();
+      URL.revokeObjectURL(objectUrl);
       toast.success("Download started");
     } catch (error) {
       console.error(error);
       toast.error("Download failed");
     }
   };
+
 
   const canRender = !authLoading && !orgLoading;
 
