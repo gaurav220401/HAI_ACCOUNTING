@@ -59,6 +59,7 @@ export const createOrganizationSchema = z.object({
       country: z.string().optional(),
     })
     .optional(),
+  templateConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const updateOrganizationSchema = createOrganizationSchema.partial();

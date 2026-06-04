@@ -1,4 +1,4 @@
-export interface InvoiceTemplateConfig {
+export interface InvoiceTemplateConfig extends Record<string, unknown> {
   templateName: string;
   paperSize: "A4" | "A5" | "Letter";
   orientation: "Portrait" | "Landscape";

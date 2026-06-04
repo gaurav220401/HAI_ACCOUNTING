@@ -105,6 +105,7 @@ export interface IOrganization extends Document {
     exchangeGainLossAccount?: Types.ObjectId;
     retainedEarningsAccount?: Types.ObjectId;
   };
+  templateConfig?: Record<string, unknown>;
   smtpSettings?: {
     host: string;
     port: number;

@@ -892,6 +892,7 @@ function NewInvoicePageContent() {
   // Form state
   const [customerId, setCustomerId] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [referenceNumber, setReferenceNumber] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(todayISO());
   const [dueDate, setDueDate] = useState(todayISO());
@@ -938,6 +939,7 @@ function NewInvoicePageContent() {
       const draft = {
         customerId,
         invoiceNumber,
+        referenceNumber,
         orderNumber,
         invoiceDate,
         dueDate,
@@ -962,6 +964,7 @@ function NewInvoicePageContent() {
     [
       customerId,
       invoiceNumber,
+      referenceNumber,
       orderNumber,
       invoiceDate,
       dueDate,
@@ -1032,6 +1035,8 @@ function NewInvoicePageContent() {
             const draft = JSON.parse(saved);
             if (draft.customerId) setCustomerId(draft.customerId);
             if (draft.invoiceNumber) setInvoiceNumber(draft.invoiceNumber);
+            if (draft.referenceNumber)
+              setReferenceNumber(draft.referenceNumber);
             if (draft.orderNumber) setOrderNumber(draft.orderNumber);
             if (draft.invoiceDate) setInvoiceDate(draft.invoiceDate);
             if (draft.dueDate) setDueDate(draft.dueDate);
@@ -1369,6 +1374,7 @@ function NewInvoicePageContent() {
 
       const payload: CreateInvoiceInput = {
         invoiceNumber: finalInvoiceNumber,
+        referenceNumber,
         orderNumber,
         customerId,
         invoiceDate,
@@ -1595,6 +1601,15 @@ function NewInvoicePageContent() {
                   <Settings className="h-4 w-4" />
                 </Button>
               </div>
+            </div>
+
+            {/* Reference # */}
+            <div className="space-y-1.5">
+              <Label>Reference#</Label>
+              <Input
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+              />
             </div>
 
             {/* Order Number */}
