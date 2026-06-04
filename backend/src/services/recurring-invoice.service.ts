@@ -12,7 +12,7 @@ import {
   RecurringInvoiceFrequency,
 } from "../types";
 import { sendInvoiceEmail } from "./email.service";
-import { generateInvoicePdf } from "./pdf.service";
+import { generateInvoicePdf } from "./invoice-pdf.service";
 import { applyItemTaxLinkageToItems } from "./item-tax-linkage.service";
 import {
   multiplyMoney,
@@ -385,6 +385,9 @@ async function tryAutoSendRecurringInvoice(
         organization.smtpSettings?.user ||
         undefined,
       orgTaxId: organization.taxId,
+      orgLogoUrl: (organization as any).logo,
+      orgPhone: (organization as any).phone,
+      templateConfig: (invoice as any).templateConfig || {},
       customerName:
         customer?.displayName || customer?.companyName || "Customer",
       customerAddress: customerAddress || undefined,

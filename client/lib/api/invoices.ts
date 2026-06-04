@@ -82,6 +82,7 @@ export interface Invoice {
   isRecurring: boolean;
   journalEntries?: JournalEntry[];
   pdfTemplateId?: string;
+  templateConfig?: Record<string, unknown>;
   sentAt?: string;
   paidAt?: string;
   createdAt: string;
@@ -108,6 +109,7 @@ export interface CreateInvoiceInput {
   adjustmentAmount?: number;
   customerNotes?: string;
   termsAndConditions?: string;
+  templateConfig?: Record<string, unknown>;
   status?: "Draft" | "Sent";
   emailContacts?: string[];
   attachments?: string[];

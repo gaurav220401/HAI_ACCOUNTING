@@ -107,8 +107,8 @@ export const documentsApi = {
 
   getById: (id: string) => apiFetch<{ data: DocumentItem }>(`/documents/${id}`),
 
-  getSignedUrl: (id: string, ttl = 300) =>
-    apiFetch<{ data: { url: string; ttl: number } }>(`/documents/${id}/signed-url?ttl=${ttl}`),
+  getSignedUrl: (id: string, ttl = 300, download = false) =>
+    apiFetch<{ data: { url: string; ttl: number } }>(`/documents/${id}/signed-url?ttl=${ttl}${download ? '&download=true' : ''}`),
 
   upload: (file: File, opts?: { source?: string; inboxType?: string; processingMode?: ProcessingMode }) => {
     const formData = new FormData();

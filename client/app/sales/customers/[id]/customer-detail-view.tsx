@@ -726,9 +726,52 @@ export function CustomerDetailView({
   }, [customer]);
 
   const outstandingReceivables = useMemo(
-    () => invoices.reduce((sum, row) => sum + (row.balanceDue || 0), 0),
-    [invoices],
+    () => invoices.reduce((sum, row) => sum + (row.balanceDue || 0), 0) + Number(customer.openingBalance || 0),
+    [invoices, customer.openingBalance],
   );
+
+  const agingBuckets = useMemo(() => {
+    let current = 0;
+    let _1_15 = 0;
+    let _16_30 = 0;
+    let _31_45 = 0;
+    let above_45 = 0;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Invoices
+    for (const inv of invoices) {
+      const due = Number(inv.balanceDue || 0);
+      if (due <= 0) continue;
+      const dueDate = inv.dueDate ? new Date(inv.dueDate) : null;
+      if (!dueDate || dueDate.getTime() >= todayStart.getTime()) {
+        current += due;
+      } else {
+        const daysOverdue = Math.floor((todayStart.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysOverdue <= 15) _1_15 += due;
+        else if (daysOverdue <= 30) _16_30 += due;
+        else if (daysOverdue <= 45) _31_45 += due;
+        else above_45 += due;
+      }
+    }
+    
+    // Customer Opening Balance
+    const obDate = customer.createdAt ? new Date(customer.createdAt) : null;
+    const obDue = Number(customer.openingBalance || 0);
+    if (obDue > 0) {
+      if (!obDate || obDate.getTime() >= todayStart.getTime()) {
+        current += obDue;
+      } else {
+        const daysOverdue = Math.floor((todayStart.getTime() - obDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysOverdue <= 15) _1_15 += obDue;
+        else if (daysOverdue <= 30) _16_30 += obDue;
+        else if (daysOverdue <= 45) _31_45 += obDue;
+        else above_45 += obDue;
+      }
+    }
+    
+    return { current, "1-15": _1_15, "16-30": _16_30, "31-45": _31_45, "above-45": above_45 };
+  }, [invoices, customer.openingBalance, customer.createdAt]);
 
   const invoiceAmount = useMemo(
     () => invoices.reduce((sum, row) => sum + (row.total || 0), 0),
@@ -1394,6 +1437,35 @@ export function CustomerDetailView({
                   >
                     View Opening Balance
                   </button>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-md border">
+                <div className="border-b px-4 py-3">
+                  <p className="text-[20px] font-normal">Aging Details</p>
+                  <p className="text-sm text-muted-foreground">Aging buckets for outstanding receivables</p>
+                </div>
+                <div className="overflow-x-auto px-4 py-3">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-right text-xs tracking-wide text-muted-foreground">
+                        <th className="px-2 py-2 font-medium">Current</th>
+                        <th className="px-2 py-2 font-medium">1-15 Days</th>
+                        <th className="px-2 py-2 font-medium">16-30 Days</th>
+                        <th className="px-2 py-2 font-medium">31-45 Days</th>
+                        <th className="px-2 py-2 font-medium">&gt; 45 Days</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="text-right">
+                        <td className="px-2 py-2 font-semibold">{fmtCurrency(agingBuckets.current, customer.currency || "INR")}</td>
+                        <td className="px-2 py-2 font-semibold text-red-500">{fmtCurrency(agingBuckets["1-15"], customer.currency || "INR")}</td>
+                        <td className="px-2 py-2 font-semibold text-red-600">{fmtCurrency(agingBuckets["16-30"], customer.currency || "INR")}</td>
+                        <td className="px-2 py-2 font-semibold text-red-700">{fmtCurrency(agingBuckets["31-45"], customer.currency || "INR")}</td>
+                        <td className="px-2 py-2 font-semibold text-red-800">{fmtCurrency(agingBuckets["above-45"], customer.currency || "INR")}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 

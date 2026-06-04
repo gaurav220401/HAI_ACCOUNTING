@@ -80,6 +80,8 @@ import {
   type PaymentTerms,
 } from "@/lib/api/settings";
 import { toast } from "sonner";
+import { InvoiceTemplateRenderer } from "@/components/invoice-template-renderer";
+import { DEFAULT_CONFIG } from "../[id]/edit-template/config";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -917,6 +919,7 @@ function NewInvoicePageContent() {
   // Extra sections
   const [paymentReceived, setPaymentReceived] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [emailContacts, setEmailContacts] = useState<string[]>([]);
   const [newEmailContact, setNewEmailContact] = useState("");
 
@@ -2462,6 +2465,13 @@ function NewInvoicePageContent() {
               >
                 Cancel
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowPreviewModal(true)}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                Preview Template
+              </Button>
             </div>
 
             {/* Right: Make Recurring + Total */}
@@ -2520,6 +2530,51 @@ function NewInvoicePageContent() {
         onSend={handleSendEmail}
         sending={sendingEmail}
       />
+
+      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+        <DialogContent className="max-w-[850px] max-h-[90vh] overflow-y-auto bg-gray-50/50 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Invoice Preview</h2>
+            <p className="text-sm text-muted-foreground">This is how your invoice will look based on the organization template</p>
+          </div>
+          <div className="shadow-2xl bg-white border border-border flex items-center justify-center">
+            <InvoiceTemplateRenderer
+              invoice={{
+                invoiceNumber,
+                orderNumber,
+                referenceNumber,
+                invoiceDate: invoiceDate,
+                dueDate: dueDate,
+                status: "Draft",
+                subTotal,
+                discountType,
+                discountValue,
+                discountAmount,
+                taxType,
+                taxAmount,
+                adjustmentLabel,
+                adjustmentAmount,
+                total,
+                balanceDue: total,
+                customerNotes,
+                termsAndConditions,
+                customerId: selectedCustomer as any,
+                items: lines.filter(l => l.name.trim()).map(l => ({
+                   name: l.name,
+                   description: l.description,
+                   quantity: l.quantity,
+                   rate: l.rate,
+                   discountPercent: l.discountPercent,
+                   taxPercent: l.taxPercent,
+                   amount: l.quantity * l.rate,
+                })) as any[],
+              } as any}
+              config={{ ...DEFAULT_CONFIG, ...((activeOrganization as any)?.templateConfig || {}) }}
+              activeOrganization={activeOrganization}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }

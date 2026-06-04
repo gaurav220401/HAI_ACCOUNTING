@@ -76,6 +76,9 @@ import {
   type PaymentTerms,
 } from "@/lib/api/settings";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { InvoiceTemplateRenderer } from "@/components/invoice-template-renderer";
+import { DEFAULT_CONFIG } from "../edit-template/config";
 
 interface LineItem {
   key: number;
@@ -171,6 +174,7 @@ export default function EditInvoicePage() {
   const [customerNotes, setCustomerNotes] = useState("");
   const [termsAndConditions, setTermsAndConditions] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -422,6 +426,7 @@ export default function EditInvoicePage() {
         adjustmentAmount,
         customerNotes,
         termsAndConditions,
+        templateConfig: invoice?.templateConfig || {},
       };
       await invoiceApi.update(id, payload);
 
@@ -1005,6 +1010,13 @@ export default function EditInvoicePage() {
               Discard
             </Button>
             <Button
+              variant="outline"
+              className="px-8 font-bold border-slate-200"
+              onClick={() => setShowPreviewModal(true)}
+            >
+              Preview Template
+            </Button>
+            <Button
               className="px-8 font-bold bg-slate-900 hover:bg-slate-800"
               onClick={() => handleUpdate(false)}
               disabled={saving}
@@ -1023,6 +1035,51 @@ export default function EditInvoicePage() {
           </div>
         </div>
       </SidebarInset>
+
+      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+        <DialogContent className="max-w-[850px] max-h-[90vh] overflow-y-auto bg-gray-50/50 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Invoice Preview</h2>
+            <p className="text-sm text-muted-foreground">This is how your invoice will look based on the organization template</p>
+          </div>
+          <div className="shadow-2xl bg-white border border-border flex items-center justify-center">
+            <InvoiceTemplateRenderer
+              invoice={{
+                invoiceNumber,
+                orderNumber,
+                referenceNumber,
+                invoiceDate: invoiceDate,
+                dueDate: dueDate,
+                status: invoice?.status || "Draft",
+                subTotal,
+                discountType,
+                discountValue,
+                discountAmount: lineDiscountAmount > 0 ? lineDiscountAmount : (discountType === "percent" ? percentMoney(subTotal, discountValue) : discountValue),
+                taxType,
+                taxAmount: invoice?.taxAmount || 0,
+                adjustmentLabel,
+                adjustmentAmount,
+                total,
+                balanceDue: total,
+                customerNotes,
+                termsAndConditions,
+                customerId: selectedCustomer as any,
+                items: lines.filter(l => l.name.trim()).map(l => ({
+                   name: l.name,
+                   description: l.description,
+                   quantity: l.quantity,
+                   rate: l.rate,
+                   discountPercent: l.discountPercent,
+                   taxPercent: l.taxPercent,
+                   amount: l.quantity * l.rate,
+                })) as any[],
+              } as any}
+              config={{ ...DEFAULT_CONFIG, ...((invoice as any)?.templateConfig || (activeOrganization as any)?.templateConfig || {}) }}
+              activeOrganization={activeOrganization}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }

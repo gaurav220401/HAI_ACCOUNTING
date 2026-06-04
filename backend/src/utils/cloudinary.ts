@@ -66,8 +66,39 @@ export function uploadBuffer(
 /**
  * Delete an asset by its public_id.
  */
-export async function deleteAsset(publicId: string): Promise<void> {
-  await cloudinary.uploader.destroy(publicId);
+export async function deleteAsset(
+  publicId: string,
+  resourceType: "image" | "raw" | "video" | "auto" = "image",
+): Promise<void> {
+  await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+}
+
+/**
+ * Build a short-lived, forced-download URL for authenticated Cloudinary assets.
+ * Uses the Admin API endpoint (api.cloudinary.com) which correctly handles authenticated delivery.
+ */
+export function buildDownloadUrl(
+  publicId: string,
+  resourceType: "image" | "raw" | "video" | "auto" = "image",
+  ttlSeconds = 300,
+  downloadFilename?: string,
+  format?: string,
+): string {
+  const safeTtl = Math.max(30, Math.min(3600, Number(ttlSeconds) || 300));
+  const expiresAt = Math.floor(Date.now() / 1000) + safeTtl;
+
+  const opts: Record<string, unknown> = {
+    resource_type: resourceType,
+    type: "authenticated",
+    expires_at: expiresAt,
+    flags: "attachment",
+  };
+
+  if (format) {
+    opts.format = format.replace(/^\./, "").trim();
+  }
+
+  return cloudinary.utils.private_download_url(publicId, format?.replace(/^\./, "").trim() ?? "", opts);
 }
 
 /**
@@ -77,15 +108,47 @@ export function buildSignedAssetUrl(
   publicId: string,
   resourceType: "image" | "raw" | "video" | "auto" = "raw",
   ttlSeconds = 300,
+  downloadFilename?: string,
+  format?: string,
 ): string {
   const safeTtl = Math.max(30, Math.min(900, Number(ttlSeconds) || 300));
   const expiresAt = Math.floor(Date.now() / 1000) + safeTtl;
 
-  return cloudinary.url(publicId, {
+  const opts: Record<string, unknown> = {
     secure: true,
     sign_url: true,
     type: "authenticated",
     resource_type: resourceType,
     expires_at: expiresAt,
-  });
+  };
+
+  if (format && resourceType !== "raw") {
+    opts.format = format.replace(/^\./, "").trim();
+  }
+
+  // Note: fl_attachment is NOT added here — signed URLs are for preview only.
+  // For forced downloads, use buildDownloadUrl() instead.
+
+  return cloudinary.url(publicId, opts);
 }
+
+/**
+ * Determine the Cloudinary resource type based on file extension and mime type.
+ */
+export function getCloudinaryResourceType(extension: string, mimeType?: string): "image" | "video" | "raw" {
+  const ext = String(extension || "").toLowerCase().replace(".", "").trim();
+  const mime = String(mimeType || "").toLowerCase().trim();
+
+  const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "tiff", "tif", "bmp", "svg", "ico", "pdf"];
+  if (imageExtensions.includes(ext) || mime.startsWith("image/") || mime === "application/pdf") {
+    return "image";
+  }
+
+  const videoExtensions = ["mp4", "avi", "mov", "mkv", "webm", "flv", "wmv", "3gp", "mp3", "wav", "aac", "ogg", "m4a"];
+  if (videoExtensions.includes(ext) || mime.startsWith("video/") || mime.startsWith("audio/")) {
+    return "video";
+  }
+
+  return "raw";
+}
+

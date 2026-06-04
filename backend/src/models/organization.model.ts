@@ -218,6 +218,12 @@ const organizationSchema = new Schema<IOrganization>(
       default: () => ({}),
     },
 
+    // ── Invoice Template ───────────────────────────────────────────────
+    templateConfig: {
+      type: Schema.Types.Mixed,
+      default: () => ({}),
+    },
+
     // ── SMTP Settings ─────────────────────────────────────────────────
     smtpSettings: {
       type: smtpSettingsSchema,

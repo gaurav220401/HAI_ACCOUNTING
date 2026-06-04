@@ -7,5 +7,9 @@ const router = Router();
 router.use(authenticate);
 
 router.get("/", warehouseController.list);
+router.post("/", warehouseController.create);
+router.get("/:id", warehouseController.getOne);
+router.patch("/:id", warehouseController.update);
+router.delete("/:id", warehouseController.remove);
 
 export default router;

@@ -13,6 +13,7 @@ const setupItems = [
   { title: "Taxes", href: "/settings/taxes" },
   { title: "Currencies", href: "/settings/currencies" },
   { title: "Opening Balances", href: "/settings/opening-balances" },
+  { title: "Warehouses", href: "/settings/warehouses" },
   { title: "Reminders", href: "/settings/reminders" },
   { title: "Customer Portal", href: "/settings/customer-portal" },
 ];

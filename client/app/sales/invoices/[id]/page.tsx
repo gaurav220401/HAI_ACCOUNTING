@@ -65,6 +65,8 @@ import {
   type PaymentReceived,
 } from "@/lib/api/payments-received";
 import { toast } from "sonner";
+import { InvoiceTemplateRenderer } from "@/components/invoice-template-renderer";
+import { DEFAULT_CONFIG } from "@/app/sales/invoices/[id]/edit-template/config";
 
 // ─── STYLES ──────────────────────────────────────────────────────────
 const printStyles = `
@@ -443,6 +445,14 @@ export default function InvoiceDetailPage() {
                 <Pencil className="h-4 w-4 mr-1.5" /> Edit
               </Button>
 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/sales/invoices/${id}/edit-template`)}
+              >
+                <Pencil className="h-4 w-4 mr-1.5" /> Customize
+              </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -567,6 +577,13 @@ export default function InvoiceDetailPage() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() =>
+                      router.push(`/sales/invoices/${id}/edit-template`)
+                    }
+                  >
+                    <Settings className="h-4 w-4 mr-2" /> Customize Template
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
                       router.push("/settings/preferences/invoices")
                     }
                   >
@@ -603,328 +620,13 @@ export default function InvoiceDetailPage() {
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="invoice" className="mt-6">
-                  {/* Zoho Books Style Invoice Template */}
-                  <div
-                    id="invoice-print-area"
-                    className="bg-white p-12 shadow-xl rounded-sm border min-h-[1000px] font-sans text-slate-800"
-                  >
-                    <div className="flex justify-between items-start mb-12">
-                      <div className="space-y-1">
-                        <h1 className="font-bold text-xl uppercase tracking-tight">
-                          {orgName}
-                        </h1>
-                        <p className="text-sm text-slate-500">
-                          {activeOrganization?.address?.city || "City"}
-                        </p>
-                        <p className="text-sm text-slate-500">
-                          {activeOrganization?.address?.country || "India"}
-                        </p>
-                        {activeOrganization?.taxId && (
-                          <p className="text-xs font-semibold mt-2">
-                            GSTIN: {activeOrganization.taxId}
-                          </p>
-                        )}
-                        <p className="text-sm text-slate-500">
-                          {activeOrganization?.email || "contact@haldar.in"}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <h2 className="text-4xl font-light text-slate-600 uppercase tracking-widest">
-                          TAX INVOICE
-                        </h2>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-[1.5fr_1fr] border border-slate-200">
-                      <div className="grid grid-cols-2 divide-x divide-slate-200 border-b border-slate-200">
-                        <div className="p-3 space-y-1">
-                          <div className="text-[10px] text-slate-400 font-bold uppercase">
-                            #
-                          </div>
-                          <div className="text-sm font-semibold">
-                            : {invoice.invoiceNumber}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase mt-2">
-                            Invoice Date
-                          </div>
-                          <div className="text-sm font-semibold">
-                            : {fmtDate(invoice.invoiceDate)}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase mt-2">
-                            Terms
-                          </div>
-                          <div className="text-sm font-semibold">
-                            : Due on Receipt
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase mt-2">
-                            Due Date
-                          </div>
-                          <div className="text-sm font-semibold">
-                            : {fmtDate(invoice.dueDate || "")}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase mt-2">
-                            P.O.#
-                          </div>
-                          <div className="text-sm font-semibold">
-                            : {invoice.orderNumber || "—"}
-                          </div>
-                        </div>
-                        <div className="p-3 space-y-1">
-                          <div className="text-[10px] text-slate-400 font-bold uppercase">
-                            Place Of Supply
-                          </div>
-                          <div className="text-sm font-semibold">
-                            :{" "}
-                            {activeOrganization?.address?.state ||
-                              "Chhattisgarh (22)"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-3 border-b border-slate-200 bg-slate-50/30">
-                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-2">
-                          Bill To
-                        </div>
-                        <div className="font-bold text-blue-600 text-base mb-1">
-                          {cName}
-                        </div>
-                        <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                          {(
-                            typeof invoice.customerId === "object" &&
-                            (invoice.customerId as any)?.billingAddress
-                          ) ?
-                            `${(invoice.customerId as any).billingAddress.street || ""}\n${(invoice.customerId as any).billingAddress.city || ""}, ${(invoice.customerId as any).billingAddress.state || ""}`
-                          : "Customer Address"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-8 border border-slate-200 rounded-sm overflow-hidden">
-                      <Table>
-                        <TableHeader className="bg-slate-50 border-b border-slate-200">
-                          <TableRow className="hover:bg-transparent">
-                            <TableHead className="w-[40px] text-center border-r font-bold text-slate-700">
-                              #
-                            </TableHead>
-                            <TableHead className="font-bold text-slate-700 border-r">
-                              Item & Description
-                            </TableHead>
-                            <TableHead className="w-[100px] text-center font-bold text-slate-700 border-r">
-                              HSN/SAC
-                            </TableHead>
-                            <TableHead className="w-[80px] text-right font-bold text-slate-700 border-r">
-                              Qty
-                            </TableHead>
-                            <TableHead className="w-[100px] text-right font-bold text-slate-700 border-r">
-                              Rate
-                            </TableHead>
-                            <TableHead className="w-[120px] p-0 border-r overflow-hidden">
-                              <div className="text-center border-b py-1 text-[10px] font-bold text-slate-700">
-                                CGST
-                              </div>
-                              <div className="flex divide-x h-full">
-                                <div className="flex-1 text-center py-1 text-[9px] font-bold text-slate-600">
-                                  %
-                                </div>
-                                <div className="flex-1 text-center py-1 text-[9px] font-bold text-slate-600">
-                                  Amt
-                                </div>
-                              </div>
-                            </TableHead>
-                            <TableHead className="w-[120px] p-0 border-r overflow-hidden">
-                              <div className="text-center border-b py-1 text-[10px] font-bold text-slate-700">
-                                SGST
-                              </div>
-                              <div className="flex divide-x h-full">
-                                <div className="flex-1 text-center py-1 text-[9px] font-bold text-slate-600">
-                                  %
-                                </div>
-                                <div className="flex-1 text-center py-1 text-[9px] font-bold text-slate-600">
-                                  Amt
-                                </div>
-                              </div>
-                            </TableHead>
-                            <TableHead className="w-[140px] text-right font-bold text-slate-700">
-                              Amount (excl. tax)
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {invoice.items.map((item, idx) => {
-                            const taxPercent = item.taxPercent || 0;
-                            const lineTotal =
-                              Number(item.quantity || 0) *
-                              Number(item.rate || 0);
-                            const lineDiscount =
-                              Number(item.discountAmount || 0) ||
-                              (lineTotal * Number(item.discountPercent || 0)) /
-                                100;
-                            const taxableAmount = Math.max(
-                              0,
-                              lineTotal - lineDiscount,
-                            );
-                            // Use stored taxAmount if available, otherwise compute from taxPercent
-                            const taxAmount =
-                              Number(item.taxAmount || 0) > 0
-                                ? Number(item.taxAmount)
-                                : (taxableAmount * taxPercent) / 100;
-                            const halfTaxPercent = taxPercent / 2;
-                            const halfTaxAmount = taxAmount / 2;
-
-                            return (
-                              <TableRow
-                                key={idx}
-                                className="border-b border-slate-200 last:border-b-0 hover:bg-transparent align-top"
-                              >
-                                <TableCell className="text-center border-r py-4">
-                                  {idx + 1}
-                                </TableCell>
-                                <TableCell className="border-r py-4">
-                                  <div className="font-bold text-sm">
-                                    {item.name}
-                                  </div>
-                                  <div className="text-xs text-slate-500 mt-1 italic">
-                                    {item.description}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="text-center border-r py-4 text-sm">
-                                  {item.hsnSacCode || "—"}
-                                </TableCell>
-                                <TableCell className="text-right border-r py-4 text-sm">
-                                  {fmtNum(item.quantity)}
-                                  <div className="text-[10px] text-slate-400">
-                                    Number
-                                  </div>
-                                </TableCell>
-                                <TableCell className="text-right border-r py-4 text-sm">
-                                  {fmtNum(item.rate)}
-                                </TableCell>
-                                <TableCell className="p-0 border-r align-middle">
-                                  <div className="flex divide-x h-full">
-                                    <div className="flex-1 text-center text-sm py-4">
-                                      {taxPercent > 0 ?
-                                        `${halfTaxPercent}%`
-                                      : "0%"}
-                                    </div>
-                                    <div className="flex-1 text-center text-sm py-4">
-                                      {taxPercent > 0 ?
-                                        fmtNum(halfTaxAmount)
-                                      : "0.00"}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="p-0 border-r align-middle">
-                                  <div className="flex divide-x h-full">
-                                    <div className="flex-1 text-center text-sm py-4">
-                                      {taxPercent > 0 ?
-                                        `${halfTaxPercent}%`
-                                      : "0%"}
-                                    </div>
-                                    <div className="flex-1 text-center text-sm py-4">
-                                      {taxPercent > 0 ?
-                                        fmtNum(halfTaxAmount)
-                                      : "0.00"}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="text-right py-4 font-semibold text-sm">
-                                  {fmtNum(taxableAmount)}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    <div className="mt-8 flex justify-between gap-12">
-                      <div className="flex-1 space-y-6">
-                        <div className="space-y-1">
-                          <div className="text-[10px] text-slate-400 font-bold uppercase">
-                            Total In Words
-                          </div>
-                          <div className="text-sm font-bold italic text-slate-700">
-                            {numberToWords(invoice.total)}
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-[10px] text-slate-400 font-bold uppercase">
-                            Notes
-                          </div>
-                          <div className="text-sm text-slate-600">
-                            {invoice.customerNotes ||
-                              "Thanks for your business."}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="w-[320px] border border-slate-200 bg-slate-50/20 p-4 space-y-3 rounded-sm">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-500">Sub Total</span>
-                          <span className="font-medium">
-                            {fmtNum(invoice.subTotal)}
-                          </span>
-                        </div>
-
-                        {/* Itemized Taxes */}
-                        {lineTaxTotal > 0 && (
-                          <>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-slate-500">
-                                CGST
-                                {halfLineTaxPercent > 0 ?
-                                  ` (${halfLineTaxPercent}%)`
-                                : ""}
-                              </span>
-                              <span className="font-medium">
-                                {fmtNum(lineTaxTotal / 2)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-slate-500">
-                                SGST
-                                {halfLineTaxPercent > 0 ?
-                                  ` (${halfLineTaxPercent}%)`
-                                : ""}
-                              </span>
-                              <span className="font-medium">
-                                {fmtNum(lineTaxTotal / 2)}
-                              </span>
-                            </div>
-                          </>
-                        )}
-
-                        <div className="flex justify-between text-base font-bold border-t pt-2 mt-2">
-                          <span>Total</span>
-                          <span>₹{fmtNum(invoice.total)}</span>
-                        </div>
-
-                        {payments.length > 0 && (
-                          <div className="flex justify-between text-sm text-red-600 font-medium">
-                            <span>Payment Made</span>
-                            <span>
-                              (-){" "}
-                              {fmtNum(
-                                invoice.total - (invoice.balanceDue ?? 0),
-                              )}
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="flex justify-between text-lg font-extrabold text-slate-900 border-t-2 border-double pt-2 mt-2">
-                          <span>Balance Due</span>
-                          <span>
-                            ₹{fmtNum(invoice.balanceDue ?? invoice.total)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-24 flex justify-end">
-                      <div className="w-48 border-t border-slate-400 pt-2 text-center text-xs font-bold text-slate-600">
-                        Authorized Signature
-                      </div>
-                    </div>
+                <TabsContent value="invoice" className="mt-6 flex justify-center">
+                  <div className="shadow-xl">
+                    <InvoiceTemplateRenderer
+                      invoice={invoice}
+                      config={{ ...DEFAULT_CONFIG, ...(invoice.templateConfig || {}) }}
+                      activeOrganization={activeOrganization}
+                    />
                   </div>
                 </TabsContent>
 

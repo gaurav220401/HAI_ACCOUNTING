@@ -2982,41 +2982,21 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
     }, 0),
   );
 
-  let receivableTotal = subledgerReceivableTotal;
+  let receivableTotal = glReceivableTotal;
   let receivableCurrent = receivableBuckets.current;
-  let receivableOverdue = round2(subledgerReceivableTotal - receivableBuckets.current);
-  let effectiveReceivableBuckets = receivableBuckets;
+  const receivableDiff = round2(glReceivableTotal - subledgerReceivableTotal);
+  receivableCurrent = round2(receivableCurrent + receivableDiff);
+  let receivableOverdue = round2(glReceivableTotal - receivableCurrent);
+  
+  let effectiveReceivableBuckets = { ...receivableBuckets, current: receivableCurrent };
 
-  if (!hasValue(receivableTotal) && hasValue(glReceivableTotal)) {
-    receivableTotal = glReceivableTotal;
-    receivableCurrent = glReceivableTotal;
-    receivableOverdue = 0;
-    effectiveReceivableBuckets = {
-      current: glReceivableTotal,
-      "1-15": 0,
-      "16-30": 0,
-      "31-45": 0,
-      "above-45": 0,
-    };
-  }
-
-  let payableTotal = subledgerPayableTotal;
+  let payableTotal = glPayableTotal;
   let payableCurrent = payableBuckets.current;
-  let payableOverdue = round2(subledgerPayableTotal - payableBuckets.current);
-  let effectivePayableBuckets = payableBuckets;
+  const payableDiff = round2(glPayableTotal - subledgerPayableTotal);
+  payableCurrent = round2(payableCurrent + payableDiff);
+  let payableOverdue = round2(glPayableTotal - payableCurrent);
 
-  if (!hasValue(payableTotal) && hasValue(glPayableTotal)) {
-    payableTotal = glPayableTotal;
-    payableCurrent = glPayableTotal;
-    payableOverdue = 0;
-    effectivePayableBuckets = {
-      current: glPayableTotal,
-      "1-15": 0,
-      "16-30": 0,
-      "31-45": 0,
-      "above-45": 0,
-    };
-  }
+  let effectivePayableBuckets = { ...payableBuckets, current: payableCurrent };
 
   const paymentCashActivity = round2(sumMapValues(cashIncomingMap) + sumMapValues(cashOutgoingMap));
   const effectiveCashIncomingMap = hasValue(paymentCashActivity) ? cashIncomingMap : cashGlIncomingMap;
