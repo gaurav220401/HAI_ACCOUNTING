@@ -46,6 +46,7 @@ export interface Organization {
     lastUpdatedAt?: string | null;
   };
   defaultAccounts?: Record<string, string | null>;
+  templateConfig?: Record<string, unknown>;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +84,7 @@ export interface CreateOrganizationInput {
     zip?: string;
     country?: string;
   };
+  templateConfig?: Record<string, unknown>;
 }
 
 export interface UpdateOrganizationInput
