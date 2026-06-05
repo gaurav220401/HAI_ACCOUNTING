@@ -152,7 +152,7 @@ function monthKeyFromDate(value: Date): string {
 function monthLabelFromKey(key: string): string {
   const [year, month] = key.split("-").map((v) => Number(v));
   const d = new Date(year, Math.max(0, month - 1), 1);
-  return d.toLocaleDateString("en-IN", { month: "short" });
+  return d.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
 }
 
 function enumerateMonthKeys(from: Date, to: Date): string[] {
@@ -2977,8 +2977,12 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
   }
 
   const paymentCashActivity = round2(sumMapValues(cashIncomingMap) + sumMapValues(cashOutgoingMap));
-  const effectiveCashIncomingMap = hasValue(paymentCashActivity) ? cashIncomingMap : cashGlIncomingMap;
-  const effectiveCashOutgoingMap = hasValue(paymentCashActivity) ? cashOutgoingMap : cashGlOutgoingMap;
+  // Use payment-based maps if they have data; fall back to GL maps; if neither has data
+  // and there are no cash/bank accounts, prefer payment maps (they might have future data)
+  const effectiveCashIncomingMap = hasValue(paymentCashActivity) ? cashIncomingMap
+    : (cashBankAccounts.length > 0 ? cashGlIncomingMap : cashIncomingMap);
+  const effectiveCashOutgoingMap = hasValue(paymentCashActivity) ? cashOutgoingMap
+    : (cashBankAccounts.length > 0 ? cashGlOutgoingMap : cashOutgoingMap);
 
   const paymentIncomeCashActivity = round2(sumMapValues(incomeCashInMap) + sumMapValues(incomeCashOutMap));
   const effectiveIncomeCashInMap = hasValue(paymentIncomeCashActivity) ? incomeCashInMap : incomeCashGlInMap;
@@ -3086,8 +3090,8 @@ export const dashboardSummary = asyncHandler(async (req: AuthenticatedRequest, r
     data: {
       asOf,
       periods: {
-        cashFlow: { from: cashFrom, to: cashTo },
-        incomeExpense: { from: incomeFrom, to: incomeTo },
+        cashFlow: { from: cashFrom.toISOString(), to: cashTo.toISOString() },
+        incomeExpense: { from: incomeFrom.toISOString(), to: incomeTo.toISOString() },
       },
       receivables: {
         total: receivableTotal,
@@ -3492,6 +3496,196 @@ export const apAgingSummary = asyncHandler(async (req: AuthenticatedRequest, res
   res.json({ success: true, data: { asOf, buckets } });
 });
 
+
+// --- HSN-WISE SUMMARY (GSTR-1 / GSTR-3B Style) ---
+
+export const hsnWiseSummary = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  // Fetch both invoices and bills in the date range
+  const [invoices, bills] = await Promise.all([
+    Invoice.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      invoiceDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+    })
+      .select("items invoiceDate invoiceNumber taxAmount")
+      .lean(),
+
+    Bill.find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["Draft", "Void"] },
+      billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+    })
+      .select("lineItems billDate billNumber taxAmount")
+      .lean(),
+  ]);
+
+  // Aggregate by HSN/SAC code
+  const hsnMap = new Map<
+    string,
+    {
+      hsnSacCode: string;
+      description: string;
+      uqc: string;
+      totalQuantity: number;
+      taxableValue: number;
+      integratedTax: number;
+      centralTax: number;
+      stateTax: number;
+      cessAmount: number;
+      totalTaxAmount: number;
+      invoiceCount: number;
+    }
+  >();
+
+  // Process invoice items (outward supplies)
+  for (const inv of invoices as any[]) {
+    for (const item of inv.items || []) {
+      const hsn = String(item.hsnSacCode || "").trim() || "NO-HSN";
+      const qty = toNum(item.quantity);
+      const lineTotal = round2(toNum(item.quantity) * toNum(item.rate));
+      const discAmt = round2((lineTotal * toNum(item.discountPercent)) / 100);
+      const taxableValue = round2(lineTotal - discAmt);
+      const taxPercent = toNum(item.taxPercent);
+      const taxAmount = round2(toNum(item.taxAmount) || (taxableValue * taxPercent) / 100);
+
+      // GST split: if tax name/type suggests IGST use full amount as IGST
+      // otherwise split equally into CGST and SGST (standard Indian GST rule)
+      const halfTax = round2(taxAmount / 2);
+      const isIGST = taxPercent > 0 && String(item.taxId || "").includes("igst");
+      
+      const existing = hsnMap.get(hsn);
+      if (existing) {
+        existing.totalQuantity = round2(existing.totalQuantity + qty);
+        existing.taxableValue = round2(existing.taxableValue + taxableValue);
+        if (isIGST) {
+          existing.integratedTax = round2(existing.integratedTax + taxAmount);
+        } else {
+          existing.centralTax = round2(existing.centralTax + halfTax);
+          existing.stateTax = round2(existing.stateTax + halfTax);
+        }
+        existing.totalTaxAmount = round2(existing.totalTaxAmount + taxAmount);
+        existing.invoiceCount += 1;
+      } else {
+        hsnMap.set(hsn, {
+          hsnSacCode: hsn,
+          description: String(item.name || ""),
+          uqc: "NOS",
+          totalQuantity: qty,
+          taxableValue,
+          integratedTax: isIGST ? taxAmount : 0,
+          centralTax: isIGST ? 0 : halfTax,
+          stateTax: isIGST ? 0 : halfTax,
+          cessAmount: 0,
+          totalTaxAmount: taxAmount,
+          invoiceCount: 1,
+        });
+      }
+    }
+  }
+
+  // Process bill items (inward supplies) separately for input tax
+  const inputHsnMap = new Map<
+    string,
+    {
+      hsnSacCode: string;
+      description: string;
+      uqc: string;
+      totalQuantity: number;
+      taxableValue: number;
+      integratedTax: number;
+      centralTax: number;
+      stateTax: number;
+      cessAmount: number;
+      totalTaxAmount: number;
+      billCount: number;
+    }
+  >();
+
+  for (const bill of bills as any[]) {
+    for (const item of bill.lineItems || []) {
+      if (item.isHeader) continue;
+      const hsn = String(item.hsnSacCode || "").trim() || "NO-HSN";
+      const qty = toNum(item.quantity);
+      const lineTotal = round2(toNum(item.quantity) * toNum(item.rate));
+      const discAmt = round2((lineTotal * toNum(item.discountPercent)) / 100);
+      const taxableValue = round2(lineTotal - discAmt);
+      const taxRate = toNum(item.taxRate);
+      const taxAmount = round2((taxableValue * taxRate) / 100);
+      const halfTax = round2(taxAmount / 2);
+
+      const existing = inputHsnMap.get(hsn);
+      if (existing) {
+        existing.totalQuantity = round2(existing.totalQuantity + qty);
+        existing.taxableValue = round2(existing.taxableValue + taxableValue);
+        existing.centralTax = round2(existing.centralTax + halfTax);
+        existing.stateTax = round2(existing.stateTax + halfTax);
+        existing.totalTaxAmount = round2(existing.totalTaxAmount + taxAmount);
+        existing.billCount += 1;
+      } else {
+        inputHsnMap.set(hsn, {
+          hsnSacCode: hsn,
+          description: String(item.name || ""),
+          uqc: "NOS",
+          totalQuantity: qty,
+          taxableValue,
+          integratedTax: 0,
+          centralTax: halfTax,
+          stateTax: halfTax,
+          cessAmount: 0,
+          totalTaxAmount: taxAmount,
+          billCount: 1,
+        });
+      }
+    }
+  }
+
+  const outwardRows = Array.from(hsnMap.values())
+    .sort((a, b) => b.taxableValue - a.taxableValue);
+
+  const inputRows = Array.from(inputHsnMap.values())
+    .sort((a, b) => b.taxableValue - a.taxableValue);
+
+  const outwardTotals = {
+    totalTaxableValue: round2(outwardRows.reduce((s, r) => s + r.taxableValue, 0)),
+    totalIntegratedTax: round2(outwardRows.reduce((s, r) => s + r.integratedTax, 0)),
+    totalCentralTax: round2(outwardRows.reduce((s, r) => s + r.centralTax, 0)),
+    totalStateTax: round2(outwardRows.reduce((s, r) => s + r.stateTax, 0)),
+    totalCessAmount: round2(outwardRows.reduce((s, r) => s + r.cessAmount, 0)),
+    totalTaxAmount: round2(outwardRows.reduce((s, r) => s + r.totalTaxAmount, 0)),
+    totalInvoices: outwardRows.reduce((s, r) => s + r.invoiceCount, 0),
+  };
+
+  const inputTotals = {
+    totalTaxableValue: round2(inputRows.reduce((s, r) => s + r.taxableValue, 0)),
+    totalIntegratedTax: round2(inputRows.reduce((s, r) => s + r.integratedTax, 0)),
+    totalCentralTax: round2(inputRows.reduce((s, r) => s + r.centralTax, 0)),
+    totalStateTax: round2(inputRows.reduce((s, r) => s + r.stateTax, 0)),
+    totalCessAmount: round2(inputRows.reduce((s, r) => s + r.cessAmount, 0)),
+    totalTaxAmount: round2(inputRows.reduce((s, r) => s + r.totalTaxAmount, 0)),
+    totalBills: inputRows.reduce((s, r) => s + r.billCount, 0),
+  };
+
+  res.json({
+    success: true,
+    data: {
+      from,
+      to,
+      outwardSupplies: { rows: outwardRows, totals: outwardTotals },
+      inputSupplies: { rows: inputRows, totals: inputTotals },
+      // Combined rows for the generic report table
+      rows: outwardRows,
+      totals: outwardTotals,
+      count: outwardRows.length,
+    },
+  });
+});
 
 export const purchasesByVendor = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);

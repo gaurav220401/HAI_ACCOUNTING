@@ -67,6 +67,8 @@ import {
   type Tax,
   type PaymentTerms,
 } from "@/lib/api/settings";
+import { tdsTaxApi, type TdsTax } from "@/lib/api/tds-taxes";
+import { tcsTaxApi, type TcsTax } from "@/lib/api/tcs-taxes";
 import { toast } from "sonner";
 
 interface LineItem {
@@ -92,6 +94,10 @@ function getRefId(value: RefValue): string {
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function calcLineAmount(l: LineItem) {
@@ -139,6 +145,8 @@ export default function EditInvoicePage() {
   const [items, setItems] = useState<Item[]>([]);
   const [salesPersons, setSalesPersons] = useState<SalesPerson[]>([]);
   const [taxes, setTaxes] = useState<Tax[]>([]);
+  const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
+  const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [paymentTermsList, setPaymentTermsList] = useState<PaymentTerms[]>([]);
 
   // Form state
@@ -185,8 +193,10 @@ export default function EditInvoicePage() {
       settingsApi.salesPersons.list(),
       settingsApi.taxes.list(),
       settingsApi.paymentTerms.list(),
+      tdsTaxApi.list(),
+      tcsTaxApi.list(),
     ])
-      .then(([ir, cr, itr, spr, txr, ptr]) => {
+      .then(([ir, cr, itr, spr, txr, ptr, tdsr, tcsr]) => {
         const inv = ir.data;
         setInvoice(inv);
         setCustomers(cr.data ?? []);
@@ -194,6 +204,8 @@ export default function EditInvoicePage() {
         setSalesPersons(spr.data ?? []);
         setTaxes(txr.data ?? []);
         setPaymentTermsList(ptr.data ?? []);
+        setTdsTaxes((tdsr.data ?? []).filter((t: TdsTax) => t.isActive));
+        setTcsTaxes((tcsr.data ?? []).filter((t: TcsTax) => t.isActive));
 
         // Populate form
         setCustomerId(getRefId(inv.customerId));
@@ -351,11 +363,21 @@ export default function EditInvoicePage() {
     discountType === "percent" ?
       (subTotal * discountValue) / 100
     : discountValue;
+  // TDS/TCS calculation using proper TDS/TCS tax entries
+  const selectedTdsTax = tdsTaxes.find((t) => t._id === totalTaxId);
+  const selectedTcsTax = tcsTaxes.find((t) => t._id === totalTaxId);
   const selectedTax = taxes.find((t) => t._id === totalTaxId);
-  const taxAmount =
-    selectedTax && taxType !== "none" ?
-      (subTotal * (selectedTax.rate || 0)) / 100
-    : 0;
+  
+  let tdsTcsRate = 0;
+  if (taxType === "TDS" && selectedTdsTax) {
+    tdsTcsRate = selectedTdsTax.rate || 0;
+  } else if (taxType === "TCS" && selectedTcsTax) {
+    tdsTcsRate = selectedTcsTax.rate || 0;
+  } else if (selectedTax && taxType !== "none") {
+    tdsTcsRate = selectedTax.rate || 0;
+  }
+  
+  const taxAmount = tdsTcsRate > 0 ? round2(subTotal * tdsTcsRate / 100) : 0;
   const taxSignedAmount =
     taxType === "TCS" ? taxAmount
     : taxType === "TDS" ? -taxAmount
@@ -410,7 +432,10 @@ export default function EditInvoicePage() {
         discountValue,
         taxType: totalTaxId && taxType !== "none" ? taxType : "none",
         taxId: totalTaxId && taxType !== "none" ? totalTaxId : null,
+        tdsId: taxType === "TDS" && selectedTdsTax ? totalTaxId : null,
+        tcsId: taxType === "TCS" && selectedTcsTax ? totalTaxId : null,
         taxAmount,
+        tcsAmount: taxType === "TCS" ? taxAmount : 0,
         adjustmentLabel,
         adjustmentAmount,
         customerNotes,
@@ -941,6 +966,118 @@ export default function EditInvoicePage() {
                       setDiscountValue(parseFloat(e.target.value) || 0)
                     }
                   />
+                </div>
+
+                {/* TDS / TCS */}
+                <div className="flex items-center justify-between gap-6 py-2">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1 text-sm text-slate-500 font-medium">
+                      <input
+                        type="radio"
+                        name="invoiceTaxType"
+                        value="none"
+                        checked={taxType === "none"}
+                        onChange={() => {
+                          setTaxType("none");
+                          setTotalTaxId("");
+                        }}
+                        className="accent-blue-600"
+                      />
+                      None
+                    </label>
+                    <label className="flex items-center gap-1 text-sm text-slate-500 font-medium">
+                      <input
+                        type="radio"
+                        name="invoiceTaxType"
+                        value="TDS"
+                        checked={taxType === "TDS"}
+                        onChange={() => {
+                          setTaxType("TDS");
+                          setTotalTaxId("");
+                        }}
+                        className="accent-blue-600"
+                      />
+                      TDS
+                    </label>
+                    <label className="flex items-center gap-1 text-sm text-slate-500 font-medium">
+                      <input
+                        type="radio"
+                        name="invoiceTaxType"
+                        value="TCS"
+                        checked={taxType === "TCS"}
+                        onChange={() => {
+                          setTaxType("TCS");
+                          setTotalTaxId("");
+                        }}
+                        className="accent-blue-600"
+                      />
+                      TCS
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {taxType === "TDS" ? (
+                      <Select
+                        value={totalTaxId || undefined}
+                        onValueChange={(value) => {
+                          if (value === "__none") {
+                            setTotalTaxId("");
+                            return;
+                          }
+                          setTotalTaxId(value);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-48 text-xs font-bold border-slate-200">
+                          <SelectValue placeholder="Select TDS" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">None</SelectItem>
+                          {tdsTaxes.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.taxName} ({t.rate}%)
+                            </SelectItem>
+                          ))}
+                          {tdsTaxes.length === 0 && (
+                            <SelectItem value="__empty" disabled>
+                              No TDS configured
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    ) : taxType === "TCS" ? (
+                      <Select
+                        value={totalTaxId || undefined}
+                        onValueChange={(value) => {
+                          if (value === "__none") {
+                            setTotalTaxId("");
+                            return;
+                          }
+                          setTotalTaxId(value);
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-48 text-xs font-bold border-slate-200">
+                          <SelectValue placeholder="Select TCS" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">None</SelectItem>
+                          {tcsTaxes.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.taxName} ({t.rate}%)
+                            </SelectItem>
+                          ))}
+                          {tcsTaxes.length === 0 && (
+                            <SelectItem value="__empty" disabled>
+                              No TCS configured
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
+                    {taxType !== "none" && (
+                      <span className="text-sm tabular-nums w-20 text-right font-bold text-slate-700">
+                        {taxType === "TCS" ? "+" : "-"} {taxAmount.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-6 py-2">

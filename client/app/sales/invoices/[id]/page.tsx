@@ -866,6 +866,18 @@ export default function InvoiceDetailPage() {
                           </span>
                         </div>
 
+                        {/* Discount */}
+                        {Number(invoice.discountAmount || 0) > 0 && (
+                          <div className="flex justify-between text-sm text-green-600 font-medium">
+                            <span>
+                              Discount
+                              {invoice.discountType === "percent" &&
+                                ` (${invoice.discountValue}%)`}
+                            </span>
+                            <span>-{fmtNum(invoice.discountAmount)}</span>
+                          </div>
+                        )}
+
                         {/* Itemized Taxes */}
                         {lineTaxTotal > 0 && (
                           <>
@@ -892,6 +904,52 @@ export default function InvoiceDetailPage() {
                               </span>
                             </div>
                           </>
+                        )}
+
+                        {/* TDS / TCS */}
+                        {invoice.taxType === "TDS" && Number(invoice.taxAmount || 0) > 0 && (
+                          <div className="flex justify-between text-sm text-amber-600 font-medium">
+                            <span>
+                              TDS Deducted
+                              {typeof invoice.tdsId === "object" && invoice.tdsId && (
+                                <>
+                                  {" "}
+                                  - {invoice.tdsId.taxName} (
+                                  {invoice.tdsId.rate}%)
+                                </>
+                              )}
+                            </span>
+                            <span>-{fmtNum(invoice.taxAmount)}</span>
+                          </div>
+                        )}
+
+                        {invoice.taxType === "TCS" && Number(invoice.taxAmount || 0) > 0 && (
+                          <div className="flex justify-between text-sm text-blue-600 font-medium">
+                            <span>
+                              TCS Collected
+                              {typeof invoice.tcsId === "object" && invoice.tcsId && (
+                                <>
+                                  {" "}
+                                  - {invoice.tcsId.taxName} (
+                                  {invoice.tcsId.rate}%)
+                                </>
+                              )}
+                            </span>
+                            <span>+{fmtNum(invoice.taxAmount)}</span>
+                          </div>
+                        )}
+
+                        {/* Adjustment */}
+                        {Number(invoice.adjustmentAmount || 0) !== 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-slate-500">
+                              {invoice.adjustmentLabel || "Adjustment"}
+                            </span>
+                            <span className="font-medium">
+                              {Number(invoice.adjustmentAmount || 0) > 0 ? "+" : ""}
+                              {fmtNum(invoice.adjustmentAmount)}
+                            </span>
+                          </div>
                         )}
 
                         <div className="flex justify-between text-base font-bold border-t pt-2 mt-2">

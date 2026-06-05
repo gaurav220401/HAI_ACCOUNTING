@@ -343,7 +343,9 @@ export const getOne = asyncHandler(
       .populate("paymentTermsId")
       .populate("items.itemId", "name sku")
       .populate("items.taxId", "name rate")
-      .populate("taxId", "name rate");
+      .populate("taxId", "name rate")
+      .populate("tdsId", "taxName rate sectionCode")
+      .populate("tcsId", "taxName rate");
 
     if (!invoice) throw new NotFoundError("Invoice");
     res.json({ success: true, data: invoice });
@@ -611,7 +613,10 @@ export const update = asyncHandler(
       "discountValue",
       "taxType",
       "taxId",
+      "tdsId",
+      "tcsId",
       "taxAmount",
+      "tcsAmount",
       "adjustmentLabel",
       "adjustmentAmount",
       "customerNotes",
