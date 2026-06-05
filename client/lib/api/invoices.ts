@@ -68,7 +68,10 @@ export interface Invoice {
   discountAmount: number;
   taxType: InvoiceTaxType;
   taxId?: string | { _id: string; name: string; rate?: number } | null;
+  tdsId?: string | { _id: string; taxName: string; rate?: number; sectionCode?: string } | null;
+  tcsId?: string | { _id: string; taxName: string; rate?: number } | null;
   taxAmount: number;
+  tcsAmount?: number;
   adjustmentLabel: string;
   adjustmentAmount: number;
   total: number;
@@ -104,7 +107,10 @@ export interface CreateInvoiceInput {
   discountValue?: number;
   taxType?: InvoiceTaxType;
   taxId?: string | null;
+  tdsId?: string | null;
+  tcsId?: string | null;
   taxAmount?: number;
+  tcsAmount?: number;
   adjustmentLabel?: string;
   adjustmentAmount?: number;
   customerNotes?: string;

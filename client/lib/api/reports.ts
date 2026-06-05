@@ -331,6 +331,10 @@ export const reportApi = {
   itemTransactionHistory: (params?: { from?: string; to?: string; itemId?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/item-transaction-history${buildQuery(params || {})}`),
 
+  // GST Reports
+  hsnWiseSummary: (params?: { from?: string; to?: string }) =>
+    apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/hsn-wise-summary${buildQuery(params || {})}`),
+
   // Payments Received
   paymentsReceivedSummary: (params?: { from?: string; to?: string }) =>
     apiFetch<{ success: boolean; data: GenericReportResponse }>(`/reports/payments-received${buildQuery(params || {})}`),

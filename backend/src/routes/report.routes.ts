@@ -43,6 +43,7 @@ import {
   itemTransactionHistory,
   paymentsReceivedReport,
   dashboardSummary,
+  hsnWiseSummary,
 } from "../controllers/report.controller";
 
 const router = Router();
@@ -106,6 +107,9 @@ router.get("/sales-by-item-details", salesByItemDetails);
 
 // Payments Received
 router.get("/payments-received", paymentsReceivedReport);
+
+// GST Reports
+router.get("/hsn-wise-summary", hsnWiseSummary);
 
 // Dashboard
 router.get("/dashboard-summary", dashboardSummary);

@@ -34,6 +34,7 @@ export const REPORT_CATEGORIES = [
   { id: "inventory", label: "Inventory", icon: Package },
   { id: "inventory-valuation", label: "Inventory Valuation", icon: Package },
   { id: "activity", label: "Activity", icon: Activity },
+  { id: "gst-reports", label: "GST Reports", icon: FileText },
 ];
 
 export const REPORTS: ReportDef[] = [
@@ -424,6 +425,23 @@ export const REPORTS: ReportDef[] = [
       { key: "closingInventoryValue", label: "Closing Value", align: "right", format: "currency" },
       { key: "averageInventoryValue", label: "Average Value", align: "right", format: "currency" },
       { key: "turnoverRatio", label: "Turnover Ratio", align: "right", format: "number" },
+    ],
+  },
+  // GST Reports
+  {
+    id: "hsn-wise-summary", name: "HSN-wise Summary (GSTR-1/GSTR-3B)", category: "gst-reports", apiCall: "hsnWiseSummary",
+    useDateRange: true,
+    columns: [
+      { key: "hsnSacCode", label: "HSN/SAC" },
+      { key: "description", label: "Description" },
+      { key: "uqc", label: "UQC" },
+      { key: "totalQuantity", label: "Total Qty", align: "right", format: "number" },
+      { key: "taxableValue", label: "Taxable Value", align: "right", format: "currency" },
+      { key: "integratedTax", label: "IGST", align: "right", format: "currency" },
+      { key: "centralTax", label: "CGST", align: "right", format: "currency" },
+      { key: "stateTax", label: "SGST/UTGST", align: "right", format: "currency" },
+      { key: "cessAmount", label: "Cess", align: "right", format: "currency" },
+      { key: "totalTaxAmount", label: "Total Tax", align: "right", format: "currency" },
     ],
   },
 ];
