@@ -17,6 +17,7 @@ import { contactApi, type Contact } from "@/lib/api/contacts";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { uploadApi } from "@/lib/api/upload";
 import { paymentMadeApi, type PaymentBillMap } from "@/lib/api/payments-made";
+import { useOrganization } from "@/contexts/organization-context";
 
 type PaymentEntryMode = "bill-payment" | "vendor-advance";
 
@@ -89,6 +90,7 @@ export function PaymentMadeEditor({
   initialBillId?: string;
 }) {
   const router = useRouter();
+  const { activeOrganization } = useOrganization();
 
   const [form, setForm] = useState<FormState>(buildInitialForm());
   const [vendors, setVendors] = useState<Contact[]>([]);
@@ -122,6 +124,7 @@ export function PaymentMadeEditor({
   );
 
   useEffect(() => {
+    if (!activeOrganization?._id) return;
     let cancelled = false;
     const search = new URLSearchParams(window.location.search);
     const initialVendorId = search.get("vendorId");
@@ -201,7 +204,7 @@ export function PaymentMadeEditor({
     return () => {
       cancelled = true;
     };
-  }, [mode, paymentId, initialBillId]);
+  }, [mode, paymentId, initialBillId, activeOrganization?._id]);
 
   useEffect(() => {
     if (mode !== "create" || !form.vendor_id || form.paymentType !== "bill-payment") {
@@ -238,7 +241,7 @@ export function PaymentMadeEditor({
     return () => {
       cancelled = true;
     };
-  }, [mode, form.vendor_id, form.paymentType, initialBillId]);
+  }, [mode, form.vendor_id, form.paymentType, initialBillId, activeOrganization?._id]);
 
   const vendorLocked = mode === "create" ? !form.vendor_id : true;
 

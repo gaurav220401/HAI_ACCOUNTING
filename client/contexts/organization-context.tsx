@@ -83,7 +83,8 @@ export function OrganizationProvider({
       if (matched) {
         // Ensure backend also has an active org, otherwise API calls that rely on it
         // (e.g. contacts/customers) will fail with "No active organization".
-        if (!activeId) {
+        // Always sync if the backend's activeId differs from the matched org.
+        if (!activeId || String(activeId) !== String(matched._id)) {
           try {
             await organizationApi.setActive(matched._id);
           } catch {

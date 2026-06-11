@@ -74,7 +74,10 @@ const initFirebase = (): typeof admin => {
     return admin;
   }
 
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  let serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  if (serviceAccountPath) {
+    serviceAccountPath = serviceAccountPath.replace(/^['"]|['"]$/g, "");
+  }
   const resolvedPath =
     serviceAccountPath ? path.resolve(serviceAccountPath) : null;
 

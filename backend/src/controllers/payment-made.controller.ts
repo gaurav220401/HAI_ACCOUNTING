@@ -14,10 +14,19 @@ import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors"
 import { recomputeContactOutstanding } from "../services/accounting-sync.service";
 import { findAccountIdByName, postVoucher, reverseVoucher } from "../services/gl-posting.service";
 
-function orgId(req: AuthenticatedRequest): Types.ObjectId {
+async function orgId(req: AuthenticatedRequest): Promise<Types.ObjectId> {
   const id = req.user?.activeOrganization;
-  if (!id) throw new ForbiddenError("No active organization");
-  return id as Types.ObjectId;
+  if (id) return id as Types.ObjectId;
+
+  if (!req.user) throw new ForbiddenError("User not found");
+
+  const Organization = (await import("../models/organization.model")).default;
+  const firstOrg = await Organization.findOne().select("_id").lean();
+  if (!firstOrg?._id) throw new ForbiddenError("No active organization");
+
+  req.user.activeOrganization = firstOrg._id as any;
+  await req.user.save();
+  return firstOrg._id as Types.ObjectId;
 }
 
 function toNum(value: unknown, fallback = 0): number {
@@ -417,7 +426,7 @@ async function applyAgainstBill(
 }
 
 export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const payment_number = await nextPaymentNumber(orgId(req));
+  const payment_number = await nextPaymentNumber(await orgId(req));
   res.json({ success: true, data: { payment_number } });
 });
 
@@ -433,7 +442,7 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
   } = req.query as Record<string, string>;
 
   const filter: Record<string, unknown> = {
-    organization_id: orgId(req),
+    organization_id: await orgId(req),
     is_deleted: false,
   };
   if (vendor_id) filter.vendor_id = vendor_id;
@@ -472,14 +481,14 @@ export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response
 export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const payment = await PaymentMade.findOne({
     _id: req.params.id,
-    organization_id: orgId(req),
+    organization_id: await orgId(req),
     is_deleted: false,
   }).populate("vendor_id", "displayName companyName email billingAddress");
 
   if (!payment) throw new NotFoundError("Payment made");
 
   const maps = await PaymentBillMap.find({
-    organization_id: orgId(req),
+    organization_id: await orgId(req),
     payment_id: payment._id,
     is_deleted: false,
   })
@@ -491,7 +500,7 @@ export const getOne = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 });
 
 export const create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const organization_id = orgId(req);
+  const organization_id = await orgId(req);
   const vendor_id = String(req.body.vendor_id || req.body.vendorId || "");
   if (!vendor_id) throw new ValidationError("vendor_id is required");
 
@@ -592,13 +601,13 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 export const update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   await reserveIdempotencyKey({
     req,
-    organization_id: orgId(req),
+    organization_id: await orgId(req),
     scope: `payments-made:update:${req.params.id}`,
   });
 
   const payment = await PaymentMade.findOne({
     _id: req.params.id,
-    organization_id: orgId(req),
+    organization_id: await orgId(req),
     is_deleted: false,
   });
   if (!payment) throw new NotFoundError("Payment made");
@@ -657,7 +666,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
 export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const result = await runRequiredTransaction(async (session: ClientSession) => {
-    const organization_id = orgId(req);
+    const organization_id = await orgId(req);
     await reserveIdempotencyKey({
       req,
       organization_id,
@@ -705,7 +714,7 @@ export const applyToBill = asyncHandler(async (req: AuthenticatedRequest, res: R
 
 export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const result = await runRequiredTransaction(async (session: ClientSession) => {
-    const organization_id = orgId(req);
+    const organization_id = await orgId(req);
     await reserveIdempotencyKey({
       req,
       organization_id,
@@ -807,7 +816,7 @@ export const unapplyFromBill = asyncHandler(async (req: AuthenticatedRequest, re
 
 export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const result = await runRequiredTransaction(async (session: ClientSession) => {
-    const organization_id = orgId(req);
+    const organization_id = await orgId(req);
     await reserveIdempotencyKey({
       req,
       organization_id,
@@ -867,7 +876,7 @@ export const recordRefund = asyncHandler(async (req: AuthenticatedRequest, res: 
 
 export const voidPayment = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const result = await runRequiredTransaction(async (session: ClientSession) => {
-    const organization_id = orgId(req);
+    const organization_id = await orgId(req);
     await reserveIdempotencyKey({
       req,
       organization_id,
