@@ -20,6 +20,7 @@ export interface ICreditNoteLineItem {
   rate: number;
   discountPercent?: number;
   discountAmount?: number;
+  taxId?: Types.ObjectId | null;
   taxPercent?: number;
   amount: number;
   accountId?: Types.ObjectId | null;
@@ -83,6 +84,7 @@ const creditNoteLineItemSchema = new Schema<ICreditNoteLineItem>(
     rate: { type: Number, required: true, default: 0 },
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
+    taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
     taxPercent: { type: Number, default: 0 },
     amount: { type: Number, required: true, default: 0 },
     accountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },

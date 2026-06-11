@@ -918,6 +918,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
       organizationId: oid,
       contactId: customerId,
       items: body.lineItems,
+      placeOfSupply: body.placeOfSupply as string | undefined,
     }),
     discountLevel
   );
@@ -1062,8 +1063,9 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   let lineItemsChanged = false;
   const discountLevel = body.discountLevel !== undefined ? String(body.discountLevel) : String((order as any).discountLevel || "transaction");
   
-  if (body.lineItems !== undefined || body.customerId !== undefined) {
+  if (body.lineItems !== undefined || body.customerId !== undefined || body.placeOfSupply !== undefined) {
     const customerId = body.customerId ?? (order as any).customerId;
+    const placeOfSupply = body.placeOfSupply !== undefined ? (body.placeOfSupply as string) : (order as any).placeOfSupply;
     const sourceLineItems =
       body.lineItems !== undefined ?
         (body.lineItems as any[])
@@ -1074,6 +1076,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
         organizationId: oid,
         contactId: customerId,
         items: sourceLineItems,
+        placeOfSupply,
       }),
       discountLevel
     );
@@ -1092,7 +1095,8 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     "taxType",
     "tdsId",
     "tcsId",
-    "adjustmentLabel"
+    "adjustmentLabel",
+    "placeOfSupply"
   ];
   additionalFields.forEach((f) => {
     if (body[f] !== undefined) (order as any)[f] = body[f];

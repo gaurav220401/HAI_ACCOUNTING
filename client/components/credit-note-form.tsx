@@ -257,19 +257,27 @@ export function CreditNoteForm({
         if (!row.itemId) return row;
         const item = items.find((i) => i._id === row.itemId);
         if (!item) return row;
+        const contactForTax = selectedCustomer
+          ? { ...selectedCustomer, placeOfSupply: placeOfSupply || selectedCustomer.placeOfSupply }
+          : placeOfSupply
+            ? ({ placeOfSupply } as unknown as Contact)
+            : undefined;
         const linked = getItemTaxForTransaction({
           item,
-          contact: selectedCustomer || undefined,
+          contact: contactForTax,
           organizationState: activeOrganization?.address?.state,
           taxes,
         });
-        if (row.taxId === linked.taxId) return row;
+        if (row.taxId === linked.taxId && row.taxPercent === linked.taxPercent) return row;
         changed = true;
-        return { ...row, taxId: linked.taxId, taxPercent: linked.taxPercent };
+        const base = multiplyMoney(row.quantity || 0, row.rate || 0);
+        const tax = percentMoney(base, linked.taxPercent || 0);
+        const amount = sumMoney([base, tax]);
+        return { ...row, taxId: linked.taxId, taxPercent: linked.taxPercent, amount };
       });
       return changed ? next : prev;
     });
-  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
+  }, [customerId, selectedCustomer, placeOfSupply, activeOrganization?.address?.state, items, taxes]);
 
   useEffect(() => {
     if (!selectedCustomer?.accountsReceivableId) return;
@@ -424,6 +432,7 @@ export function CreditNoteForm({
         quantity: Number(row.quantity || 0),
         rate: Number(row.rate || 0),
         taxPercent: taxObj ? Number(taxObj.rate || 0) : Number(row.taxPercent || 0),
+        taxId: row.taxId || null,
         amount: roundMoney(row.amount || 0),
       };
     });

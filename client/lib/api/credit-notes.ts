@@ -25,6 +25,7 @@ export interface CreditNoteLineItem {
   rate: number;
   discountPercent?: number;
   discountAmount?: number;
+  taxId?: string | null;
   taxPercent?: number;
   amount: number;
   accountId?: string | { _id: string; name: string; accountType: string } | null;

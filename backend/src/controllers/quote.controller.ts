@@ -31,12 +31,25 @@ async function normalizeQuoteItems(
   organizationId: any,
   customerId: any,
   items: any[] = [],
+  placeOfSupply?: string,
 ) {
   const linkedItems = await applyItemTaxLinkageToItems({
     organizationId,
     contactId: customerId,
     items,
+    placeOfSupply,
   });
+
+
+
+
+
+
+
+
+
+
+
 
   return linkedItems.map((item: any) => {
     const qty = Number(item.quantity) || 1;
@@ -274,7 +287,14 @@ export const create = asyncHandler(
       oid,
       req.body.customerId,
       req.body.items || [],
+      req.body.placeOfSupply,
     );
+
+
+
+
+
+
 
     const subTotal = sumMoney(items.map((i: any) => multiplyMoney(i.quantity, i.rate)));
 
@@ -400,18 +420,39 @@ export const update = asyncHandler(
     // Recalculate totals
     if (req.body.items) {
       const customerId = req.body.customerId ?? quote.customerId;
+      const placeOfSupply = req.body.placeOfSupply !== undefined ? req.body.placeOfSupply : (quote as any).placeOfSupply;
       quote.items = await normalizeQuoteItems(
         quote.organizationId,
         customerId,
         req.body.items,
+        placeOfSupply,
       );
-    } else if (req.body.customerId !== undefined) {
+    } else if (req.body.customerId !== undefined || req.body.placeOfSupply !== undefined) {
+      const customerId = req.body.customerId ?? quote.customerId;
+      const placeOfSupply = req.body.placeOfSupply !== undefined ? req.body.placeOfSupply : (quote as any).placeOfSupply;
       quote.items = await normalizeQuoteItems(
         quote.organizationId,
-        req.body.customerId,
+        customerId,
         quote.items as any[],
+        placeOfSupply,
       );
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     quote.subTotal = sumMoney((quote.items as any[]).map((i: any) => multiplyMoney(i.quantity, i.rate)));
     const lineItemsTotal = sumMoney((quote.items as any[]).map((i: any) => Number(i.amount) || 0));

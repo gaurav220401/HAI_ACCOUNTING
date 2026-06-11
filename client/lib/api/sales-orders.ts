@@ -145,6 +145,7 @@ export interface CreateSalesOrderInput {
   tcsId?: string | null;
   taxAmount?: number;
   tcsAmount?: number;
+  placeOfSupply?: string;
 }
 
 export type UpdateSalesOrderInput = Partial<CreateSalesOrderInput>;
