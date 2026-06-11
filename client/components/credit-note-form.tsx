@@ -29,6 +29,8 @@ import {
 } from "@/lib/api/credit-notes";
 import { uploadApi } from "@/lib/api/upload";
 import { divideMoney, formatMoney, multiplyMoney, percentMoney, roundMoney, subtractMoney, sumMoney } from "@/lib/money";
+import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import { useOrganization } from "@/contexts/organization-context";
 
 const REASONS = [
   "Sales Return",
@@ -53,6 +55,7 @@ interface Row {
   description: string;
   quantity: number;
   rate: number;
+  taxId: string;
   taxPercent: number;
   amount: number;
 }
@@ -65,6 +68,7 @@ function makeRow(): Row {
     description: "",
     quantity: 1,
     rate: 0,
+    taxId: "",
     taxPercent: 0,
     amount: 0,
   };
@@ -93,6 +97,7 @@ export function CreditNoteForm({
   onSuccess,
   onCancel,
 }: CreditNoteFormProps) {
+  const { activeOrganization } = useOrganization();
   const [customers, setCustomers] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [incomeAccounts, setIncomeAccounts] = useState<Account[]>([]);
@@ -112,6 +117,7 @@ export function CreditNoteForm({
   const [accountsReceivableId, setAccountsReceivableId] = useState("");
   const [salesPersonId, setSalesPersonId] = useState("");
   const [subject, setSubject] = useState("");
+  const [placeOfSupply, setPlaceOfSupply] = useState("");
 
   const [discountMode, setDiscountMode] = useState<"percent" | "amount">(
     "percent",
@@ -200,6 +206,7 @@ export function CreditNoteForm({
               description: line.description || "",
               quantity: Number(line.quantity || 1),
               rate: Number(line.rate || 0),
+              taxId: "",  // re-tax effect resolves correct IGST/GST once customer is known
               taxPercent: Number(line.taxPercent || 0),
               amount: Number(line.amount || 0),
             })),
@@ -230,6 +237,39 @@ export function CreditNoteForm({
       })
       .catch(() => setCustomerInvoices([]));
   }, [customerId]);
+
+  // ── Derive place-of-supply from customer, then re-apply correct IGST/GST ─
+  useEffect(() => {
+    const state =
+      selectedCustomer?.billingAddress?.state ||
+      selectedCustomer?.shippingAddress?.state ||
+      selectedCustomer?.placeOfSupply ||
+      "";
+    setPlaceOfSupply(state);
+  }, [customerId, selectedCustomer]);
+
+  // Re-tax existing rows whenever the customer / org state changes
+  useEffect(() => {
+    if (!taxes.length || !items.length) return;
+    setRows((prev) => {
+      let changed = false;
+      const next = prev.map((row) => {
+        if (!row.itemId) return row;
+        const item = items.find((i) => i._id === row.itemId);
+        if (!item) return row;
+        const linked = getItemTaxForTransaction({
+          item,
+          contact: selectedCustomer || undefined,
+          organizationState: activeOrganization?.address?.state,
+          taxes,
+        });
+        if (row.taxId === linked.taxId) return row;
+        changed = true;
+        return { ...row, taxId: linked.taxId, taxPercent: linked.taxPercent };
+      });
+      return changed ? next : prev;
+    });
+  }, [customerId, selectedCustomer, activeOrganization?.address?.state, items, taxes]);
 
   useEffect(() => {
     if (!selectedCustomer?.accountsReceivableId) return;
@@ -276,6 +316,7 @@ export function CreditNoteForm({
         description: line.description || "",
         quantity: Number(line.quantity || 1),
         rate: Number(line.rate || 0),
+        taxId: "",  // will be resolved by re-tax effect when taxes load
         taxPercent: Number(line.taxPercent || 0),
         amount: Number(line.amount || 0),
       }));
@@ -374,6 +415,7 @@ export function CreditNoteForm({
 
     const lineItems = nonEmptyRows.map((row) => {
       const item = items.find((entry) => entry._id === row.itemId);
+      const taxObj = taxes.find((t) => t._id === row.taxId);
       return {
         itemId: row.itemId || null,
         accountId: row.accountId || item?.salesAccountId || null,
@@ -381,7 +423,7 @@ export function CreditNoteForm({
         description: row.description,
         quantity: Number(row.quantity || 0),
         rate: Number(row.rate || 0),
-        taxPercent: Number(row.taxPercent || 0),
+        taxPercent: taxObj ? Number(taxObj.rate || 0) : Number(row.taxPercent || 0),
         amount: roundMoney(row.amount || 0),
       };
     });
@@ -640,11 +682,21 @@ export function CreditNoteForm({
                       onValueChange={(value) => {
                         const selectedItemId = value === "none" ? "" : value;
                         const selected = items.find((item) => item._id === selectedItemId);
+                        const linked = selected
+                          ? getItemTaxForTransaction({
+                              item: selected,
+                              contact: selectedCustomer || undefined,
+                              organizationState: activeOrganization?.address?.state,
+                              taxes,
+                            })
+                          : { taxId: "", taxPercent: 0 };
                         updateRow(row.id, {
                           itemId: selectedItemId,
                           description: selected?.sellingDescription || selected?.description || row.description,
                           rate: selected?.sellingPrice ?? row.rate,
                           accountId: selected?.salesAccountId || row.accountId,
+                          taxId: linked.taxId,
+                          taxPercent: linked.taxPercent,
                         });
                       }}
                     >
@@ -719,22 +771,24 @@ export function CreditNoteForm({
 
                   <td className="p-2 align-top min-w-[150px]">
                     <Select
-                      value={String(row.taxPercent)}
-                      onValueChange={(value) =>
+                      value={row.taxId || "__none"}
+                      onValueChange={(value) => {
+                        const taxObj = taxes.find((t) => t._id === value);
                         updateRow(row.id, {
-                          taxPercent: Number(value),
-                        })
-                      }
+                          taxId: value === "__none" ? "" : value,
+                          taxPercent: taxObj ? Number(taxObj.rate || 0) : 0,
+                        });
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select tax" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="0">No Tax</SelectItem>
+                        <SelectItem value="__none">No Tax</SelectItem>
                         {taxes
-                          .filter((tax) => typeof tax.rate === "number")
+                          .filter((tax) => typeof tax.rate === "number" && tax.isActive !== false)
                           .map((tax) => (
-                            <SelectItem key={tax._id} value={String(tax.rate || 0)}>
+                            <SelectItem key={tax._id} value={tax._id}>
                               {tax.name} ({tax.rate || 0}%)
                             </SelectItem>
                           ))}
