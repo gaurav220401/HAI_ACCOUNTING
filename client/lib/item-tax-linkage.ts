@@ -105,7 +105,7 @@ function getRefRate(ref: ItemTaxRef): number {
   return Number(ref.rate || 0);
 }
 
-function normalizeState(value: string | undefined | null): string {
+export function normalizeState(value: string | undefined | null): string {
   const raw = (value || "").trim();
   if (!raw) return "";
 
@@ -205,10 +205,29 @@ function resolveTaxIdForSupply(args: {
   const { interState, specificTaxId, legacyTaxId, selectedTaxRef, legacyTaxRef, taxes } = args;
 
   if (specificTaxId) {
-    return {
-      taxId: specificTaxId,
-      taxPercent: resolveTaxRateById(specificTaxId, taxes) || getRefRate(selectedTaxRef),
-    };
+    const specificTax = findTaxById(specificTaxId, taxes);
+    const specificRate = resolveTaxRateById(specificTaxId, taxes) || getRefRate(selectedTaxRef);
+
+    // Validate that this tax actually matches the supply direction.
+    // If it does (e.g., GST18 for intra-state), return it directly.
+    if (specificTax && taxMatchesSupply(specificTax, interState)) {
+      return { taxId: specificTaxId, taxPercent: specificRate };
+    }
+
+    // The specific tax doesn't match (e.g., IGST stored as intraStateTaxId on old items).
+    // Try to find a compatible tax at the same rate.
+    if (specificRate) {
+      const compatibleTax = findCompatibleTax(taxes, specificRate, interState);
+      if (compatibleTax) {
+        return { taxId: compatibleTax._id, taxPercent: Number(compatibleTax.rate || 0) };
+      }
+    }
+
+    // No compatible tax found — fall back to returning the specific ID as-is
+    // (better to show something than nothing).
+    if (specificTax) {
+      return { taxId: specificTaxId, taxPercent: specificRate };
+    }
   }
 
   const legacyTax = findTaxById(legacyTaxId, taxes);

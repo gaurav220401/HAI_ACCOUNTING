@@ -7,6 +7,30 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  async redirects() {
+    return [
+      {
+        source: "/sales/sales-orders",
+        destination: "/sales/orders",
+        permanent: true,
+      },
+      {
+        source: "/sales/sales-orders/:path*",
+        destination: "/sales/orders/:path*",
+        permanent: true,
+      },
+      {
+        source: "/purchases/purchase-orders",
+        destination: "/purchases/orders",
+        permanent: true,
+      },
+      {
+        source: "/purchases/purchase-orders/:path*",
+        destination: "/purchases/orders/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

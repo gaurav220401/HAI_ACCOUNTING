@@ -613,6 +613,8 @@ export default function EditSalesOrderPage() {
               <Label htmlFor="salesOrderNumber">Sales Order # *</Label>
               <Input
                 id="salesOrderNumber"
+                name="salesOrderNumber"
+                autoComplete="off"
                 value={formData.salesOrderNumber}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -628,6 +630,8 @@ export default function EditSalesOrderPage() {
               <Label htmlFor="reference">Reference #</Label>
               <Input
                 id="reference"
+                name="reference"
+                autoComplete="off"
                 value={formData.reference}
                 onChange={(e) =>
                   setFormData((prev) => ({

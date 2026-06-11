@@ -33,6 +33,7 @@ import {
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
 import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import { PLACE_OF_SUPPLY_OPTIONS } from "@/app/sales/customers/_components/customer-form";
 import {
   formatMoney,
   multiplyMoney,
@@ -97,6 +98,7 @@ export default function NewSalesOrderPage() {
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
 
   const [customerId, setCustomerId] = useState("");
+  const [placeOfSupply, setPlaceOfSupply] = useState("");
   const [salesOrderNumber, setSalesOrderNumber] = useState("");
   const [reference, setReference] = useState("");
   const [orderDate, setOrderDate] = useState(todayISO());
@@ -176,6 +178,16 @@ export default function NewSalesOrderPage() {
       .catch(() => setSalesOrderNumber("SO-00001"));
   }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
+  // Auto-fill place-of-supply from the selected customer's billing state
+  useEffect(() => {
+    const state =
+      selectedCustomer?.billingAddress?.state ||
+      selectedCustomer?.shippingAddress?.state ||
+      selectedCustomer?.placeOfSupply ||
+      "";
+    setPlaceOfSupply(state);
+  }, [customerId, selectedCustomer]);
+
   const totals = useMemo(() => {
     const subTotal = sumMoney(
       lineItems.map((li) =>
@@ -215,9 +227,37 @@ export default function NewSalesOrderPage() {
             existing.amount = sumMoney([existing.amount, compAmount]);
             breakdownMap.set(compName, existing);
           });
+        } else if (selectedTax) {
+          // Determine if this tax should be shown as CGST+SGST (gst mode) or IGST
+          const taxName = (selectedTax.name || "").toUpperCase();
+          const authority = (selectedTax.taxAuthority || "").toUpperCase();
+          const isGstGroup =
+            selectedTax.taxType === "TaxGroup" ||
+            authority === "GST" ||
+            taxName.startsWith("GST");
+          const isIgst = authority === "IGST" || taxName.startsWith("IGST");
+
+          if (isGstGroup && !isIgst) {
+            // Split into CGST + SGST rows
+            const half = percentMoney(amountBeforeTax, taxP / 2);
+            const cgstName = `CGST ${taxP / 2}%`;
+            const sgstName = `SGST ${taxP / 2}%`;
+            const existingCgst = breakdownMap.get(cgstName) || { name: cgstName, amount: 0, rate: taxP / 2 };
+            existingCgst.amount = sumMoney([existingCgst.amount, half]);
+            breakdownMap.set(cgstName, existingCgst);
+            const existingSgst = breakdownMap.get(sgstName) || { name: sgstName, amount: 0, rate: taxP / 2 };
+            existingSgst.amount = sumMoney([existingSgst.amount, half]);
+            breakdownMap.set(sgstName, existingSgst);
+          } else {
+            const amount = percentMoney(amountBeforeTax, taxP);
+            const name = selectedTax?.name || `Tax ${taxP}%`;
+            const existing = breakdownMap.get(name) || { name, amount: 0, rate: taxP };
+            existing.amount = sumMoney([existing.amount, amount]);
+            breakdownMap.set(name, existing);
+          }
         } else {
           const amount = percentMoney(amountBeforeTax, taxP);
-          const name = selectedTax?.name || `Tax ${taxP}%`;
+          const name = `Tax ${taxP}%`;
           const existing = breakdownMap.get(name) || { name, amount: 0, rate: taxP };
           existing.amount = sumMoney([existing.amount, amount]);
           breakdownMap.set(name, existing);
@@ -261,9 +301,15 @@ export default function NewSalesOrderPage() {
   }
 
   const getDefaultLineTax = useCallback((item: Item) => {
+    // Build a contact that respects the UI-level placeOfSupply override.
+    const contactForTax = selectedCustomer
+      ? { ...selectedCustomer, placeOfSupply: placeOfSupply || selectedCustomer.placeOfSupply }
+      : placeOfSupply
+        ? ({ placeOfSupply } as unknown as Contact)
+        : undefined;
     const linkedTax = getItemTaxForTransaction({
       item,
-      contact: selectedCustomer,
+      contact: contactForTax,
       organizationState: activeOrganization?.address?.state,
       taxes: allTaxes,
     });
@@ -271,7 +317,7 @@ export default function NewSalesOrderPage() {
       taxId: linkedTax.taxId || "",
       taxPercent: linkedTax.taxPercent ? String(linkedTax.taxPercent) : "0",
     };
-  }, [selectedCustomer, activeOrganization?.address?.state, allTaxes]);
+  }, [selectedCustomer, placeOfSupply, activeOrganization?.address?.state, allTaxes]);
 
   function addLine() {
     setLineItems((prev) => [
@@ -541,10 +587,35 @@ export default function NewSalesOrderPage() {
                 </div>
               </div>
 
+              {/* Place of Supply */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Sales Order#*</Label>
+                <Label className="md:col-span-4">Place of Supply</Label>
+                <div className="md:col-span-8">
+                  <Select
+                    value={placeOfSupply || undefined}
+                    onValueChange={setPlaceOfSupply}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Place of Supply" />
+                    </SelectTrigger>
+                    <SelectContent position="popper">
+                      {PLACE_OF_SUPPLY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.code} value={opt.code}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                <Label htmlFor="salesOrderNumber" className="md:col-span-4">Sales Order#*</Label>
                 <div className="md:col-span-8">
                   <Input
+                    id="salesOrderNumber"
+                    name="salesOrderNumber"
+                    autoComplete="off"
                     value={salesOrderNumber}
                     onChange={(e) => setSalesOrderNumber(e.target.value)}
                   />
@@ -552,9 +623,12 @@ export default function NewSalesOrderPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Reference#</Label>
+                <Label htmlFor="reference" className="md:col-span-4">Reference#</Label>
                 <div className="md:col-span-8">
                   <Input
+                    id="reference"
+                    name="reference"
+                    autoComplete="off"
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
                   />
