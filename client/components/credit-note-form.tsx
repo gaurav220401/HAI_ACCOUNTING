@@ -526,8 +526,11 @@ export function CreditNoteForm({
           </div>
 
           <div>
-            <Label className="text-red-500">Credit Note#*</Label>
+            <Label htmlFor="creditNoteNumber" className="text-red-500">Credit Note#*</Label>
             <Input
+              id="creditNoteNumber"
+              name="creditNoteNumber"
+              autoComplete="off"
               className="mt-1 bg-white"
               value={creditNoteNumber}
               onChange={(e) => setCreditNoteNumber(e.target.value)}
@@ -535,8 +538,11 @@ export function CreditNoteForm({
           </div>
 
           <div>
-            <Label>Reference#</Label>
+            <Label htmlFor="referenceNumber">Reference#</Label>
             <Input
+              id="referenceNumber"
+              name="referenceNumber"
+              autoComplete="off"
               className="mt-1 bg-white"
               value={referenceNumber}
               onChange={(e) => setReferenceNumber(e.target.value)}

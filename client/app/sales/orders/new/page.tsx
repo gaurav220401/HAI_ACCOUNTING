@@ -542,9 +542,12 @@ export default function NewSalesOrderPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Sales Order#*</Label>
+                <Label htmlFor="salesOrderNumber" className="md:col-span-4">Sales Order#*</Label>
                 <div className="md:col-span-8">
                   <Input
+                    id="salesOrderNumber"
+                    name="salesOrderNumber"
+                    autoComplete="off"
                     value={salesOrderNumber}
                     onChange={(e) => setSalesOrderNumber(e.target.value)}
                   />
@@ -552,9 +555,12 @@ export default function NewSalesOrderPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label className="md:col-span-4">Reference#</Label>
+                <Label htmlFor="reference" className="md:col-span-4">Reference#</Label>
                 <div className="md:col-span-8">
                   <Input
+                    id="reference"
+                    name="reference"
+                    autoComplete="off"
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
                   />

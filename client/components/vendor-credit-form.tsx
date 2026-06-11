@@ -437,12 +437,26 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
       <div className="px-6 py-5 border-b">
         <div className="max-w-[900px] grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <Label className="text-red-500">Credit Note#*</Label>
-            <Input className="mt-1 bg-white" value={vendorCreditNumber} onChange={(e) => setVendorCreditNumber(e.target.value)} />
+            <Label htmlFor="vendorCreditNumber" className="text-red-500">Credit Note#*</Label>
+            <Input
+              id="vendorCreditNumber"
+              name="vendorCreditNumber"
+              autoComplete="off"
+              className="mt-1 bg-white"
+              value={vendorCreditNumber}
+              onChange={(e) => setVendorCreditNumber(e.target.value)}
+            />
           </div>
           <div>
-            <Label>Order Number</Label>
-            <Input className="mt-1 bg-white" value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} />
+            <Label htmlFor="orderNumber">Order Number</Label>
+            <Input
+              id="orderNumber"
+              name="orderNumber"
+              autoComplete="off"
+              className="mt-1 bg-white"
+              value={orderNumber}
+              onChange={(e) => setOrderNumber(e.target.value)}
+            />
           </div>
           <div>
             <Label>Vendor Credit Date</Label>
