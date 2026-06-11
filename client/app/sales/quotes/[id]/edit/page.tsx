@@ -31,7 +31,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
-import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import { getItemTaxForTransaction, normalizeState } from "@/lib/item-tax-linkage";
+import { LinkField } from "@/components/link-field";
+import { PLACE_OF_SUPPLY_OPTIONS } from "@/app/sales/customers/_components/customer-form";
 import {
   decimalToFixed,
   multiplyMoney,
@@ -420,8 +422,7 @@ export default function EditQuotePage() {
   const taxBreakdown = useMemo(() => {
     const fallbackIsIntra =
       placeOfSupply && activeOrganization?.address?.state ?
-        placeOfSupply.trim().toLowerCase() ===
-        activeOrganization.address.state.trim().toLowerCase()
+        normalizeState(placeOfSupply) === normalizeState(activeOrganization.address.state)
       : false;
 
     return lines.reduce(
@@ -670,12 +671,18 @@ export default function EditQuotePage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 flex flex-col justify-end">
               <Label>Place Of Supply</Label>
-              <Input
-                placeholder="e.g. Chhattisgarh (22)"
+              <LinkField
                 value={placeOfSupply}
-                onChange={(e) => setPlaceOfSupply(e.target.value)}
+                onChange={setPlaceOfSupply}
+                staticOptions={PLACE_OF_SUPPLY_OPTIONS.map((row) => ({
+                  value: row.code,
+                  label: row.label,
+                }))}
+                placeholder="Select Place of Supply"
+                clearable={true}
+                triggerClassName="h-9 w-full"
               />
             </div>
           </div>

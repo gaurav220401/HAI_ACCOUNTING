@@ -105,7 +105,7 @@ function getRefRate(ref: ItemTaxRef): number {
   return Number(ref.rate || 0);
 }
 
-function normalizeState(value: string | undefined | null): string {
+export function normalizeState(value: string | undefined | null): string {
   const raw = (value || "").trim();
   if (!raw) return "";
 

@@ -856,10 +856,21 @@ export function VendorForm({ initialData }: VendorFormProps) {
               className="h-9"
               value={displayName}
               onChange={(e) => {
-                setDisplayName(e.target.value);
-                setDisplayNameManual(true);
+                const val = e.target.value;
+                setDisplayName(val);
+                if (!val.trim()) {
+                  setDisplayNameManual(false);
+                } else {
+                  setDisplayNameManual(true);
+                }
               }}
-              onFocus={() => setDisplayNameFocused(true)}
+              onFocus={(e) => {
+                setDisplayNameFocused(true);
+                const target = e.target;
+                setTimeout(() => {
+                  try { target.select(); } catch {}
+                }, 50);
+              }}
               onBlur={() => setTimeout(() => setDisplayNameFocused(false), 200)}
             />
             {displayNameFocused && (() => {
@@ -875,6 +886,8 @@ export function VendorForm({ initialData }: VendorFormProps) {
                       } ${displayName === s ? "bg-primary/10" : ""}`}
                       onMouseDown={(e) => {
                         e.preventDefault();
+                      }}
+                      onClick={() => {
                         setDisplayName(s);
                         setDisplayNameManual(true);
                         setDisplayNameFocused(false);
@@ -1088,17 +1101,17 @@ export function VendorForm({ initialData }: VendorFormProps) {
               {/* Accounts Payable */}
               <div className="flex flex-col gap-1">
                 <Label className="text-xs text-muted-foreground">Accounts Payable</Label>
-                <Select value={accountsPayableId || "__none"} onValueChange={(v) => setAccountsPayableId(v === "__none" ? "" : v)}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Select an account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">— None —</SelectItem>
-                    {accounts.map((a) => (
-                      <SelectItem key={a._id} value={a._id}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <LinkField
+                  value={accountsPayableId}
+                  onChange={setAccountsPayableId}
+                  staticOptions={accounts.map((a) => ({
+                    value: a._id,
+                    label: a.name,
+                  }))}
+                  placeholder="Select an account"
+                  clearable={true}
+                  triggerClassName="h-9 text-sm"
+                />
               </div>
 
               {/* Opening Balance */}

@@ -161,7 +161,7 @@ const GST_TREATMENT_ALIAS_TO_CANONICAL: Record<string, TaxTreatment> = {
   UIN: "Input Service Distributor",
 };
 
-const PLACE_OF_SUPPLY_OPTIONS = [
+export const PLACE_OF_SUPPLY_OPTIONS = [
   { code: "AN", label: "[AN] - Andaman and Nicobar Islands" },
   { code: "AD", label: "[AD] - Andhra Pradesh" },
   { code: "AR", label: "[AR] - Arunachal Pradesh" },
@@ -251,6 +251,37 @@ function deriveDisplayName(
     return companyName.trim();
   }
   return displayNameFromInputs(salutation, firstName, lastName);
+}
+
+function generateDisplayNameSuggestions(
+  customerType: CustomerTypeUi,
+  salutation: string,
+  firstName: string,
+  lastName: string,
+  companyName: string,
+): string[] {
+  const suggestions: string[] = [];
+  const seen = new Set<string>();
+  const add = (s: string) => {
+    const t = s.trim();
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      suggestions.push(t);
+    }
+  };
+
+  if (customerType === "Business" && companyName) {
+    add(companyName);
+    const personalFull = [salutation, firstName, lastName].filter(Boolean).join(" ");
+    if (personalFull) add(`${personalFull} (${companyName})`);
+  }
+
+  const firstLast = [firstName, lastName].filter(Boolean).join(" ");
+  if (firstLast) add(firstLast);
+  if (salutation && firstLast) add(`${salutation} ${firstLast}`);
+  if (firstName && lastName) add(`${lastName}, ${firstName}`);
+
+  return suggestions.slice(0, 5);
 }
 
 function normalizeTreatment(value: unknown): TaxTreatment {
@@ -472,6 +503,8 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
   const [companyName, setCompanyName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [displayNameManual, setDisplayNameManual] = useState(false);
+  const [displayNameFocused, setDisplayNameFocused] = useState(false);
+  const displayNameRef = useRef<HTMLDivElement>(null);
 
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -973,15 +1006,56 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
         </Row>
 
         <Row label="Display Name" required>
-          <Input
-            className="h-9"
-            placeholder="Select or type to add"
-            value={displayName}
-            onChange={(e) => {
-              setDisplayName(e.target.value);
-              setDisplayNameManual(true);
-            }}
-          />
+          <div className="relative w-full" ref={displayNameRef}>
+            <Input
+              className="h-9"
+              placeholder="Select or type to add"
+              value={displayName}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDisplayName(val);
+                if (!val.trim()) {
+                  setDisplayNameManual(false);
+                } else {
+                  setDisplayNameManual(true);
+                }
+              }}
+              onFocus={(e) => {
+                setDisplayNameFocused(true);
+                const target = e.target;
+                setTimeout(() => {
+                  try { target.select(); } catch {}
+                }, 50);
+              }}
+              onBlur={() => setTimeout(() => setDisplayNameFocused(false), 200)}
+            />
+            {displayNameFocused && (() => {
+              const suggestions = generateDisplayNameSuggestions(customerType, salutation, firstName, lastName, companyName);
+              return suggestions.length > 0 ? (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors ${
+                        i === 0 ? "font-medium text-primary bg-primary/5" : "text-foreground"
+                      } ${displayName === s ? "bg-primary/10" : ""}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                      }}
+                      onClick={() => {
+                        setDisplayName(s);
+                        setDisplayNameManual(true);
+                        setDisplayNameFocused(false);
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : null;
+            })()}
+          </div>
         </Row>
 
         <Row label="Customer Logo">
@@ -1155,17 +1229,17 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
 
           {treatmentMeta.showPlaceOfSupply ? (
             <Row label="Place of Supply" required>
-              <Select value={placeOfSupply || "__none"} onValueChange={(v) => setPlaceOfSupply(v === "__none" ? "" : v)}>
-                <SelectTrigger className="h-10 max-w-[430px]">
-                  <SelectValue placeholder="Select place of supply" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">Select place of supply</SelectItem>
-                  {PLACE_OF_SUPPLY_OPTIONS.map((row) => (
-                    <SelectItem key={row.code} value={row.code}>{row.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <LinkField
+                value={placeOfSupply}
+                onChange={setPlaceOfSupply}
+                staticOptions={PLACE_OF_SUPPLY_OPTIONS.map((row) => ({
+                  value: row.code,
+                  label: row.label,
+                }))}
+                placeholder="Select place of supply"
+                clearable={true}
+                triggerClassName="h-10 max-w-[430px]"
+              />
             </Row>
           ) : null}
 
@@ -1224,22 +1298,17 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
           </Row>
 
           <Row label="Accounts Receivable">
-            <Select
-              value={accountsReceivableId || "__none"}
-              onValueChange={(v) => setAccountsReceivableId(v === "__none" ? "" : v)}
-            >
-              <SelectTrigger className="h-10 max-w-[430px]">
-                <SelectValue placeholder="Select an account" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">Select an account</SelectItem>
-                {receivableAccounts.map((account) => (
-                  <SelectItem key={account._id} value={account._id}>
-                    {account.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <LinkField
+              value={accountsReceivableId}
+              onChange={setAccountsReceivableId}
+              staticOptions={receivableAccounts.map((account) => ({
+                value: account._id,
+                label: account.name,
+              }))}
+              placeholder="Select an account"
+              clearable={true}
+              triggerClassName="h-10 max-w-[430px]"
+            />
           </Row>
 
           <Row label="Opening Balance">

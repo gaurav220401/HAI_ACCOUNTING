@@ -8,6 +8,7 @@ import SetupConfigShell from "@/components/settings/setup-config-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -37,6 +38,17 @@ const MONTH_OPTIONS = [
 const DATE_FORMAT_OPTIONS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];
 const NUMBER_FORMAT_OPTIONS = ["1,234,567.89", "1.234.567,89", "12,34,567.89"];
 
+const INDIA_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli",
+  "Daman and Diu", "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep",
+  "Puducherry",
+];
+
 export default function GeneralSettingsPage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
@@ -54,6 +66,10 @@ export default function GeneralSettingsPage() {
     numberFormat: "1,234,567.89",
     language: "en",
     taxId: "",
+    street: "",
+    city: "",
+    state: "",
+    zip: "",
   });
 
   useEffect(() => {
@@ -81,6 +97,10 @@ export default function GeneralSettingsPage() {
           numberFormat: org.numberFormat || "1,234,567.89",
           language: org.language || "en",
           taxId: org.taxId || "",
+          street: org.address?.street || "",
+          city: org.address?.city || "",
+          state: org.address?.state || "",
+          zip: org.address?.zip || "",
         });
       } catch {
         toast.error("Failed to load organization settings");
@@ -115,6 +135,13 @@ export default function GeneralSettingsPage() {
         numberFormat: formData.numberFormat,
         language: formData.language.trim().slice(0, 2).toLowerCase(),
         taxId: formData.taxId.trim() || undefined,
+        address: {
+          street: formData.street.trim(),
+          city: formData.city.trim(),
+          state: formData.state.trim(),
+          zip: formData.zip.trim(),
+          country: formData.country.trim() || "India",
+        },
       });
       await refreshOrganizations();
       toast.success("General settings updated");
@@ -205,6 +232,59 @@ export default function GeneralSettingsPage() {
               value={formData.taxId}
               onChange={(e) => setFormData((p) => ({ ...p, taxId: e.target.value }))}
               placeholder="Optional"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Street Address</Label>
+            <Textarea
+              value={formData.street}
+              onChange={(e) => setFormData((p) => ({ ...p, street: e.target.value }))}
+              placeholder="Street Address"
+              className="min-h-[72px]"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>City</Label>
+            <Input
+              value={formData.city}
+              onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
+              placeholder="City"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>State</Label>
+            {formData.country.trim().toLowerCase() === "india" ? (
+              <Select
+                value={formData.state}
+                onValueChange={(value) => setFormData((p) => ({ ...p, state: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select state" />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {INDIA_STATES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                value={formData.state}
+                onChange={(e) => setFormData((p) => ({ ...p, state: e.target.value }))}
+                placeholder="State"
+              />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>ZIP / Postal Code</Label>
+            <Input
+              value={formData.zip}
+              onChange={(e) => setFormData((p) => ({ ...p, zip: e.target.value }))}
+              placeholder="ZIP / Postal Code"
             />
           </div>
         </div>
