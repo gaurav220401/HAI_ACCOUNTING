@@ -54,6 +54,7 @@ export interface ISalesOrder extends Document {
   tcsAmount?: number;
   invoiceId?: Schema.Types.ObjectId | null;
   stockDeducted?: boolean;
+  placeOfSupply?: string;
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date | null;
@@ -138,6 +139,7 @@ const salesOrderSchema = new Schema<ISalesOrder>(
     tcsAmount: { type: Number, default: 0 },
     invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", default: null },
     stockDeducted: { type: Boolean, default: false },
+    placeOfSupply: { type: String, default: "" },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },

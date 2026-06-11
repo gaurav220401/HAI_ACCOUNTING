@@ -297,6 +297,25 @@ export default function EditQuotePage() {
 
   const selectedCustomer = customers.find((entry) => entry._id === customerId);
 
+  const [lastCustomerId, setLastCustomerId] = useState("");
+  useEffect(() => {
+    if (customerId && !lastCustomerId) {
+      setLastCustomerId(customerId);
+    }
+  }, [customerId, lastCustomerId]);
+
+  useEffect(() => {
+    if (selectedCustomer && customerId !== lastCustomerId) {
+      setLastCustomerId(customerId);
+      setPlaceOfSupply(
+        selectedCustomer.placeOfSupply ||
+        selectedCustomer.billingAddress?.state ||
+        selectedCustomer.shippingAddress?.state ||
+        ""
+      );
+    }
+  }, [customerId, selectedCustomer, lastCustomerId]);
+
   const removeLine = useCallback((key: number) => {
     setLines((prev) => {
       const next = prev.filter((l) => l.key !== key);
@@ -308,9 +327,14 @@ export default function EditQuotePage() {
     (key: number, itemId: string) => {
       const item = items.find((i) => i._id === itemId);
       if (!item) return;
+      const contactForTax = selectedCustomer
+        ? { ...selectedCustomer, placeOfSupply: placeOfSupply || selectedCustomer.placeOfSupply }
+        : placeOfSupply
+          ? ({ placeOfSupply } as unknown as Contact)
+          : undefined;
       const linkedTax = getItemTaxForTransaction({
         item,
-        contact: selectedCustomer,
+        contact: contactForTax,
         organizationState: activeOrganization?.address?.state,
         taxes,
       });
@@ -331,7 +355,7 @@ export default function EditQuotePage() {
         ),
       );
     },
-    [items, selectedCustomer, activeOrganization?.address?.state, taxes],
+    [items, selectedCustomer, placeOfSupply, activeOrganization?.address?.state, taxes],
   );
 
   // ─── Query Param Autoselect ───────────────────────────────────────
@@ -371,9 +395,14 @@ export default function EditQuotePage() {
         if (!line.itemId || line.taxIsManual) return line;
         const item = items.find((entry) => entry._id === line.itemId);
         if (!item) return line;
+        const contactForTax = selectedCustomer
+          ? { ...selectedCustomer, placeOfSupply: placeOfSupply || selectedCustomer.placeOfSupply }
+          : placeOfSupply
+            ? ({ placeOfSupply } as unknown as Contact)
+            : undefined;
         const linkedTax = getItemTaxForTransaction({
           item,
-          contact: selectedCustomer,
+          contact: contactForTax,
           organizationState: activeOrganization?.address?.state,
           taxes,
         });
@@ -395,6 +424,7 @@ export default function EditQuotePage() {
   }, [
     customerId,
     selectedCustomer,
+    placeOfSupply,
     activeOrganization?.address?.state,
     items,
     taxes,

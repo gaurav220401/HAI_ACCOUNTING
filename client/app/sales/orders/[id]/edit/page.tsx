@@ -47,7 +47,8 @@ import {
 import { cn } from "@/lib/utils";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
-import { getItemTaxForTransaction } from "@/lib/item-tax-linkage";
+import { getItemTaxForTransaction, normalizeState } from "@/lib/item-tax-linkage";
+import { PLACE_OF_SUPPLY_OPTIONS } from "@/app/sales/customers/_components/customer-form";
 import {
   formatMoney,
   multiplyMoney,
@@ -150,6 +151,7 @@ export default function EditSalesOrderPage() {
     taxType: "none" as "TDS" | "TCS" | "none",
     tdsId: "",
     tcsId: "",
+    placeOfSupply: "",
   });
 
   const [lineItems, setLineItems] = useState<LineItemUi[]>([
@@ -173,6 +175,21 @@ export default function EditSalesOrderPage() {
     [items],
   );
   const selectedCustomer = contacts.find((contact) => contact._id === formData.customerId);
+
+  const [lastCustomerId, setLastCustomerId] = useState("");
+  useEffect(() => {
+    if (selectedCustomer && formData.customerId !== lastCustomerId) {
+      setLastCustomerId(formData.customerId);
+      setFormData((prev) => ({
+        ...prev,
+        placeOfSupply:
+          selectedCustomer.placeOfSupply ||
+          selectedCustomer.billingAddress?.state ||
+          selectedCustomer.shippingAddress?.state ||
+          "",
+      }));
+    }
+  }, [formData.customerId, selectedCustomer, lastCustomerId]);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -230,6 +247,7 @@ export default function EditSalesOrderPage() {
           taxType: (orderData.taxType || "none") as "TDS" | "TCS" | "none",
           tdsId: getRefId(orderData.tdsId),
           tcsId: getRefId(orderData.tcsId),
+          placeOfSupply: (orderData as any).placeOfSupply || "",
         });
 
         if (orderData.lineItems?.length) {
@@ -301,9 +319,14 @@ export default function EditSalesOrderPage() {
   }
 
   const getDefaultLineTax = useCallback((item: Item) => {
+    const contactForTax = selectedCustomer
+      ? { ...selectedCustomer, placeOfSupply: formData.placeOfSupply || selectedCustomer.placeOfSupply }
+      : formData.placeOfSupply
+        ? ({ placeOfSupply: formData.placeOfSupply } as unknown as Contact)
+        : undefined;
     const linkedTax = getItemTaxForTransaction({
       item,
-      contact: selectedCustomer,
+      contact: contactForTax,
       organizationState: activeOrganization?.address?.state,
       taxes: allTaxes,
     });
@@ -311,7 +334,7 @@ export default function EditSalesOrderPage() {
       taxId: linkedTax.taxId || "",
       taxPercent: linkedTax.taxPercent ? String(linkedTax.taxPercent) : "0",
     };
-  }, [selectedCustomer, activeOrganization?.address?.state, allTaxes]);
+  }, [selectedCustomer, formData.placeOfSupply, activeOrganization?.address?.state, allTaxes]);
 
   function addLineItem() {
     const newId = String(Math.max(...lineItems.map((li) => Number(li.id))) + 1);
@@ -473,6 +496,7 @@ export default function EditSalesOrderPage() {
         tcsId: formData.taxType === "TCS" ? formData.tcsId : undefined,
         taxAmount: formData.taxType === "TDS" ? totals.taxAmount : 0,
         tcsAmount: formData.taxType === "TCS" ? totals.taxAmount : 0,
+        placeOfSupply: formData.placeOfSupply || undefined,
       };
 
       await salesOrderApi.update(order._id, submitData);
@@ -603,6 +627,27 @@ export default function EditSalesOrderPage() {
                   {contacts.map((c) => (
                     <SelectItem key={c._id} value={c._id}>
                       {c.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Place of Supply</Label>
+              <Select
+                value={formData.placeOfSupply || undefined}
+                onValueChange={(v) =>
+                  setFormData((prev) => ({ ...prev, placeOfSupply: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Place of Supply" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {PLACE_OF_SUPPLY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.code} value={opt.code}>
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
