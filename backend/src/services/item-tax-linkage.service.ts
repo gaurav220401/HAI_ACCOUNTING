@@ -5,6 +5,7 @@ import Organization from "../models/organization.model";
 import Tax from "../models/tax.model";
 
 interface ApplyItemTaxLinkageArgs {
+  placeOfSupply?: string;
   organizationId: any;
   contactId?: any;
   items: any[];
@@ -43,11 +44,18 @@ function clearLineTax(line: any): void {
 }
 
 function normalizeState(value: unknown): string {
-  return String(value || "")
+  return placeOfSupplyState(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
 }
+
+
+
+
+
+
+
 
 const PLACE_OF_SUPPLY_STATE_BY_CODE: Record<string, string> = {
   AN: "Andaman and Nicobar Islands",
@@ -230,7 +238,7 @@ function resolveItemDefaultTaxIdForSupply(args: {
 export async function applyItemTaxLinkageToItems(
   args: ApplyItemTaxLinkageArgs,
 ): Promise<any[]> {
-  const { organizationId, contactId, items } = args;
+  const { organizationId, contactId, items, placeOfSupply } = args;
   const oid: any = organizationId;
   if (!Array.isArray(items) || items.length === 0) return [];
 
@@ -268,7 +276,7 @@ export async function applyItemTaxLinkageToItems(
   ]);
 
   const orgState = normalizeState((organization as any)?.address?.state);
-  const customerState = normalizeState(contactState(contact));
+  const customerState = normalizeState(placeOfSupply || contactState(contact));
   const interState = Boolean(orgState && customerState && orgState !== customerState);
 
   const itemById = new Map<string, any>();

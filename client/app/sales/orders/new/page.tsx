@@ -412,6 +412,7 @@ export default function NewSalesOrderPage() {
       notes: notes.trim() || undefined,
       terms: terms.trim() || undefined,
       status: saveStatus,
+      placeOfSupply: placeOfSupply || undefined,
     };
   }
 

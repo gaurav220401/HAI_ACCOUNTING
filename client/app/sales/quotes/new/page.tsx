@@ -280,9 +280,14 @@ export default function NewQuotePage() {
     (key: number, itemId: string) => {
       const item = items.find((i) => i._id === itemId);
       if (!item) return;
+      const contactForTax = selectedCustomer
+        ? { ...selectedCustomer, placeOfSupply: placeOfSupply || selectedCustomer.placeOfSupply }
+        : placeOfSupply
+          ? ({ placeOfSupply } as unknown as Contact)
+          : undefined;
       const linkedTax = getItemTaxForTransaction({
         item,
-        contact: selectedCustomer,
+        contact: contactForTax,
         organizationState: activeOrganization?.address?.state,
         taxes,
       });
@@ -303,7 +308,7 @@ export default function NewQuotePage() {
         ),
       );
     },
-    [items, selectedCustomer, activeOrganization?.address?.state, taxes],
+    [items, selectedCustomer, placeOfSupply, activeOrganization?.address?.state, taxes],
   );
 
   // ─── Query Param Autoselect ───────────────────────────────────────
@@ -343,9 +348,14 @@ export default function NewQuotePage() {
         if (!line.itemId || line.taxIsManual) return line;
         const item = items.find((entry) => entry._id === line.itemId);
         if (!item) return line;
+        const contactForTax = selectedCustomer
+          ? { ...selectedCustomer, placeOfSupply: placeOfSupply || selectedCustomer.placeOfSupply }
+          : placeOfSupply
+            ? ({ placeOfSupply } as unknown as Contact)
+            : undefined;
         const linkedTax = getItemTaxForTransaction({
           item,
-          contact: selectedCustomer,
+          contact: contactForTax,
           organizationState: activeOrganization?.address?.state,
           taxes,
         });
@@ -367,14 +377,20 @@ export default function NewQuotePage() {
   }, [
     customerId,
     selectedCustomer,
+    placeOfSupply,
     activeOrganization?.address?.state,
     items,
     taxes,
   ]);
 
   useEffect(() => {
-    if (selectedCustomer?.billingAddress?.state) {
-      setPlaceOfSupply(selectedCustomer.billingAddress.state);
+    if (selectedCustomer) {
+      setPlaceOfSupply(
+        selectedCustomer.placeOfSupply ||
+        selectedCustomer.billingAddress?.state ||
+        selectedCustomer.shippingAddress?.state ||
+        ""
+      );
     }
   }, [customerId, selectedCustomer]);
 
