@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Plus,
   Search,
@@ -9,6 +10,7 @@ import {
   FileText,
   MoreHorizontal,
   ChevronDown,
+  FileUp,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -166,6 +168,11 @@ export default function QuotesPage() {
                   className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`}
                 />
               </Button>
+              <Link href="/batch-import?section=sales&type=Quotes&back=/sales/quotes">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
               <Button
                 size="sm"
                 onClick={() => router.push("/sales/quotes/new")}

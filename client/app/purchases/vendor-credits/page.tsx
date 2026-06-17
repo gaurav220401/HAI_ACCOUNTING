@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,8 +16,7 @@ import {
   Plus,
   Printer,
   Search,
-  X,
-} from "lucide-react";
+  X,  FileUp} from "lucide-react";
 import { toast } from "sonner";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -729,6 +729,11 @@ export default function VendorCreditsPage() {
               <Button onClick={() => router.push("/purchases/vendor-credits/new")}>
                 <Plus className="h-4 w-4 mr-1" /> New
               </Button>
+              <Link href="/batch-import?section=purchases&type=Vendor Credits&back=/purchases/vendor-credits">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
             </div>
           }
         />

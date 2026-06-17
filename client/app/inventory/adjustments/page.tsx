@@ -1,7 +1,8 @@
 "use client";
+import Link from "next/link";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, FileUp} from "lucide-react";
 import { toast } from "sonner";
 import { InventoryShell } from "@/app/inventory/_components/inventory-shell";
 import { Button } from "@/components/ui/button";
@@ -151,9 +152,16 @@ export default function InventoryAdjustmentsPage() {
     <InventoryShell
       title="Inventory Adjustments"
       actions={(
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={loadData} disabled={fetching}>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={loadData} disabled={fetching}>
           <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
         </Button>
+          <Link href="/batch-import?section=inventory&type=Inventory Adjustments&back=/inventory/adjustments">
+            <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+              <FileUp className="h-3.5 w-3.5" /> Batch Import
+            </Button>
+          </Link>
+        </div>
       )}
     >
       <div className="space-y-6">

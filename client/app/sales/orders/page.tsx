@@ -1,8 +1,9 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, RefreshCw } from "lucide-react";
+import { Plus, Search, RefreshCw, FileUp} from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/auth-context";
@@ -216,6 +217,11 @@ export default function SalesOrdersPage() {
                 <Plus className="h-4 w-4 mr-1" />
                 New
               </Button>
+              <Link href="/batch-import?section=sales&type=Sales Orders&back=/sales/orders">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
             </>
           }
         />

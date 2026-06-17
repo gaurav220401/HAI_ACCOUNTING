@@ -1,12 +1,12 @@
 "use client";
+import Link from "next/link";
 
 import React, { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   Plus, Search, Package, RefreshCw, Pencil, X, MoreHorizontal, Copy,
-  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck,
-} from "lucide-react";
+  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck,  FileUp} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -717,6 +717,11 @@ function ItemsPageContent() {
               <Button size="sm" className="h-8 text-xs gap-1" onClick={() => router.push("/items/new")}>
                 <Plus className="h-3.5 w-3.5" /> New
               </Button>
+              <Link href="/batch-import?section=items&type=Items&back=/items">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
             </>
           }
         />
