@@ -11,6 +11,11 @@ export { CREDIT_NOTE_OCR_PROMPT } from "./credit-note.prompt";
 export { QUOTE_OCR_PROMPT } from "./quote.prompt";
 export { DELIVERY_CHALLAN_OCR_PROMPT } from "./delivery-challan.prompt";
 export { BANK_STATEMENT_OCR_PROMPT } from "./bank-statement.prompt";
+export { JOURNAL_ENTRY_OCR_PROMPT } from "./journal-entry.prompt";
+export { SALES_ORDER_OCR_PROMPT } from "./sales-order.prompt";
+export { VENDOR_CREDIT_OCR_PROMPT } from "./vendor-credit.prompt";
+export { ITEM_OCR_PROMPT } from "./item.prompt";
+export { INVENTORY_ADJUSTMENT_OCR_PROMPT } from "./inventory-adjustment.prompt";
 
 /**
  * Supported OCR document types mapped to their prompts.
@@ -24,7 +29,12 @@ export type OcrDocumentType =
   | "quote"
   | "delivery_challan"
   | "bank_statement"
-  | "auto";
+  | "auto"
+  | "journal_entry"
+  | "sales_order"
+  | "vendor_credit"
+  | "item"
+  | "inventory_adjustment";
 
 import { INVOICE_OCR_PROMPT as invoice } from "./invoice.prompt";
 import { BILL_OCR_PROMPT as bill } from "./bill.prompt";
@@ -34,6 +44,11 @@ import { CREDIT_NOTE_OCR_PROMPT as creditNote } from "./credit-note.prompt";
 import { QUOTE_OCR_PROMPT as quote } from "./quote.prompt";
 import { DELIVERY_CHALLAN_OCR_PROMPT as deliveryChallan } from "./delivery-challan.prompt";
 import { BANK_STATEMENT_OCR_PROMPT as bankStatement } from "./bank-statement.prompt";
+import { JOURNAL_ENTRY_OCR_PROMPT as journalEntry } from "./journal-entry.prompt";
+import { SALES_ORDER_OCR_PROMPT as salesOrder } from "./sales-order.prompt";
+import { VENDOR_CREDIT_OCR_PROMPT as vendorCredit } from "./vendor-credit.prompt";
+import { ITEM_OCR_PROMPT as item } from "./item.prompt";
+import { INVENTORY_ADJUSTMENT_OCR_PROMPT as inventoryAdjustment } from "./inventory-adjustment.prompt";
 
 export const OCR_PROMPTS: Record<string, string> = {
   invoice,
@@ -44,6 +59,11 @@ export const OCR_PROMPTS: Record<string, string> = {
   quote,
   delivery_challan: deliveryChallan,
   bank_statement: bankStatement,
+  journal_entry: journalEntry,
+  sales_order: salesOrder,
+  vendor_credit: vendorCredit,
+  item: item,
+  inventory_adjustment: inventoryAdjustment,
 };
 
 /**

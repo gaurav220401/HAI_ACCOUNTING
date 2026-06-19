@@ -99,6 +99,7 @@ export interface CreateVendorCreditInput {
   tcsId?: string | null;
   tdsAmount?: number;
   tcsAmount?: number;
+  taxAmount?: number;
   adjustmentLabel?: string;
   adjustmentAmount?: number;
   lineItems: Array<Omit<VendorCreditLineItem, "_id">>;

@@ -182,3 +182,6 @@ export type {
   MoveOrderStatus,
   CreateMoveOrderInput,
 } from "./move-orders";
+
+export { ocrApi } from "./ocr";
+export type { OcrResultData } from "./ocr";

@@ -8,9 +8,16 @@ import {
 } from "../server-status";
 
 const API_URL =
-  typeof window === "undefined"
-    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
-    : "/api";
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window === "undefined" ? "http://localhost:5000/api" : "/api");
+
+/**
+ * For OCR operations (Gemini can take 60-120s on large PDFs), always hit the
+ * backend directly to bypass the 30-second Next.js dev proxy timeout.
+ */
+const OCR_API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000/api";
 
 /**
  * Get the current user's Firebase ID token.
@@ -175,6 +182,80 @@ export async function apiFetch<T = unknown>(
   }
 
   markServerAvailable();
+
+  return data as T;
+}
+
+/**
+ * OCR-specific fetch — bypasses Next.js proxy for long-running Gemini calls.
+ * Uses a 3-minute AbortController timeout instead of the proxy's 30s limit.
+ */
+export async function apiFetchOcr<T = unknown>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = await getIdToken();
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const controller = new AbortController();
+  // 3-minute timeout for large PDFs/multi-page documents
+  const timeoutId = setTimeout(() => controller.abort(), 180_000);
+
+  let res: Response;
+  try {
+    res = await fetch(`${OCR_API_URL}${path}`, {
+      cache: "no-store",
+      credentials: "include",
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error?.name === "AbortError") {
+      throw new ApiError(
+        "OCR request timed out (3 minutes). Try a smaller file or single page PDF.",
+        408,
+        "TIMEOUT",
+      );
+    }
+    if (isServerUnavailableError(error)) {
+      markServerUnavailable(error);
+      throw new ApiError(
+        "Unable to reach the server. Please ensure backend service is running.",
+        503,
+        "SERVER_UNAVAILABLE",
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  let data: ApiPayload = {};
+  const contentType = res.headers.get("content-type");
+  try {
+    if (contentType && contentType.includes("application/json")) {
+      data = (await res.json()) as ApiPayload;
+    } else {
+      const text = await res.text();
+      data = { message: text || "Request failed", code: "NON_JSON_RESPONSE" };
+    }
+  } catch {
+    data = { message: "Failed to parse response", code: "PARSE_ERROR" };
+  }
+
+  if (!res.ok) {
+    const message =
+      (typeof data?.message === "string" && data.message.trim()) || "OCR request failed";
+    const errorCode = (typeof data?.code === "string" && data.code) || "API_ERROR";
+    throw new ApiError(message, res.status, errorCode, data?.errors);
+  }
 
   return data as T;
 }

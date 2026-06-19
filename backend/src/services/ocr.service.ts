@@ -11,6 +11,8 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { OCR_PROMPTS, AUTO_DETECT_PROMPT, type OcrDocumentType } from "../prompts";
+import * as XLSX from "xlsx";
+import * as mammoth from "mammoth";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -109,19 +111,50 @@ function parseJsonResponse(text: string): Record<string, unknown> | null {
   return null;
 }
 
+// ─── Document Parsing Helpers ──────────────────────────────────────────
+
+function parseExcelToCsvText(buffer: Buffer): string {
+  try {
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    let text = "";
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (sheet) {
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        text += `### SHEET: ${sheetName}\n${csv}\n\n`;
+      }
+    }
+    return text;
+  } catch (err: any) {
+    return `[Failed to parse excel sheet: ${err.message || err}]`;
+  }
+}
+
+async function parseDocxToText(buffer: Buffer): Promise<string> {
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value || "";
+  } catch (err: any) {
+    return `[Failed to parse docx document: ${err.message || err}]`;
+  }
+}
+
 // ─── Core Extraction Logic ────────────────────────────────────────────
 
 async function runGeminiExtraction(params: {
   prompt: string;
-  inlineData: { mimeType: string; data: string };
+  inlineData?: { mimeType: string; data: string };
   model: string;
 }): Promise<{ text: string; model: string }> {
   const ai = getClient();
 
   const parts: Array<Record<string, unknown>> = [
-    { text: params.prompt },
-    { inlineData: params.inlineData },
+    { text: params.prompt }
   ];
+
+  if (params.inlineData) {
+    parts.push({ inlineData: params.inlineData });
+  }
 
   const response = await ai.models.generateContent({
     model: params.model,
@@ -176,13 +209,74 @@ async function extract(request: OcrExtractRequest): Promise<OcrResult> {
     contextLines.push(`mimeType: ${request.mimeType}`);
     if (request.pdfPassword) contextLines.push(`pdfPassword: ${request.pdfPassword}`);
 
-    const fullPrompt = `${prompt}\n\n## FILE CONTEXT\n${contextLines.join("\n")}`;
+    // Parse text-based files vs image/pdf multimodal files
+    const extension = request.fileName ? request.fileName.split(".").pop()?.toLowerCase() || "" : "";
+    const isImageOrPdf = [
+      "png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "pdf"
+    ].includes(extension);
 
-    // Convert buffer to base64 inline data
-    const inlineData = {
-      mimeType: request.mimeType,
-      data: request.fileBuffer.toString("base64"),
-    };
+    const isMultimodalMime = [
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+      "image/webp",
+      "image/gif",
+      "image/bmp",
+      "image/tiff",
+      "application/pdf",
+    ].includes(request.mimeType) || isImageOrPdf;
+
+    let extractedDocText = "";
+    let inlineData: { mimeType: string; data: string } | undefined = undefined;
+
+    if (isMultimodalMime) {
+      let finalMimeType = request.mimeType;
+      if (finalMimeType === "application/octet-stream" || !finalMimeType) {
+        const extMimeMap: Record<string, string> = {
+          pdf: "application/pdf",
+          png: "image/png",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          webp: "image/webp",
+          gif: "image/gif",
+          bmp: "image/bmp",
+          tiff: "image/tiff",
+        };
+        if (extMimeMap[extension]) {
+          finalMimeType = extMimeMap[extension];
+        }
+      }
+      inlineData = {
+        mimeType: finalMimeType,
+        data: request.fileBuffer.toString("base64"),
+      };
+    } else {
+      const mime = request.mimeType.toLowerCase();
+      if (
+        mime.includes("sheet") ||
+        mime.includes("excel") ||
+        mime.includes("csv") ||
+        request.fileName?.endsWith(".xlsx") ||
+        request.fileName?.endsWith(".xls") ||
+        request.fileName?.endsWith(".csv")
+      ) {
+        extractedDocText = parseExcelToCsvText(request.fileBuffer);
+      } else if (
+        mime.includes("word") ||
+        mime.includes("document") ||
+        request.fileName?.endsWith(".docx") ||
+        request.fileName?.endsWith(".doc")
+      ) {
+        extractedDocText = await parseDocxToText(request.fileBuffer);
+      } else {
+        extractedDocText = request.fileBuffer.toString("utf8");
+      }
+    }
+
+    let fullPrompt = `${prompt}\n\n## FILE CONTEXT\n${contextLines.join("\n")}`;
+    if (!isMultimodalMime && extractedDocText) {
+      fullPrompt += `\n\n## EXTRACTED DOCUMENT CONTENT (TEXT FORMAT)\n${extractedDocText}`;
+    }
 
     // Run extraction
     const { text, model } = await runGeminiExtraction({

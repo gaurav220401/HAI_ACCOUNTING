@@ -11,6 +11,7 @@
  */
 
 import { Response } from "express";
+import path from "path";
 import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { ValidationError, ForbiddenError } from "../utils/errors";
@@ -32,9 +33,15 @@ const SUPPORTED_MIME_TYPES = [
   "image/bmp",
   "image/tiff",
   "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // xlsx
+  "application/vnd.ms-excel", // xls or csv
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
+  "application/msword", // doc
+  "text/csv", // csv
+  "text/plain", // txt
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB — supports multi-page PDFs and high-res images
 
 /**
  * POST /api/ocr/extract
@@ -57,9 +64,12 @@ export const extract = asyncHandler(
     }
 
     const mimeType = req.file.mimetype || "application/octet-stream";
-    if (!SUPPORTED_MIME_TYPES.includes(mimeType)) {
+    const extension = path.extname(req.file.originalname || "").toLowerCase().replace(".", "");
+    const supportedExtensions = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "pdf", "xlsx", "xls", "docx", "doc", "csv", "txt"];
+    
+    if (!SUPPORTED_MIME_TYPES.includes(mimeType) && !supportedExtensions.includes(extension)) {
       throw new ValidationError(
-        `Unsupported file type: ${mimeType}. Supported: ${SUPPORTED_MIME_TYPES.join(", ")}`,
+        `Unsupported file type: ${mimeType} (extension: .${extension}). Supported extensions: ${supportedExtensions.join(", ")}`,
       );
     }
 
@@ -151,6 +161,11 @@ export const getSupportedTypes = asyncHandler(
           quote: "Quotation / Estimate / Proforma invoice",
           delivery_challan: "Delivery challan / Delivery note",
           bank_statement: "Bank account statement",
+          journal_entry: "Journal entry document",
+          sales_order: "Sales order document",
+          vendor_credit: "Vendor credit / Supplier credit note",
+          item: "Product / service catalog item details",
+          inventory_adjustment: "Inventory count sheet / adjustment note",
           auto: "Auto-detect document type",
         },
       },

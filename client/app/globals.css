@@ -209,3 +209,15 @@
   color: #94a3b8;
   cursor: text;
 }
+
+/* ── OCR Agent log animation ─────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
