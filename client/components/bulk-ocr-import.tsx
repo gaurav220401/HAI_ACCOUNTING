@@ -120,6 +120,16 @@ export interface ParsedOcrDocument {
     salesAccountId?: string;
     purchaseAccountId?: string;
     inventoryAccountId?: string;
+    dueDate?: string;
+    referenceNumber?: string;
+    orderNumber?: string;
+    paymentTermsId?: string;
+    salesPersonId?: string;
+    sourceOfSupply?: string;
+    destinationOfSupply?: string;
+    subject?: string;
+    notes?: string;
+    termsAndConditions?: string;
   };
   validationStatus: "valid" | "warning" | "error";
   validationMessage?: string;
@@ -484,6 +494,8 @@ export default function BulkOcrImport({
   const [dbWarehouses, setDbWarehouses] = useState<any[]>([]);
   const [dbUnits, setDbUnits] = useState<any[]>([]);
   const [dbTaxes, setDbTaxes] = useState<any[]>([]);
+  const [dbPaymentTerms, setDbPaymentTerms] = useState<any[]>([]);
+  const [dbSalesPersons, setDbSalesPersons] = useState<any[]>([]);
 
   useEffect(() => {
     setDocType(defaultDocType || docTypeOptions[0]);
@@ -497,6 +509,8 @@ export default function BulkOcrImport({
       try { setDbWarehouses((await warehouseApi.list()).data || []); } catch {}
       try { setDbUnits((await itemApi.listUnits()).data || []); } catch {}
       try { setDbTaxes((await settingsApi.taxes.list()).data || []); } catch {}
+      try { setDbPaymentTerms((await settingsApi.paymentTerms.list()).data || []); } catch {}
+      try { setDbSalesPersons((await settingsApi.salesPersons.list()).data || []); } catch {}
     };
     load();
   }, []);
@@ -753,11 +767,15 @@ export default function BulkOcrImport({
               subtotal: 0, taxRate: 0, taxAmount: 0, total: 0,
               description: "Imported via Gemini OCR", lines: [],
               gstin: "", placeOfSupply: "",
+              dueDate: "", referenceNumber: "",
             };
 
             if (docType === "Invoices") {
               pd.docNumber = ext.invoiceNumber || ext.referenceNumber || "";
               pd.date = ext.invoiceDate || today;
+              pd.dueDate = ext.dueDate || "";
+              pd.referenceNumber = ext.referenceNumber || "";
+              pd.orderNumber = ext.orderNumber || "";
               pd.contactName = ext.customerName || "";
               pd.subtotal = Number(ext.subTotal ?? 0);
               pd.total = Number(ext.total ?? 0);
@@ -766,6 +784,9 @@ export default function BulkOcrImport({
               pd.description = ext.notes || "Sales Invoice";
               pd.gstin = ext.customerGSTIN || ext.vendorGSTIN || "";
               pd.placeOfSupply = ext.placeOfSupply || getGstStateName(pd.gstin);
+              pd.subject = ext.subject || "";
+              pd.notes = ext.notes || ext.customerNotes || "";
+              pd.termsAndConditions = ext.termsAndConditions || "";
               pd.lines = (ext.items || []).map((it: any, idx: number) => ({
                 id: `l${idx}-${Date.now()}`, description: it.description || it.name || "Item",
                 qty: Number(it.quantity ?? 1), rate: Number(it.rate ?? 0),
@@ -774,6 +795,9 @@ export default function BulkOcrImport({
             } else if (docType === "Bills") {
               pd.docNumber = ext.billNumber || ext.referenceNumber || "";
               pd.date = ext.billDate || today;
+              pd.dueDate = ext.dueDate || "";
+              pd.referenceNumber = ext.referenceNumber || "";
+              pd.orderNumber = ext.orderNumber || "";
               pd.contactName = ext.vendorName || "";
               pd.subtotal = Number(ext.subTotal ?? 0);
               pd.total = Number(ext.total ?? 0);
@@ -782,6 +806,10 @@ export default function BulkOcrImport({
               pd.description = ext.notes || "Vendor Bill";
               pd.gstin = ext.vendorGSTIN || ext.customerGSTIN || "";
               pd.placeOfSupply = ext.placeOfSupply || getGstStateName(pd.gstin);
+              pd.sourceOfSupply = ext.sourceOfSupply || pd.placeOfSupply;
+              pd.destinationOfSupply = ext.destinationOfSupply || pd.placeOfSupply;
+              pd.notes = ext.notes || "";
+              pd.termsAndConditions = ext.termsAndConditions || "";
               pd.lines = (ext.lineItems || []).map((it: any, idx: number) => ({
                 id: `l${idx}-${Date.now()}`, description: it.description || "Bill Line",
                 qty: Number(it.quantity ?? 1), rate: Number(it.rate ?? 0),
@@ -813,6 +841,8 @@ export default function BulkOcrImport({
             } else if (docType === "Sales Orders") {
               pd.docNumber = ext.salesOrderNumber || "";
               pd.date = ext.orderDate || today;
+              pd.dueDate = ext.dueDate || ext.expectedShipmentDate || "";
+              pd.referenceNumber = ext.referenceNumber || "";
               pd.contactName = ext.customerName || "";
               pd.subtotal = Number(ext.subTotal ?? 0);
               pd.total = Number(ext.total ?? 0);
@@ -820,6 +850,8 @@ export default function BulkOcrImport({
               pd.taxRate = Number(ext.items?.[0]?.taxPercent ?? 0);
               pd.gstin = ext.customerGSTIN || ext.gstin || "";
               pd.placeOfSupply = ext.placeOfSupply || getGstStateName(pd.gstin);
+              pd.notes = ext.notes || "";
+              pd.termsAndConditions = ext.terms || ext.termsAndConditions || "";
               pd.lines = (ext.items || []).map((it: any, idx: number) => ({
                 id: `l${idx}-${Date.now()}`, description: it.description || it.name || "Item",
                 qty: Number(it.quantity ?? 1), rate: Number(it.rate ?? 0),
@@ -828,6 +860,8 @@ export default function BulkOcrImport({
             } else if (docType === "Quotes") {
               pd.docNumber = ext.quoteNumber || ext.estimateNumber || "";
               pd.date = ext.quoteDate || ext.estimateDate || today;
+              pd.dueDate = ext.expiryDate || ext.validUntil || "";
+              pd.referenceNumber = ext.referenceNumber || "";
               pd.contactName = ext.customerName || "";
               pd.subtotal = Number(ext.subTotal ?? 0);
               pd.total = Number(ext.total ?? 0);
@@ -835,6 +869,9 @@ export default function BulkOcrImport({
               pd.taxRate = Number(ext.items?.[0]?.taxPercent ?? 0);
               pd.gstin = ext.customerGSTIN || ext.gstin || "";
               pd.placeOfSupply = ext.placeOfSupply || getGstStateName(pd.gstin);
+              pd.subject = ext.subject || "";
+              pd.notes = ext.notes || ext.customerNotes || "";
+              pd.termsAndConditions = ext.termsAndConditions || "";
               pd.lines = (ext.items || []).map((it: any, idx: number) => ({
                 id: `l${idx}-${Date.now()}`, description: it.description || it.name || "Item",
                 qty: Number(it.quantity ?? 1), rate: Number(it.rate ?? 0),
@@ -843,6 +880,8 @@ export default function BulkOcrImport({
             } else if (docType === "Purchase Orders") {
               pd.docNumber = ext.purchaseOrderNumber || "";
               pd.date = ext.orderDate || today;
+              pd.dueDate = ext.dueDate || ext.deliveryDate || "";
+              pd.referenceNumber = ext.referenceNumber || "";
               pd.contactName = ext.vendorName || ext.supplierName || "";
               pd.subtotal = Number(ext.subTotal ?? 0);
               pd.total = Number(ext.total ?? 0);
@@ -850,6 +889,8 @@ export default function BulkOcrImport({
               pd.taxRate = Number(ext.items?.[0]?.taxPercent ?? 0);
               pd.gstin = ext.vendorGSTIN || ext.gstin || "";
               pd.placeOfSupply = ext.placeOfSupply || getGstStateName(pd.gstin);
+              pd.notes = ext.notes || "";
+              pd.termsAndConditions = ext.termsAndConditions || "";
               pd.lines = (ext.items || []).map((it: any, idx: number) => ({
                 id: `l${idx}-${Date.now()}`, description: it.description || it.name || "Item",
                 qty: Number(it.quantity ?? 1), rate: Number(it.rate ?? 0),
@@ -858,6 +899,9 @@ export default function BulkOcrImport({
             } else if (docType === "Vendor Credits") {
               pd.docNumber = ext.creditNoteNumber || "";
               pd.date = ext.creditNoteDate || today;
+              pd.dueDate = "";
+              pd.referenceNumber = ext.referenceNumber || "";
+              pd.orderNumber = ext.orderNumber || "";
               pd.contactName = ext.vendorName || "";
               pd.subtotal = Number(ext.subTotal ?? 0);
               pd.total = Number(ext.total ?? 0);
@@ -865,6 +909,10 @@ export default function BulkOcrImport({
               pd.taxRate = Number(ext.items?.[0]?.taxPercent ?? 0);
               pd.gstin = ext.vendorGSTIN || ext.gstin || "";
               pd.placeOfSupply = ext.placeOfSupply || getGstStateName(pd.gstin);
+              pd.sourceOfSupply = ext.sourceOfSupply || pd.placeOfSupply;
+              pd.destinationOfSupply = ext.destinationOfSupply || pd.placeOfSupply;
+              pd.notes = ext.notes || "";
+              pd.termsAndConditions = ext.termsAndConditions || "";
               pd.lines = (ext.items || []).map((it: any, idx: number) => ({
                 id: `l${idx}-${Date.now()}`, description: it.description || it.name || "Credit Line",
                 qty: Number(it.quantity ?? 1), rate: Number(it.rate ?? 0),
@@ -1091,7 +1139,13 @@ export default function BulkOcrImport({
           await invoiceApi.create({
             invoiceNumber: doc.parsedData.docNumber,
             invoiceDate: doc.parsedData.date,
+            dueDate: doc.parsedData.dueDate || null,
+            referenceNumber: doc.parsedData.referenceNumber || "",
+            orderNumber: doc.parsedData.orderNumber || "",
             customerId: doc.parsedData.contactId || "",
+            paymentTermsId: doc.parsedData.paymentTermsId || null,
+            salesPersonId: doc.parsedData.salesPersonId || null,
+            subject: doc.parsedData.subject || "",
             items: doc.parsedData.lines.map((ln) => {
               const mi = matchItem(ln.description, dbItems);
               return { itemId: mi?._id || null, name: ln.description, description: ln.description, quantity: ln.qty, rate: ln.rate, taxPercent: ln.taxRate, discountPercent: 0 };
@@ -1105,8 +1159,12 @@ export default function BulkOcrImport({
             vendorId: doc.parsedData.contactId || "",
             billNumber: doc.parsedData.docNumber,
             billDate: doc.parsedData.date,
-            sourceOfSupply: doc.parsedData.placeOfSupply || "",
-            destinationOfSupply: doc.parsedData.placeOfSupply || "",
+            dueDate: doc.parsedData.dueDate || null,
+            paymentTermsId: doc.parsedData.paymentTermsId || null,
+            referenceNumber: doc.parsedData.referenceNumber || "",
+            orderNumber: doc.parsedData.orderNumber || "",
+            sourceOfSupply: doc.parsedData.sourceOfSupply || doc.parsedData.placeOfSupply || "",
+            destinationOfSupply: doc.parsedData.destinationOfSupply || doc.parsedData.placeOfSupply || "",
             lineItems: doc.parsedData.lines.map((ln) => {
               const mi = matchItem(ln.description, dbItems);
               return { itemId: mi?._id || null, name: ln.description, description: ln.description, quantity: ln.qty, rate: ln.rate, amount: ln.total, taxRate: ln.taxRate, accountId: defAcc };
@@ -1141,6 +1199,11 @@ export default function BulkOcrImport({
             customerId: doc.parsedData.contactId || "",
             salesOrderNumber: doc.parsedData.docNumber,
             orderDate: doc.parsedData.date,
+            expectedShipmentDate: doc.parsedData.dueDate || undefined,
+            reference: doc.parsedData.referenceNumber || "",
+            paymentTermsId: doc.parsedData.paymentTermsId || undefined,
+            deliveryMethod: doc.parsedData.sourceOfSupply || "",
+            salesPersonId: doc.parsedData.salesPersonId || undefined,
             placeOfSupply: doc.parsedData.placeOfSupply || "",
             lineItems: doc.parsedData.lines.map((ln) => {
               const mi = matchItem(ln.description, dbItems);
@@ -1153,6 +1216,10 @@ export default function BulkOcrImport({
             customerId: doc.parsedData.contactId || "",
             quoteNumber: doc.parsedData.docNumber,
             quoteDate: doc.parsedData.date,
+            expiryDate: doc.parsedData.dueDate || null,
+            referenceNumber: doc.parsedData.referenceNumber || "",
+            salesPersonId: doc.parsedData.salesPersonId || null,
+            subject: doc.parsedData.subject || "",
             placeOfSupply: doc.parsedData.placeOfSupply || "",
             items: doc.parsedData.lines.map((ln) => {
               const mi = matchItem(ln.description, dbItems);
@@ -1166,6 +1233,10 @@ export default function BulkOcrImport({
             vendorId: doc.parsedData.contactId || "",
             purchaseOrderNumber: doc.parsedData.docNumber,
             purchaseOrderDate: doc.parsedData.date,
+            deliveryDate: doc.parsedData.dueDate || null,
+            paymentTermsId: doc.parsedData.paymentTermsId || null,
+            referenceNumber: doc.parsedData.referenceNumber || "",
+            shipmentPreference: doc.parsedData.sourceOfSupply || "",
             lineItems: doc.parsedData.lines.map((ln) => {
               const mi = matchItem(ln.description, dbItems);
               return { itemId: mi?._id || dbItems[0]?._id || null, name: ln.description, description: ln.description, quantity: ln.qty, rate: ln.rate, amount: ln.qty * ln.rate };
@@ -1178,8 +1249,10 @@ export default function BulkOcrImport({
             vendorId: doc.parsedData.contactId || "",
             vendorCreditNumber: doc.parsedData.docNumber,
             vendorCreditDate: doc.parsedData.date,
-            sourceOfSupply: doc.parsedData.placeOfSupply || "",
-            destinationOfSupply: doc.parsedData.placeOfSupply || "",
+            orderNumber: doc.parsedData.orderNumber || "",
+            sourceOfSupply: doc.parsedData.sourceOfSupply || doc.parsedData.placeOfSupply || "",
+            destinationOfSupply: doc.parsedData.destinationOfSupply || doc.parsedData.placeOfSupply || "",
+            subject: doc.parsedData.subject || "",
             lineItems: doc.parsedData.lines.map((ln) => {
               const mi = matchItem(ln.description, dbItems);
               return { itemId: mi?._id || dbItems[0]?._id || null, name: ln.description, description: ln.description, quantity: ln.qty, rate: ln.rate, taxPercent: ln.taxRate, amount: ln.qty * ln.rate };
@@ -1542,41 +1615,62 @@ export default function BulkOcrImport({
 
     if (doc.docType === "Bank Statements") {
       return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white">
+        <div className="space-y-4 p-4 bg-white">
+          {/* General Section */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Bank / Account</label>
-            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
-              <SelectTrigger className={selectCls}><SelectValue placeholder="Select bank…" /></SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                {(dbAccounts.filter((a) => a.accountType === "Bank").map((a) => a.name).length > 0
-                  ? dbAccounts.filter((a) => a.accountType === "Bank").map((a) => a.name)
-                  : ["HDFC Bank", "ICICI Bank", "SBI Bank"]
-                ).map((n) => <SelectItem key={n} value={n} className="text-xs">{n}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              General Info
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Bank / Account</label>
+                <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+                  <SelectTrigger className={selectCls}><SelectValue placeholder="Select bank…" /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {(dbAccounts.filter((a) => a.accountType === "Bank").map((a) => a.name).length > 0
+                      ? dbAccounts.filter((a) => a.accountType === "Bank").map((a) => a.name)
+                      : ["HDFC Bank", "ICICI Bank", "SBI Bank"]
+                    ).map((n) => <SelectItem key={n} value={n} className="text-xs">{n}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Statement Ref</label>
+                <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Statement Date</label>
+                <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+              </div>
+            </div>
           </div>
+
+          {/* Balance Section */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Statement Ref</label>
-            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Financial Balances
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Opening Balance (₹)</label>
+                <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Closing Balance (₹)</label>
+                <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono font-bold"} />
+              </div>
+            </div>
           </div>
+
+          {/* Transactions Section */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Statement Date</label>
-            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Opening Balance (₹)</label>
-            <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Closing Balance (₹)</label>
-            <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono font-bold"} />
-          </div>
-          <div className="col-span-2">
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Transactions ({doc.parsedData.lines.length})</label>
-            <div className="border border-slate-200 rounded max-h-24 overflow-y-auto bg-slate-50">
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Statement Transactions ({doc.parsedData.lines.length})
+            </h4>
+            <div className="border border-slate-200 rounded max-h-36 overflow-y-auto bg-slate-50">
               {doc.parsedData.lines.map((ln) => (
-                <div key={ln.id} className="flex items-center justify-between px-2 py-1 text-[10px] font-mono border-b border-slate-100 last:border-0">
-                  <span className="truncate max-w-[120px] text-slate-600">{ln.description}</span>
+                <div key={ln.id} className="flex items-center justify-between px-3 py-1.5 text-[10px] font-mono border-b border-slate-100 last:border-0 hover:bg-slate-100/50">
+                  <span className="truncate max-w-[240px] text-slate-600 font-medium">{ln.description}</span>
                   <span className={ln.rate >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold"}>₹{Math.abs(ln.rate).toFixed(2)}</span>
                 </div>
               ))}
@@ -1588,52 +1682,71 @@ export default function BulkOcrImport({
 
     if (doc.docType === "Inventory Adjustments") {
       return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white">
+        <div className="space-y-4 p-4 bg-white">
+          {/* General Details */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference #</label>
-            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              General Details
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference #</label>
+                <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Adj. Date</label>
+                <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Warehouse *</label>
+                <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+                  <SelectTrigger className={selectCls}><SelectValue placeholder="Select warehouse…" /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {(dbWarehouses.length > 0 ? dbWarehouses.map((w) => w.name) : ["Main Warehouse", "Transit Warehouse"]).map((n) => (
+                      <SelectItem key={n} value={n} className="text-xs">{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reason</label>
+                <Select value={["Stock Count", "Manual", "Damage", "Surplus"].includes(doc.parsedData.description) ? doc.parsedData.description : "Stock Count"} onValueChange={(v) => handleDocChange(doc.id, "description", v)}>
+                  <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    <SelectItem value="Stock Count" className="text-xs">Stock Count</SelectItem>
+                    <SelectItem value="Manual" className="text-xs">Manual</SelectItem>
+                    <SelectItem value="Damage" className="text-xs">Damage / Write-off</SelectItem>
+                    <SelectItem value="Surplus" className="text-xs">Surplus Found</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
+
+          {/* Adjustment Details */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Adj. Date</label>
-            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Warehouse *</label>
-            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
-              <SelectTrigger className={selectCls}><SelectValue placeholder="Select warehouse…" /></SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                {(dbWarehouses.length > 0 ? dbWarehouses.map((w) => w.name) : ["Main Warehouse", "Transit Warehouse"]).map((n) => (
-                  <SelectItem key={n} value={n} className="text-xs">{n}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reason</label>
-            <Select value={["Stock Count", "Manual", "Damage", "Surplus"].includes(doc.parsedData.description) ? doc.parsedData.description : "Stock Count"} onValueChange={(v) => handleDocChange(doc.id, "description", v)}>
-              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                <SelectItem value="Stock Count" className="text-xs">Stock Count</SelectItem>
-                <SelectItem value="Manual" className="text-xs">Manual</SelectItem>
-                <SelectItem value="Damage" className="text-xs">Damage / Write-off</SelectItem>
-                <SelectItem value="Surplus" className="text-xs">Surplus Found</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Qty Delta</label>
-            <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Unit Cost (₹)</label>
-            <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Item</label>
-            <Input value={doc.parsedData.lines[0]?.description || ""} onChange={(e) => {
-              const lines = [...doc.parsedData.lines];
-              if (lines[0]) { lines[0] = { ...lines[0], description: e.target.value }; handleDocChange(doc.id, "lines", lines); }
-            }} className={inputCls} placeholder="Item name" />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Adjustment Specifics
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="col-span-1 md:col-span-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Item *</label>
+                <Input value={doc.parsedData.lines[0]?.description || ""} onChange={(e) => {
+                  const lines = [...doc.parsedData.lines];
+                  if (lines[0]) { lines[0] = { ...lines[0], description: e.target.value }; handleDocChange(doc.id, "lines", lines); }
+                }} className={inputCls} placeholder="Item name" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Qty Delta</label>
+                  <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Unit Cost (₹)</label>
+                  <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono"} />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       );
@@ -1641,38 +1754,59 @@ export default function BulkOcrImport({
 
     if (doc.docType === "Journal Entries") {
       return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white">
+        <div className="space-y-4 p-4 bg-white">
+          {/* General Details */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Journal #</label>
-            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              General Details
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Journal #</label>
+                <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Date</label>
+                <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference</label>
+                <Input value={doc.parsedData.contactName} onChange={(e) => handleDocChange(doc.id, "contactName", e.target.value)} className={inputCls} placeholder="Reference / party" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Description</label>
+                <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} />
+              </div>
+            </div>
           </div>
+
+          {/* Financial Totals */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Date</label>
-            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Financial Totals
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total Debits (₹)</label>
+                <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total Credits (₹)</label>
+                <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono"} />
+              </div>
+            </div>
           </div>
+
+          {/* Ledger Lines */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference</label>
-            <Input value={doc.parsedData.contactName} onChange={(e) => handleDocChange(doc.id, "contactName", e.target.value)} className={inputCls} placeholder="Reference / party" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Description</label>
-            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total Debits (₹)</label>
-            <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total Credits (₹)</label>
-            <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div className="col-span-2">
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Ledger Lines ({doc.parsedData.lines.length})</label>
-            <div className="border border-slate-200 rounded max-h-20 overflow-y-auto bg-slate-50">
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Ledger Lines ({doc.parsedData.lines.length})
+            </h4>
+            <div className="border border-slate-200 rounded max-h-36 overflow-y-auto divide-y divide-slate-100 bg-slate-50">
               {doc.parsedData.lines.map((ln) => (
-                <div key={ln.id} className="flex gap-2 p-1.5 border-b border-slate-100 last:border-0">
-                  <Input value={ln.description} onChange={(e) => handleLineChange(doc.id, ln.id, "description", e.target.value)} className="h-6 text-[10px] flex-1 border-slate-200 bg-white px-2" />
-                  <Input type="number" value={ln.rate} onChange={(e) => handleLineChange(doc.id, ln.id, "rate", Number(e.target.value))} className="h-6 text-[10px] w-20 font-mono border-slate-200 bg-white px-2" />
+                <div key={ln.id} className="flex gap-2 p-2 hover:bg-slate-100/50">
+                  <Input value={ln.description} onChange={(e) => handleLineChange(doc.id, ln.id, "description", e.target.value)} className="h-7 text-[10px] flex-1 border-slate-200 bg-white px-2" />
+                  <Input type="number" value={ln.rate} onChange={(e) => handleLineChange(doc.id, ln.id, "rate", Number(e.target.value))} className="h-7 text-[10px] w-28 font-mono border-slate-200 bg-white px-2 text-right" placeholder="Debit / Credit rate" />
                 </div>
               ))}
             </div>
@@ -1683,145 +1817,501 @@ export default function BulkOcrImport({
 
     if (doc.docType === "Expenses") {
       return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white">
+        <div className="space-y-4 p-4 bg-white">
+          {/* General Section */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Expense Ref</label>
-            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              General Info
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Expense Ref</label>
+                <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Expense Date</label>
+                <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Paid To (Vendor)</label>
+                <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+                  <SelectTrigger className={selectCls}><SelectValue placeholder="Select vendor…" /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
+
+          {/* Financial Section */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Expense Date</label>
-            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Financial Details
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Category</label>
+                <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="e.g. Office Supplies" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Subtotal (₹)</label>
+                <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total Amount (₹)</label>
+                <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono font-bold text-emerald-700"} />
+              </div>
+            </div>
           </div>
+
+          {/* Compliance Section */}
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Paid To (Vendor)</label>
-            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
-              <SelectTrigger className={selectCls}><SelectValue placeholder="Select vendor…" /></SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Category</label>
-            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="e.g. Office Supplies" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">GSTIN</label>
-            <Input value={doc.parsedData.gstin || ""} onChange={(e) => handleDocChange(doc.id, "gstin", e.target.value)} className={inputCls + " font-mono uppercase"} placeholder="15-char GSTIN" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tax Rate %</label>
-            <Input type="number" value={doc.parsedData.taxRate} onChange={(e) => handleDocChange(doc.id, "taxRate", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Subtotal (₹)</label>
-            <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total Amount (₹)</label>
-            <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono font-bold text-emerald-700"} />
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Compliance & Taxes
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">GSTIN</label>
+                <Input value={doc.parsedData.gstin || ""} onChange={(e) => handleDocChange(doc.id, "gstin", e.target.value)} className={inputCls + " font-mono uppercase"} placeholder="15-char GSTIN" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Place of Supply</label>
+                  <Input value={doc.parsedData.placeOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "placeOfSupply", e.target.value)} className={inputCls} placeholder="POS State" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tax Rate %</label>
+                  <Input type="number" value={doc.parsedData.taxRate} onChange={(e) => handleDocChange(doc.id, "taxRate", Number(e.target.value))} className={inputCls + " font-mono"} />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       );
     }
 
     // Standard: Invoices, Bills, Sales Orders, Quotes, Purchase Orders, Vendor Credits
-    return (
-      <div className="space-y-0">
-        {/* Row 1: Core fields */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white border-b border-slate-100">
+    let generalFieldsNode = null;
+    let extraFieldsNode = null;
+    let financialFieldsNode = null;
+
+    if (doc.docType === "Invoices") {
+      generalFieldsNode = (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Document #</label>
-            <div className="relative">
-              <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} placeholder="e.g. INV-1002" />
-              <span className="absolute right-2 top-2.5 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse pointer-events-none" />
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Date</label>
-            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">{contactLabel}</label>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Customer Name *</label>
             <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
-              <SelectTrigger className={selectCls}><SelectValue placeholder={`Select ${contactLabel.toLowerCase()}…`} /></SelectTrigger>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select customer…" /></SelectTrigger>
               <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-48">
                 {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs hover:bg-slate-100">{c}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Description</label>
-            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="Notes…" />
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Invoice # *</label>
+            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} placeholder="e.g. INV-0001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference #</label>
+            <Input value={doc.parsedData.referenceNumber || ""} onChange={(e) => handleDocChange(doc.id, "referenceNumber", e.target.value)} className={inputCls} placeholder="Ref number" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Order / Challan Number</label>
+            <Input value={doc.parsedData.orderNumber || ""} onChange={(e) => handleDocChange(doc.id, "orderNumber", e.target.value)} className={inputCls} placeholder="SO-00001 or DC-00001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Invoice Date *</label>
+            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Payment Terms</label>
+            <Select value={doc.parsedData.paymentTermsId || ""} onValueChange={(v) => handleDocChange(doc.id, "paymentTermsId", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select terms…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                {dbPaymentTerms.map((pt) => <SelectItem key={pt._id} value={pt._id} className="text-xs">{pt.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Due Date</label>
+            <input type="date" value={doc.parsedData.dueDate || ""} onChange={(e) => handleDocChange(doc.id, "dueDate", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Salesperson</label>
+            <Select value={doc.parsedData.salesPersonId || ""} onValueChange={(v) => handleDocChange(doc.id, "salesPersonId", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select salesperson…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                {dbSalesPersons.map((sp) => <SelectItem key={sp._id} value={sp._id} className="text-xs">{sp.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-        {/* Row 2: GST + Amounts */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-slate-50/50 border-b border-slate-100">
+      );
+
+      extraFieldsNode = (
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">GSTIN</label>
-            <Input value={doc.parsedData.gstin || ""} onChange={(e) => handleDocChange(doc.id, "gstin", e.target.value)} className={inputCls + " font-mono uppercase"} placeholder="15-char GSTIN" />
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Subject</label>
+            <Input value={doc.parsedData.subject || ""} onChange={(e) => handleDocChange(doc.id, "subject", e.target.value)} className={inputCls} placeholder="Invoice subject…" />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">State / POS</label>
-            <Input value={doc.parsedData.placeOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "placeOfSupply", e.target.value)} className={inputCls} placeholder="State" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Subtotal (₹)</label>
-            <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tax % / Amt</label>
-            <div className="flex gap-1">
-              <Input type="number" value={doc.parsedData.taxRate} onChange={(e) => handleDocChange(doc.id, "taxRate", Number(e.target.value))} className={inputCls + " font-mono w-16"} placeholder="%" />
-              <Input type="number" value={doc.parsedData.taxAmount} disabled className={disabledCls + " flex-1"} />
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total (₹)</label>
-            <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono font-bold border-2 border-emerald-400"} />
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Description / Notes</label>
+            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="Notes to display on invoice…" />
           </div>
         </div>
-        {/* Row 3: Line Items */}
-        <div className="p-4 bg-white">
+      );
+    } else if (doc.docType === "Bills") {
+      generalFieldsNode = (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Vendor Name *</label>
+            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select vendor…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-48">
+                {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs hover:bg-slate-100">{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Bill # *</label>
+            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} placeholder="e.g. BILL-0001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference #</label>
+            <Input value={doc.parsedData.referenceNumber || ""} onChange={(e) => handleDocChange(doc.id, "referenceNumber", e.target.value)} className={inputCls} placeholder="Vendor reference" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Order Number</label>
+            <Input value={doc.parsedData.orderNumber || ""} onChange={(e) => handleDocChange(doc.id, "orderNumber", e.target.value)} className={inputCls} placeholder="Purchase Order Ref" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Bill Date *</label>
+            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Payment Terms</label>
+            <Select value={doc.parsedData.paymentTermsId || ""} onValueChange={(v) => handleDocChange(doc.id, "paymentTermsId", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select terms…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                {dbPaymentTerms.map((pt) => <SelectItem key={pt._id} value={pt._id} className="text-xs">{pt.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Due Date</label>
+            <input type="date" value={doc.parsedData.dueDate || ""} onChange={(e) => handleDocChange(doc.id, "dueDate", e.target.value)} className={dateCls} />
+          </div>
+        </div>
+      );
+
+      extraFieldsNode = (
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Source of Supply</label>
+            <Input value={doc.parsedData.sourceOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "sourceOfSupply", e.target.value)} className={inputCls} placeholder="State" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Destination of Supply</label>
+            <Input value={doc.parsedData.destinationOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "destinationOfSupply", e.target.value)} className={inputCls} placeholder="State" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Notes / Description</label>
+            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="Notes to display on bill…" />
+          </div>
+        </div>
+      );
+    } else if (doc.docType === "Sales Orders") {
+      generalFieldsNode = (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Customer Name *</label>
+            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select customer…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-48">
+                {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs hover:bg-slate-100">{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Sales Order # *</label>
+            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} placeholder="e.g. SO-0001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference #</label>
+            <Input value={doc.parsedData.referenceNumber || ""} onChange={(e) => handleDocChange(doc.id, "referenceNumber", e.target.value)} className={inputCls} placeholder="Ref number" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Order Date *</label>
+            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Shipment Date</label>
+            <input type="date" value={doc.parsedData.dueDate || ""} onChange={(e) => handleDocChange(doc.id, "dueDate", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Delivery Method</label>
+            <Input value={doc.parsedData.sourceOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "sourceOfSupply", e.target.value)} className={inputCls} placeholder="e.g. UPS, FedEx" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Salesperson</label>
+            <Select value={doc.parsedData.salesPersonId || ""} onValueChange={(v) => handleDocChange(doc.id, "salesPersonId", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select salesperson…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                {dbSalesPersons.map((sp) => <SelectItem key={sp._id} value={sp._id} className="text-xs">{sp.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      );
+
+      extraFieldsNode = (
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Notes / Description</label>
+            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="Notes to display on sales order…" />
+          </div>
+        </div>
+      );
+    } else if (doc.docType === "Quotes") {
+      generalFieldsNode = (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Customer Name *</label>
+            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select customer…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-48">
+                {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs hover:bg-slate-100">{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Quote # *</label>
+            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} placeholder="e.g. QT-0001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference #</label>
+            <Input value={doc.parsedData.referenceNumber || ""} onChange={(e) => handleDocChange(doc.id, "referenceNumber", e.target.value)} className={inputCls} placeholder="Ref number" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Quote Date *</label>
+            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Expiry Date</label>
+            <input type="date" value={doc.parsedData.dueDate || ""} onChange={(e) => handleDocChange(doc.id, "dueDate", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Salesperson</label>
+            <Select value={doc.parsedData.salesPersonId || ""} onValueChange={(v) => handleDocChange(doc.id, "salesPersonId", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select salesperson…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                {dbSalesPersons.map((sp) => <SelectItem key={sp._id} value={sp._id} className="text-xs">{sp.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      );
+
+      extraFieldsNode = (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Subject</label>
+            <Input value={doc.parsedData.subject || ""} onChange={(e) => handleDocChange(doc.id, "subject", e.target.value)} className={inputCls} placeholder="Quote subject…" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Description / Notes</label>
+            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="Notes to display on quote…" />
+          </div>
+        </div>
+      );
+    } else if (doc.docType === "Purchase Orders") {
+      generalFieldsNode = (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Vendor Name *</label>
+            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select vendor…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-48">
+                {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs hover:bg-slate-100">{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Purchase Order # *</label>
+            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} placeholder="e.g. PO-0001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reference #</label>
+            <Input value={doc.parsedData.referenceNumber || ""} onChange={(e) => handleDocChange(doc.id, "referenceNumber", e.target.value)} className={inputCls} placeholder="Ref number" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Purchase Order Date *</label>
+            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Delivery Date</label>
+            <input type="date" value={doc.parsedData.dueDate || ""} onChange={(e) => handleDocChange(doc.id, "dueDate", e.target.value)} className={dateCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Shipment Preference</label>
+            <Input value={doc.parsedData.sourceOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "sourceOfSupply", e.target.value)} className={inputCls} placeholder="e.g. Courier, Delivery" />
+          </div>
+        </div>
+      );
+
+      extraFieldsNode = (
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Notes / Description</label>
+            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="Notes to display on purchase order…" />
+          </div>
+        </div>
+      );
+    } else if (doc.docType === "Vendor Credits") {
+      generalFieldsNode = (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Vendor Name *</label>
+            <Select value={doc.parsedData.contactName} onValueChange={(v) => handleDocChange(doc.id, "contactName", v)}>
+              <SelectTrigger className={selectCls}><SelectValue placeholder="Select vendor…" /></SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-48">
+                {contacts.map((c) => <SelectItem key={c} value={c} className="text-xs hover:bg-slate-100">{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Credit Note # *</label>
+            <Input value={doc.parsedData.docNumber} onChange={(e) => handleDocChange(doc.id, "docNumber", e.target.value)} className={inputCls} placeholder="e.g. VCN-0001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Order Number</label>
+            <Input value={doc.parsedData.referenceNumber || ""} onChange={(e) => handleDocChange(doc.id, "referenceNumber", e.target.value)} className={inputCls} placeholder="SO-0001" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Vendor Credit Date *</label>
+            <input type="date" value={doc.parsedData.date} onChange={(e) => handleDocChange(doc.id, "date", e.target.value)} className={dateCls} />
+          </div>
+        </div>
+      );
+
+      extraFieldsNode = (
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Source of Supply</label>
+            <Input value={doc.parsedData.sourceOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "sourceOfSupply", e.target.value)} className={inputCls} placeholder="State" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Destination of Supply</label>
+            <Input value={doc.parsedData.destinationOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "destinationOfSupply", e.target.value)} className={inputCls} placeholder="State" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Notes / Description</label>
+            <Input value={doc.parsedData.description} onChange={(e) => handleDocChange(doc.id, "description", e.target.value)} className={inputCls} placeholder="Notes to display on vendor credit…" />
+          </div>
+        </div>
+      );
+    }
+
+    financialFieldsNode = (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">GSTIN</label>
+          <Input value={doc.parsedData.gstin || ""} onChange={(e) => handleDocChange(doc.id, "gstin", e.target.value)} className={inputCls + " font-mono uppercase"} placeholder="15-char GSTIN" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">State / POS</label>
+          <Input value={doc.parsedData.placeOfSupply || ""} onChange={(e) => handleDocChange(doc.id, "placeOfSupply", e.target.value)} className={inputCls} placeholder="State" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Subtotal (₹)</label>
+          <Input type="number" value={doc.parsedData.subtotal} onChange={(e) => handleDocChange(doc.id, "subtotal", Number(e.target.value))} className={inputCls + " font-mono"} />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tax Rate / Amount</label>
+          <div className="flex gap-1">
+            <Input type="number" value={doc.parsedData.taxRate} onChange={(e) => handleDocChange(doc.id, "taxRate", Number(e.target.value))} className={inputCls + " font-mono w-16"} placeholder="%" />
+            <Input type="number" value={doc.parsedData.taxAmount} disabled className={disabledCls + " flex-1"} />
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Total (₹) *</label>
+          <Input type="number" value={doc.parsedData.total} onChange={(e) => handleDocChange(doc.id, "total", Number(e.target.value))} className={inputCls + " font-mono font-bold border-2 border-emerald-400"} />
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="space-y-4 p-4 bg-white">
+        {/* General Details */}
+        <div>
+          <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+            General Details
+          </h4>
+          {generalFieldsNode}
+        </div>
+
+        {/* Financial & Compliance Info */}
+        <div>
+          <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+            Financial & Tax Details
+          </h4>
+          {financialFieldsNode}
+        </div>
+
+        {/* Notes/Notes description */}
+        {extraFieldsNode && (
+          <div>
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2 border-b border-emerald-100 pb-1">
+              Supply & Notes
+            </h4>
+            {extraFieldsNode}
+          </div>
+        )}
+
+        {/* Line Items */}
+        <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Line Items ({doc.parsedData.lines.length})</span>
+            <h4 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide border-b border-emerald-100 pb-1 flex-1 mr-4">
+              Line Items ({doc.parsedData.lines.length})
+            </h4>
             <button
               onClick={() => {
                 const newLine: OcrLineItem = { id: `l-${Date.now()}`, description: "New Item", qty: 1, rate: 0, taxRate: doc.parsedData.taxRate, total: 0 };
                 handleDocChange(doc.id, "lines", [...doc.parsedData.lines, newLine]);
               }}
-              className="text-[10px] text-slate-500 hover:text-slate-700 flex items-center gap-1 font-medium transition-colors"
+              className="text-[10px] text-slate-500 hover:text-slate-700 flex items-center gap-1 font-medium transition-colors border border-slate-200 rounded px-2 py-1 bg-slate-50 hover:bg-slate-100 shadow-sm"
             >
-              <Plus className="h-3 w-3" /> Add Line
+              <Plus className="h-3 w-3" /> Add Line Item
             </button>
           </div>
           {doc.parsedData.lines.length > 0 ? (
             <div className="border border-slate-200 rounded overflow-hidden">
-              <div className="grid grid-cols-12 bg-slate-50 text-[9px] font-bold text-slate-500 uppercase px-2 py-1 border-b border-slate-200">
+              <div className="grid grid-cols-12 bg-slate-50 text-[9px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
                 <span className="col-span-5">Description</span>
                 <span className="col-span-2 text-right">Qty</span>
                 <span className="col-span-2 text-right">Rate (₹)</span>
                 <span className="col-span-2 text-right">Total (₹)</span>
                 <span className="col-span-1" />
               </div>
-              <div className="divide-y divide-slate-100 max-h-28 overflow-y-auto">
+              <div className="divide-y divide-slate-100 max-h-36 overflow-y-auto bg-white">
                 {doc.parsedData.lines.map((ln) => (
-                  <div key={ln.id} className="grid grid-cols-12 gap-1 px-2 py-1 items-center hover:bg-slate-50/50">
+                  <div key={ln.id} className="grid grid-cols-12 gap-1 px-3 py-1.5 items-center hover:bg-slate-50/50">
                     <div className="col-span-5">
-                      <Input value={ln.description} onChange={(e) => handleLineChange(doc.id, ln.id, "description", e.target.value)} className="h-6 text-[10px] border-slate-200 bg-transparent px-1.5 focus-visible:ring-1 focus-visible:ring-emerald-400" />
+                      <Input value={ln.description} onChange={(e) => handleLineChange(doc.id, ln.id, "description", e.target.value)} className="h-7 text-[10px] border-slate-200 bg-transparent px-1.5 focus-visible:ring-1 focus-visible:ring-emerald-400" />
                     </div>
                     <div className="col-span-2">
-                      <Input type="number" value={ln.qty} onChange={(e) => handleLineChange(doc.id, ln.id, "qty", Number(e.target.value))} className="h-6 text-[10px] font-mono text-right border-slate-200 bg-transparent px-1.5 focus-visible:ring-1 focus-visible:ring-emerald-400" />
+                      <Input type="number" value={ln.qty} onChange={(e) => handleLineChange(doc.id, ln.id, "qty", Number(e.target.value))} className="h-7 text-[10px] font-mono text-right border-slate-200 bg-transparent px-1.5 focus-visible:ring-1 focus-visible:ring-emerald-400" />
                     </div>
                     <div className="col-span-2">
-                      <Input type="number" value={ln.rate} onChange={(e) => handleLineChange(doc.id, ln.id, "rate", Number(e.target.value))} className="h-6 text-[10px] font-mono text-right border-slate-200 bg-transparent px-1.5 focus-visible:ring-1 focus-visible:ring-emerald-400" />
+                      <Input type="number" value={ln.rate} onChange={(e) => handleLineChange(doc.id, ln.id, "rate", Number(e.target.value))} className="h-7 text-[10px] font-mono text-right border-slate-200 bg-transparent px-1.5 focus-visible:ring-1 focus-visible:ring-emerald-400" />
                     </div>
                     <div className="col-span-2">
-                      <span className="text-[10px] font-mono text-slate-700 font-semibold block text-right pr-1">₹{ln.total.toFixed(2)}</span>
+                      <span className="text-[10px] font-mono text-slate-700 font-semibold block text-right pr-2">₹{ln.total.toFixed(2)}</span>
                     </div>
                     <div className="col-span-1 flex justify-end">
-                      <button onClick={() => handleDocChange(doc.id, "lines", doc.parsedData.lines.filter((l) => l.id !== ln.id))} className="text-slate-300 hover:text-rose-500 transition-colors">
-                        <X className="h-3 w-3" />
+                      <button onClick={() => handleDocChange(doc.id, "lines", doc.parsedData.lines.filter((l) => l.id !== ln.id))} className="text-slate-300 hover:text-rose-500 transition-colors p-1 hover:bg-rose-50 rounded">
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
@@ -1829,8 +2319,8 @@ export default function BulkOcrImport({
               </div>
             </div>
           ) : (
-            <div className="text-[10px] text-slate-400 text-center py-3 border border-dashed border-slate-200 rounded">
-              No line items extracted — click "Add Line" to add manually
+            <div className="text-[10px] text-slate-400 text-center py-4 border border-dashed border-slate-200 rounded">
+              No line items extracted — click "Add Line Item" to add manually
             </div>
           )}
         </div>
