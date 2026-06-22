@@ -120,8 +120,8 @@ const FIELD_GROUPS = [
   {
     title: "Purchase & Inventory Information",
     fields: [
-      { key: "purchaseDescription", label: "Purchase Description" },
-      { key: "costPrice", label: "Purchase Price" },
+      { key: "purchaseDescription", label: "Purchase Desc" },
+      { key: "costPrice", label: "Purchase Rate" },
       { key: "purchaseAccount", label: "Purchase Account" },
       { key: "inventoryAccount", label: "Inventory Account" },
       { key: "valuationMethod", label: "Inventory Valuation Method" },
@@ -463,7 +463,7 @@ export default function ItemImportPage() {
       };
 
       headers.forEach(h => {
-        const normalized = h.toLowerCase().replace(/[\s_-]/g, "");
+        const normalized = h.toLowerCase().replace(/[\s_\-\/]/g, "");
         if (normalized === "itemname" || normalized === "name" || normalized === "title") mapping.name = h;
         else if (normalized === "sku") mapping.sku = h;
         else if (normalized === "hsnsac" || normalized === "hsn" || normalized === "sac") mapping.hsnSacCode = h;
@@ -808,7 +808,7 @@ export default function ItemImportPage() {
                         {/* Section Sub-Header Row */}
                         <TableRow className="bg-slate-50 hover:bg-slate-50 border-y border-slate-200">
                           <TableCell className="py-2.5 pl-4 text-[10px] font-bold text-slate-400 tracking-wider uppercase w-1/2">
-                            Zoho Inventory Field
+                            HAI Accounting Field
                           </TableCell>
                           <TableCell className="py-2.5 text-[10px] font-bold text-slate-400 tracking-wider uppercase w-1/2">
                             Imported File Headers
@@ -825,16 +825,16 @@ export default function ItemImportPage() {
                             <TableCell className="py-3 w-1/2">
                               <div className="relative w-full md:w-[320px] flex items-center">
                                 <Select
-                                  value={fieldMapping[field.key as keyof MappingState] || ""}
+                                  value={fieldMapping[field.key as keyof MappingState] || "none"}
                                   onValueChange={(val) =>
-                                    setFieldMapping((prev) => ({ ...prev, [field.key]: val }))
+                                    setFieldMapping((prev) => ({ ...prev, [field.key]: val === "none" ? "" : val }))
                                   }
                                 >
                                   <SelectTrigger className="w-full bg-white border-slate-300 pr-10 text-slate-700 hover:border-slate-400 transition-colors">
                                     <SelectValue placeholder="Select" />
                                   </SelectTrigger>
                                   <SelectContent className="bg-white max-h-[200px] overflow-y-auto">
-                                    <SelectItem value="">- None -</SelectItem>
+                                    <SelectItem value="none">- None -</SelectItem>
                                     {csvHeaders.map((h) => (
                                       <SelectItem key={h} value={h}>
                                         {h}
