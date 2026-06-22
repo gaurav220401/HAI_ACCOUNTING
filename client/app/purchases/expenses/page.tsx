@@ -1,11 +1,11 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Search, Receipt, Loader2, MoreHorizontal, Trash2, Edit, Copy,
-  X, Printer, BookOpen, Upload, RefreshCw, ChevronDown, FileText, History, MessageCircle,
-} from "lucide-react";
+  X, Printer, BookOpen, Upload, RefreshCw, ChevronDown, FileText, History, MessageCircle,  FileUp} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -1055,6 +1055,11 @@ export default function ExpensesPage() {
                   <Button size="sm" className="gap-1.5" onClick={() => router.push("/purchases/expenses/new")}>
                     <Plus className="h-4 w-4" /> New Expense
                   </Button>
+              <Link href="/batch-import?section=purchases&type=Expenses&back=/purchases/expenses">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
                 </>
               )
             ) : null

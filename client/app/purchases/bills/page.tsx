@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,8 +31,7 @@ import {
   ChevronRight,
   CreditCard,
   PackageCheck,
-  ShieldCheck,
-} from "lucide-react";
+  ShieldCheck,  FileUp} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -2285,6 +2285,11 @@ function BillsPageContent() {
                 >
                   <Plus className="h-3.5 w-3.5" /> New
                 </Button>
+              <Link href="/batch-import?section=purchases&type=Bills&back=/purchases/bills">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button

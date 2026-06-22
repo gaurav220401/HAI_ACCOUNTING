@@ -1,11 +1,11 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Settings2, ChevronDown, TreePine, RefreshCw, MoreHorizontal,
-  Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown,
-} from "lucide-react";
+  Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown,  FileUp} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -695,6 +695,11 @@ export default function ChartOfAccountsPage() {
                 <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
+              <Link href="/batch-import?section=accountant&type=Journal Entries&back=/accountant/chart-of-accounts">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
             </>
           }
         />

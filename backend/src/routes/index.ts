@@ -40,6 +40,7 @@ import packageRoutes from "./package.routes";
 import moveOrderRoutes from "./move-order.routes";
 import putawayRoutes from "./putaway.routes";
 import warehouseRoutes from "./warehouse.routes";
+import ocrRoutes from "./ocr.routes";
 
 const router = Router();
 
@@ -84,5 +85,6 @@ router.use("/packages", packageRoutes);
 router.use("/move-orders", moveOrderRoutes);
 router.use("/putaways", putawayRoutes);
 router.use("/warehouses", warehouseRoutes);
+router.use("/ocr", ocrRoutes);
 
 export default router;

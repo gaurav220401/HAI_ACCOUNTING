@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -16,8 +17,7 @@ import {
   Loader2,
   Lock,
   Zap,
-  Check,
-} from "lucide-react";
+  Check,  FileUp} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -87,7 +87,16 @@ export default function BankingPage() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <PageHeader breadcrumb={<span className="text-sm font-medium">Banking</span>} />
+        <PageHeader
+          breadcrumb={<span className="text-sm font-medium">Banking</span>}
+          actions={
+            <Link href="/batch-import?section=banking&type=Bank Statements&back=/banking">
+              <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                <FileUp className="h-3.5 w-3.5" /> Batch Import
+              </Button>
+            </Link>
+          }
+        />
 
         <div className="flex flex-1 flex-col gap-6 p-6 bg-slate-50/50 dark:bg-slate-950/40">
           

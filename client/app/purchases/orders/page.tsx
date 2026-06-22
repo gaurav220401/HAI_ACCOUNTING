@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -7,8 +8,7 @@ import {
   ShoppingBag, ChevronDown, Pencil, Mail, Printer, CheckCircle,
   Copy, X, Paperclip, MessageSquare, ChevronRight, Sparkles,
   FileText, PackageCheck, Upload, History, ArrowUpDown, Download,
-  Settings, Columns
-} from "lucide-react";
+  Settings, Columns, FileUp} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -1720,6 +1720,11 @@ export default function PurchaseOrdersPage() {
                 <Button size="sm" className="h-8 gap-1 text-sm bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/purchases/orders/new")}>
                   <Plus className="h-3.5 w-3.5" /> New
                 </Button>
+              <Link href="/batch-import?section=purchases&type=Purchase Orders&back=/purchases/orders">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="icon" className="h-8 w-8 border-gray-200">

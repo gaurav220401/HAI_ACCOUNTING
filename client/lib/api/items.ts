@@ -1,4 +1,4 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -256,4 +256,37 @@ export const itemApi = {
 
   clone: (id: string) =>
     apiFetch<{ data: Item }>(`/items/${id}/clone`, { method: "POST" }),
+
+  downloadSampleTemplate: (format?: "csv" | "excel") =>
+    apiFetchBlob(`/items/import/template/sample${format ? `?format=${format}` : ""}`),
+
+  downloadBlankTemplate: (format?: "csv" | "excel") =>
+    apiFetchBlob(`/items/import/template/blank${format ? `?format=${format}` : ""}`),
+
+  previewImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        totalRows: number;
+        readyCount: number;
+        overwriteCount: number;
+        skipCount: number;
+        invalidCount: number;
+        previewItems: any[];
+      };
+    }>("/items/import/preview", {
+      method: "POST",
+      body: formData,
+    }),
+
+  executeImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        successCount: number;
+        failCount: number;
+        errors: Array<{ row: number; error: string }>;
+      };
+    }>("/items/import", {
+      method: "POST",
+      body: formData,
+    }),
 };

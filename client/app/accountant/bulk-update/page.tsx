@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -35,8 +36,7 @@ import {
   BookOpen,
   Clock,
   CheckCircle2,
-  SlidersHorizontal,
-} from "lucide-react";
+  SlidersHorizontal,  FileUp} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -825,6 +825,13 @@ export default function BulkUpdatePage() {
               Accountant <span className="mx-1">/</span>
               <span className="font-medium text-foreground">Bulk Update</span>
             </span>
+          }
+          actions={
+            <Link href="/batch-import?section=accountant&type=Invoices&back=/accountant/bulk-update">
+              <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                <FileUp className="h-3.5 w-3.5" /> Batch Import
+              </Button>
+            </Link>
           }
         />
 

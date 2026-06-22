@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -27,8 +28,7 @@ import {
   RefreshCcw,
   ChevronDown,
   History,
-  Download,
-} from "lucide-react";
+  Download,  FileUp} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { journalApi, type Journal as ApiJournal } from "@/lib/api/journals";
@@ -578,6 +578,11 @@ export default function JournalEntriesPage() {
                 >
                   <Plus className="h-4 w-4" /> New Journal
                 </Button>
+              <Link href="/batch-import?section=accountant&type=Journal Entries&back=/accountant/journal-entries">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
               </>
             : null
           }
