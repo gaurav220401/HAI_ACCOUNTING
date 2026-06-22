@@ -830,7 +830,7 @@ export default function ItemImportPage() {
                                     setFieldMapping((prev) => ({ ...prev, [field.key]: val === "none" ? "" : val }))
                                   }
                                 >
-                                  <SelectTrigger className="w-full bg-white border-slate-300 pr-10 text-slate-700 hover:border-slate-400 transition-colors">
+                                  <SelectTrigger className="w-full bg-white border-slate-300 text-slate-700 hover:border-slate-400 transition-colors [&_[data-slot=select-value]]:pr-10">
                                     <SelectValue placeholder="Select" />
                                   </SelectTrigger>
                                   <SelectContent className="bg-white max-h-[200px] overflow-y-auto">
@@ -846,7 +846,7 @@ export default function ItemImportPage() {
                                   <button
                                     type="button"
                                     onClick={() => setFieldMapping((prev) => ({ ...prev, [field.key]: "" }))}
-                                    className="absolute right-8 text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                    className="absolute right-9 text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors"
                                   >
                                     <X className="h-3.5 w-3.5" />
                                   </button>
