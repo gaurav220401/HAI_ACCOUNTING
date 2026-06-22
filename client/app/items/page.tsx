@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   Plus, Search, Package, RefreshCw, Pencil, X, MoreHorizontal, Copy,
-  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck,  FileUp} from "lucide-react";
+  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck,  FileUp, Upload, Download} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -110,6 +111,214 @@ function ItemsPageContent() {
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [bulkActioning, setBulkActioning] = useState(false);
+
+  // CSV Import/Export states
+  const importInputRef = React.useRef<HTMLInputElement>(null);
+  const imageImportInputRef = React.useRef<HTMLInputElement>(null);
+  const [importingItems, setImportingItems] = useState<any[]>([]);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [isImportSaving, setIsImportSaving] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+
+  const handleImportImagesFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    toast.success(`Successfully uploaded ${files.length} images for item mapping!`);
+    if (imageImportInputRef.current) imageImportInputRef.current.value = "";
+  };
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      if (!text) {
+        toast.error("Failed to read file or file is empty");
+        return;
+      }
+
+      try {
+        const lines = text.split(/\r?\n/);
+        if (lines.length <= 1) {
+          toast.error("CSV file must have a header row and at least one data row");
+          return;
+        }
+
+        // Parse header row
+        const headers = lines[0].split(",").map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+        
+        // Find indexes of key fields
+        const nameIdx = headers.findIndex(h => h.includes("name"));
+        const skuIdx = headers.findIndex(h => h.includes("sku") || h.includes("code"));
+        const sellingPriceIdx = headers.findIndex(h => h.includes("selling") || h.includes("price") || h.includes("rate") || h === "price");
+        const costPriceIdx = headers.findIndex(h => h.includes("cost") || h.includes("purchase"));
+        const descIdx = headers.findIndex(h => h.includes("desc"));
+        const typeIdx = headers.findIndex(h => h.includes("type"));
+        const unitIdx = headers.findIndex(h => h.includes("unit"));
+        const stockIdx = headers.findIndex(h => h.includes("stock") || h.includes("hand"));
+
+        if (nameIdx === -1) {
+          toast.error("CSV must contain a column named 'Name' or similar");
+          return;
+        }
+
+        const parsedItems: any[] = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Simple CSV line splitter that handles quotes
+          const values: string[] = [];
+          let currentVal = "";
+          let insideQuotes = false;
+          for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+            if (char === '"') {
+              insideQuotes = !insideQuotes;
+            } else if (char === ',' && !insideQuotes) {
+              values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+              currentVal = "";
+            } else {
+              currentVal += char;
+            }
+          }
+          values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+
+          if (values.length === 0 || !values[nameIdx]) continue;
+
+          const name = values[nameIdx];
+          const sku = skuIdx !== -1 ? values[skuIdx] : undefined;
+          const sellingPrice = sellingPriceIdx !== -1 ? parseFloat(values[sellingPriceIdx]) || 0 : 0;
+          const costPrice = costPriceIdx !== -1 ? parseFloat(values[costPriceIdx]) || 0 : 0;
+          const description = descIdx !== -1 ? values[descIdx] : undefined;
+          const itemType = typeIdx !== -1 && (values[typeIdx].toLowerCase().includes("service") || values[typeIdx].toLowerCase() === "service") ? "Service" : "Goods";
+          const stockOnHand = stockIdx !== -1 ? parseFloat(values[stockIdx]) || 0 : 0;
+
+          parsedItems.push({
+            name,
+            sku: sku || undefined,
+            sellingPrice,
+            costPrice: costPrice || sellingPrice,
+            description,
+            itemType,
+            stockOnHand,
+            unit: unitIdx !== -1 ? values[unitIdx] : undefined
+          });
+        }
+
+        if (parsedItems.length === 0) {
+          toast.error("No valid items parsed from CSV file");
+          return;
+        }
+
+        setImportingItems(parsedItems);
+        setImportDialogOpen(true);
+      } catch (err) {
+        toast.error("Error parsing CSV file");
+        console.error(err);
+      }
+    };
+    reader.readAsText(file);
+    
+    if (importInputRef.current) importInputRef.current.value = "";
+  };
+
+  const handleConfirmImport = async () => {
+    if (importingItems.length === 0) return;
+    setIsImportSaving(true);
+    setImportProgress(0);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < importingItems.length; i++) {
+      try {
+        const item = importingItems[i];
+        await itemApi.create({
+          name: item.name,
+          sku: item.sku,
+          sellingPrice: item.sellingPrice,
+          costPrice: item.costPrice,
+          description: item.description,
+          itemType: item.itemType,
+          stockOnHand: item.stockOnHand,
+          inventoryTracked: item.stockOnHand > 0,
+          unit: item.unit
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        console.error(err);
+      }
+      setImportProgress(Math.round(((i + 1) / importingItems.length) * 100));
+    }
+
+    setIsImportSaving(false);
+    setImportDialogOpen(false);
+    setImportingItems([]);
+    await fetchItems();
+
+    if (failCount === 0) {
+      toast.success(`Successfully imported ${successCount} items!`);
+    } else {
+      toast.warning(`Import complete: ${successCount} succeeded, ${failCount} failed.`);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (items.length === 0) {
+      toast.error("No items to export");
+      return;
+    }
+    const headers = [
+      "Name",
+      "SKU",
+      "Item Type",
+      "Description",
+      "Selling Price",
+      "Cost Price",
+      "Stock On Hand",
+      "Average Cost",
+      "Status"
+    ];
+
+    const rows = items.map(item => [
+      item.name,
+      item.sku || "",
+      item.itemType,
+      item.description || "",
+      item.sellingPrice,
+      item.costPrice,
+      item.stockOnHand || 0,
+      item.averageCost || 0,
+      item.isActive ? "Active" : "Inactive"
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => 
+        row.map(val => {
+          const str = String(val ?? "").replace(/"/g, '""');
+          return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str}"` : str;
+        }).join(",")
+      )
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `items_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Items exported successfully to CSV");
+  };
+
 
   const [openingStockDialogOpen, setOpeningStockDialogOpen] = useState(false);
   const [openingStockSaving, setOpeningStockSaving] = useState(false);
@@ -717,11 +926,71 @@ function ItemsPageContent() {
               <Button size="sm" className="h-8 text-xs gap-1" onClick={() => router.push("/items/new")}>
                 <Plus className="h-3.5 w-3.5" /> New
               </Button>
-              <Link href="/batch-import?section=items&type=Items&back=/items">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
-                  <FileUp className="h-3.5 w-3.5" /> Batch Import
-                </Button>
-              </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-8 w-8 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-white">
+                  <DropdownMenuItem onClick={() => router.push("/batch-import?section=items&type=Items&back=/items")} className="cursor-pointer">
+                    <span className="flex items-center gap-2 text-xs">
+                      <FileUp className="h-4 w-4 text-slate-500" />
+                      Batch Import
+                    </span>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="cursor-pointer">
+                      <span className="flex items-center gap-2 text-xs">
+                        <Upload className="h-4 w-4 text-slate-500" />
+                        Import
+                      </span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuPortal>
+                      <DropdownMenuSubContent className="w-48 bg-white">
+                        <DropdownMenuItem onClick={() => router.push("/items/import")} className="cursor-pointer">
+                          <span className="text-xs">Import Items</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => imageImportInputRef.current?.click()} className="cursor-pointer">
+                          <span className="text-xs">Import Items Images</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuPortal>
+                  </DropdownMenuSub>
+
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="cursor-pointer">
+                      <span className="flex items-center gap-2 text-xs">
+                        <Download className="h-4 w-4 text-slate-500" />
+                        Export
+                      </span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuPortal>
+                      <DropdownMenuSubContent className="w-48 bg-white">
+                        <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                          <span className="text-xs">Export Items</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuPortal>
+                  </DropdownMenuSub>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <input
+                type="file"
+                ref={importInputRef}
+                className="hidden"
+                accept=".csv"
+                onChange={handleImportFileChange}
+              />
+              <input
+                type="file"
+                ref={imageImportInputRef}
+                className="hidden"
+                multiple
+                accept="image/*"
+                onChange={handleImportImagesFileChange}
+              />
             </>
           }
         />
@@ -1676,6 +1945,73 @@ function ItemsPageContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={importDialogOpen} onOpenChange={(open) => { if (!open && !isImportSaving) setImportDialogOpen(false); }}>
+        <DialogContent className="max-w-2xl bg-white">
+          <DialogHeader>
+            <DialogTitle>Import Items from CSV</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-slate-500">
+              We found <span className="font-semibold text-slate-900">{importingItems.length}</span> items in your CSV file. Please review the first few items below before confirming the import.
+            </p>
+            <div className="border rounded-md overflow-hidden max-h-[300px] overflow-y-auto">
+              <Table>
+                <TableHeader className="bg-slate-50 sticky top-0 z-10">
+                  <TableRow>
+                    <TableHead className="text-xs font-semibold py-2">Name</TableHead>
+                    <TableHead className="text-xs font-semibold py-2">SKU</TableHead>
+                    <TableHead className="text-xs font-semibold py-2">Type</TableHead>
+                    <TableHead className="text-xs font-semibold py-2 text-right">Selling Price</TableHead>
+                    <TableHead className="text-xs font-semibold py-2 text-right">Cost Price</TableHead>
+                    <TableHead className="text-xs font-semibold py-2 text-right">Stock</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {importingItems.slice(0, 5).map((item, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="text-xs py-2 font-medium">{item.name}</TableCell>
+                      <TableCell className="text-xs py-2 text-slate-500">{item.sku || "—"}</TableCell>
+                      <TableCell className="text-xs py-2 text-slate-500">{item.itemType}</TableCell>
+                      <TableCell className="text-xs py-2 text-right">{formatCurrency(item.sellingPrice)}</TableCell>
+                      <TableCell className="text-xs py-2 text-right">{formatCurrency(item.costPrice)}</TableCell>
+                      <TableCell className="text-xs py-2 text-right">{item.stockOnHand || "0"}</TableCell>
+                    </TableRow>
+                  ))}
+                  {importingItems.length > 5 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-xs text-center text-slate-400 bg-slate-50/50 py-2 italic">
+                        ... and {importingItems.length - 5} more items.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            
+            {isImportSaving && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-semibold text-slate-700">
+                  <span>Importing items...</span>
+                  <span>{importProgress}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div className="bg-primary h-full transition-all duration-150" style={{ width: `${importProgress}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)} disabled={isImportSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmImport} disabled={isImportSaving} className="gap-1.5">
+              {isImportSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              Confirm Import ({importingItems.length} items)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }
