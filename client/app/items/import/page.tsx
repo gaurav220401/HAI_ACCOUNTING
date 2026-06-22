@@ -27,6 +27,7 @@ import { itemApi } from "@/lib/api/items";
 import { accountApi } from "@/lib/api/accounts";
 import { contactApi } from "@/lib/api/contacts";
 import { settingsApi } from "@/lib/api/settings";
+import * as XLSX from "xlsx";
 
 interface ParsedRow {
   [key: string]: string;
@@ -296,10 +297,11 @@ export default function ItemImportPage() {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.name.endsWith(".csv")) {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (ext === "csv" || ext === "xls" || ext === "xlsx") {
         setSelectedFile(file);
       } else {
-        toast.error("Please drop a valid CSV file");
+        toast.error("Please drop a valid CSV or Excel file");
       }
     }
   };
@@ -310,94 +312,84 @@ export default function ItemImportPage() {
     }
   };
 
-  const handleDownloadSample = async () => {
+  const handleDownloadSample = async (format: "csv" | "excel") => {
     try {
-      const blob = await itemApi.downloadSampleTemplate();
+      const blob = await itemApi.downloadSampleTemplate(format);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const filename = format === "excel" ? "sample_items.xlsx" : "sample_items.csv";
       link.setAttribute("href", url);
-      link.setAttribute("download", "sample_items.csv");
+      link.setAttribute("download", filename);
       link.style.visibility = "hidden";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("Sample CSV file downloaded successfully");
+      toast.success(`Sample template (${format.toUpperCase()}) downloaded successfully`);
     } catch (err) {
       console.error(err);
       toast.error("Failed to download sample file");
     }
   };
 
-  const handleDownloadBlank = async () => {
+  const handleDownloadBlank = async (format: "csv" | "excel") => {
     try {
-      const blob = await itemApi.downloadBlankTemplate();
+      const blob = await itemApi.downloadBlankTemplate(format);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const filename = format === "excel" ? "blank_items.xlsx" : "blank_items.csv";
       link.setAttribute("href", url);
-      link.setAttribute("download", "blank_items.csv");
+      link.setAttribute("download", filename);
       link.style.visibility = "hidden";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("Blank template downloaded successfully");
+      toast.success(`Blank template (${format.toUpperCase()}) downloaded successfully`);
     } catch (err) {
       console.error(err);
       toast.error("Failed to download blank template");
     }
   };
 
-  const parseCSV = async (file: File): Promise<{ headers: string[]; rows: ParsedRow[] }> => {
+  const parseFile = async (file: File): Promise<{ headers: string[]; rows: ParsedRow[] }> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (event) => {
-        const text = event.target?.result as string;
-        if (!text) {
-          reject(new Error("Empty file"));
-          return;
-        }
-
-        const lines = text.split(/\r?\n/);
-        if (lines.length === 0) {
-          reject(new Error("No data in file"));
-          return;
-        }
-
-        // Parse header row
-        const headers = lines[0].split(",").map(h => h.trim().replace(/^["']|["']$/g, ''));
-        const rows: ParsedRow[] = [];
-
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-
-          // Split line values respecting quotes
-          const values: string[] = [];
-          let currentVal = "";
-          let insideQuotes = false;
-          for (let j = 0; j < line.length; j++) {
-            const char = line[j];
-            if (char === '"') {
-              insideQuotes = !insideQuotes;
-            } else if (char === ',' && !insideQuotes) {
-              values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
-              currentVal = "";
-            } else {
-              currentVal += char;
-            }
+        try {
+          const data = event.target?.result;
+          if (!data) {
+            reject(new Error("Empty file"));
+            return;
           }
-          values.push(currentVal.trim().replace(/^["']|["']$/g, ''));
+          const workbook = XLSX.read(data, { type: "array" });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          if (!worksheet) {
+            reject(new Error("Could not read sheet"));
+            return;
+          }
 
-          const rowData: ParsedRow = {};
-          headers.forEach((header, index) => {
-            rowData[header] = values[index] || "";
+          // Get raw rows
+          const rows = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: "" });
+          
+          // Get headers in correct order from sheet header row (row 1)
+          const sheetHeaders = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1 })[0] || [];
+          const cleanHeaders = sheetHeaders.map(h => String(h || "").trim()).filter(Boolean);
+
+          const parsedRows: ParsedRow[] = rows.map((row) => {
+            const parsedRow: ParsedRow = {};
+            cleanHeaders.forEach((header) => {
+              parsedRow[header] = String(row[header] ?? "").trim();
+            });
+            return parsedRow;
           });
-          rows.push(rowData);
-        }
 
-        resolve({ headers, rows });
+          resolve({ headers: cleanHeaders, rows: parsedRows });
+        } catch (err) {
+          reject(err);
+        }
       };
       reader.onerror = () => reject(new Error("Error reading file"));
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     });
   };
 
@@ -408,7 +400,7 @@ export default function ItemImportPage() {
     }
 
     try {
-      const { headers, rows } = await parseCSV(selectedFile);
+      const { headers, rows } = await parseFile(selectedFile);
       setCsvHeaders(headers);
       setCsvRows(rows);
 
@@ -666,7 +658,7 @@ export default function ItemImportPage() {
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
-                accept=".csv"
+                accept=".csv,.xls,.xlsx"
                 onChange={handleFileChange}
               />
               <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
@@ -677,7 +669,7 @@ export default function ItemImportPage() {
                   {selectedFile ? selectedFile.name : "Drag and drop file to import"}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Maximum File Size: 25 MB • File Format: CSV
+                  Maximum File Size: 25 MB • File Format: CSV or Excel
                 </p>
               </div>
               <Button type="button" variant="outline" size="sm" className="bg-white border-slate-300 text-slate-700 hover:text-slate-900">
@@ -687,15 +679,23 @@ export default function ItemImportPage() {
 
             {/* Sample Link */}
             <p className="text-xs text-slate-500">
-              Download a{" "}
-              <button onClick={handleDownloadSample} className="text-blue-600 hover:underline font-semibold">
-                sample file
+              Download a sample file ({" "}
+              <button onClick={() => handleDownloadSample("csv")} className="text-blue-600 hover:underline font-semibold">
+                CSV
               </button>{" "}
-              or a{" "}
-              <button onClick={handleDownloadBlank} className="text-blue-600 hover:underline font-semibold">
-                blank template
+              •{" "}
+              <button onClick={() => handleDownloadSample("excel")} className="text-blue-600 hover:underline font-semibold">
+                Excel
               </button>{" "}
-              and compare it to your import file to ensure you have the file perfect for the import.
+              ) or a blank template ({" "}
+              <button onClick={() => handleDownloadBlank("csv")} className="text-blue-600 hover:underline font-semibold">
+                CSV
+              </button>{" "}
+              •{" "}
+              <button onClick={() => handleDownloadBlank("excel")} className="text-blue-600 hover:underline font-semibold">
+                Excel
+              </button>{" "}
+              ) and compare it to your import file to ensure you have the file perfect for the import.
             </p>
 
             {/* Form Fields */}

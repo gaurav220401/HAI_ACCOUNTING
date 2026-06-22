@@ -257,11 +257,11 @@ export const itemApi = {
   clone: (id: string) =>
     apiFetch<{ data: Item }>(`/items/${id}/clone`, { method: "POST" }),
 
-  downloadSampleTemplate: () =>
-    apiFetchBlob("/items/import/template/sample"),
+  downloadSampleTemplate: (format?: "csv" | "excel") =>
+    apiFetchBlob(`/items/import/template/sample${format ? `?format=${format}` : ""}`),
 
-  downloadBlankTemplate: () =>
-    apiFetchBlob("/items/import/template/blank"),
+  downloadBlankTemplate: (format?: "csv" | "excel") =>
+    apiFetchBlob(`/items/import/template/blank${format ? `?format=${format}` : ""}`),
 
   previewImport: (formData: FormData) =>
     apiFetch<{

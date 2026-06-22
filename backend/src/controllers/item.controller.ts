@@ -1340,13 +1340,33 @@ async function mapRowToItem(
 }
 
 export const downloadSampleTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
   const filePath = getTemplatePath("sample_items.csv");
-  res.download(filePath, "sample_items.csv");
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", "attachment; filename=sample_items.xlsx");
+    res.send(buffer);
+  } else {
+    res.download(filePath, "sample_items.csv");
+  }
 });
 
 export const downloadBlankTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
   const filePath = getTemplatePath("blank_items.csv");
-  res.download(filePath, "blank_items.csv");
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", "attachment; filename=blank_items.xlsx");
+    res.send(buffer);
+  } else {
+    res.download(filePath, "blank_items.csv");
+  }
 });
 
 export const previewImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
