@@ -53,9 +53,11 @@ interface MappingState {
   itemType: string;
   purchaseAccount: string;
   inventoryAccount: string;
+  valuationMethod: string;
   reorderPoint: string;
   preferredVendor: string;
   stockOnHand: string;
+  openingStockValue: string;
   averageCost: string;
   packageWeight: string;
   packageLength: string;
@@ -72,6 +74,11 @@ interface MappingState {
   taxability: string;
   exemptionReason: string;
   warehouseName: string;
+  isReceivableService: string;
+  isComboProduct: string;
+  taxName: string;
+  taxType: string;
+  taxPercentage: string;
 }
 
 const CHARACTER_ENCODINGS = [
@@ -85,47 +92,79 @@ const CHARACTER_ENCODINGS = [
   { value: "Shift_JIS", label: "Shift_JIS (Japanese)" },
 ];
 
-const MAPPABLE_FIELDS = [
-  { key: "name", label: "Item Name", required: true },
-  { key: "sku", label: "SKU" },
-  { key: "hsnSacCode", label: "HSN/SAC" },
-  { key: "sellingDescription", label: "Sales Desc" },
-  { key: "sellingPrice", label: "Selling Price" },
-  { key: "returnableItem", label: "Is Returnable" },
-  { key: "brand", label: "Brand" },
-  { key: "manufacturer", label: "Manufacturer" },
-  { key: "upc", label: "UPC" },
-  { key: "ean", label: "EAN" },
-  { key: "isbn", label: "ISBN" },
-  { key: "partNumber", label: "Part Number" },
-  { key: "productType", label: "Product Type" },
-  { key: "salesAccount", label: "Sales Account" },
-  { key: "unit", label: "Unit" },
-  { key: "purchaseDescription", label: "Purchase Desc" },
-  { key: "costPrice", label: "Purchase Rate" },
-  { key: "itemType", label: "Item Type" },
-  { key: "purchaseAccount", label: "Purchase Account" },
-  { key: "inventoryAccount", label: "Inventory Account" },
-  { key: "reorderPoint", label: "Reorder Level" },
-  { key: "preferredVendor", label: "Preferred Vendor" },
-  { key: "stockOnHand", label: "Opening Stock" },
-  { key: "averageCost", label: "Opening Stock Rate" },
-  { key: "packageWeight", label: "Package Weight" },
-  { key: "packageLength", label: "Package Length" },
-  { key: "packageWidth", label: "Package Width" },
-  { key: "packageHeight", label: "Package Height" },
-  { key: "weightUnit", label: "Weight unit" },
-  { key: "dimensionUnit", label: "Dimension unit" },
-  { key: "interStateTax", label: "Inter State Tax" },
-  { key: "interStateTaxType", label: "Inter State Tax Type" },
-  { key: "interStateTaxPercentage", label: "Inter State Tax Percentage" },
-  { key: "intraStateTax", label: "Intra State Tax" },
-  { key: "intraStateTaxType", label: "Intra State Tax Type" },
-  { key: "intraStateTaxPercentage", label: "Intra State Tax Percentage" },
-  { key: "taxability", label: "Taxability" },
-  { key: "exemptionReason", label: "Exemption Reason" },
-  { key: "warehouseName", label: "Warehouse Name" },
+const FIELD_GROUPS = [
+  {
+    title: "Item Details",
+    fields: [
+      { key: "name", label: "Item Name", required: true },
+      { key: "sku", label: "SKU" },
+      { key: "unit", label: "Unit" },
+      { key: "brand", label: "Brand" },
+      { key: "manufacturer", label: "Manufacturer" },
+      { key: "upc", label: "UPC" },
+      { key: "ean", label: "EAN" },
+      { key: "isbn", label: "ISBN" },
+      { key: "partNumber", label: "Part Number" },
+      { key: "productType", label: "Product Type" },
+      { key: "returnableItem", label: "Is Returnable" },
+    ]
+  },
+  {
+    title: "Sales Information",
+    fields: [
+      { key: "sellingDescription", label: "Sales Desc" },
+      { key: "sellingPrice", label: "Selling Price" },
+      { key: "salesAccount", label: "Sales Account" },
+    ]
+  },
+  {
+    title: "Purchase & Inventory Information",
+    fields: [
+      { key: "purchaseDescription", label: "Purchase Description" },
+      { key: "costPrice", label: "Purchase Price" },
+      { key: "purchaseAccount", label: "Purchase Account" },
+      { key: "inventoryAccount", label: "Inventory Account" },
+      { key: "valuationMethod", label: "Inventory Valuation Method" },
+      { key: "reorderPoint", label: "Reorder Level" },
+      { key: "preferredVendor", label: "Preferred Vendor" },
+      { key: "stockOnHand", label: "Opening Stock" },
+      { key: "openingStockValue", label: "Opening Stock Value" },
+      { key: "averageCost", label: "Opening Stock Rate" },
+      { key: "isReceivableService", label: "Is Receivable Service" },
+      { key: "isComboProduct", label: "Is Combo Product" },
+    ]
+  },
+  {
+    title: "Dimensions",
+    fields: [
+      { key: "packageWeight", label: "Package Weight" },
+      { key: "packageLength", label: "Package Length" },
+      { key: "packageWidth", label: "Package Width" },
+      { key: "packageHeight", label: "Package Height" },
+      { key: "weightUnit", label: "Weight unit" },
+      { key: "dimensionUnit", label: "Dimension unit" },
+    ]
+  },
+  {
+    title: "Tax Details",
+    fields: [
+      { key: "taxName", label: "Tax Name" },
+      { key: "taxType", label: "Tax Type" },
+      { key: "taxPercentage", label: "Tax Percentage" },
+      { key: "interStateTax", label: "Inter State Tax" },
+      { key: "interStateTaxType", label: "Inter State Tax Type" },
+      { key: "interStateTaxPercentage", label: "Inter State Tax Percentage" },
+      { key: "intraStateTax", label: "Intra State Tax" },
+      { key: "intraStateTaxType", label: "Intra State Tax Type" },
+      { key: "intraStateTaxPercentage", label: "Intra State Tax Percentage" },
+      { key: "taxability", label: "Taxability" },
+      { key: "exemptionReason", label: "Exemption Reason" },
+      { key: "warehouseName", label: "Warehouse Name" },
+    ]
+  }
 ];
+
+const MAPPABLE_FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
 export default function ItemImportPage() {
   const router = useRouter();
@@ -142,6 +181,7 @@ export default function ItemImportPage() {
   // Step 2 States (Headers & Mappings)
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvRows, setCsvRows] = useState<ParsedRow[]>([]);
+  const [saveMapping, setSaveMapping] = useState(true);
   const [fieldMapping, setFieldMapping] = useState<MappingState>({
     name: "",
     sku: "",
@@ -163,9 +203,11 @@ export default function ItemImportPage() {
     itemType: "",
     purchaseAccount: "",
     inventoryAccount: "",
+    valuationMethod: "",
     reorderPoint: "",
     preferredVendor: "",
     stockOnHand: "",
+    openingStockValue: "",
     averageCost: "",
     packageWeight: "",
     packageLength: "",
@@ -182,6 +224,11 @@ export default function ItemImportPage() {
     taxability: "",
     exemptionReason: "",
     warehouseName: "",
+    isReceivableService: "",
+    isComboProduct: "",
+    taxName: "",
+    taxType: "",
+    taxPercentage: "",
   });
 
   // Lookup data states
@@ -194,6 +241,9 @@ export default function ItemImportPage() {
   const [mappedItems, setMappedItems] = useState<any[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [showReadyDetails, setShowReadyDetails] = useState(true);
+  const [showSkippedDetails, setShowSkippedDetails] = useState(true);
+  const [showUnmappedDetails, setShowUnmappedDetails] = useState(true);
 
   // File drag & drop handlers
   const [isDragActive, setIsDragActive] = useState(false);
@@ -218,6 +268,15 @@ export default function ItemImportPage() {
       }
     }
     loadLookups();
+
+    try {
+      const saved = localStorage.getItem("hai_item_import_mapping");
+      if (saved) {
+        setFieldMapping(JSON.parse(saved));
+      }
+    } catch (err) {
+      console.error("Failed to load saved mapping:", err);
+    }
   }, []);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -251,149 +310,40 @@ export default function ItemImportPage() {
     }
   };
 
-  const handleDownloadSample = () => {
-    const headers = [
-      "Item Name",
-      "SKU",
-      "HSN/SAC",
-      "Sales Desc",
-      "Selling Price",
-      "Is Returnable",
-      "Brand",
-      "Manufacturer",
-      "UPC",
-      "EAN",
-      "ISBN",
-      "Part Number",
-      "Product Type",
-      "Sales Account",
-      "Unit",
-      "Purchase Desc",
-      "Purchase Rate",
-      "Item Type",
-      "Purchase Account",
-      "Inventory Account",
-      "Reorder Level",
-      "Preferred Vendor",
-      "Opening Stock",
-      "Opening Stock Rate",
-      "Package Weight",
-      "Package Length",
-      "Package Width",
-      "Package Height",
-      "Weight unit",
-      "Dimension unit",
-      "Inter State Tax",
-      "Inter State Tax Type",
-      "Inter State Tax Percentage",
-      "Intra State Tax",
-      "Intra State Tax Type",
-      "Intra State Tax Percentage",
-      "Taxability",
-      "Exemption Reason",
-      "Warehouse Name"
-    ];
+  const handleDownloadSample = async () => {
+    try {
+      const blob = await itemApi.downloadSampleTemplate();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "sample_items.csv");
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Sample CSV file downloaded successfully");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to download sample file");
+    }
+  };
 
-    const rows = [
-      [
-        "Premium Desk Organizer",
-        "PDO-100",
-        "83040000",
-        "Elegant wood and metal desk organizer",
-        "1500",
-        "true",
-        "Haldara Woodworks",
-        "Haldara Industries Ltd",
-        "123456789012",
-        "9781234567897",
-        "ISBN-123-456",
-        "PART-PDO100",
-        "Inventory",
-        "Sales",
-        "pcs",
-        "Desk organizer raw materials and manufacturing cost",
-        "800",
-        "Goods",
-        "Cost of Goods Sold",
-        "Inventory Asset (Stock)",
-        "10",
-        "Apex Materials Inc",
-        "100",
-        "800",
-        "1.2",
-        "30",
-        "20",
-        "15",
-        "kg",
-        "cm",
-        "GST18",
-        "GST",
-        "18",
-        "GST18",
-        "GST",
-        "18",
-        "Taxable",
-        "",
-        "Main Warehouse"
-      ],
-      [
-        "Professional Setup Service",
-        "SRV-SETUP",
-        "998313",
-        "On-site installation and workspace setup",
-        "2500",
-        "false",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "Service",
-        "General Income",
-        "hrs",
-        "Service consultant hourly cost",
-        "1200",
-        "Service",
-        "Consulting Expense",
-        "",
-        "0",
-        "",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "kg",
-        "cm",
-        "GST18",
-        "GST",
-        "18",
-        "GST18",
-        "GST",
-        "18",
-        "Taxable",
-        "",
-        ""
-      ]
-    ];
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.map(val => `"${val}"`).join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "items_import_sample.csv");
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Sample CSV file downloaded successfully");
+  const handleDownloadBlank = async () => {
+    try {
+      const blob = await itemApi.downloadBlankTemplate();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "blank_items.csv");
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Blank template downloaded successfully");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to download blank template");
+    }
   };
 
   const parseCSV = async (file: File): Promise<{ headers: string[]; rows: ParsedRow[] }> => {
@@ -484,9 +434,11 @@ export default function ItemImportPage() {
         itemType: "",
         purchaseAccount: "",
         inventoryAccount: "",
+        valuationMethod: "",
         reorderPoint: "",
         preferredVendor: "",
         stockOnHand: "",
+        openingStockValue: "",
         averageCost: "",
         packageWeight: "",
         packageLength: "",
@@ -503,6 +455,11 @@ export default function ItemImportPage() {
         taxability: "",
         exemptionReason: "",
         warehouseName: "",
+        isReceivableService: "",
+        isComboProduct: "",
+        taxName: "",
+        taxType: "",
+        taxPercentage: "",
       };
 
       headers.forEach(h => {
@@ -527,9 +484,11 @@ export default function ItemImportPage() {
         else if (normalized === "itemtype") mapping.itemType = h;
         else if (normalized === "purchaseaccount") mapping.purchaseAccount = h;
         else if (normalized === "inventoryaccount") mapping.inventoryAccount = h;
+        else if (normalized === "inventoryvaluationmethod" || normalized === "valuationmethod") mapping.valuationMethod = h;
         else if (normalized === "reorderlevel" || normalized === "reorderpoint") mapping.reorderPoint = h;
         else if (normalized === "preferredvendor" || normalized === "vendor") mapping.preferredVendor = h;
         else if (normalized === "openingstock" || normalized === "stockonhand" || normalized === "qty") mapping.stockOnHand = h;
+        else if (normalized === "openingstockvalue" || normalized === "stockvalue") mapping.openingStockValue = h;
         else if (normalized === "openingstockrate" || normalized === "averagecost") mapping.averageCost = h;
         else if (normalized === "packageweight") mapping.packageWeight = h;
         else if (normalized === "packagelength") mapping.packageLength = h;
@@ -546,6 +505,11 @@ export default function ItemImportPage() {
         else if (normalized === "taxability") mapping.taxability = h;
         else if (normalized === "exemptionreason") mapping.exemptionReason = h;
         else if (normalized === "warehousename" || normalized === "warehouse") mapping.warehouseName = h;
+        else if (normalized === "isreceivableservice" || normalized === "receivableservice") mapping.isReceivableService = h;
+        else if (normalized === "iscomboproduct" || normalized === "comboproduct") mapping.isComboProduct = h;
+        else if (normalized === "taxname") mapping.taxName = h;
+        else if (normalized === "taxtype") mapping.taxType = h;
+        else if (normalized === "taxpercentage" || normalized === "taxrate") mapping.taxPercentage = h;
       });
 
       setFieldMapping(mapping);
@@ -555,227 +519,87 @@ export default function ItemImportPage() {
     }
   };
 
-  const handleNextFromStep2 = () => {
+  const handleNextFromStep2 = async () => {
     if (!fieldMapping.name) {
       toast.error("Item Name field must be mapped");
       return;
     }
-
-    const items = csvRows.map(row => {
-      const name = row[fieldMapping.name];
-      if (!name) {
-        return { isValid: false, name: "", sellingPrice: 0, costPrice: 0, stockOnHand: 0, itemType: "Goods" };
-      }
-
-      const sku = fieldMapping.sku ? row[fieldMapping.sku] : "";
-      const hsnSacCode = fieldMapping.hsnSacCode ? row[fieldMapping.hsnSacCode] : "";
-      const sellingDescription = fieldMapping.sellingDescription ? row[fieldMapping.sellingDescription] : "";
-      const sellingPrice = fieldMapping.sellingPrice ? parseFloat(row[fieldMapping.sellingPrice]) || 0 : 0;
-      
-      let returnableItem = true;
-      if (fieldMapping.returnableItem && row[fieldMapping.returnableItem]) {
-        const val = row[fieldMapping.returnableItem].toLowerCase();
-        if (val === "false" || val === "no" || val === "0") {
-          returnableItem = false;
-        }
-      }
-
-      const brand = fieldMapping.brand ? row[fieldMapping.brand] : "";
-      const manufacturer = fieldMapping.manufacturer ? row[fieldMapping.manufacturer] : "";
-      
-      const upc = fieldMapping.upc ? row[fieldMapping.upc] : "";
-      const ean = fieldMapping.ean ? row[fieldMapping.ean] : "";
-      const isbn = fieldMapping.isbn ? row[fieldMapping.isbn] : "";
-      const partNumber = fieldMapping.partNumber ? row[fieldMapping.partNumber] : "";
-      const identifiers = [upc, ean, isbn, partNumber].filter(Boolean);
-
-      const unit = fieldMapping.unit ? row[fieldMapping.unit] : "";
-
-      let salesAccountId = undefined;
-      if (fieldMapping.salesAccount && row[fieldMapping.salesAccount]) {
-        const accName = row[fieldMapping.salesAccount].trim().toLowerCase();
-        const matched = accounts.find(a => a.name.toLowerCase() === accName);
-        if (matched) salesAccountId = matched._id;
-      }
-
-      let purchaseAccountId = undefined;
-      if (fieldMapping.purchaseAccount && row[fieldMapping.purchaseAccount]) {
-        const accName = row[fieldMapping.purchaseAccount].trim().toLowerCase();
-        const matched = accounts.find(a => a.name.toLowerCase() === accName);
-        if (matched) purchaseAccountId = matched._id;
-      }
-
-      let inventoryAccountId = undefined;
-      if (fieldMapping.inventoryAccount && row[fieldMapping.inventoryAccount]) {
-        const accName = row[fieldMapping.inventoryAccount].trim().toLowerCase();
-        const matched = accounts.find(a => a.name.toLowerCase() === accName);
-        if (matched) inventoryAccountId = matched._id;
-      }
-
-      let warehouseId = undefined;
-      if (fieldMapping.warehouseName && row[fieldMapping.warehouseName]) {
-        const whName = row[fieldMapping.warehouseName].trim().toLowerCase();
-        const matched = warehouses.find(w => w.name.toLowerCase() === whName);
-        if (matched) warehouseId = matched._id;
-      }
-
-      let preferredVendorId = undefined;
-      if (fieldMapping.preferredVendor && row[fieldMapping.preferredVendor]) {
-        const vendorName = row[fieldMapping.preferredVendor].trim().toLowerCase();
-        const matched = contacts.find(c => c.displayName.toLowerCase() === vendorName || c.companyName?.toLowerCase() === vendorName);
-        if (matched) preferredVendorId = matched._id;
-      }
-
-      let interStateTaxId = undefined;
-      if (fieldMapping.interStateTax && row[fieldMapping.interStateTax]) {
-        const taxName = row[fieldMapping.interStateTax].trim().toLowerCase();
-        const matched = taxes.find(t => t.name.toLowerCase() === taxName || String(t.rate) === taxName);
-        if (matched) interStateTaxId = matched._id;
-      }
-
-      let intraStateTaxId = undefined;
-      if (fieldMapping.intraStateTax && row[fieldMapping.intraStateTax]) {
-        const taxName = row[fieldMapping.intraStateTax].trim().toLowerCase();
-        const matched = taxes.find(t => t.name.toLowerCase() === taxName || String(t.rate) === taxName);
-        if (matched) intraStateTaxId = matched._id;
-      }
-
-      const purchaseDescription = fieldMapping.purchaseDescription ? row[fieldMapping.purchaseDescription] : "";
-      const costPrice = fieldMapping.costPrice ? parseFloat(row[fieldMapping.costPrice]) || 0 : 0;
-      
-      const itemType = fieldMapping.itemType && row[fieldMapping.itemType]?.toLowerCase().includes("service") ? "Service" : "Goods";
-      const stockOnHand = fieldMapping.stockOnHand ? parseFloat(row[fieldMapping.stockOnHand]) || 0 : 0;
-      const averageCost = fieldMapping.averageCost ? parseFloat(row[fieldMapping.averageCost]) || 0 : 0;
-      const reorderPoint = fieldMapping.reorderPoint ? parseFloat(row[fieldMapping.reorderPoint]) || 0 : 0;
-
-      const packageWeight = fieldMapping.packageWeight ? parseFloat(row[fieldMapping.packageWeight]) || 0 : 0;
-      const packageLength = fieldMapping.packageLength ? parseFloat(row[fieldMapping.packageLength]) || 0 : 0;
-      const packageWidth = fieldMapping.packageWidth ? parseFloat(row[fieldMapping.packageWidth]) || 0 : 0;
-      const packageHeight = fieldMapping.packageHeight ? parseFloat(row[fieldMapping.packageHeight]) || 0 : 0;
-
-      const weightUnit = (fieldMapping.weightUnit && row[fieldMapping.weightUnit]) ? row[fieldMapping.weightUnit].toLowerCase() : "kg";
-      const dimensionUnit = (fieldMapping.dimensionUnit && row[fieldMapping.dimensionUnit]) ? row[fieldMapping.dimensionUnit].toLowerCase() : "cm";
-
-      const weight = {
-        value: packageWeight,
-        unit: ["kg", "g", "lb", "oz"].includes(weightUnit) ? weightUnit : "kg"
-      };
-
-      const dimensions = {
-        length: packageLength,
-        width: packageWidth,
-        height: packageHeight,
-        unit: ["cm", "m", "in", "ft"].includes(dimensionUnit) ? dimensionUnit : "cm"
-      };
-
-      let taxPreference = "Taxable";
-      if (fieldMapping.taxability && row[fieldMapping.taxability]) {
-        const val = row[fieldMapping.taxability].toLowerCase();
-        if (val.includes("non") || val.includes("untaxable")) taxPreference = "NonTaxable";
-        else if (val.includes("exempt")) taxPreference = "Exempt";
-      }
-
-      const exemptionReason = fieldMapping.exemptionReason ? row[fieldMapping.exemptionReason] : "";
-
-      return {
-        name,
-        sku: sku || undefined,
-        hsnSacCode,
-        sellingDescription,
-        sellingPrice,
-        returnableItem,
-        brand,
-        manufacturer,
-        identifiers,
-        unit: unit || undefined,
-        salesAccountId,
-        purchaseDescription,
-        costPrice: costPrice || sellingPrice,
-        itemType,
-        purchaseAccountId,
-        inventoryAccountId,
-        reorderPoint,
-        preferredVendorId,
-        stockOnHand,
-        averageCost: averageCost || costPrice,
-        weight,
-        dimensions,
-        taxPreference,
-        exemptionReason,
-        warehouseId,
-        interStateTaxId,
-        intraStateTaxId,
-        taxId: intraStateTaxId || interStateTaxId || undefined,
-        isValid: true,
-      };
-    });
-
-    setMappedItems(items);
-    setStep(3);
-  };
-
-  const handleConfirmImport = async () => {
-    const validItems = mappedItems.filter(item => item.isValid);
-    if (validItems.length === 0) {
-      toast.error("No valid items to import");
+    if (!selectedFile) {
+      toast.error("No file selected");
       return;
     }
 
     setIsImporting(true);
-    setImportProgress(0);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("mapping", JSON.stringify(fieldMapping));
+      formData.append("duplicateHandling", duplicateHandling);
 
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < validItems.length; i++) {
-      try {
-        const item = validItems[i];
-        await itemApi.create({
-          name: item.name,
-          sku: item.sku,
-          hsnSacCode: item.hsnSacCode,
-          sellingDescription: item.sellingDescription || undefined,
-          sellingPrice: item.sellingPrice,
-          returnableItem: item.returnableItem,
-          brand: item.brand || undefined,
-          manufacturer: item.manufacturer || undefined,
-          identifiers: item.identifiers,
-          unit: item.unit,
-          salesAccountId: item.salesAccountId,
-          purchaseDescription: item.purchaseDescription || undefined,
-          costPrice: item.costPrice,
-          itemType: item.itemType,
-          purchaseAccountId: item.purchaseAccountId,
-          inventoryAccountId: item.inventoryAccountId,
-          reorderPoint: item.reorderPoint,
-          preferredVendorId: item.preferredVendorId,
-          stockOnHand: item.stockOnHand,
-          averageCost: item.averageCost,
-          weight: item.weight,
-          dimensions: item.dimensions,
-          taxPreference: item.taxPreference,
-          exemptionReason: item.exemptionReason || undefined,
-          warehouseId: item.warehouseId,
-          interStateTaxId: item.interStateTaxId,
-          intraStateTaxId: item.intraStateTaxId,
-          taxId: item.taxId,
-          inventoryTracked: item.stockOnHand > 0,
-        });
-        successCount++;
-      } catch (err) {
-        failCount++;
-        console.error(err);
+      const previewRes = await itemApi.previewImport(formData);
+      if (previewRes?.data) {
+        setMappedItems(previewRes.data.previewItems || []);
+        setStep(3);
+      } else {
+        toast.error("Failed to generate preview from server");
       }
-      setImportProgress(Math.round(((i + 1) / validItems.length) * 100));
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to generate preview");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!selectedFile) {
+      toast.error("No file selected");
+      return;
     }
 
-    setIsImporting(false);
-    if (failCount === 0) {
-      toast.success(`Successfully imported ${successCount} items!`);
-      router.push("/items");
-    } else {
-      toast.warning(`Import complete with errors: ${successCount} succeeded, ${failCount} failed.`);
-      router.push("/items");
+    setIsImporting(true);
+    setImportProgress(10);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("mapping", JSON.stringify(fieldMapping));
+      formData.append("duplicateHandling", duplicateHandling);
+
+      setImportProgress(40);
+      const importRes = await itemApi.executeImport(formData);
+      setImportProgress(90);
+
+      if (importRes?.data) {
+        if (saveMapping) {
+          try {
+            localStorage.setItem("hai_item_import_mapping", JSON.stringify(fieldMapping));
+          } catch (err) {
+            console.error("Failed to save mapping:", err);
+          }
+        }
+        const { successCount, failCount, errors } = importRes.data;
+        setImportProgress(100);
+
+        if (failCount === 0) {
+          toast.success(`Successfully imported ${successCount} items!`);
+          router.push("/items");
+        } else {
+          toast.warning(`Import complete: ${successCount} succeeded, ${failCount} failed.`);
+          if (errors && errors.length > 0) {
+            console.error("Import errors:", errors);
+            toast.error(`Row ${errors[0].row}: ${errors[0].error}`);
+          }
+          router.push("/items");
+        }
+      } else {
+        toast.error("Failed to execute import");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Import failed");
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -864,8 +688,12 @@ export default function ItemImportPage() {
             {/* Sample Link */}
             <p className="text-xs text-slate-500">
               Download a{" "}
-              <button onClick={handleDownloadSample} className="text-blue-600 hover:underline">
+              <button onClick={handleDownloadSample} className="text-blue-600 hover:underline font-semibold">
                 sample file
+              </button>{" "}
+              or a{" "}
+              <button onClick={handleDownloadBlank} className="text-blue-600 hover:underline font-semibold">
+                blank template
               </button>{" "}
               and compare it to your import file to ensure you have the file perfect for the import.
             </p>
@@ -966,48 +794,86 @@ export default function ItemImportPage() {
                 <span>Map the columns in your CSV file to the corresponding fields in HAI Accounting.</span>
               </div>
 
-              <div className="border rounded-md overflow-hidden max-h-[500px] overflow-y-auto">
+              <div className="border rounded-md overflow-hidden max-h-[500px] overflow-y-auto bg-white">
                 <Table>
-                  <TableHeader className="bg-slate-50 sticky top-0 z-10">
-                    <TableRow>
-                      <TableHead className="text-xs font-semibold text-slate-700 py-3 pl-4">HAI Accounting Field</TableHead>
-                      <TableHead className="text-xs font-semibold text-slate-700 py-3">Import Header (CSV)</TableHead>
-                    </TableRow>
-                  </TableHeader>
                   <TableBody>
-                    {MAPPABLE_FIELDS.map((field) => (
-                      <TableRow key={field.key}>
-                        <TableCell className="py-3 pl-4">
-                          <Label className="text-sm font-semibold text-slate-800">
-                            {field.label} {field.required && <span className="text-red-500">*</span>}
-                          </Label>
-                        </TableCell>
-                        <TableCell className="py-3">
-                          <Select
-                            value={fieldMapping[field.key as keyof MappingState] || ""}
-                            onValueChange={(val) =>
-                              setFieldMapping((prev) => ({ ...prev, [field.key]: val }))
-                            }
-                          >
-                            <SelectTrigger className="w-full md:w-[320px] bg-white border-slate-300">
-                              <SelectValue placeholder="- Select Header -" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white max-h-[200px] overflow-y-auto">
-                              <SelectItem value="">- None -</SelectItem>
-                              {csvHeaders.map((h) => (
-                                <SelectItem key={h} value={h}>
-                                  {h}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
+                    {FIELD_GROUPS.map((group) => (
+                      <React.Fragment key={group.title}>
+                        {/* Section Title Row */}
+                        <TableRow className="bg-white hover:bg-white border-none">
+                          <TableCell colSpan={2} className="pt-6 pb-2 pl-4">
+                            <h3 className="text-sm font-bold text-slate-800 tracking-tight">{group.title}</h3>
+                          </TableCell>
+                        </TableRow>
+                        {/* Section Sub-Header Row */}
+                        <TableRow className="bg-slate-50 hover:bg-slate-50 border-y border-slate-200">
+                          <TableCell className="py-2.5 pl-4 text-[10px] font-bold text-slate-400 tracking-wider uppercase w-1/2">
+                            Zoho Inventory Field
+                          </TableCell>
+                          <TableCell className="py-2.5 text-[10px] font-bold text-slate-400 tracking-wider uppercase w-1/2">
+                            Imported File Headers
+                          </TableCell>
+                        </TableRow>
+                        {/* Fields Rows */}
+                        {group.fields.map((field) => (
+                          <TableRow key={field.key} className="border-b border-slate-100 hover:bg-slate-50/50">
+                            <TableCell className="py-3 pl-4 w-1/2">
+                              <Label className="text-sm font-medium text-slate-700">
+                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                              </Label>
+                            </TableCell>
+                            <TableCell className="py-3 w-1/2">
+                              <div className="relative w-full md:w-[320px] flex items-center">
+                                <Select
+                                  value={fieldMapping[field.key as keyof MappingState] || ""}
+                                  onValueChange={(val) =>
+                                    setFieldMapping((prev) => ({ ...prev, [field.key]: val }))
+                                  }
+                                >
+                                  <SelectTrigger className="w-full bg-white border-slate-300 pr-10 text-slate-700 hover:border-slate-400 transition-colors">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-white max-h-[200px] overflow-y-auto">
+                                    <SelectItem value="">- None -</SelectItem>
+                                    {csvHeaders.map((h) => (
+                                      <SelectItem key={h} value={h}>
+                                        {h}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {fieldMapping[field.key as keyof MappingState] && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setFieldMapping((prev) => ({ ...prev, [field.key]: "" }))}
+                                    className="absolute right-8 text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </React.Fragment>
                     ))}
                   </TableBody>
                 </Table>
               </div>
             </Card>
+
+            <div className="flex items-center gap-2 px-1">
+              <input
+                type="checkbox"
+                id="saveMappingCheckbox"
+                checked={saveMapping}
+                onChange={(e) => setSaveMapping(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <Label htmlFor="saveMappingCheckbox" className="text-sm text-slate-600 font-medium cursor-pointer">
+                Save these selections for use during future imports.
+              </Label>
+            </div>
 
             {/* Bottom Actions */}
             <div className="flex items-center gap-3 pt-4 border-t">
@@ -1021,80 +887,221 @@ export default function ItemImportPage() {
           </div>
         )}
 
-        {step === 3 && (
-          <div className="space-y-6">
-            <Card className="p-6 bg-white space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-800">Import Preview</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Confirm the parsed items from your CSV file. Make sure everything is correct before final submission.
-                </p>
-              </div>
+        {step === 3 && (() => {
+          const readyItems = mappedItems.filter(item => item.status === "Ready" || item.status === "Overwrite");
+          const skippedItems = mappedItems.filter(item => item.status === "Skip" || item.status === "Error" || !item.isValid);
 
-              <div className="border rounded-md overflow-hidden max-h-[360px] overflow-y-auto">
-                <Table>
-                  <TableHeader className="bg-slate-50 sticky top-0 z-10">
-                    <TableRow>
-                      <TableHead className="text-xs font-semibold py-2">Name</TableHead>
-                      <TableHead className="text-xs font-semibold py-2">SKU</TableHead>
-                      <TableHead className="text-xs font-semibold py-2">Type</TableHead>
-                      <TableHead className="text-xs font-semibold py-2 text-right">Selling Price</TableHead>
-                      <TableHead className="text-xs font-semibold py-2 text-right">Cost Price</TableHead>
-                      <TableHead className="text-xs font-semibold py-2 text-right">Stock</TableHead>
-                      <TableHead className="text-xs font-semibold py-2">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mappedItems.map((item, idx) => (
-                      <TableRow key={idx} className={item.isValid ? "" : "bg-red-50/50"}>
-                        <TableCell className="text-xs py-2 font-medium">{item.name || <span className="text-red-500 italic">Missing Name</span>}</TableCell>
-                        <TableCell className="text-xs py-2 text-slate-500">{item.sku || "—"}</TableCell>
-                        <TableCell className="text-xs py-2 text-slate-500">{item.itemType}</TableCell>
-                        <TableCell className="text-xs py-2 text-right tabular-nums">₹{item.sellingPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-xs py-2 text-right tabular-nums">₹{item.costPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-xs py-2 text-right tabular-nums">{item.stockOnHand}</TableCell>
-                        <TableCell className="text-xs py-2">
-                          {item.isValid ? (
-                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200 text-[10px] py-0 h-4">Ready</Badge>
-                          ) : (
-                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-red-200 text-[10px] py-0 h-4">Error</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+          const mappedHeaders = Object.values(fieldMapping).filter(Boolean);
+          const unmappedHeaders = csvHeaders.filter(header => !mappedHeaders.includes(header));
 
-              {isImporting && (
-                <div className="space-y-2 pt-2">
-                  <div className="flex justify-between text-xs font-semibold text-slate-700">
-                    <span>Importing items...</span>
-                    <span>{importProgress}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-blue-600 h-full transition-all duration-150" style={{ width: `${importProgress}%` }} />
-                  </div>
+          const downloadSkippedRows = () => {
+            if (skippedItems.length === 0) return;
+            const headers = ["Row Number", "Item Name", "SKU", "Error/Skip Reason"];
+            const csvRows = skippedItems.map((item, idx) => [
+              item.rowNumber || (idx + 2),
+              item.name || "",
+              item.sku || "",
+              item.status === "Skip" ? "Row already exists" : (item.error || "Validation error")
+            ]);
+            const csvContent = [
+              headers.join(","),
+              ...csvRows.map(row => row.map(val => `"${val}"`).join(","))
+            ].join("\n");
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "skipped_rows.csv");
+            link.style.visibility = "hidden";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            toast.success("Skipped rows downloaded successfully");
+          };
+
+          return (
+            <div className="space-y-6">
+              {/* Alert banner */}
+              {readyItems.length === 0 ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 text-red-800 text-sm">
+                  <AlertCircle className="h-5 w-5 mt-0.5 text-red-600 flex-shrink-0" />
+                  <span className="font-semibold">None of the rows can be imported</span>
+                </div>
+              ) : (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3 text-green-800 text-sm">
+                  <Check className="h-5 w-5 mt-0.5 text-green-600 flex-shrink-0" />
+                  <span className="font-semibold">
+                    {readyItems.length} of the {mappedItems.length} rows are ready to be imported.
+                  </span>
                 </div>
               )}
-            </Card>
 
-            {/* Bottom Actions */}
-            <div className="flex items-center gap-3 pt-4 border-t">
-              <Button 
-                onClick={handleConfirmImport} 
-                disabled={isImporting || mappedItems.filter(item => item.isValid).length === 0} 
-                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
-              >
-                {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                <span>Import Items ({mappedItems.filter(item => item.isValid).length})</span>
-              </Button>
-              <Button variant="outline" onClick={() => setStep(2)} disabled={isImporting} className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
-                Back
-              </Button>
+              <Card className="p-6 bg-white space-y-6 divide-y divide-slate-100">
+                {/* 1. Ready Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <span>Items that are ready to be imported</span>
+                      <span className="text-xs text-slate-400">({readyItems.length})</span>
+                    </div>
+                    {readyItems.length > 0 && (
+                      <button
+                        onClick={() => setShowReadyDetails(!showReadyDetails)}
+                        className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                      >
+                        {showReadyDetails ? "Hide Details" : "View Details"}
+                      </button>
+                    )}
+                  </div>
+
+                  {showReadyDetails && readyItems.length > 0 && (
+                    <div className="border rounded-md overflow-hidden max-h-[300px] overflow-y-auto">
+                      <Table>
+                        <TableHeader className="bg-slate-50 sticky top-0 z-10">
+                          <TableRow>
+                            <TableHead className="text-xs font-semibold py-2">Name</TableHead>
+                            <TableHead className="text-xs font-semibold py-2">SKU</TableHead>
+                            <TableHead className="text-xs font-semibold py-2">Type</TableHead>
+                            <TableHead className="text-xs font-semibold py-2 text-right">Selling Price</TableHead>
+                            <TableHead className="text-xs font-semibold py-2 text-right">Cost Price</TableHead>
+                            <TableHead className="text-xs font-semibold py-2 text-right">Stock</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {readyItems.map((item, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="text-xs py-2 font-medium">{item.name}</TableCell>
+                              <TableCell className="text-xs py-2 text-slate-500">{item.sku || "—"}</TableCell>
+                              <TableCell className="text-xs py-2 text-slate-500">{item.itemType}</TableCell>
+                              <TableCell className="text-xs py-2 text-right tabular-nums">₹{(item.sellingPrice || 0).toFixed(2)}</TableCell>
+                              <TableCell className="text-xs py-2 text-right tabular-nums">₹{(item.costPrice || 0).toFixed(2)}</TableCell>
+                              <TableCell className="text-xs py-2 text-right tabular-nums">{item.stockOnHand || 0}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Skipped Section */}
+                <div className="space-y-3 pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <span>No. of Records skipped - {skippedItems.length}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {skippedItems.length > 0 && (
+                        <button
+                          onClick={downloadSkippedRows}
+                          className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                        >
+                          Download skipped rows
+                        </button>
+                      )}
+                      {skippedItems.length > 0 && (
+                        <button
+                          onClick={() => setShowSkippedDetails(!showSkippedDetails)}
+                          className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                        >
+                          {showSkippedDetails ? "Hide Details" : "View Details"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {showSkippedDetails && skippedItems.length > 0 && (
+                    <div className="border rounded-md overflow-hidden max-h-[300px] overflow-y-auto mt-2">
+                      <Table>
+                        <TableHeader className="bg-slate-50 sticky top-0 z-10">
+                          <TableRow>
+                            <TableHead className="text-xs font-semibold py-2 w-16">Row</TableHead>
+                            <TableHead className="text-xs font-semibold py-2">Item Name</TableHead>
+                            <TableHead className="text-xs font-semibold py-2">Reason</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {skippedItems.map((item, idx) => (
+                            <TableRow key={idx} className="bg-amber-50/20">
+                              <TableCell className="text-xs py-2 font-medium text-slate-400">{item.rowNumber || (idx + 2)}</TableCell>
+                              <TableCell className="text-xs py-2 font-medium text-slate-800">{item.name || "—"}</TableCell>
+                              <TableCell className="text-xs py-2 text-amber-600 font-medium">
+                                {item.status === "Skip" ? "Row already exists" : (item.error || "Validation error")}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Unmapped Section */}
+                <div className="space-y-3 pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <span>Unmapped Fields - {unmappedHeaders.length}</span>
+                    </div>
+                    {unmappedHeaders.length > 0 && (
+                      <button
+                        onClick={() => setShowUnmappedDetails(!showUnmappedDetails)}
+                        className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                      >
+                        {showUnmappedDetails ? "Hide Details" : "View Details"}
+                      </button>
+                    )}
+                  </div>
+
+                  {showUnmappedDetails && unmappedHeaders.length > 0 && (
+                    <div className="space-y-3 pl-2 mt-2">
+                      <p className="text-xs text-slate-500">
+                        The following fields in your import file have not been mapped to any Zoho Inventory field. The data in these fields will be ignored during the import.
+                      </p>
+                      <ul className="list-disc pl-5 text-xs text-slate-600 space-y-1">
+                        {unmappedHeaders.map((header) => (
+                          <li key={header} className="font-medium">{header}</li>
+                        ))}
+                      </ul>
+                      
+                      <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-800 mt-4">
+                        Click the Previous button if you want to match the above column header(s) or click the Import button to continue with the import.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {isImporting && (
+                  <div className="space-y-2 pt-4 border-t">
+                    <div className="flex justify-between text-xs font-semibold text-slate-700">
+                      <span>Importing items...</span>
+                      <span>{importProgress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div className="bg-blue-600 h-full transition-all duration-150" style={{ width: `${importProgress}%` }} />
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              {/* Bottom Actions */}
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Button 
+                  onClick={handleConfirmImport} 
+                  disabled={isImporting || readyItems.length === 0} 
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                >
+                  {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  <span>Import Items ({readyItems.length})</span>
+                </Button>
+                <Button variant="outline" onClick={() => setStep(2)} disabled={isImporting} className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  Back
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

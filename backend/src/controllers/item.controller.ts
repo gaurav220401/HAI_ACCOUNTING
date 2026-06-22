@@ -21,6 +21,13 @@ import {
   getUnitOptionByAbbreviation,
   normalizeUnitAbbreviation,
 } from "../utils/defaultUnits";
+import fs from "fs";
+import path from "path";
+import * as XLSX from "xlsx";
+import Account from "../models/account.model";
+import Tax from "../models/tax.model";
+import Contact from "../models/contact.model";
+import Warehouse from "../models/warehouse.model";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -1009,4 +1016,519 @@ export const deleteUnit = asyncHandler(async (req: AuthenticatedRequest, res: Re
 export const seedUnits = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   await upsertDefaultUnits(orgId(req));
   res.status(201).json({ success: true, message: "Default units seeded" });
+});
+
+// ─── Import Wizard ─────────────────────────────────────────────────────────
+
+function getTemplatePath(fileName: string): string {
+  const paths = [
+    path.join(process.cwd(), "src", "files", "items", fileName),
+    path.join(process.cwd(), "files", "items", fileName),
+    path.join(__dirname, "..", "files", "items", fileName),
+    path.join(__dirname, "..", "..", "src", "files", "items", fileName),
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error(`Template file ${fileName} not found`);
+}
+
+async function mapRowToItem(
+  row: Record<string, any>,
+  mapping: Record<string, string>,
+  organizationId: any,
+  duplicateHandling: "skip" | "overwrite",
+  caches: {
+    units: Map<string, Types.ObjectId | null>;
+    accounts: Map<string, Types.ObjectId | null>;
+    taxes: Map<string, Types.ObjectId | null>;
+    vendors: Map<string, Types.ObjectId | null>;
+    warehouses: Map<string, Types.ObjectId | null>;
+    groups: Map<string, Types.ObjectId | null>;
+  }
+): Promise<{ itemData: any; isValid: boolean; status: "Ready" | "Overwrite" | "Skip" | "Error"; error?: string; duplicateItem?: any }> {
+  const getMappedValue = (key: string): string => {
+    const colName = mapping[key];
+    if (!colName) return "";
+    return String(row[colName] ?? "").trim();
+  };
+
+  const name = getMappedValue("name");
+  if (!name) {
+    return {
+      itemData: {},
+      isValid: false,
+      status: "Error",
+      error: "Item Name is required",
+    };
+  }
+
+  const sku = getMappedValue("sku");
+  const itemTypeInput = getMappedValue("itemType").toLowerCase();
+  const itemType = itemTypeInput.includes("service") ? "Service" : "Goods";
+
+  // Check duplicate
+  let duplicateItem: any = null;
+  if (sku) {
+    duplicateItem = await Item.findOne({
+      organizationId,
+      sku: { $regex: new RegExp("^" + escapeRegex(sku) + "$", "i") },
+      isDeleted: false,
+    });
+  } else {
+    duplicateItem = await Item.findOne({
+      organizationId,
+      name: { $regex: new RegExp("^" + escapeRegex(name) + "$", "i") },
+      isDeleted: false,
+    });
+  }
+
+  let status: "Ready" | "Overwrite" | "Skip" | "Error" = "Ready";
+  if (duplicateItem) {
+    status = duplicateHandling === "overwrite" ? "Overwrite" : "Skip";
+  }
+
+  // Resolve unit
+  const unitInput = getMappedValue("unit");
+  let unitId: Types.ObjectId | null = null;
+  if (unitInput) {
+    const cacheKey = unitInput.toLowerCase();
+    if (caches.units.has(cacheKey)) {
+      unitId = caches.units.get(cacheKey)!;
+    } else {
+      unitId = await resolveUnitId(organizationId, unitInput);
+      caches.units.set(cacheKey, unitId);
+    }
+  }
+
+  // Resolve accounts
+  const resolveAccount = async (val: string): Promise<Types.ObjectId | null> => {
+    if (!val) return null;
+    const cacheKey = val.toLowerCase();
+    if (caches.accounts.has(cacheKey)) return caches.accounts.get(cacheKey)!;
+    const acc = await Account.findOne({
+      organizationId,
+      isDeleted: false,
+      $or: [
+        { name: { $regex: new RegExp("^" + escapeRegex(val) + "$", "i") } },
+        { code: val },
+        { accountNumber: val },
+      ],
+    });
+    const id = acc ? (acc._id as Types.ObjectId) : null;
+    caches.accounts.set(cacheKey, id);
+    return id;
+  };
+
+  const salesAccountId = await resolveAccount(getMappedValue("salesAccount"));
+  const purchaseAccountId = await resolveAccount(getMappedValue("purchaseAccount"));
+  const inventoryAccountId = await resolveAccount(getMappedValue("inventoryAccount"));
+
+  // Resolve tax
+  const resolveTax = async (val: string): Promise<Types.ObjectId | null> => {
+    if (!val) return null;
+    const cacheKey = val.toLowerCase();
+    if (caches.taxes.has(cacheKey)) return caches.taxes.get(cacheKey)!;
+    let tax = await Tax.findOne({
+      organizationId,
+      isDeleted: false,
+      name: { $regex: new RegExp("^" + escapeRegex(val) + "$", "i") },
+    });
+    if (!tax) {
+      const rateNum = Number(val.replace(/%/, "").trim());
+      if (!isNaN(rateNum)) {
+        tax = await Tax.findOne({
+          organizationId,
+          isDeleted: false,
+          rate: rateNum,
+        });
+      }
+    }
+    const id = tax ? (tax._id as Types.ObjectId) : null;
+    caches.taxes.set(cacheKey, id);
+    return id;
+  };
+
+  const interStateTaxId = await resolveTax(getMappedValue("interStateTax"));
+  const intraStateTaxId = await resolveTax(getMappedValue("intraStateTax"));
+  const taxNameId = await resolveTax(getMappedValue("taxName") || getMappedValue("taxPercentage"));
+  const taxId = intraStateTaxId || interStateTaxId || taxNameId || null;
+
+  // Resolve warehouse
+  const resolveWarehouse = async (val: string): Promise<Types.ObjectId | null> => {
+    if (!val) return null;
+    const cacheKey = val.toLowerCase();
+    if (caches.warehouses.has(cacheKey)) return caches.warehouses.get(cacheKey)!;
+    const wh = await Warehouse.findOne({
+      organizationId,
+      isActive: true,
+      name: { $regex: new RegExp("^" + escapeRegex(val) + "$", "i") },
+    });
+    const id = wh ? (wh._id as Types.ObjectId) : null;
+    caches.warehouses.set(cacheKey, id);
+    return id;
+  };
+
+  const warehouseId = await resolveWarehouse(getMappedValue("warehouseName"));
+
+  // Resolve vendor
+  const resolveVendor = async (val: string): Promise<Types.ObjectId | null> => {
+    if (!val) return null;
+    const cacheKey = val.toLowerCase();
+    if (caches.vendors.has(cacheKey)) return caches.vendors.get(cacheKey)!;
+    const vendor = await Contact.findOne({
+      organizationId,
+      isDeleted: false,
+      contactType: { $in: ["Vendor", "Both"] },
+      $or: [
+        { displayName: { $regex: new RegExp("^" + escapeRegex(val) + "$", "i") } },
+        { companyName: { $regex: new RegExp("^" + escapeRegex(val) + "$", "i") } },
+      ],
+    });
+    const id = vendor ? (vendor._id as Types.ObjectId) : null;
+    caches.vendors.set(cacheKey, id);
+    return id;
+  };
+
+  const preferredVendorId = await resolveVendor(getMappedValue("preferredVendor"));
+
+  // Resolve item group
+  const resolveGroup = async (val: string): Promise<Types.ObjectId | null> => {
+    if (!val) return null;
+    const cacheKey = val.toLowerCase();
+    if (caches.groups.has(cacheKey)) return caches.groups.get(cacheKey)!;
+    let group = await ItemGroup.findOne({
+      organizationId,
+      isActive: true,
+      name: { $regex: new RegExp("^" + escapeRegex(val) + "$", "i") },
+    });
+    if (!group) {
+      group = new ItemGroup({
+        organizationId,
+        name: val,
+        isActive: true,
+      });
+      await group.save();
+    }
+    caches.groups.set(cacheKey, group._id as Types.ObjectId);
+    return group._id as Types.ObjectId;
+  };
+
+  const itemGroupId = await resolveGroup(getMappedValue("groupName") || getMappedValue("productType"));
+
+  // Numbers and Boolean conversions
+  const sellingPrice = toFiniteNumber(getMappedValue("sellingPrice"));
+  const costPrice = toFiniteNumber(getMappedValue("costPrice"));
+  const stockOnHand = toFiniteNumber(getMappedValue("stockOnHand"));
+  const openingStockValue = toFiniteNumber(getMappedValue("openingStockValue"));
+  let averageCost = toFiniteNumber(getMappedValue("averageCost"));
+  
+  if (!averageCost && openingStockValue && stockOnHand > 0) {
+    averageCost = round2(openingStockValue / stockOnHand);
+  }
+  if (!averageCost) {
+    averageCost = costPrice;
+  }
+  
+  const reorderPoint = toFiniteNumber(getMappedValue("reorderPoint"));
+
+  let returnableItem = true;
+  const returnableInput = getMappedValue("returnableItem").toLowerCase();
+  if (returnableInput === "false" || returnableInput === "no" || returnableInput === "0") {
+    returnableItem = false;
+  }
+
+  // Identifiers list
+  const identifiers = [
+    getMappedValue("upc"),
+    getMappedValue("ean"),
+    getMappedValue("isbn"),
+    getMappedValue("partNumber"),
+  ].filter(Boolean);
+
+  // Dimensions & Weight
+  const packageLength = toFiniteNumber(getMappedValue("packageLength"));
+  const packageWidth = toFiniteNumber(getMappedValue("packageWidth"));
+  const packageHeight = toFiniteNumber(getMappedValue("packageHeight"));
+  const dimensionUnitInput = getMappedValue("dimensionUnit").toLowerCase();
+  const dimensionUnit = ["cm", "m", "in", "ft"].includes(dimensionUnitInput)
+    ? dimensionUnitInput
+    : "cm";
+
+  const dimensions = {
+    length: packageLength,
+    width: packageWidth,
+    height: packageHeight,
+    unit: dimensionUnit,
+  };
+
+  const packageWeight = toFiniteNumber(getMappedValue("packageWeight"));
+  const weightUnitInput = getMappedValue("weightUnit").toLowerCase();
+  const weightUnit = ["kg", "g", "lb", "oz"].includes(weightUnitInput) ? weightUnitInput : "kg";
+
+  const weight = {
+    value: packageWeight,
+    unit: weightUnit,
+  };
+
+  // Tax preference
+  let taxPreference: "Taxable" | "NonTaxable" | "Exempt" = "Taxable";
+  const taxability = getMappedValue("taxability").toLowerCase();
+  if (taxability.includes("non") || taxability.includes("untaxable")) {
+    taxPreference = "NonTaxable";
+  } else if (taxability.includes("exempt")) {
+    taxPreference = "Exempt";
+  }
+  const exemptionReason = getMappedValue("exemptionReason");
+
+  // Track inventory
+  const inventoryTracked = stockOnHand > 0;
+  const inventoryValue = inventoryTracked ? round2(stockOnHand * averageCost) : 0;
+
+  // Inventory valuation method
+  let valuationMethod = "MovingAverage";
+  const valMethodInput = getMappedValue("valuationMethod").toLowerCase();
+  if (valMethodInput.includes("fifo")) {
+    valuationMethod = "FIFO";
+  }
+
+  const itemData: any = {
+    organizationId,
+    name,
+    sku,
+    itemType,
+    itemMode: "SingleItem",
+    identifiers,
+    brand: getMappedValue("brand"),
+    manufacturer: getMappedValue("manufacturer"),
+    unit: unitId,
+    itemGroupId,
+    description: getMappedValue("sellingDescription") || getMappedValue("description"),
+    sellingPrice,
+    sellingDescription: getMappedValue("sellingDescription"),
+    costPrice,
+    purchaseDescription: getMappedValue("purchaseDescription"),
+    salesAccountId,
+    purchaseAccountId,
+    inventoryAccountId,
+    valuationMethod,
+    taxPreference,
+    taxId,
+    intraStateTaxId,
+    interStateTaxId,
+    hsnSacCode: getMappedValue("hsnSacCode"),
+    inventoryTracked,
+    stockOnHand,
+    averageCost,
+    inventoryValue,
+    reorderPoint,
+    returnableItem,
+    dimensions,
+    weight,
+    preferredVendorId,
+    warehouseId,
+    exemptionReason,
+    isActive: true,
+  };
+
+  return {
+    itemData,
+    isValid: true,
+    status,
+    duplicateItem,
+  };
+}
+
+export const downloadSampleTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const filePath = getTemplatePath("sample_items.csv");
+  res.download(filePath, "sample_items.csv");
+});
+
+export const downloadBlankTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const filePath = getTemplatePath("blank_items.csv");
+  res.download(filePath, "blank_items.csv");
+});
+
+export const previewImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  const caches = {
+    units: new Map<string, Types.ObjectId | null>(),
+    accounts: new Map<string, Types.ObjectId | null>(),
+    taxes: new Map<string, Types.ObjectId | null>(),
+    vendors: new Map<string, Types.ObjectId | null>(),
+    warehouses: new Map<string, Types.ObjectId | null>(),
+    groups: new Map<string, Types.ObjectId | null>(),
+  };
+
+  const previewItems: any[] = [];
+  let readyCount = 0;
+  let overwriteCount = 0;
+  let skipCount = 0;
+  let invalidCount = 0;
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const rowNum = idx + 2;
+    const result = await mapRowToItem(row, mapping, organizationId, duplicateHandling, caches);
+    if (!result.isValid) {
+      invalidCount++;
+      previewItems.push({
+        rowNumber: rowNum,
+        name: "",
+        sku: "",
+        itemType: "Goods",
+        sellingPrice: 0,
+        costPrice: 0,
+        stockOnHand: 0,
+        isValid: false,
+        status: "Error",
+        error: result.error,
+      });
+    } else {
+      if (result.status === "Ready") readyCount++;
+      else if (result.status === "Overwrite") overwriteCount++;
+      else if (result.status === "Skip") skipCount++;
+
+      previewItems.push({
+        rowNumber: rowNum,
+        name: result.itemData.name,
+        sku: result.itemData.sku,
+        itemType: result.itemData.itemType,
+        sellingPrice: result.itemData.sellingPrice,
+        costPrice: result.itemData.costPrice,
+        stockOnHand: result.itemData.stockOnHand,
+        isValid: true,
+        status: result.status,
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      totalRows: rows.length,
+      readyCount,
+      overwriteCount,
+      skipCount,
+      invalidCount,
+      previewItems,
+    },
+  });
+});
+
+export const executeImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  const caches = {
+    units: new Map<string, Types.ObjectId | null>(),
+    accounts: new Map<string, Types.ObjectId | null>(),
+    taxes: new Map<string, Types.ObjectId | null>(),
+    vendors: new Map<string, Types.ObjectId | null>(),
+    warehouses: new Map<string, Types.ObjectId | null>(),
+    groups: new Map<string, Types.ObjectId | null>(),
+  };
+
+  let successCount = 0;
+  let failCount = 0;
+  const errors: Array<{ row: number; error: string }> = [];
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const rowNum = idx + 2; // Row number in spreadsheet (header is row 1)
+    try {
+      const result = await mapRowToItem(row, mapping, organizationId, duplicateHandling, caches);
+      if (!result.isValid) {
+        throw new Error(result.error);
+      }
+
+      if (result.status === "Skip") {
+        successCount++; // Counted as skipped (no DB insertion)
+        continue;
+      }
+
+      if (result.status === "Overwrite") {
+        const item = result.duplicateItem;
+        const previousInventorySnapshot: InventoryAccountSnapshot = {
+          inventoryTracked: Boolean((item as any).inventoryTracked),
+          inventoryAccountId: (item as any).inventoryAccountId,
+          inventoryValue: (item as any).inventoryValue,
+        };
+
+        // Merge properties
+        Object.assign(item, result.itemData);
+        attachUser(item, req);
+        await item.save();
+
+        await syncInventoryAccountOpening({
+          organizationId,
+          previous: previousInventorySnapshot,
+          next: {
+            inventoryTracked: Boolean(item.inventoryTracked),
+            inventoryAccountId: (item as any).inventoryAccountId,
+            inventoryValue: (item as any).inventoryValue,
+          },
+        });
+      } else {
+        // Create new item
+        const item = new Item(result.itemData);
+        attachUser(item, req);
+        await item.save();
+
+        await syncInventoryAccountOpening({
+          organizationId,
+          previous: null,
+          next: {
+            inventoryTracked: Boolean(item.inventoryTracked),
+            inventoryAccountId: (item as any).inventoryAccountId,
+            inventoryValue: (item as any).inventoryValue,
+          },
+        });
+      }
+
+      successCount++;
+    } catch (err: any) {
+      failCount++;
+      errors.push({ row: rowNum, error: err.message || "Failed to process row" });
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      successCount,
+      failCount,
+      errors,
+    },
+  });
 });
