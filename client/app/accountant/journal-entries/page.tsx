@@ -16,6 +16,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import {
   Plus,
@@ -28,7 +32,7 @@ import {
   RefreshCcw,
   ChevronDown,
   History,
-  Download,  FileUp} from "lucide-react";
+  Download,  FileUp, Upload} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { journalApi, type Journal as ApiJournal } from "@/lib/api/journals";
@@ -460,6 +464,53 @@ export default function JournalEntriesPage() {
   const [journals, setJournals] = useState<Journal[]>([]);
   const [loadingJournals, setLoadingJournals] = useState(true);
 
+  const handleExportCSV = () => {
+    if (journals.length === 0) {
+      toast.error("No journals to export");
+      return;
+    }
+    const headers = [
+      "Journal Number",
+      "Date",
+      "Reference Number",
+      "Notes",
+      "Total Debit",
+      "Total Credit",
+      "Status"
+    ];
+
+    const rows = journals.map(j => [
+      j.journalNumber,
+      j.date,
+      j.reference || "",
+      j.notes || "",
+      j.amount,
+      j.amount,
+      j.status
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => 
+        row.map(val => {
+          const str = String(val ?? "").replace(/"/g, '""');
+          return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str}"` : str;
+        }).join(",")
+      )
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `journals_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Journals exported successfully to CSV");
+  };
+
   const refreshJournals = useCallback(async () => {
     setLoadingJournals(true);
     try {
@@ -578,11 +629,53 @@ export default function JournalEntriesPage() {
                 >
                   <Plus className="h-4 w-4" /> New Journal
                 </Button>
-              <Link href="/batch-import?section=accountant&type=Journal Entries&back=/accountant/journal-entries">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
-                  <FileUp className="h-3.5 w-3.5" /> Batch Import
-                </Button>
-              </Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-8 w-8 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-white">
+                    <DropdownMenuItem onClick={() => router.push("/batch-import?section=accountant&type=Journal Entries&back=/accountant/journal-entries")} className="cursor-pointer">
+                      <span className="flex items-center gap-2 text-xs">
+                        <FileUp className="h-4 w-4 text-slate-500" />
+                        Batch Import
+                      </span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="cursor-pointer">
+                        <span className="flex items-center gap-2 text-xs">
+                          <Upload className="h-4 w-4 text-slate-500" />
+                          Import
+                        </span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuPortal>
+                        <DropdownMenuSubContent className="w-48 bg-white">
+                          <DropdownMenuItem onClick={() => router.push("/accountant/journal-entries/import")} className="cursor-pointer">
+                            <span className="text-xs">Import Journals</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuPortal>
+                    </DropdownMenuSub>
+
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="cursor-pointer">
+                        <span className="flex items-center gap-2 text-xs">
+                          <Download className="h-4 w-4 text-slate-500" />
+                          Export
+                        </span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuPortal>
+                        <DropdownMenuSubContent className="w-48 bg-white">
+                          <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                            <span className="text-xs">Export Journals</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuPortal>
+                    </DropdownMenuSub>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             : null
           }
