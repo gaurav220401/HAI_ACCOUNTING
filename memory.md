@@ -65,3 +65,63 @@ Duplicates are checked by case-insensitive `sku` (primary) and case-insensitive 
 - **Server-side Row Number Tracking**: The backend `previewImport` endpoint attaches `rowNumber` (representing the 1-indexed row number of the sheet, i.e., `idx + 2`) to all preview records.
 - **Audit Tables**: The skipped items list renders the correct `rowNumber` value (and exports the correct row number in the skipped CSV downloader) regardless of interleaved skipped and ready rows.
 - **Unmapped Field Alerts**: Identifies any sheet headers not mapped to a fields key and warns the user in a bulleted list warning section.
+
+---
+
+# Memory: Manual Journal CSV/Excel Import Wizard
+
+This document details the configuration, parsing logic, validation checks, duplicate handling, and UI layout of the multi-step Manual Journal Import Wizard.
+
+## Architectural Flow
+
+```mermaid
+graph TD
+    A[Step 1: Choose File & Options] -->|Parse locally for headers| B[Step 2: Map Fields]
+    B -->|Save mappings checkbox & load| B
+    B -->|POST FormData to backend /import/preview| C[Step 3: Preview]
+    C -->|Group by Journal Number / Ref / Date+Desc| C
+    C -->|Validate: Debit=Credit, >=2 lines, accounts exist| C
+    C -->|Toggle inline expandable double-entry line details| C
+    C -->|Download skipped journals CSV| C
+    C -->|POST FormData to backend /import| D[Execution & GL Reversals/Postings]
+```
+
+## 1. Field Mapping Layout (Step 2)
+
+Mappings are grouped into two logical sections:
+1. **Journal Header Details**: Journal Number, Journal Date (Required), Reference Number, Description, Notes, Status, Contact/Vendor Name.
+2. **Journal Line Details**: Account Name (Required), Debit (Required), Credit (Required), Line Narration.
+
+### UI Features
+- **Field Groups Header headings**: Fields are organized under two clear sections: `Journal Header Details` and `Journal Line Details` with subheader row (`HAI ACCOUNTING FIELD` | `IMPORTED FILE HEADERS`).
+- **Clear Button**: Uses absolute positioning (`right-9`) and select padding offset (`[&_[data-slot=select-value]]:pr-10`) to render a red close (`X`) button next to select inputs with active mapping.
+- **Auto-Mapping Rules**: Case-insensitively detects matching headers, e.g. `journaldate` to `date`, `referencenumber` to `referenceNumber`, and `accountname` to `accountName`.
+- **Mapping Persistence**: Saved in client's `localStorage` under `hai_journal_import_mapping` on checkout.
+
+## 2. Grouping, Lookups & Validation (Backend)
+
+The backend handles Excel/CSV imports through grouped record mappings and relation checks:
+
+### Multi-row Grouping Schema
+- Multiple rows are grouped into a single manual journal.
+- Grouping key priority: `journalNumber` (primary) -> `referenceNumber` (secondary) -> `date + description` (tertiary).
+
+### Entity Lookups
+- **Account Lookup**: Maps the text column `Account Name` to the `Account` collection. Resolves case-insensitively by `name`, exact `code`, or exact `accountNumber`.
+- **Contact/Vendor Lookup**: Maps `vendorName` to the `Contact` collection. Resolves case-insensitively by `displayName` or `companyName`.
+
+### Validation Rules
+- **Double Entry Rule**: Total debits must equal total credits.
+- **Line Count Rule**: A journal entry must contain at least 2 line items.
+- **Value Constraints**: Debits and credits must be non-negative. A single line cannot have both debit and credit. Both debit and credit cannot be zero.
+
+## 3. Duplicate Handling & Overwrite Safety
+
+- **Skip**: Ignores duplicates and retains the existing database entry.
+- **Overwrite**: Updates existing journal metadata and lines. If the existing journal is `Posted`, the backend automatically calls `reverseJournalLedger` to post general ledger reversal/cancellation entries first, updates the journal details, and then posts the new balance ledger entries (`postJournalLedger`).
+
+## 4. Step 3 Preview & Expandable Lines Table
+
+- **Inline Row Expansion**: In Step 3, clicking the chevron icon next to a journal row expands it to display a nested sub-table listing all double-entry line details: `Account`, `Narration`, `Debit (₹)`, and `Credit (₹)`.
+- **Skipped Journals Exporter**: Generates a CSV file containing row number, journal number, reference, description, and validation error messages for auditing.
+

@@ -11,6 +11,12 @@ import {
 } from "../utils/errors";
 import { attachUser } from "../plugins";
 import { postVoucher, reverseVoucher } from "../services/gl-posting.service";
+import fs from "fs";
+import path from "path";
+import * as XLSX from "xlsx";
+import Account from "../models/account.model";
+import Contact from "../models/contact.model";
+import { ensureDefaultChartOfAccounts } from "../services/chart-of-accounts.service";
 
 const JOURNAL_NUMBER_DEFAULT_PREFIX = "JRN-";
 const JOURNAL_NUMBER_DEFAULT_NEXT = 1;
@@ -519,3 +525,531 @@ export const remove = asyncHandler(
     res.json({ success: true, message: "Journal deleted" });
   },
 );
+
+// ─── Import Wizard ─────────────────────────────────────────────────────────
+
+function parseJournalDate(val: any): Date {
+  if (val instanceof Date) return val;
+  if (!val) return new Date();
+  
+  const str = String(val).trim();
+  if (!str) return new Date();
+
+  // Excel serial number
+  if (/^\d+(\.\d+)?$/.test(str)) {
+    const num = parseFloat(str);
+    if (num > 25569) {
+      return new Date(Math.round((num - 25569) * 86400 * 1000));
+    }
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    return new Date(year, month, day);
+  }
+
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d;
+  return new Date();
+}
+
+function getJournalTemplatePath(fileName: string): string {
+  const paths = [
+    path.join(process.cwd(), "src", "files", "manual_journals", fileName),
+    path.join(process.cwd(), "files", "manual_journals", fileName),
+    path.join(__dirname, "..", "files", "manual_journals", fileName),
+    path.join(__dirname, "..", "..", "src", "files", "manual_journals", fileName),
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error(`Template file ${fileName} not found`);
+}
+
+async function mapRowsToJournals(
+  rows: any[],
+  mapping: Record<string, string>,
+  organizationId: any,
+  duplicateHandling: "skip" | "overwrite",
+  caches: {
+    accounts: Map<string, Types.ObjectId | null>;
+    vendors: Map<string, Types.ObjectId | null>;
+  }
+): Promise<{
+  journals: any[];
+  errors: any[];
+}> {
+  const getVal = (row: any, key: string) => {
+    const col = mapping[key];
+    if (!col) return "";
+    return String(row[col] ?? "").trim();
+  };
+
+  const groupsMap = new Map<string, Array<{ row: any; idx: number }>>();
+  
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const journalNumber = getVal(row, "journalNumber");
+    const referenceNumber = getVal(row, "referenceNumber");
+    const date = getVal(row, "date");
+    const description = getVal(row, "description");
+
+    const groupKey = journalNumber || referenceNumber || `${date}-${description}`;
+    if (!groupKey) continue; // Skip empty rows
+
+    if (!groupsMap.has(groupKey)) {
+      groupsMap.set(groupKey, []);
+    }
+    groupsMap.get(groupKey)!.push({ row, idx });
+  }
+
+  const journals: any[] = [];
+  const errors: any[] = [];
+
+  for (const [key, groupRows] of Array.from(groupsMap.entries())) {
+    const firstRowNum = groupRows[0].idx + 2;
+    const firstRow = groupRows[0].row;
+    
+    const journalNumber = getVal(firstRow, "journalNumber");
+    const description = getVal(firstRow, "description");
+    const referenceNumber = getVal(firstRow, "referenceNumber");
+
+    try {
+      const dateStr = getVal(firstRow, "date");
+      const date = parseJournalDate(dateStr);
+      if (isNaN(date.getTime())) {
+        throw new Error(`Invalid journal date: "${dateStr}"`);
+      }
+      const notes = getVal(firstRow, "notes");
+      const statusInput = getVal(firstRow, "status").toLowerCase();
+      const status = statusInput.includes("post") ? "Posted" : "Draft";
+
+      const vendorInput = getVal(firstRow, "vendorName");
+      let vendorId: Types.ObjectId | null = null;
+      if (vendorInput) {
+        const cacheKey = vendorInput.toLowerCase();
+        if (caches.vendors.has(cacheKey)) {
+          vendorId = caches.vendors.get(cacheKey)!;
+        } else {
+          const vendor = await Contact.findOne({
+            organizationId,
+            isDeleted: false,
+            $or: [
+              { displayName: { $regex: new RegExp("^" + escapeRegex(vendorInput) + "$", "i") } },
+              { companyName: { $regex: new RegExp("^" + escapeRegex(vendorInput) + "$", "i") } },
+            ],
+          });
+          vendorId = vendor ? (vendor._id as Types.ObjectId) : null;
+          caches.vendors.set(cacheKey, vendorId);
+        }
+      }
+
+      // Check duplicates
+      let duplicateJournal: any = null;
+      if (journalNumber) {
+        duplicateJournal = await Journal.findOne({
+          organizationId,
+          journalNumber: { $regex: new RegExp("^" + escapeRegex(journalNumber) + "$", "i") },
+          isDeleted: false,
+        });
+      }
+
+      let statusFlag: "Ready" | "Overwrite" | "Skip" | "Error" = "Ready";
+      if (duplicateJournal) {
+        statusFlag = duplicateHandling === "overwrite" ? "Overwrite" : "Skip";
+      }
+
+      // Process line items
+      const lineItems: any[] = [];
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      for (const { row, idx } of groupRows) {
+        const rowNum = idx + 2;
+        const accountInput = getVal(row, "accountName");
+        if (!accountInput) {
+          throw new Error(`Row ${rowNum}: Account Name is required`);
+        }
+
+        let accountId: Types.ObjectId | null = null;
+        const cacheKey = accountInput.toLowerCase();
+        if (caches.accounts.has(cacheKey)) {
+          accountId = caches.accounts.get(cacheKey)!;
+        } else {
+          let acc = await Account.findOne({
+            organizationId,
+            isDeleted: false,
+            $or: [
+              { name: { $regex: new RegExp("^" + escapeRegex(accountInput) + "$", "i") } },
+              { code: accountInput },
+              { accountNumber: accountInput },
+            ],
+          });
+          if (!acc) {
+            // Fallback 1: starts-with (case-insensitive)
+            acc = await Account.findOne({
+              organizationId,
+              isDeleted: false,
+              name: { $regex: new RegExp("^" + escapeRegex(accountInput), "i") },
+            });
+          }
+          if (!acc) {
+            // Fallback 2: contains (case-insensitive)
+            acc = await Account.findOne({
+              organizationId,
+              isDeleted: false,
+              name: { $regex: new RegExp(escapeRegex(accountInput), "i") },
+            });
+          }
+          if (!acc) {
+            // Fallback 3: reverse prefix match (input starts with the account name, or vice-versa)
+            const allAccounts = await Account.find({ organizationId, isDeleted: false }).select("name");
+            const matched = allAccounts.find(a => {
+              const lowerInput = accountInput.toLowerCase();
+              const lowerName = a.name.toLowerCase();
+              return lowerInput.startsWith(lowerName) || lowerName.startsWith(lowerInput);
+            });
+            if (matched) {
+              acc = await Account.findById(matched._id);
+            }
+          }
+          accountId = acc ? (acc._id as Types.ObjectId) : null;
+          caches.accounts.set(cacheKey, accountId);
+        }
+
+        if (!accountId) {
+          throw new Error(`Row ${rowNum}: Account not found: "${accountInput}"`);
+        }
+
+        const debit = round2(toFiniteNumber(getVal(row, "debit")));
+        const credit = round2(toFiniteNumber(getVal(row, "credit")));
+        const narration = getVal(row, "narration");
+
+        if (debit < 0 || credit < 0) {
+          throw new Error(`Row ${rowNum}: Debit and credit must be positive numbers`);
+        }
+        if (debit === 0 && credit === 0) {
+          throw new Error(`Row ${rowNum}: Both debit and credit cannot be zero`);
+        }
+        if (debit > 0 && credit > 0) {
+          throw new Error(`Row ${rowNum}: A single line cannot contain both debit and credit values`);
+        }
+
+        lineItems.push({
+          accountId,
+          accountName: accountInput, // stored for UI reference
+          debit,
+          credit,
+          narration,
+        });
+
+        totalDebit = round2(totalDebit + debit);
+        totalCredit = round2(totalCredit + credit);
+      }
+
+      if (lineItems.length < 2) {
+        throw new Error("Journal entry must contain at least 2 lines");
+      }
+
+      if (Math.abs(totalDebit - totalCredit) > 0.0001) {
+        throw new Error(`Debits and credits are not balanced (total debit: ₹${totalDebit.toFixed(2)}, total credit: ₹${totalCredit.toFixed(2)})`);
+      }
+
+      journals.push({
+        rowNumber: firstRowNum,
+        journalNumber,
+        date,
+        referenceNumber,
+        description,
+        notes,
+        status,
+        vendorId,
+        lineItems,
+        totalDebit,
+        totalCredit,
+        isValid: true,
+        statusFlag,
+        duplicateJournal,
+      });
+    } catch (err: any) {
+      errors.push({
+        rowNumber: firstRowNum,
+        journalNumber,
+        referenceNumber,
+        description,
+        error: err.message || "Validation failed",
+      });
+    }
+  }
+
+  return { journals, errors };
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function toFiniteNumber(value: unknown): number {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return n;
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+export const downloadSampleTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
+  const filePath = getJournalTemplatePath("sample_journals.csv");
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", "attachment; filename=sample_journals.xlsx");
+    res.send(buffer);
+  } else {
+    res.download(filePath, "sample_journals.csv");
+  }
+});
+
+export const downloadBlankTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
+  const filePath = getJournalTemplatePath("blank_journals.csv");
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", "attachment; filename=blank_journals.xlsx");
+    res.send(buffer);
+  } else {
+    res.download(filePath, "blank_journals.csv");
+  }
+});
+
+export const previewImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+
+  // Seed missing default accounts if any (idempotent)
+  await ensureDefaultChartOfAccounts({
+    organizationId: toOrgObjectId(organizationId),
+    actor: req,
+  });
+
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  const caches = {
+    accounts: new Map<string, Types.ObjectId | null>(),
+    vendors: new Map<string, Types.ObjectId | null>(),
+  };
+
+  const { journals, errors } = await mapRowsToJournals(rows, mapping, organizationId, duplicateHandling, caches);
+
+  const previewItems: any[] = [];
+  let readyCount = 0;
+  let overwriteCount = 0;
+  let skipCount = 0;
+  let invalidCount = errors.length;
+
+  for (const j of journals) {
+    if (j.statusFlag === "Ready") readyCount++;
+    else if (j.statusFlag === "Overwrite") overwriteCount++;
+    else if (j.statusFlag === "Skip") skipCount++;
+
+    previewItems.push({
+      rowNumber: j.rowNumber,
+      journalNumber: j.journalNumber,
+      date: j.date,
+      referenceNumber: j.referenceNumber,
+      description: j.description,
+      notes: j.notes,
+      status: j.status,
+      totalDebit: j.totalDebit,
+      totalCredit: j.totalCredit,
+      lineItems: j.lineItems,
+      isValid: true,
+      statusFlag: j.statusFlag,
+    });
+  }
+
+  for (const err of errors) {
+    previewItems.push({
+      rowNumber: err.rowNumber,
+      journalNumber: err.journalNumber || "",
+      date: new Date(),
+      referenceNumber: err.referenceNumber || "",
+      description: err.description || "",
+      notes: "",
+      status: "Draft",
+      totalDebit: 0,
+      totalCredit: 0,
+      lineItems: [],
+      isValid: false,
+      statusFlag: "Error",
+      error: err.error,
+    });
+  }
+
+  // Sort by rowNumber to show errors and ready items in sheet order
+  previewItems.sort((a, b) => a.rowNumber - b.rowNumber);
+
+  res.json({
+    success: true,
+    data: {
+      totalRows: rows.length,
+      readyCount,
+      overwriteCount,
+      skipCount,
+      invalidCount,
+      previewItems,
+    },
+  });
+});
+
+export const executeImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+
+  // Seed missing default accounts if any (idempotent)
+  await ensureDefaultChartOfAccounts({
+    organizationId: toOrgObjectId(organizationId),
+    actor: req,
+  });
+
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  const caches = {
+    accounts: new Map<string, Types.ObjectId | null>(),
+    vendors: new Map<string, Types.ObjectId | null>(),
+  };
+
+  const { journals, errors } = await mapRowsToJournals(rows, mapping, organizationId, duplicateHandling, caches);
+
+  let successCount = 0;
+  let failCount = errors.length;
+  const errorList: Array<{ row: number; error: string }> = errors.map(e => ({
+    row: e.rowNumber,
+    error: e.error,
+  }));
+
+  for (const j of journals) {
+    try {
+      if (j.statusFlag === "Skip") {
+        successCount++;
+        continue;
+      }
+
+      if (j.statusFlag === "Overwrite") {
+        const doc = j.duplicateJournal;
+        if (doc.status === "Posted") {
+          await reverseJournalLedger(doc, req);
+        }
+
+        doc.date = j.date;
+        doc.referenceNumber = j.referenceNumber;
+        doc.description = j.description;
+        doc.notes = j.notes;
+        doc.status = j.status;
+        doc.vendorId = j.vendorId;
+        doc.lineItems = j.lineItems.map((l: any) => ({
+          accountId: l.accountId,
+          debit: l.debit,
+          credit: l.credit,
+          narration: l.narration,
+        }));
+        doc.totalDebit = j.totalDebit;
+        doc.totalCredit = j.totalCredit;
+
+        attachUser(doc as any, req);
+        await doc.save();
+
+        if (doc.status === "Posted") {
+          await postJournalLedger(doc, req);
+        }
+      } else {
+        // Create new journal
+        let resolvedJournalNumber = j.journalNumber;
+        if (!resolvedJournalNumber) {
+          const prefs = await ensureJournalNumberingPreferences(toOrgObjectId(organizationId));
+          resolvedJournalNumber = await allocateAutoJournalNumber(toOrgObjectId(organizationId));
+        }
+
+        const doc = new Journal({
+          organizationId,
+          journalNumber: resolvedJournalNumber,
+          date: j.date,
+          referenceNumber: j.referenceNumber,
+          description: j.description,
+          notes: j.notes,
+          status: j.status,
+          vendorId: j.vendorId,
+          lineItems: j.lineItems.map((l: any) => ({
+            accountId: l.accountId,
+            debit: l.debit,
+            credit: l.credit,
+            narration: l.narration,
+          })),
+          totalDebit: j.totalDebit,
+          totalCredit: j.totalCredit,
+        });
+
+        attachUser(doc as any, req);
+        await doc.save();
+
+        if (doc.status === "Posted") {
+          await postJournalLedger(doc, req);
+        }
+      }
+
+      successCount++;
+    } catch (err: any) {
+      failCount++;
+      errorList.push({
+        row: j.rowNumber,
+        error: err.message || "Failed to import journal",
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      successCount,
+      failCount,
+      errors: errorList.sort((a, b) => a.row - b.row),
+    },
+  });
+});

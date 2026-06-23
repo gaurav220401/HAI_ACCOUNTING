@@ -1,4 +1,4 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { ListParams, PaginatedResponse } from "./client";
 
 export type JournalStatus = "Draft" | "Posted" | "Voided";
@@ -117,5 +117,38 @@ export const journalApi = {
   remove: (id: string) =>
     apiFetch<{ success: boolean; message: string }>(`/journals/${id}`, {
       method: "DELETE",
+    }),
+
+  downloadSampleTemplate: (format?: "csv" | "excel") =>
+    apiFetchBlob(`/journals/import/template/sample${format ? `?format=${format}` : ""}`),
+
+  downloadBlankTemplate: (format?: "csv" | "excel") =>
+    apiFetchBlob(`/journals/import/template/blank${format ? `?format=${format}` : ""}`),
+
+  previewImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        totalRows: number;
+        readyCount: number;
+        overwriteCount: number;
+        skipCount: number;
+        invalidCount: number;
+        previewItems: any[];
+      };
+    }>("/journals/import/preview", {
+      method: "POST",
+      body: formData,
+    }),
+
+  executeImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        successCount: number;
+        failCount: number;
+        errors: Array<{ row: number; error: string }>;
+      };
+    }>("/journals/import", {
+      method: "POST",
+      body: formData,
     }),
 };

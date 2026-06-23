@@ -1,0 +1,5 @@
+Journal Number,Journal Date,Reference Number,Description,Notes,Status,Account Name,Debit,Credit,Narration
+JRN-2026-0001,2026-06-01,REF-001,Opening Equity Injection,Equity Setup,Posted,Petty Cash,10000,0,Opening Cash Injection
+JRN-2026-0001,2026-06-01,REF-001,Opening Equity Injection,Equity Setup,Posted,Owner's Equity,0,10000,Owner Equity Setup
+JRN-2026-0002,2026-06-02,REF-002,Rent Payment,,Posted,Rent Expense,1500,0,Rent for June
+JRN-2026-0002,2026-06-02,REF-002,Rent Payment,,Posted,Petty Cash,0,1500,Paid by cash
