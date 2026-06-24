@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Settings2, ChevronDown, TreePine, RefreshCw, MoreHorizontal,
-  Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown,  FileUp} from "lucide-react";
+  Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown,  FileUp, Upload, Download} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -28,6 +28,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { accountApi, type Account, type UpdateAccountInput } from "@/lib/api/accounts";
 import { documentsApi } from "@/lib/api/documents";
@@ -646,6 +650,57 @@ export default function ChartOfAccountsPage() {
 
   const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
 
+  const handleExportCSV = () => {
+    if (displayed.length === 0) {
+      toast.error("No accounts to export");
+      return;
+    }
+    const headers = [
+      "Account Name",
+      "Account Code",
+      "Account Type",
+      "Parent Account Name",
+      "Description",
+      "Opening Balance",
+      "Bank Account Number",
+      "Bank IFSC",
+      "Bank Currency",
+      "Create Item As Fixed Asset",
+      "Fixed Asset Type"
+    ];
+    
+    const csvContent = [
+      headers.join(","),
+      ...displayed.map(a => {
+        const pAcc = a.parentId ? accountMap.get(a.parentId)?.name : "";
+        return [
+          `"${a.name || ""}"`,
+          `"${a.code || ""}"`,
+          `"${a.accountType || ""}"`,
+          `"${pAcc || ""}"`,
+          `"${a.description || ""}"`,
+          `"${a.openingBalance || 0}"`,
+          `"${a.accountNumber || ""}"`,
+          `"${a.ifsc || ""}"`,
+          `"${a.currency || ""}"`,
+          `"${a.createItemAsFixedAsset || false}"`,
+          `"${a.fixedAssetTypeId || ""}"`
+        ].join(",");
+      })
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "chart_of_accounts.csv");
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Chart of accounts exported successfully");
+  };
+
   useEffect(() => {
     if (displayed.length === 0) {
       setSelectedAccountId(null);
@@ -691,15 +746,89 @@ export default function ChartOfAccountsPage() {
           }
           actions={
             <>
-              <Button variant="outline" size="sm" onClick={fetchAccounts} disabled={fetching} className="gap-1.5">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                    {viewFilter} Accounts
+                    <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44 bg-white">
+                  {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
+                    <DropdownMenuItem
+                      key={f}
+                      className={viewFilter === f ? "font-semibold" : ""}
+                      onClick={() => setViewFilter(f)}
+                    >
+                      {f} Accounts
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button variant="outline" size="sm" onClick={fetchAccounts} disabled={fetching} className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
                 <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
-              <Link href="/batch-import?section=accountant&type=Journal Entries&back=/accountant/chart-of-accounts">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
-                  <FileUp className="h-3.5 w-3.5" /> Batch Import
-                </Button>
-              </Link>
+
+              <Button size="sm" className="h-8 text-xs gap-1.5" onClick={openCreate}>
+                <Plus className="h-3.5 w-3.5" />
+                New
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-8 w-8 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52 bg-white">
+                  <DropdownMenuItem
+                    onClick={() => router.push("/batch-import?section=accountant&type=Journal Entries&back=/accountant/chart-of-accounts")}
+                    className="cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2 text-xs">
+                      <FileUp className="h-4 w-4 text-slate-500" />
+                      Batch Import
+                    </span>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="cursor-pointer">
+                      <span className="flex items-center gap-2 text-xs">
+                        <Upload className="h-4 w-4 text-slate-500" />
+                        Import
+                      </span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuPortal>
+                      <DropdownMenuSubContent className="w-52 bg-white">
+                        <DropdownMenuItem
+                          onClick={() => router.push("/accountant/chart-of-accounts/import")}
+                          className="cursor-pointer"
+                        >
+                          <span className="text-xs">Import Chart of Accounts</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuPortal>
+                  </DropdownMenuSub>
+
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="cursor-pointer">
+                      <span className="flex items-center gap-2 text-xs">
+                        <Download className="h-4 w-4 text-slate-500" />
+                        Export
+                      </span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuPortal>
+                      <DropdownMenuSubContent className="w-52 bg-white">
+                        <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                          <span className="text-xs">Export Accounts</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuPortal>
+                  </DropdownMenuSub>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           }
         />
@@ -737,48 +866,6 @@ export default function ChartOfAccountsPage() {
                   onDelete={() => setBulkDeleteOpen(true)}
                   onClear={clearSelection}
                 />
-              ) : !panelOpen ? (
-                /* Sub-header — view filter + actions when no panel is open */
-                <div className="flex items-center justify-between px-6 py-3 border-b bg-background">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="flex items-center gap-1.5 font-semibold text-base hover:text-primary transition-colors">
-                        {viewFilter} Accounts
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-44">
-                      {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
-                        <DropdownMenuItem
-                          key={f}
-                          className={viewFilter === f ? "font-semibold" : ""}
-                          onClick={() => setViewFilter(f)}
-                        >
-                          {f} Accounts
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={openCreate} className="gap-1.5">
-                      <Plus className="h-3.5 w-3.5" />
-                      New
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52">
-                        <DropdownMenuItem>Sort by</DropdownMenuItem>
-                        <DropdownMenuItem>Import Chart of Accounts</DropdownMenuItem>
-                        <DropdownMenuItem>Export</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
               ) : null}
 
               {/* Main Content: Split View or Full Table */}

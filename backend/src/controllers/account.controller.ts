@@ -1,5 +1,8 @@
 import { Response } from "express";
 import { Types } from "mongoose";
+import fs from "fs";
+import path from "path";
+import * as XLSX from "xlsx";
 import Account from "../models/account.model";
 import Bill from "../models/bill.model";
 import Contact from "../models/contact.model";
@@ -1177,6 +1180,609 @@ export const seedTemplate = asyncHandler(async (req: AuthenticatedRequest, res: 
     data: {
       ...seeded,
       locked,
+    },
+  });
+});
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function toFiniteNumber(value: unknown): number {
+  if (value === undefined || value === null || value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getRootTypeFromAccountType(accountType: string): AccountRootType | null {
+  const mapping: Record<string, AccountRootType> = {
+    "Other Asset": "Asset", "Other Current Asset": "Asset", "Cash": "Asset", "Bank": "Asset",
+    "Fixed Asset": "Asset", "Accounts Receivable": "Asset", "Stock": "Asset",
+    "Payment Clearing Account": "Asset", "Intangible Asset": "Asset",
+    "Non Current Asset": "Asset", "Deferred Tax Asset": "Asset", "Contra Asset": "Asset",
+    "Other Current Liability": "Liability", "Credit Card": "Liability", "Non Current Liability": "Liability",
+    "Other Liability": "Liability", "Accounts Payable": "Liability", "Overseas Tax Payable": "Liability",
+    "Deferred Tax Liability": "Liability",
+    "Equity": "Equity",
+    "Income": "Income", "Other Income": "Income",
+    "Expense": "Expense", "Cost Of Goods Sold": "Expense", "Other Expense": "Expense"
+  };
+  return mapping[accountType] || null;
+}
+
+async function resolveParentAccount(params: {
+  organizationId: Types.ObjectId;
+  parentNameOrCode: string;
+  processedInBatch?: Map<string, string>;
+}): Promise<Types.ObjectId | string | null> {
+  if (!params.parentNameOrCode) return null;
+  const term = params.parentNameOrCode.toLowerCase().trim();
+  
+  const parent = await Account.findOne({
+    organizationId: params.organizationId,
+    isDeleted: false,
+    $or: [
+      { name: { $regex: new RegExp("^" + escapeRegex(term) + "$", "i") } },
+      { code: { $regex: new RegExp("^" + escapeRegex(term) + "$", "i") } },
+    ],
+  });
+  
+  if (parent) {
+    return parent._id as Types.ObjectId;
+  }
+
+  if (params.processedInBatch && params.processedInBatch.has(term)) {
+    const matched = params.processedInBatch.get(term)!;
+    if (Types.ObjectId.isValid(matched)) {
+      return new Types.ObjectId(matched);
+    }
+    return matched; // placeholder string for preview
+  }
+
+  return null;
+}
+
+async function resolveFixedAssetType(params: {
+  organizationId: Types.ObjectId;
+  name: string;
+}): Promise<Types.ObjectId | null> {
+  if (!params.name) return null;
+  const term = params.name.toLowerCase().trim();
+  const doc = await FixedAssetType.findOne({
+    organizationId: params.organizationId,
+    isDeleted: false,
+    isActive: true,
+    name: { $regex: new RegExp("^" + escapeRegex(term) + "$", "i") },
+  });
+  return doc ? (doc._id as Types.ObjectId) : null;
+}
+
+async function syncOpeningBalanceAdjustment(organizationId: Types.ObjectId, req: AuthenticatedRequest) {
+  const accounts = await Account.find({
+    organizationId,
+    isDeleted: false,
+    isGroup: false,
+    name: { $nin: [OPENING_BALANCE_ADJUSTMENT_ACCOUNT, OPENING_BALANCE_OFFSET_ACCOUNT] },
+  }).select("openingBalance").lean();
+  
+  const manualNetSum = round2(accounts.reduce((sum, acc) => sum + (acc.openingBalance || 0), 0));
+  
+  const adjustmentAccount = await Account.findOne({
+    organizationId,
+    name: OPENING_BALANCE_ADJUSTMENT_ACCOUNT,
+    isDeleted: false,
+    isGroup: false,
+  });
+
+  if (adjustmentAccount) {
+    const targetAdjustmentOB = round2(-manualNetSum);
+    const prevAdjOB = Number(adjustmentAccount.openingBalance || 0);
+    const delta = round2(targetAdjustmentOB - prevAdjOB);
+
+    if (Math.abs(delta) > 0.001) {
+      adjustmentAccount.openingBalance = targetAdjustmentOB;
+      adjustmentAccount.balance = round2(Number(adjustmentAccount.balance || 0) + delta);
+      attachUser(adjustmentAccount, req);
+      await adjustmentAccount.save();
+    }
+  }
+}
+
+function getAccountTemplatePath(fileName: string): string {
+  const paths = [
+    path.join(process.cwd(), "src", "files", "chart_of_accounts", fileName),
+    path.join(process.cwd(), "files", "chart_of_accounts", fileName),
+    path.join(__dirname, "..", "files", "chart_of_accounts", fileName),
+    path.join(__dirname, "..", "..", "src", "files", "chart_of_accounts", fileName),
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error(`Template file ${fileName} not found in chart_of_accounts`);
+}
+
+async function mapRowToAccount(
+  row: Record<string, any>,
+  mapping: Record<string, string>,
+  organizationId: any,
+  duplicateHandling: "skip" | "overwrite",
+  processedInBatch: Map<string, string>,
+  fixedAssetTypesCache: Map<string, Types.ObjectId | null>,
+): Promise<{ accountData: any; isValid: boolean; status: "Ready" | "Overwrite" | "Skip" | "Error"; error?: string; duplicateAccount?: any }> {
+  const getMappedValue = (key: string): string => {
+    const colName = mapping[key];
+    if (!colName) return "";
+    return String(row[colName] ?? "").trim();
+  };
+
+  const name = getMappedValue("name");
+  if (!name) {
+    return {
+      accountData: {},
+      isValid: false,
+      status: "Error",
+      error: "Account Name is required",
+    };
+  }
+
+  const accountTypeInput = getMappedValue("accountType");
+  if (!accountTypeInput) {
+    return {
+      accountData: {},
+      isValid: false,
+      status: "Error",
+      error: "Account Type is required",
+    };
+  }
+
+  const rootType = getRootTypeFromAccountType(accountTypeInput);
+  if (!rootType) {
+    return {
+      accountData: {},
+      isValid: false,
+      status: "Error",
+      error: `Invalid Account Type: "${accountTypeInput}"`,
+    };
+  }
+
+  const parentNameInput = getMappedValue("parentAccount");
+  let parentId: any = null;
+  if (parentNameInput) {
+    parentId = await resolveParentAccount({
+      organizationId,
+      parentNameOrCode: parentNameInput,
+      processedInBatch,
+    });
+    if (!parentId) {
+      return {
+        accountData: {},
+        isValid: false,
+        status: "Error",
+        error: `Parent Account "${parentNameInput}" not found in database or this sheet`,
+      };
+    }
+  }
+
+  const codeInput = getMappedValue("code");
+
+  let duplicateAccount: any = null;
+  let status: "Ready" | "Overwrite" | "Skip" | "Error" = "Ready";
+  let errorMsg: string | undefined = undefined;
+
+  let duplicateAccountByCode: any = null;
+  if (codeInput) {
+    duplicateAccountByCode = await Account.findOne({
+      organizationId,
+      code: codeInput,
+      isDeleted: false,
+    });
+  }
+
+  const duplicateAccountByName = await Account.findOne({
+    organizationId,
+    name: { $regex: new RegExp("^" + escapeRegex(name) + "$", "i") },
+    parentId: parentId && Types.ObjectId.isValid(String(parentId)) ? new Types.ObjectId(String(parentId)) : null,
+    isDeleted: false,
+  });
+
+  if (duplicateAccountByCode && duplicateAccountByName) {
+    if (duplicateAccountByCode._id.toString() === duplicateAccountByName._id.toString()) {
+      duplicateAccount = duplicateAccountByCode;
+      status = duplicateHandling === "overwrite" ? "Overwrite" : "Skip";
+    } else {
+      if (duplicateHandling === "overwrite") {
+        status = "Error";
+        errorMsg = `Account code "${codeInput}" already exists for "${duplicateAccountByCode.name}", which conflicts with existing account "${duplicateAccountByName.name}"`;
+      } else {
+        duplicateAccount = duplicateAccountByName;
+        status = "Skip";
+      }
+    }
+  } else if (duplicateAccountByCode) {
+    duplicateAccount = duplicateAccountByCode;
+    status = duplicateHandling === "overwrite" ? "Overwrite" : "Skip";
+  } else if (duplicateAccountByName) {
+    duplicateAccount = duplicateAccountByName;
+    status = duplicateHandling === "overwrite" ? "Overwrite" : "Skip";
+  }
+
+  if (status === "Error") {
+    return {
+      accountData: {},
+      isValid: false,
+      status: "Error",
+      error: errorMsg,
+    };
+  }
+
+  if (status !== "Skip" && codeInput) {
+    try {
+      await resolveAccountCodeForAccount({
+        organizationId,
+        rootType,
+        accountType: accountTypeInput as AccountType,
+        requestedCode: codeInput,
+        excludeAccountId: duplicateAccount ? duplicateAccount._id : undefined,
+      });
+    } catch (err: any) {
+      return {
+        accountData: {},
+        isValid: false,
+        status: "Error",
+        error: err.message || "Invalid account code",
+      };
+    }
+  }
+
+  let createItemAsFixedAsset = false;
+  const createItemAsFixedAssetRaw = getMappedValue("createItemAsFixedAsset").toLowerCase();
+  if (createItemAsFixedAssetRaw === "true" || createItemAsFixedAssetRaw === "yes" || createItemAsFixedAssetRaw === "1") {
+    createItemAsFixedAsset = true;
+  }
+
+  let fixedAssetTypeId: Types.ObjectId | null = null;
+  if (createItemAsFixedAsset) {
+    if (accountTypeInput !== "Fixed Asset") {
+      return {
+        accountData: {},
+        isValid: false,
+        status: "Error",
+        error: "Create Item as Fixed Asset can only be enabled for Fixed Asset accounts",
+      };
+    }
+
+    const fixedAssetTypeName = getMappedValue("fixedAssetType");
+    if (!fixedAssetTypeName) {
+      return {
+        accountData: {},
+        isValid: false,
+        status: "Error",
+        error: "Fixed Asset Type is required when Create Item as Fixed Asset is enabled",
+      };
+    }
+
+    const cacheKey = fixedAssetTypeName.toLowerCase().trim();
+    if (fixedAssetTypesCache.has(cacheKey)) {
+      fixedAssetTypeId = fixedAssetTypesCache.get(cacheKey)!;
+    } else {
+      fixedAssetTypeId = await resolveFixedAssetType({
+        organizationId,
+        name: fixedAssetTypeName,
+      });
+      fixedAssetTypesCache.set(cacheKey, fixedAssetTypeId);
+    }
+
+    if (!fixedAssetTypeId) {
+      return {
+        accountData: {},
+        isValid: false,
+        status: "Error",
+        error: `Fixed Asset Type "${fixedAssetTypeName}" was not found`,
+      };
+    }
+  }
+
+  const accountData = {
+    organizationId,
+    name,
+    code: codeInput,
+    accountNumber: accountTypeInput === "Bank" ? getMappedValue("accountNumber") : "",
+    ifsc: accountTypeInput === "Bank" ? getMappedValue("ifsc") : "",
+    parentId,
+    rootType,
+    accountType: accountTypeInput,
+    isGroup: false,
+    currency: getMappedValue("currency"),
+    description: getMappedValue("description"),
+    createItemAsFixedAsset,
+    fixedAssetTypeId,
+    openingBalance: toFiniteNumber(getMappedValue("openingBalance")),
+  };
+
+  return {
+    accountData,
+    isValid: true,
+    status,
+    duplicateAccount,
+  };
+}
+
+export const downloadSampleTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
+  const filePath = getAccountTemplatePath("sample_chart_of_accounts.csv");
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", "attachment; filename=sample_chart_of_accounts.xlsx");
+    res.send(buffer);
+  } else {
+    res.download(filePath, "sample_chart_of_accounts.csv");
+  }
+});
+
+export const downloadBlankTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
+  const filePath = getAccountTemplatePath("blank_chart_of_accounts.csv");
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", "attachment; filename=blank_chart_of_accounts.xlsx");
+    res.send(buffer);
+  } else {
+    res.download(filePath, "blank_chart_of_accounts.csv");
+  }
+});
+
+export const previewImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req) as Types.ObjectId;
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  const fixedAssetTypesCache = new Map<string, Types.ObjectId | null>();
+  const processedInBatch = new Map<string, string>();
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const nameCol = mapping["name"];
+    const nameVal = nameCol ? String(row[nameCol] ?? "").trim().toLowerCase() : "";
+    if (nameVal) {
+      processedInBatch.set(nameVal, `BATCH_ROW_${idx}`);
+    }
+  }
+
+  const previewItems: any[] = [];
+  let readyCount = 0;
+  let overwriteCount = 0;
+  let skipCount = 0;
+  let invalidCount = 0;
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const rowNum = idx + 2;
+    const result = await mapRowToAccount(row, mapping, organizationId, duplicateHandling, processedInBatch, fixedAssetTypesCache);
+    if (!result.isValid) {
+      invalidCount++;
+      previewItems.push({
+        rowNumber: rowNum,
+        name: "",
+        code: "",
+        accountType: "",
+        openingBalance: 0,
+        isValid: false,
+        status: "Error",
+        error: result.error,
+      });
+    } else {
+      if (result.status === "Ready") readyCount++;
+      else if (result.status === "Overwrite") overwriteCount++;
+      else if (result.status === "Skip") skipCount++;
+
+      previewItems.push({
+        rowNumber: rowNum,
+        name: result.accountData.name,
+        code: result.accountData.code,
+        accountType: result.accountData.accountType,
+        openingBalance: result.accountData.openingBalance,
+        isValid: true,
+        status: result.status,
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      totalRows: rows.length,
+      readyCount,
+      overwriteCount,
+      skipCount,
+      invalidCount,
+      previewItems,
+    },
+  });
+});
+
+export const executeImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req) as Types.ObjectId;
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+
+  let overrides: number[] = [];
+  if (req.body.overrides) {
+    try {
+      overrides = typeof req.body.overrides === "string" ? JSON.parse(req.body.overrides) : req.body.overrides;
+    } catch {
+      overrides = [];
+    }
+  }
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  const fixedAssetTypesCache = new Map<string, Types.ObjectId | null>();
+
+  const nameToId = new Map<string, Types.ObjectId>();
+  const existing = await Account.find({ organizationId, isDeleted: false }).select("name").lean();
+  for (const acc of existing) {
+    nameToId.set(acc.name.toLowerCase().trim(), acc._id as Types.ObjectId);
+  }
+
+  const processedInBatch = new Map<string, string>();
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const nameCol = mapping["name"];
+    const nameVal = nameCol ? String(row[nameCol] ?? "").trim().toLowerCase() : "";
+    if (nameVal) {
+      processedInBatch.set(nameVal, `BATCH_ROW_${idx}`);
+    }
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+  const errors: Array<{ row: number; error: string }> = [];
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const rowNum = idx + 2;
+    try {
+      const rowDuplicateHandling = overrides.includes(rowNum) ? "overwrite" : duplicateHandling;
+      const result = await mapRowToAccount(row, mapping, organizationId, rowDuplicateHandling, processedInBatch, fixedAssetTypesCache);
+      if (!result.isValid) {
+        throw new Error(result.error);
+      }
+
+      if (result.status === "Skip") {
+        successCount++;
+        continue;
+      }
+
+      const data = result.accountData;
+      let accountId: Types.ObjectId;
+
+      if (result.status === "Overwrite") {
+        const acc = result.duplicateAccount;
+        
+        acc.name = data.name;
+        acc.rootType = data.rootType;
+        acc.accountType = data.accountType;
+        acc.parentId = null; // Reset to null; will be linked in the second pass if a parent is specified
+        
+        acc.code = await resolveAccountCodeForAccount({
+          organizationId,
+          rootType: data.rootType,
+          accountType: data.accountType,
+          requestedCode: data.code || acc.code,
+          excludeAccountId: acc._id,
+        });
+        
+        acc.accountNumber = data.accountNumber;
+        acc.ifsc = data.ifsc;
+        acc.currency = data.currency;
+        acc.description = data.description;
+        acc.createItemAsFixedAsset = data.createItemAsFixedAsset;
+        acc.fixedAssetTypeId = data.fixedAssetTypeId;
+
+        const previousManualOB = Number(acc.openingBalance || 0);
+        const newManualOB = Number(data.openingBalance || 0);
+        const delta = round2(newManualOB - previousManualOB);
+        acc.openingBalance = newManualOB;
+        acc.balance = round2(Number(acc.balance || 0) + delta);
+
+        attachUser(acc, req);
+        await acc.save();
+        accountId = acc._id as Types.ObjectId;
+      } else {
+        const resolvedCode = await resolveAccountCodeForAccount({
+          organizationId,
+          rootType: data.rootType,
+          accountType: data.accountType,
+          requestedCode: data.code,
+        });
+
+        const acc = new Account({
+          organizationId,
+          name: data.name,
+          code: resolvedCode,
+          accountNumber: data.accountNumber,
+          ifsc: data.ifsc,
+          parentId: null,
+          rootType: data.rootType,
+          accountType: data.accountType,
+          isGroup: false,
+          currency: data.currency,
+          description: data.description,
+          createItemAsFixedAsset: data.createItemAsFixedAsset,
+          fixedAssetTypeId: data.fixedAssetTypeId,
+          openingBalance: data.openingBalance,
+          balance: data.openingBalance,
+        });
+        attachUser(acc, req);
+        await acc.save();
+        accountId = acc._id as Types.ObjectId;
+      }
+
+      nameToId.set(data.name.toLowerCase().trim(), accountId);
+      successCount++;
+    } catch (err: any) {
+      failCount++;
+      errors.push({ row: rowNum, error: err.message || "Failed to process row" });
+    }
+  }
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const nameCol = mapping["name"];
+    const nameVal = nameCol ? String(row[nameCol] ?? "").trim().toLowerCase() : "";
+    if (!nameVal) continue;
+
+    const accountId = nameToId.get(nameVal);
+    if (!accountId) continue;
+
+    const parentColName = mapping["parentAccount"];
+    const parentNameVal = parentColName ? String(row[parentColName] ?? "").trim().toLowerCase() : "";
+    if (parentNameVal) {
+      const parentId = nameToId.get(parentNameVal);
+      if (parentId) {
+        await Account.updateOne({ _id: accountId }, { $set: { parentId } });
+      }
+    }
+  }
+
+  await syncOpeningBalanceAdjustment(organizationId, req);
+
+  res.json({
+    success: true,
+    data: {
+      successCount,
+      failCount,
+      errors,
     },
   });
 });
