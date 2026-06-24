@@ -1,4 +1,4 @@
-import { apiFetch, buildQuery } from "./client";
+import { apiFetch, apiFetchBlob, buildQuery } from "./client";
 import type { PaginatedResponse, ListParams } from "./client";
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -313,5 +313,46 @@ export const contactApi = {
     apiFetch<GstinLookupResponse>("/gstin/lookup", {
       method: "POST",
       body: JSON.stringify({ gstin: gstin.toUpperCase(), captcha, captchaCookie }),
+    }),
+
+  downloadSampleTemplate: (format?: "csv" | "excel", type?: "customer" | "vendor") => {
+    const params: Record<string, string> = {};
+    if (format) params.format = format;
+    if (type) params.type = type;
+    return apiFetchBlob(`/contacts/import/template/sample${buildQuery(params)}`);
+  },
+
+  downloadBlankTemplate: (format?: "csv" | "excel", type?: "customer" | "vendor") => {
+    const params: Record<string, string> = {};
+    if (format) params.format = format;
+    if (type) params.type = type;
+    return apiFetchBlob(`/contacts/import/template/blank${buildQuery(params)}`);
+  },
+
+  previewImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        totalRows: number;
+        readyCount: number;
+        overwriteCount: number;
+        skipCount: number;
+        invalidCount: number;
+        previewItems: any[];
+      };
+    }>("/contacts/import/preview", {
+      method: "POST",
+      body: formData,
+    }),
+
+  executeImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        successCount: number;
+        failCount: number;
+        errors: Array<{ row: number; error: string }>;
+      };
+    }>("/contacts/import", {
+      method: "POST",
+      body: formData,
     }),
 };

@@ -1,9 +1,22 @@
 import { Router } from "express";
 import { authenticate } from "../middlewares/auth";
-import { list, getOne, create, update, remove, addComment, getActivity, clone, merge } from "../controllers/contact.controller";
+import {
+  list, getOne, create, update, remove,
+  addComment, getActivity, clone, merge,
+  downloadSampleTemplate, downloadBlankTemplate, previewImport, executeImport
+} from "../controllers/contact.controller";
+import { upload } from "../middlewares/upload";
 
 const router = Router();
 router.use(authenticate);
+
+// Templates (must be before /:id)
+router.get("/import/template/sample", downloadSampleTemplate);
+router.get("/import/template/blank", downloadBlankTemplate);
+
+// Import endpoints (must be before /:id)
+router.post("/import/preview", upload.single("file"), previewImport);
+router.post("/import", upload.single("file"), executeImport);
 
 router.get("/", list);
 router.post("/", create);
