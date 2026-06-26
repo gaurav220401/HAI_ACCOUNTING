@@ -14,6 +14,7 @@ import { AccountDetailsPanel, type AccountAmountView } from "@/components/accoun
 import { AccountTransactionsReportDialog } from "@/components/account-transactions-report-dialog";
 import { PageHeader } from "@/components/page-header";
 import { AccountDialog } from "@/components/account-dialog";
+import { ExportDialog } from "@/components/export-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -404,6 +405,7 @@ export default function ChartOfAccountsPage() {
 
   // Bulk delete confirmation
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   // Account details panel
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
@@ -821,7 +823,7 @@ export default function ChartOfAccountsPage() {
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
                       <DropdownMenuSubContent className="w-52 bg-white">
-                        <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                        <DropdownMenuItem onClick={() => setExportDialogOpen(true)} className="cursor-pointer">
                           <span className="text-xs">Export Accounts</span>
                         </DropdownMenuItem>
                       </DropdownMenuSubContent>
@@ -1132,6 +1134,13 @@ export default function ChartOfAccountsPage() {
           onCancel={() => setBulkDeleteOpen(false)}
         />
       )}
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        initialModule="accounts"
+      />
     </SidebarProvider>
   );
 }
