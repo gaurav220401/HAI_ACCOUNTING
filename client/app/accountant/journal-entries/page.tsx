@@ -8,6 +8,7 @@ import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { ExportDialog } from "@/components/export-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -463,6 +464,7 @@ export default function JournalEntriesPage() {
   const [selected, setSelected] = useState<Journal | null>(null);
   const [journals, setJournals] = useState<Journal[]>([]);
   const [loadingJournals, setLoadingJournals] = useState(true);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const handleExportCSV = () => {
     if (journals.length === 0) {
@@ -668,7 +670,7 @@ export default function JournalEntriesPage() {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuPortal>
                         <DropdownMenuSubContent className="w-48 bg-white">
-                          <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                          <DropdownMenuItem onClick={() => setExportDialogOpen(true)} className="cursor-pointer">
                             <span className="text-xs">Export Journals</span>
                           </DropdownMenuItem>
                         </DropdownMenuSubContent>
@@ -950,6 +952,11 @@ export default function JournalEntriesPage() {
             </div>
           )}
         </div>
+        <ExportDialog
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+          initialModule="journals"
+        />
       </SidebarInset>
     </SidebarProvider>
   );

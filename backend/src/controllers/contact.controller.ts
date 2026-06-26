@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Types } from "mongoose";
 import Contact from "../models/contact.model";
 import Expense from "../models/expense.model";
 import Organization from "../models/organization.model";
@@ -10,10 +11,16 @@ import VendorCredit from "../models/vendor-credit.model";
 import Journal from "../models/journal.model";
 import PaymentMade from "../models/payment-made.model";
 import Item from "../models/item.model";
+import Account from "../models/account.model";
+import PaymentTerms from "../models/payment-terms.model";
+import SalesPerson from "../models/sales-person.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import fs from "fs";
+import path from "path";
+import * as XLSX from "xlsx";
 import {
   findAccountIdByName,
   postVoucher,
@@ -662,4 +669,538 @@ export const getActivity = asyncHandler(async (req: AuthenticatedRequest, res: R
 
   events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   res.json({ success: true, data: events });
+});
+
+// ─── Import Wizard ─────────────────────────────────────────────────────────
+
+function toFiniteNumber(value: unknown): number {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return n;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getContactTemplatePath(fileName: string): string {
+  const isVendor = fileName.includes("vendor");
+  const isCustomer = fileName.includes("customer");
+  const subFolder = isVendor ? "vendors" : (isCustomer ? "customers" : "contacts");
+
+  const paths = [
+    path.join(process.cwd(), "src", "files", subFolder, fileName),
+    path.join(process.cwd(), "files", subFolder, fileName),
+    path.join(__dirname, "..", "files", subFolder, fileName),
+    path.join(__dirname, "..", "..", "src", "files", subFolder, fileName),
+  ];
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  throw new Error(`Template file ${fileName} not found in ${subFolder}`);
+}
+
+const PLACE_OF_SUPPLY_OPTIONS = [
+  { code: "AN", label: "Andaman and Nicobar Islands" },
+  { code: "AD", label: "Andhra Pradesh" },
+  { code: "AR", label: "Arunachal Pradesh" },
+  { code: "AS", label: "Assam" },
+  { code: "BR", label: "Bihar" },
+  { code: "CH", label: "Chandigarh" },
+  { code: "CG", label: "Chhattisgarh" },
+  { code: "DN", label: "Dadra and Nagar Haveli and Daman and Diu" },
+  { code: "DD", label: "Daman and Diu" },
+  { code: "DL", label: "Delhi" },
+  { code: "FC", label: "Foreign Country" },
+  { code: "GA", label: "Goa" },
+  { code: "GJ", label: "Gujarat" },
+  { code: "HR", label: "Haryana" },
+  { code: "HP", label: "Himachal Pradesh" },
+  { code: "JK", label: "Jammu and Kashmir" },
+  { code: "JH", label: "Jharkhand" },
+  { code: "KA", label: "Karnataka" },
+  { code: "KL", label: "Kerala" },
+  { code: "LA", label: "Ladakh" },
+  { code: "LD", label: "Lakshadweep" },
+  { code: "MP", label: "Madhya Pradesh" },
+  { code: "MH", label: "Maharashtra" },
+  { code: "MN", label: "Manipur" },
+  { code: "ML", label: "Meghalaya" },
+  { code: "MZ", label: "Mizoram" },
+  { code: "NL", label: "Nagaland" },
+  { code: "OD", label: "Odisha" },
+  { code: "OT", label: "Other Territory" },
+  { code: "PY", label: "Puducherry" },
+  { code: "PB", label: "Punjab" },
+  { code: "RJ", label: "Rajasthan" },
+  { code: "SK", label: "Sikkim" },
+  { code: "TN", label: "Tamil Nadu" },
+  { code: "TS", label: "Telangana" },
+  { code: "TR", label: "Tripura" },
+  { code: "UP", label: "Uttar Pradesh" },
+  { code: "UK", label: "Uttarakhand" },
+  { code: "WB", label: "West Bengal" },
+];
+
+function normalizePlaceOfSupply(value: unknown): string {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return "";
+
+  const foundByCode = PLACE_OF_SUPPLY_OPTIONS.find(opt => opt.code === raw);
+  if (foundByCode) return foundByCode.code;
+
+  const bracketMatch = raw.match(/^\[([A-Z]{2})\]/);
+  if (bracketMatch && bracketMatch[1]) {
+    const code = bracketMatch[1];
+    const found = PLACE_OF_SUPPLY_OPTIONS.find(opt => opt.code === code);
+    if (found) return found.code;
+  }
+
+  const foundByLabel = PLACE_OF_SUPPLY_OPTIONS.find(opt => opt.label.toUpperCase() === raw || opt.label.toUpperCase().includes(raw));
+  if (foundByLabel) return foundByLabel.code;
+
+  return "";
+}
+
+function normalizeLanguage(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "english" || raw === "en") return "en";
+  if (raw === "hindi" || raw === "hi") return "hi";
+  if (raw === "bengali" || raw === "bn") return "bn";
+  if (raw === "tamil" || raw === "ta") return "ta";
+  if (raw === "telugu" || raw === "te") return "te";
+  if (raw === "marathi" || raw === "mr") return "mr";
+  if (raw === "gujarati" || raw === "gu") return "gu";
+  return "en";
+}
+
+function toBoolean(value: unknown): boolean {
+  if (!value) return false;
+  const str = String(value).trim().toLowerCase();
+  return str === "yes" || str === "true" || str === "1";
+}
+
+const TDS_CATEGORIES = [
+  { id: "comm-2", label: "Commission or Brokerage" },
+  { id: "comm-r-3.75", label: "Commission or Brokerage (Reduced)" },
+  { id: "div-10", label: "Dividend" },
+  { id: "div-r-7.5", label: "Dividend (Reduced)" },
+  { id: "int-10", label: "Other Interest than securities" },
+  { id: "int-r-7.5", label: "Other Interest than securities (Reduced)" },
+  { id: "con-oth-2", label: "Payment of contractors for Others" },
+  { id: "con-oth-r-1.5", label: "Payment of contractors for Others (Reduced)" },
+  { id: "con-ind-1", label: "Payment of contractors HUF/Indiv" },
+  { id: "con-ind-r-0.75", label: "Payment of contractors HUF/Indiv (Reduced)" },
+  { id: "prof-10", label: "Professional Fees" },
+  { id: "prof-r-7.5", label: "Professional Fees (Reduced)" },
+  { id: "rent-10", label: "Rent on land or furniture etc" },
+  { id: "rent-r-7.5", label: "Rent on land or furniture etc (Reduced)" },
+  { id: "tech-2", label: "Technical Fees (2%)" },
+];
+
+function normalizeTdsCategory(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  const found = TDS_CATEGORIES.find(
+    (tc) => tc.id.toLowerCase() === raw || tc.label.toLowerCase() === raw || tc.label.toLowerCase().includes(raw)
+  );
+  return found ? found.id : "";
+}
+
+export async function mapRowToContact(
+  row: Record<string, any>,
+  mapping: Record<string, string>,
+  organizationId: any,
+  duplicateHandling: "skip" | "overwrite",
+  defaultContactType: "Customer" | "Vendor" = "Customer"
+): Promise<{ contactData: any; isValid: boolean; status: "Ready" | "Overwrite" | "Skip" | "Error"; error?: string; duplicateContact?: any }> {
+  const getMappedValue = (key: string): string => {
+    const colName = mapping[key];
+    if (!colName) return "";
+    return String(row[colName] ?? "").trim();
+  };
+
+  const displayName = getMappedValue("displayName");
+  if (!displayName) {
+    return {
+      contactData: {},
+      isValid: false,
+      status: "Error",
+      error: "Display Name is required",
+    };
+  }
+
+  // contactType validation: Customer, Vendor, Both
+  let contactType = getMappedValue("contactType");
+  if (!contactType) {
+    contactType = defaultContactType; // fallback default
+  }
+  const typeLower = contactType.toLowerCase();
+  if (typeLower.includes("vendor")) contactType = "Vendor";
+  else if (typeLower.includes("both")) contactType = "Both";
+  else contactType = "Customer";
+
+  // Check duplicate
+  let duplicateContact = await Contact.findOne({
+    organizationId,
+    displayName: { $regex: new RegExp("^" + escapeRegex(displayName) + "$", "i") },
+    isDeleted: false,
+  });
+
+  let status: "Ready" | "Overwrite" | "Skip" | "Error" = "Ready";
+  if (duplicateContact) {
+    status = duplicateHandling === "overwrite" ? "Overwrite" : "Skip";
+  }
+
+  const taxTreatment = normalizeTaxTreatment(getMappedValue("taxTreatment"));
+  const taxPreference = normalizeTaxPreference(getMappedValue("taxPreference"), taxTreatment);
+
+  // Resolve references by name
+  let accountsReceivableId: any = undefined;
+  const accountsReceivableName = getMappedValue("accountsReceivableAccount");
+  if (accountsReceivableName) {
+    const acc = await Account.findOne({
+      organizationId,
+      name: { $regex: new RegExp("^" + escapeRegex(accountsReceivableName) + "$", "i") },
+      isDeleted: false
+    });
+    if (acc) accountsReceivableId = acc._id;
+  }
+
+  let accountsPayableId: any = undefined;
+  const accountsPayableName = getMappedValue("accountsPayableAccount");
+  if (accountsPayableName) {
+    const acc = await Account.findOne({
+      organizationId,
+      name: { $regex: new RegExp("^" + escapeRegex(accountsPayableName) + "$", "i") },
+      isDeleted: false
+    });
+    if (acc) accountsPayableId = acc._id;
+  }
+
+  let paymentTermsId: any = undefined;
+  const paymentTermsName = getMappedValue("paymentTerms");
+  if (paymentTermsName) {
+    const pt = await PaymentTerms.findOne({
+      organizationId,
+      name: { $regex: new RegExp("^" + escapeRegex(paymentTermsName) + "$", "i") }
+    });
+    if (pt) paymentTermsId = pt._id;
+  }
+
+  let salesPersonId: any = undefined;
+  const salesPersonName = getMappedValue("salesPerson");
+  if (salesPersonName) {
+    const sp = await SalesPerson.findOne({
+      organizationId,
+      name: { $regex: new RegExp("^" + escapeRegex(salesPersonName) + "$", "i") }
+    });
+    if (sp) salesPersonId = sp._id;
+  }
+
+  const contactData: any = {
+    organizationId,
+    contactType,
+    displayName,
+    salutation: getMappedValue("salutation"),
+    firstName: getMappedValue("firstName"),
+    lastName: getMappedValue("lastName"),
+    companyName: getMappedValue("companyName"),
+    email: getMappedValue("email"),
+    phone: getMappedValue("phone"),
+    mobile: getMappedValue("mobile"),
+    language: normalizeLanguage(getMappedValue("language")),
+    pan: getMappedValue("pan"),
+    gstin: getMappedValue("gstin"),
+    businessLegalName: getMappedValue("businessLegalName"),
+    businessTradeName: getMappedValue("businessTradeName"),
+    taxTreatment,
+    taxPreference,
+    exemptionReason: getMappedValue("exemptionReason"),
+    placeOfSupply: normalizePlaceOfSupply(getMappedValue("placeOfSupply")),
+    currency: getMappedValue("currency") || "INR",
+    openingBalance: toFiniteNumber(getMappedValue("openingBalance")),
+    accountsReceivableId,
+    accountsPayableId,
+    paymentTermsId,
+    salesPersonId,
+    portalEnabled: toBoolean(getMappedValue("portalEnabled")),
+    creditLimit: toFiniteNumber(getMappedValue("creditLimit")),
+    msmeRegistered: toBoolean(getMappedValue("msmeRegistered")),
+    tdsCategory: normalizeTdsCategory(getMappedValue("tdsCategory")),
+    websiteUrl: getMappedValue("websiteUrl"),
+    department: getMappedValue("department"),
+    designation: getMappedValue("designation"),
+    twitterHandle: getMappedValue("twitterHandle"),
+    skypeName: getMappedValue("skypeName"),
+    facebookUrl: getMappedValue("facebookUrl"),
+    notes: getMappedValue("notes"),
+    billingAddress: {
+      attention: getMappedValue("billingAttention"),
+      street: getMappedValue("billingStreet"),
+      street2: getMappedValue("billingStreet2"),
+      city: getMappedValue("billingCity"),
+      state: getMappedValue("billingState"),
+      zip: getMappedValue("billingZip"),
+      country: getMappedValue("billingCountry"),
+      phone: getMappedValue("billingPhone"),
+      fax: getMappedValue("billingFax"),
+    },
+    shippingAddress: {
+      attention: getMappedValue("shippingAttention"),
+      street: getMappedValue("shippingStreet"),
+      street2: getMappedValue("shippingStreet2"),
+      city: getMappedValue("shippingCity"),
+      state: getMappedValue("shippingState"),
+      zip: getMappedValue("shippingZip"),
+      country: getMappedValue("shippingCountry"),
+      phone: getMappedValue("shippingPhone"),
+      fax: getMappedValue("shippingFax"),
+    },
+    isActive: true,
+  };
+
+  const cpSalutation = getMappedValue("contactPersonSalutation");
+  const cpFirstName = getMappedValue("contactPersonFirstName");
+  const cpLastName = getMappedValue("contactPersonLastName");
+  const cpEmail = getMappedValue("contactPersonEmail");
+  const cpPhone = getMappedValue("contactPersonPhone");
+  const cpMobile = getMappedValue("contactPersonMobile");
+
+  if (cpSalutation || cpFirstName || cpLastName || cpEmail || cpPhone || cpMobile) {
+    const name = [cpFirstName, cpLastName].filter(Boolean).join(" ") || "Contact";
+    contactData.contactPersons = [{
+      salutation: cpSalutation,
+      firstName: cpFirstName,
+      lastName: cpLastName,
+      name,
+      email: cpEmail,
+      workPhone: cpPhone,
+      mobile: cpMobile,
+      isPrimary: true
+    }];
+  }
+
+  const bankName = getMappedValue("bankName");
+  const accountNumber = getMappedValue("bankAccountNumber") || getMappedValue("accountNumber");
+  const accountHolderName = getMappedValue("bankAccountHolderName") || getMappedValue("accountHolderName");
+  const ifscCode = getMappedValue("bankIfscCode") || getMappedValue("ifscCode");
+  const branchName = getMappedValue("bankBranchName") || getMappedValue("branchName");
+  const upiId = getMappedValue("bankUpiId") || getMappedValue("upiId");
+
+  if (bankName || accountNumber || accountHolderName || ifscCode || branchName || upiId) {
+    contactData.bankDetails = [{
+      bankName,
+      accountNumber,
+      accountHolderName,
+      ifscCode,
+      branchName,
+      upiId,
+      isPrimary: true
+    }];
+  }
+
+  sanitizeContactPayload(contactData);
+
+  return {
+    contactData,
+    isValid: true,
+    status,
+    duplicateContact,
+  };
+}
+
+export const downloadSampleTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
+  const type = (req.query.type as string || "customer").toLowerCase();
+  const templateName = type === "vendor" ? "sample_vendors.csv" : "sample_customers.csv";
+  const filePath = getContactTemplatePath(templateName);
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${type === "vendor" ? "sample_vendors.xlsx" : "sample_customers.xlsx"}`);
+    res.send(buffer);
+  } else {
+    res.download(filePath, type === "vendor" ? "sample_vendors.csv" : "sample_customers.csv");
+  }
+});
+
+export const downloadBlankTemplate = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const format = req.query.format;
+  const type = (req.query.type as string || "customer").toLowerCase();
+  const templateName = type === "vendor" ? "blank_vendors.csv" : "blank_customers.csv";
+  const filePath = getContactTemplatePath(templateName);
+
+  if (format === "excel" || format === "xlsx") {
+    const workbook = XLSX.readFile(filePath);
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${type === "vendor" ? "blank_vendors.xlsx" : "blank_customers.xlsx"}`);
+    res.send(buffer);
+  } else {
+    res.download(filePath, type === "vendor" ? "blank_vendors.csv" : "blank_customers.csv");
+  }
+});
+
+export const previewImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = await orgId(req);
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+  const defaultContactType = (req.body.defaultContactType || "Customer") as "Customer" | "Vendor";
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  const previewItems: any[] = [];
+  let readyCount = 0;
+  let overwriteCount = 0;
+  let skipCount = 0;
+  let invalidCount = 0;
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const rowNum = idx + 2;
+    const result = await mapRowToContact(row, mapping, organizationId, duplicateHandling, defaultContactType);
+    if (!result.isValid) {
+      invalidCount++;
+      previewItems.push({
+        rowNumber: rowNum,
+        displayName: "",
+        companyName: "",
+        contactType: "Customer",
+        email: "",
+        openingBalance: 0,
+        isValid: false,
+        status: "Error",
+        error: result.error,
+      });
+    } else {
+      if (result.status === "Ready") readyCount++;
+      else if (result.status === "Overwrite") overwriteCount++;
+      else if (result.status === "Skip") skipCount++;
+
+      previewItems.push({
+        rowNumber: rowNum,
+        displayName: result.contactData.displayName,
+        companyName: result.contactData.companyName,
+        contactType: result.contactData.contactType,
+        email: result.contactData.email,
+        openingBalance: result.contactData.openingBalance,
+        isValid: true,
+        status: result.status,
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      totalRows: rows.length,
+      readyCount,
+      overwriteCount,
+      skipCount,
+      invalidCount,
+      previewItems,
+    },
+  });
+});
+
+export const executeImport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = await orgId(req);
+  if (!req.file) throw new ValidationError("No file uploaded");
+
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof req.body.mapping === "string" ? JSON.parse(req.body.mapping) : req.body.mapping;
+    if (!mapping || typeof mapping !== "object") throw new Error();
+  } catch {
+    throw new ValidationError("Mapping is required and must be a valid JSON object");
+  }
+
+  const duplicateHandling = (req.body.duplicateHandling || "skip") as "skip" | "overwrite";
+  const defaultContactType = (req.body.defaultContactType || "Customer") as "Customer" | "Vendor";
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+
+  let successCount = 0;
+  let failCount = 0;
+  const errors: Array<{ row: number; error: string }> = [];
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const rowNum = idx + 2;
+    try {
+      const result = await mapRowToContact(row, mapping, organizationId, duplicateHandling, defaultContactType);
+      if (!result.isValid) {
+        throw new Error(result.error);
+      }
+
+      if (result.status === "Skip") {
+        successCount++;
+        continue;
+      }
+
+      if (result.status === "Overwrite") {
+        const contact = result.duplicateContact;
+        const previousOpeningBalance = Number(contact.openingBalance || 0);
+        const previousContactType = String(contact.contactType || "");
+
+        // Merge properties
+        Object.assign(contact, result.contactData);
+        attachUser(contact, req);
+        await contact.save();
+
+        // Resync opening balance
+        const nextOpeningBalance = Number(contact.openingBalance || 0);
+        const nextContactType = String(contact.contactType || "");
+        if (nextContactType === "Customer") {
+          await syncVendorOpeningBalance(contact, 0, previousOpeningBalance, req, true);
+          await syncCustomerOpeningBalance(contact, nextOpeningBalance, previousOpeningBalance, req, true);
+        } else if (nextContactType === "Vendor" || nextContactType === "Both") {
+          await syncCustomerOpeningBalance(contact, 0, previousOpeningBalance, req, true);
+          await syncVendorOpeningBalance(contact, nextOpeningBalance, previousOpeningBalance, req, true);
+        }
+      } else {
+        // Create new contact
+        const contact = new Contact(result.contactData);
+        attachUser(contact, req);
+        await contact.save();
+
+        const ob = Number(contact.openingBalance || 0);
+        if (Math.abs(ob) >= 0.01 && contact.contactType === "Customer") {
+          await syncCustomerOpeningBalance(contact, ob, 0, req);
+        } else if (Math.abs(ob) >= 0.01 && (contact.contactType === "Vendor" || contact.contactType === "Both")) {
+          await syncVendorOpeningBalance(contact, ob, 0, req);
+        }
+      }
+
+      successCount++;
+    } catch (err: any) {
+      failCount++;
+      errors.push({ row: rowNum, error: err.message || "Failed to process row" });
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      successCount,
+      failCount,
+      errors,
+    },
+  });
 });

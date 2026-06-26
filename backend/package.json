@@ -8,7 +8,7 @@
     "build": "rimraf dist && tsc",
     "start": "node dist/server.js",
     "test": "npm run test:integration",
-    "test:integration": "node --import tsx --test src/tests/integration/accounting-voucher.integration.test.ts",
+    "test:integration": "node --import tsx --test src/tests/integration/accounting-voucher.integration.test.ts src/tests/integration/contact-import.integration.test.ts src/tests/integration/account-import.integration.test.ts",
     "backfill:gl": "tsx src/scripts/backfill-gl-history.ts",
     "migrate:journal-number-index": "tsx src/scripts/migrate-journal-number-index.ts",
     "migrate:journal-number-index:dry-run": "tsx src/scripts/migrate-journal-number-index.ts --dry-run"
@@ -21,6 +21,8 @@
     "@google/genai": "^1.46.0",
     "@types/multer": "^2.0.0",
     "@types/pdfkit": "^0.17.5",
+    "archiver": "^7.0.1",
+    "archiver-zip-encrypted": "^2.0.0",
     "bullmq": "^5.70.1",
     "cloudinary": "^2.9.0",
     "cors": "^2.8.6",
@@ -45,6 +47,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/mailparser": "^3.4.6",

@@ -1,4 +1,13 @@
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchBlob } from "./client";
+
+function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [key, val] of Object.entries(params)) {
+    if (val !== undefined && val !== "") qs.set(key, String(val));
+  }
+  const q = qs.toString();
+  return q ? `?${q}` : "";
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -259,5 +268,44 @@ export const accountApi = {
   seedTemplate: () =>
     apiFetch<{ message: string }>("/accounts/seed-template", {
       method: "POST",
+    }),
+
+  downloadSampleTemplate: (format?: "csv" | "excel") => {
+    const params: Record<string, string> = {};
+    if (format) params.format = format;
+    return apiFetchBlob(`/accounts/import/template/sample${buildQuery(params)}`);
+  },
+
+  downloadBlankTemplate: (format?: "csv" | "excel") => {
+    const params: Record<string, string> = {};
+    if (format) params.format = format;
+    return apiFetchBlob(`/accounts/import/template/blank${buildQuery(params)}`);
+  },
+
+  previewImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        totalRows: number;
+        readyCount: number;
+        overwriteCount: number;
+        skipCount: number;
+        invalidCount: number;
+        previewItems: any[];
+      };
+    }>("/accounts/import/preview", {
+      method: "POST",
+      body: formData,
+    }),
+
+  executeImport: (formData: FormData) =>
+    apiFetch<{
+      data: {
+        successCount: number;
+        failCount: number;
+        errors: Array<{ row: number; error: string }>;
+      };
+    }>("/accounts/import", {
+      method: "POST",
+      body: formData,
     }),
 };

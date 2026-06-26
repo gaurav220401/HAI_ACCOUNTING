@@ -2,7 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Building2, ChevronDown, RefreshCw, Loader2, Mail, Phone } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Building2,
+  ChevronDown,
+  RefreshCw,
+  Loader2,
+  Mail,
+  Phone,
+  MoreHorizontal,
+  FileUp,
+  Upload,
+  Download,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -13,6 +26,17 @@ import { Input } from "@/components/ui/input";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { VendorDetailView } from "./[id]/vendor-detail-view";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuPortal,
+  DropdownMenuSubContent,
+} from "@/components/ui/dropdown-menu";
 
 const fmt = (v?: number, currency = "INR") =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 2 }).format(v ?? 0);
@@ -30,6 +54,37 @@ export default function VendorsPage() {
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Contact | null>(null);
   const [loadingVendor, setLoadingVendor] = useState(false);
+
+  const handleExportCSV = () => {
+    if (filtered.length === 0) {
+      toast.error("No vendors to export");
+      return;
+    }
+    const headers = ["Display Name", "Company Name", "Email", "Phone", "GST Treatment", "Currency", "Opening Balance"];
+    const csvContent = [
+      headers.join(","),
+      ...filtered.map(c => [
+        `"${c.displayName || ""}"`,
+        `"${c.companyName || ""}"`,
+        `"${c.email || ""}"`,
+        `"${c.phone || ""}"`,
+        `"${c.taxTreatment || ""}"`,
+        `"${c.currency || "INR"}"`,
+        `"${c.openingBalance || 0}"`,
+      ].join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "vendors.csv");
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Vendors exported successfully");
+  };
 
   const panelOpen = !!selectedId;
 
@@ -159,9 +214,57 @@ export default function VendorsPage() {
                 <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching} className="px-2">
                   <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
                 </Button>
-                <Button size="sm" onClick={() => router.push("/purchases/vendors/new")}>
+                <Button size="sm" className="gap-1.5" onClick={() => router.push("/purchases/vendors/new")}>
                   <Plus className="h-4 w-4 mr-1" /> New Vendor
                 </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-8 w-8 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-white">
+                    <DropdownMenuItem onClick={() => router.push("/batch-import?section=purchases&type=Vendors&back=/purchases/vendors")} className="cursor-pointer">
+                      <span className="flex items-center gap-2 text-xs">
+                        <FileUp className="h-4 w-4 text-slate-500" />
+                        Batch Import
+                      </span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="cursor-pointer">
+                        <span className="flex items-center gap-2 text-xs">
+                          <Upload className="h-4 w-4 text-slate-500" />
+                          Import
+                        </span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuPortal>
+                        <DropdownMenuSubContent className="w-48 bg-white">
+                          <DropdownMenuItem onClick={() => router.push("/purchases/vendors/import")} className="cursor-pointer">
+                            <span className="text-xs">Import Vendors</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuPortal>
+                    </DropdownMenuSub>
+
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="cursor-pointer">
+                        <span className="flex items-center gap-2 text-xs">
+                          <Download className="h-4 w-4 text-slate-500" />
+                          Export
+                        </span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuPortal>
+                        <DropdownMenuSubContent className="w-48 bg-white">
+                          <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                            <span className="text-xs">Export Vendors</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuPortal>
+                    </DropdownMenuSub>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             ) : null
           }

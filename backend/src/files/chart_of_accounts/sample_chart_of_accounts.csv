@@ -1,0 +1,5 @@
+Account Name,Account Code,Account Type,Parent Account Name,Description,Opening Balance,Bank Account Number,Bank IFSC,Bank Currency,Create Item As Fixed Asset,Fixed Asset Type
+HDFC Bank Current Account,1005,Bank,,Main bank account for business transactions,150000,50100123456789,HDFC0000123,INR,false,
+Office Equipment,1008,Fixed Asset,,Desks chairs and laptops for staff,45000,,,,,,
+Delivery Van,1009,Fixed Asset,,Company delivery vehicle,0,,,,true,Vehicles
+Travel Expenses,6012,Expense,,Travel cost for sales meetings,0,,,,,,

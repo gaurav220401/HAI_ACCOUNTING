@@ -6,16 +6,20 @@ import {
   getInventoryMetrics,
   listItemGroups, createItemGroup, updateItemGroup, deleteItemGroup,
   listUnits, createUnit, deleteUnit, seedUnits,
-  downloadSampleTemplate, downloadBlankTemplate, previewImport, executeImport
+  downloadSampleTemplate, downloadBlankTemplate, previewImport, executeImport,
+  exportProtectedItems
 } from "../controllers/item.controller";
 import { upload } from "../middlewares/upload";
 
 const router = Router();
 router.use(authenticate);
 
-// Templates (must be before /:id to avoid clashing)
+// Export/Import/Templates (must be before /:id to avoid clashing)
 router.get("/import/template/sample", downloadSampleTemplate);
 router.get("/import/template/blank", downloadBlankTemplate);
+
+router.post("/export-protected", exportProtectedItems);
+
 
 // Import endpoints (must be before /:id to avoid clashing)
 router.post("/import/preview", upload.single("file"), previewImport);
