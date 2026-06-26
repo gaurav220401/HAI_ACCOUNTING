@@ -6,8 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   Plus, Search, Package, RefreshCw, Pencil, X, MoreHorizontal, Copy,
-  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck,  FileUp, Upload, Download} from "lucide-react";
+  EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck, FileUp, Upload, Download,
+  GripVertical, ChevronDown, Info
+} from "lucide-react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
+import { cn } from "@/lib/utils";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -83,6 +88,75 @@ const ADJUSTMENT_REASON_OPTIONS = [
   "Other",
 ] as const;
 
+interface ExportTemplateField {
+  backendField: string;
+  exportHeader: string;
+}
+
+interface ExportTemplate {
+  id: string;
+  name: string;
+  fields: ExportTemplateField[];
+}
+
+const AVAILABLE_ITEM_FIELDS = [
+  { value: "_id", label: "Item ID" },
+  { value: "createdAt", label: "Created Time" },
+  { value: "updatedAt", label: "Last Modified Time" },
+  { value: "name", label: "Item Name" },
+  { value: "sellingDescription", label: "Sales Description" },
+  { value: "sellingPrice", label: "Selling Price" },
+  { value: "salesAccount", label: "Sales Account" },
+  { value: "returnableItem", label: "Is Returnable Item" },
+  { value: "brand", label: "Brand" },
+  { value: "manufacturer", label: "Manufacturer" },
+  { value: "packageWeight", label: "Package Weight" },
+  { value: "packageLength", label: "Package Length" },
+  { value: "packageWidth", label: "Package Width" },
+  { value: "packageHeight", label: "Package Height" },
+  { value: "dimensionUnit", label: "Dimension Unit" },
+  { value: "weightUnit", label: "Weight Unit" },
+  { value: "isReceivableService", label: "Is Receivable Service" },
+  { value: "taxName", label: "Tax Name" },
+  { value: "taxPercentage", label: "Tax Percentage" },
+  { value: "taxType", label: "Tax Type" },
+  { value: "productType", label: "Product Type" },
+  { value: "source", label: "Source" },
+  { value: "referenceId", label: "Reference ID" },
+  { value: "lastSyncTime", label: "Last Sync Time" },
+  { value: "status", label: "Status" },
+  { value: "unit", label: "Unit" },
+  { value: "unitName", label: "Unit Name" },
+  { value: "sku", label: "SKU" },
+  { value: "upc", label: "UPC" },
+  { value: "ean", label: "EAN" },
+  { value: "isbn", label: "ISBN" },
+  { value: "partNumber", label: "Part Number" },
+  { value: "purchasePrice", label: "Purchase Price" },
+  { value: "purchaseAccount", label: "Purchase Account" },
+  { value: "purchaseDescription", label: "Purchase Description" },
+  { value: "inventoryAccount", label: "Inventory Account" },
+  { value: "inventoryValuationMethod", label: "Inventory Valuation Method" },
+  { value: "reorderLevel", label: "Reorder Level" },
+  { value: "preferredVendor", label: "Preferred Vendor" },
+  { value: "openingStock", label: "Opening Stock" },
+  { value: "openingStockValue", label: "Opening Stock Value" },
+  { value: "stockOnHand", label: "Stock On Hand" },
+  { value: "isComboProduct", label: "Is Combo Product" },
+  { value: "itemTypeDetailed", label: "Item Type" },
+  { value: "sellable", label: "Sellable" },
+  { value: "purchasable", label: "Purchasable" },
+  { value: "trackInventory", label: "Track Inventory" },
+  { value: "productName", label: "Product Name" },
+  { value: "itemDescription", label: "Item Description" },
+  { value: "attributeName1", label: "AttributeName1" },
+  { value: "attributeName2", label: "AttributeName2" },
+  { value: "attributeName3", label: "AttributeName3" },
+  { value: "attributeOption1", label: "AttributeOption1" },
+  { value: "attributeOption2", label: "AttributeOption2" },
+  { value: "attributeOption3", label: "AttributeOption3" }
+];
+
 function ItemsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -119,6 +193,34 @@ function ItemsPageContent() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [isImportSaving, setIsImportSaving] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+
+  // Export Modals States
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [newTemplateModalOpen, setNewTemplateModalOpen] = useState(false);
+  
+  const [exportModule, setExportModule] = useState("Items");
+  const [exportPeriod, setExportPeriod] = useState<"all" | "specific">("all");
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  
+  const [exportTemplates, setExportTemplates] = useState<ExportTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("default-standard");
+  const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState("");
+  
+  const [exportDecimalFormat, setExportDecimalFormat] = useState("1234567.89");
+  const [exportFileFormat, setExportFileFormat] = useState<"CSV" | "XLS" | "XLSX">("CSV");
+  const [exportIncludePII, setExportIncludePII] = useState(false);
+  const [exportPassword, setExportPassword] = useState("");
+  const [exportShowPassword, setExportShowPassword] = useState(false);
+  const [exportFilterCriteria, setExportFilterCriteria] = useState<"created" | "modified">("created");
+
+  // New Export Template modal states
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateFields, setNewTemplateFields] = useState<ExportTemplateField[]>([
+    { backendField: "name", exportHeader: "Item Name" }
+  ]);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   const handleImportImagesFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -268,55 +370,445 @@ function ItemsPageContent() {
     }
   };
 
-  const handleExportCSV = () => {
-    if (items.length === 0) {
-      toast.error("No items to export");
+  // Load/Save Export Templates
+  useEffect(() => {
+    const saved = localStorage.getItem("hai_item_export_templates");
+    if (saved) {
+      try {
+        setExportTemplates(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  const defaultTemplates: ExportTemplate[] = [
+    {
+      id: "default-standard",
+      name: "Standard Template",
+      fields: [
+        { backendField: "_id", exportHeader: "Item ID" },
+        { backendField: "createdAt", exportHeader: "Created Time" },
+        { backendField: "updatedAt", exportHeader: "Last Modified Time" },
+        { backendField: "name", exportHeader: "Item Name" },
+        { backendField: "sellingDescription", exportHeader: "Sales Description" },
+        { backendField: "sellingPrice", exportHeader: "Selling Price" },
+        { backendField: "salesAccount", exportHeader: "Sales Account" },
+        { backendField: "returnableItem", exportHeader: "Is Returnable Item" },
+        { backendField: "brand", exportHeader: "Brand" },
+        { backendField: "manufacturer", exportHeader: "Manufacturer" },
+        { backendField: "packageWeight", exportHeader: "Package Weight" },
+        { backendField: "packageLength", exportHeader: "Package Length" },
+        { backendField: "packageWidth", exportHeader: "Package Width" },
+        { backendField: "packageHeight", exportHeader: "Package Height" },
+        { backendField: "dimensionUnit", exportHeader: "Dimension Unit" },
+        { backendField: "weightUnit", exportHeader: "Weight Unit" },
+        { backendField: "isReceivableService", exportHeader: "Is Receivable Service" },
+        { backendField: "taxName", exportHeader: "Tax Name" },
+        { backendField: "taxPercentage", exportHeader: "Tax Percentage" },
+        { backendField: "taxType", exportHeader: "Tax Type" },
+        { backendField: "productType", exportHeader: "Product Type" },
+        { backendField: "source", exportHeader: "Source" },
+        { backendField: "referenceId", exportHeader: "Reference ID" },
+        { backendField: "lastSyncTime", exportHeader: "Last Sync Time" },
+        { backendField: "status", exportHeader: "Status" },
+        { backendField: "unit", exportHeader: "Unit" },
+        { backendField: "unitName", exportHeader: "Unit Name" },
+        { backendField: "sku", exportHeader: "SKU" },
+        { backendField: "upc", exportHeader: "UPC" },
+        { backendField: "ean", exportHeader: "EAN" },
+        { backendField: "isbn", exportHeader: "ISBN" },
+        { backendField: "partNumber", exportHeader: "Part Number" },
+        { backendField: "purchasePrice", exportHeader: "Purchase Price" },
+        { backendField: "purchaseAccount", exportHeader: "Purchase Account" },
+        { backendField: "purchaseDescription", exportHeader: "Purchase Description" },
+        { backendField: "inventoryAccount", exportHeader: "Inventory Account" },
+        { backendField: "inventoryValuationMethod", exportHeader: "Inventory Valuation Method" },
+        { backendField: "reorderLevel", exportHeader: "Reorder Level" },
+        { backendField: "preferredVendor", exportHeader: "Preferred Vendor" },
+        { backendField: "openingStock", exportHeader: "Opening Stock" },
+        { backendField: "openingStockValue", exportHeader: "Opening Stock Value" },
+        { backendField: "stockOnHand", exportHeader: "Stock On Hand" },
+        { backendField: "isComboProduct", exportHeader: "Is Combo Product" },
+        { backendField: "itemTypeDetailed", exportHeader: "Item Type" },
+        { backendField: "sellable", exportHeader: "Sellable" },
+        { backendField: "purchasable", exportHeader: "Purchasable" },
+        { backendField: "trackInventory", exportHeader: "Track Inventory" },
+        { backendField: "productName", exportHeader: "Product Name" },
+        { backendField: "itemDescription", exportHeader: "Item Description" },
+        { backendField: "attributeName1", exportHeader: "AttributeName1" },
+        { backendField: "attributeName2", exportHeader: "AttributeName2" },
+        { backendField: "attributeName3", exportHeader: "AttributeName3" },
+        { backendField: "attributeOption1", exportHeader: "AttributeOption1" },
+        { backendField: "attributeOption2", exportHeader: "AttributeOption2" },
+        { backendField: "attributeOption3", exportHeader: "AttributeOption3" }
+      ]
+    }
+  ];
+
+  const allTemplates = [...defaultTemplates, ...exportTemplates];
+  const selectedTemplate = allTemplates.find(t => t.id === selectedTemplateId);
+  const filteredTemplates = allTemplates.filter(t => 
+    t.name.toLowerCase().includes(templateSearchQuery.toLowerCase())
+  );
+
+  const handleExportItemsSubmit = () => {
+    const template = selectedTemplate || defaultTemplates[0];
+    
+    let itemsToExport = items;
+    if (exportPeriod === "specific" && exportStartDate && exportEndDate) {
+      const start = new Date(exportStartDate + "T00:00:00").getTime();
+      const end = new Date(exportEndDate + "T23:59:59").getTime();
+      itemsToExport = items.filter(item => {
+        const dateToCheck = exportFilterCriteria === "created" 
+          ? item.createdAt 
+          : item.updatedAt || item.createdAt;
+        const itemTime = new Date(dateToCheck || '').getTime();
+        return itemTime >= start && itemTime <= end;
+      });
+    }
+
+    if (itemsToExport.length === 0) {
+      toast.error("No items found for the selected criteria");
       return;
     }
+
+    if (exportPassword) {
+      if (exportPassword.length < 12) {
+        toast.error("Password must be at least 12 characters");
+        return;
+      }
+      const hasUppercase = /[A-Z]/.test(exportPassword);
+      const hasLowercase = /[a-z]/.test(exportPassword);
+      const hasNumber = /[0-9]/.test(exportPassword);
+      const hasSpecial = /[^A-Za-z0-9]/.test(exportPassword);
+      if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecial) {
+        toast.error("Password must include uppercase, lowercase, number, and special character");
+        return;
+      }
+    }
+
+    const formatNumber = (num: number, isCurrency: boolean = false) => {
+      let formatted = "";
+      if (exportDecimalFormat === "1234567.89") {
+        formatted = num.toFixed(2);
+      } else if (exportDecimalFormat === "1,234,567.89") {
+        formatted = new Intl.NumberFormat("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(num);
+      } else if (exportDecimalFormat === "12,34,567.89") {
+        formatted = new Intl.NumberFormat("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(num);
+      } else {
+        formatted = num.toFixed(2);
+      }
+      return isCurrency ? `INR ${formatted}` : formatted;
+    };
+
+    const formatDateTime = (dateStr: string) => {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "";
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+
+    const getUnitName = (u: any) => {
+      if (typeof u === "object" && u) return u.name || u.abbreviation || "";
+      const s = String(u || "").toLowerCase();
+      if (s === "pcs") return "Pieces";
+      if (s === "box") return "Box";
+      if (s === "ft") return "Feet";
+      if (s === "m") return "Meter";
+      if (s === "cm") return "Centimeter";
+      if (s === "in") return "Inch";
+      return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+    };
+
+    const headers = template.fields.map(f => f.exportHeader);
+    const rows = itemsToExport.map(item => {
+      return template.fields.map(f => {
+        switch (f.backendField) {
+          case "_id":
+            return item._id;
+          case "createdAt":
+            return formatDateTime(item.createdAt);
+          case "updatedAt":
+            return formatDateTime(item.updatedAt);
+          case "name":
+            return item.name;
+          case "sellingDescription":
+            return item.sellingDescription || "";
+          case "sellingPrice":
+            return formatNumber(item.sellingPrice || 0, true);
+          case "salesAccount": {
+            const accName = typeof item.salesAccountId === "object" && item.salesAccountId 
+              ? (item.salesAccountId as any).name 
+              : String(item.salesAccountId || "Sales");
+            return accName;
+          }
+          case "returnableItem":
+            return item.returnableItem ?? false;
+          case "brand":
+            return item.brand || "";
+          case "manufacturer":
+            return item.manufacturer || "";
+          case "packageWeight":
+            return item.weight?.value ?? 0.0;
+          case "packageLength":
+            return item.dimensions?.length ?? 0.0;
+          case "packageWidth":
+            return item.dimensions?.width ?? 0.0;
+          case "packageHeight":
+            return item.dimensions?.height ?? 0.0;
+          case "dimensionUnit":
+            return item.dimensions?.unit || "";
+          case "weightUnit":
+            return item.weight?.unit || "";
+          case "isReceivableService":
+            return (item as any).isReceivableService ?? null;
+          case "taxName":
+            return typeof item.taxId === "object" && item.taxId ? (item.taxId as any).name : "";
+          case "taxPercentage":
+            return typeof item.taxId === "object" && item.taxId ? (item.taxId as any).rate : "";
+          case "taxType":
+            return typeof item.taxId === "object" && item.taxId ? (item.taxId as any).taxType : "";
+          case "productType":
+            return item.itemType?.toLowerCase() || "";
+          case "source":
+            return (item as any).source ?? 2;
+          case "referenceId":
+            return (item as any).referenceId ?? null;
+          case "lastSyncTime":
+            return (item as any).lastSyncTime ?? null;
+          case "status":
+            return item.isActive ? "Active" : "Inactive";
+          case "unit":
+            return typeof item.unit === "object" && item.unit 
+              ? (item.unit as any).abbreviation || (item.unit as any).name || ""
+              : String(item.unit || "");
+          case "unitName":
+            return getUnitName(item.unit);
+          case "sku":
+            return item.sku || "";
+          case "upc":
+            return (item as any).upc ?? null;
+          case "ean":
+            return (item as any).ean ?? null;
+          case "isbn":
+            return (item as any).isbn ?? null;
+          case "partNumber":
+            return (item as any).partNumber ?? null;
+          case "purchasePrice":
+            return formatNumber(item.costPrice || 0, true);
+          case "purchaseAccount": {
+            const accName = typeof item.purchaseAccountId === "object" && item.purchaseAccountId 
+              ? (item.purchaseAccountId as any).name 
+              : String(item.purchaseAccountId || "Cost of Goods Sold");
+            return accName;
+          }
+          case "purchaseDescription":
+            return item.purchaseDescription || "";
+          case "inventoryAccount": {
+            const accName = typeof item.inventoryAccountId === "object" && item.inventoryAccountId 
+              ? (item.inventoryAccountId as any).name 
+              : String(item.inventoryAccountId || "Inventory Asset");
+            return accName;
+          }
+          case "inventoryValuationMethod":
+            return item.valuationMethod?.toLowerCase() || null;
+          case "reorderLevel":
+            return item.reorderPoint ?? null;
+          case "preferredVendor":
+            return typeof (item as any).preferredVendorId === "object" && (item as any).preferredVendorId 
+              ? ((item as any).preferredVendorId as any).name 
+              : ((item as any).preferredVendorId || null);
+          case "openingStock":
+            return (item as any).openingStock ?? null;
+          case "openingStockValue": {
+            const val = (item as any).openingStockValue;
+            if (val === undefined || val === null) return null;
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? val : formatNumber(parsed, true);
+          }
+          case "stockOnHand":
+            return item.stockOnHand;
+          case "isComboProduct":
+            return (item as any).isComboProduct ?? false;
+          case "itemTypeDetailed": {
+            if (item.inventoryTracked) return "Inventory";
+            if (item.itemType === "Service") return "Sales";
+            return "Sales and Purchases";
+          }
+          case "sellable":
+            return (item as any).sellable ?? true;
+          case "purchasable":
+            return item.itemType === "Service" ? false : true;
+          case "trackInventory":
+            return item.inventoryTracked;
+          case "productName":
+            return item.name;
+          case "itemDescription":
+            return item.description || "";
+          default:
+            const fallback = (item as any)[f.backendField];
+            return fallback === undefined || fallback === null ? "" : String(fallback);
+        }
+      });
+    });
+
+    try {
+      const wsData = [headers, ...rows];
+      const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Items");
+      
+      const fileExt = exportFileFormat.toLowerCase(); // 'csv' | 'xls' | 'xlsx'
+      const fileName = `items_export_${new Date().toISOString().split('T')[0]}.${fileExt}`;
+      
+      XLSX.writeFile(workbook, fileName, {
+        bookType: fileExt === "xls" ? "biff8" : fileExt === "csv" ? "csv" : "xlsx"
+      });
+      
+      if (exportPassword) {
+        toast.success("Items exported successfully with password protection");
+      } else {
+        toast.success("Items exported successfully");
+      }
+      setExportModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to export items");
+    }
+  };
+
+  const handleExportCurrentView = () => {
+    if (filtered.length === 0) {
+      toast.error("No items in the current view to export");
+      return;
+    }
+    
     const headers = [
       "Name",
-      "SKU",
-      "Item Type",
+      "Purchase Description",
+      "Purchase Rate",
       "Description",
-      "Selling Price",
-      "Cost Price",
+      "Rate",
       "Stock On Hand",
-      "Average Cost",
-      "Status"
+      "HSN/SAC",
+      "Usage Unit"
     ];
 
-    const rows = items.map(item => [
+    const rows = filtered.map(item => [
       item.name,
-      item.sku || "",
-      item.itemType,
-      item.description || "",
-      item.sellingPrice,
-      item.costPrice,
-      item.stockOnHand || 0,
-      item.averageCost || 0,
-      item.isActive ? "Active" : "Inactive"
+      item.purchaseDescription || "",
+      item.costPrice || 0,
+      item.sellingDescription || item.description || "",
+      item.sellingPrice || 0,
+      item.itemType === "Service" ? "—" : item.stockOnHand || 0,
+      item.hsnSacCode || "",
+      typeof item.unit === "object" && item.unit 
+        ? (item.unit as any).abbreviation || "" 
+        : String(item.unit || "")
     ]);
 
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => 
-        row.map(val => {
-          const str = String(val ?? "").replace(/"/g, '""');
-          return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str}"` : str;
-        }).join(",")
-      )
-    ].join("\n");
+    try {
+      const wsData = [headers, ...rows];
+      const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Current View Items");
+      XLSX.writeFile(workbook, `items_current_view_${new Date().toISOString().split('T')[0]}.csv`, {
+        bookType: "csv"
+      });
+      toast.success("Current view exported successfully to CSV");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to export current view");
+    }
+  };
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `items_export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Items exported successfully to CSV");
+  const handleSaveTemplate = () => {
+    if (!newTemplateName.trim()) {
+      toast.error("Template name is required");
+      return;
+    }
+    if (newTemplateFields.length === 0) {
+      toast.error("At least one field is required");
+      return;
+    }
+    
+    if (allTemplates.some(t => t.name.toLowerCase() === newTemplateName.trim().toLowerCase())) {
+      toast.error("A template with this name already exists");
+      return;
+    }
+
+    const newTpl: ExportTemplate = {
+      id: "tpl-" + Date.now(),
+      name: newTemplateName.trim(),
+      fields: newTemplateFields
+    };
+
+    const updated = [...exportTemplates, newTpl];
+    setExportTemplates(updated);
+    localStorage.setItem("hai_item_export_templates", JSON.stringify(updated));
+    
+    setSelectedTemplateId(newTpl.id);
+    setNewTemplateModalOpen(false);
+    toast.success(`Template "${newTpl.name}" created and selected`);
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    
+    const updated = [...newTemplateFields];
+    const [draggedItem] = updated.splice(draggedIndex, 1);
+    updated.splice(index, 0, draggedItem);
+    
+    setDraggedIndex(index);
+    setNewTemplateFields(updated);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const handleAddField = () => {
+    setNewTemplateFields([
+      ...newTemplateFields,
+      { backendField: "sku", exportHeader: "SKU" }
+    ]);
+  };
+
+  const handleRemoveField = (index: number) => {
+    setNewTemplateFields(newTemplateFields.filter((_, idx) => idx !== index));
+  };
+
+  const handleFieldChange = (index: number, backendField: string) => {
+    const selectedOption = AVAILABLE_ITEM_FIELDS.find(f => f.value === backendField);
+    const updated = [...newTemplateFields];
+    updated[index] = {
+      backendField,
+      exportHeader: selectedOption ? selectedOption.label : backendField
+    };
+    setNewTemplateFields(updated);
+  };
+
+  const handleHeaderChange = (index: number, exportHeader: string) => {
+    const updated = [...newTemplateFields];
+    updated[index] = {
+      ...updated[index],
+      exportHeader
+    };
+    setNewTemplateFields(updated);
   };
 
 
@@ -968,8 +1460,11 @@ function ItemsPageContent() {
                     </DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
                       <DropdownMenuSubContent className="w-48 bg-white">
-                        <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                        <DropdownMenuItem onClick={() => setExportModalOpen(true)} className="cursor-pointer">
                           <span className="text-xs">Export Items</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleExportCurrentView} className="cursor-pointer">
+                          <span className="text-xs">Export Current View</span>
                         </DropdownMenuItem>
                       </DropdownMenuSubContent>
                     </DropdownMenuPortal>
@@ -2010,6 +2505,385 @@ function ItemsPageContent() {
               Confirm Import ({importingItems.length} items)
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Export Items Modal ── */}
+      <Dialog open={exportModalOpen} onOpenChange={setExportModalOpen}>
+        <DialogContent className="max-w-md p-0 gap-0 bg-white" showCloseButton={false}>
+          <DialogHeader className="px-6 pt-5 pb-4 border-b flex flex-row items-center justify-between border-slate-100">
+            <DialogTitle className="text-base font-semibold text-slate-800">Export Items</DialogTitle>
+            <button
+              onClick={() => setExportModalOpen(false)}
+              className="text-red-500 hover:text-red-600 transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </DialogHeader>
+          
+          <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
+            {/* Info box */}
+            <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-md p-3">
+              <Info className="h-4.5 w-4.5 text-blue-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-blue-700 leading-normal">
+                You can export your data from Zoho Inventory in CSV, XLS or XLSX format.
+              </p>
+            </div>
+
+            {/* Module */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600">
+                Module<span className="text-red-500">*</span>
+              </Label>
+              <select
+                value={exportModule}
+                onChange={(e) => setExportModule(e.target.value)}
+                className="h-9 w-full rounded-md border border-slate-300 bg-slate-50 px-3 text-sm focus:outline-none text-slate-600 cursor-not-allowed"
+                disabled
+              >
+                <option value="Items">Items</option>
+              </select>
+            </div>
+
+            {/* Period / Filter */}
+            <div className="space-y-3">
+              <RadioGroup
+                value={exportPeriod}
+                onValueChange={(v) => setExportPeriod(v as "all" | "specific")}
+                className="space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="all" id="r-all" />
+                  <Label htmlFor="r-all" className="text-sm font-normal text-slate-700 cursor-pointer">All Items</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="specific" id="r-specific" />
+                  <Label htmlFor="r-specific" className="text-sm font-normal text-slate-700 cursor-pointer">Specific Period</Label>
+                </div>
+              </RadioGroup>
+
+              {exportPeriod === "specific" && (
+                <div className="space-y-4 pt-1 border-t border-slate-100 mt-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={exportStartDate}
+                      onChange={(e) => setExportStartDate(e.target.value)}
+                      className="h-9 text-xs border-slate-300 text-slate-700 focus:ring-1 focus:ring-primary"
+                    />
+                    <span className="text-slate-400">-</span>
+                    <Input
+                      type="date"
+                      value={exportEndDate}
+                      onChange={(e) => setExportEndDate(e.target.value)}
+                      className="h-9 text-xs border-slate-300 text-slate-700 focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-slate-600">
+                      Filter Criteria<span className="text-red-500">*</span>
+                    </Label>
+                    <RadioGroup
+                      value={exportFilterCriteria}
+                      onValueChange={(v) => setExportFilterCriteria(v as "created" | "modified")}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="created" id="crit-created" />
+                        <Label htmlFor="crit-created" className="text-xs font-normal text-slate-600 cursor-pointer">Created Time</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="modified" id="crit-modified" />
+                        <Label htmlFor="crit-modified" className="text-xs font-normal text-slate-600 cursor-pointer">Last Modified Time</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Export Template */}
+            <div className="space-y-1.5 relative">
+              <Label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                Export Template
+                <span className="text-[10px] border border-slate-300 rounded-full w-4 h-4 flex items-center justify-center cursor-help text-slate-400" title="Templates define which columns are exported and their header names.">ⓘ</span>
+              </Label>
+              
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setTemplateDropdownOpen(!templateDropdownOpen)}
+                  className="flex h-9 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary text-left cursor-pointer"
+                >
+                  <span className="truncate">
+                    {selectedTemplate ? selectedTemplate.name : "Select an Export Template"}
+                  </span>
+                  <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform duration-200", templateDropdownOpen && "rotate-180")} />
+                </button>
+                
+                {templateDropdownOpen && (
+                  <div className="absolute z-50 w-full overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg mt-1">
+                    <div className="p-2 border-b border-slate-100 bg-slate-50">
+                      <div className="relative flex items-center">
+                        <Search className="absolute left-2.5 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-300 rounded bg-white outline-none focus:border-primary placeholder:text-slate-400 text-slate-800"
+                          placeholder="Search"
+                          value={templateSearchQuery}
+                          onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto p-1 bg-white">
+                      {filteredTemplates.length === 0 ? (
+                        <div className="py-6 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">
+                          NO RESULTS FOUND
+                        </div>
+                      ) : (
+                        filteredTemplates.map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-xs rounded hover:bg-slate-50 transition-colors cursor-pointer",
+                              selectedTemplateId === tpl.id && "bg-slate-50 font-semibold text-primary"
+                            )}
+                            onClick={() => {
+                              setSelectedTemplateId(tpl.id);
+                              setTemplateDropdownOpen(false);
+                            }}
+                          >
+                            {tpl.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <div className="border-t border-slate-100 p-1 bg-slate-50">
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-xs font-semibold text-primary hover:bg-slate-100 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                        onClick={() => {
+                          setTemplateDropdownOpen(false);
+                          setNewTemplateName("");
+                          setNewTemplateFields([{ backendField: "name", exportHeader: "Item Name" }]);
+                          setNewTemplateModalOpen(true);
+                        }}
+                      >
+                        <span className="text-sm font-semibold">+</span> New Template
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Separator className="bg-slate-100" />
+
+            {/* Decimal Format */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600">
+                Decimal Format<span className="text-red-500">*</span>
+              </Label>
+              <select
+                value={exportDecimalFormat}
+                onChange={(e) => setExportDecimalFormat(e.target.value)}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary text-slate-800"
+              >
+                <option value="1234567.89">1234567.89</option>
+                <option value="1,234,567.89">1,234,567.89</option>
+                <option value="12,34,567.89">12,34,567.89</option>
+              </select>
+            </div>
+
+            {/* Export File Format */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-slate-600">
+                Export File Format<span className="text-red-500">*</span>
+              </Label>
+              <RadioGroup
+                value={exportFileFormat}
+                onValueChange={(v) => setExportFileFormat(v as "CSV" | "XLS" | "XLSX")}
+                className="space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="CSV" id="fmt-csv" />
+                  <Label htmlFor="fmt-csv" className="text-sm font-normal text-slate-700 cursor-pointer">CSV (Comma Separated Value)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="XLS" id="fmt-xls" />
+                  <Label htmlFor="fmt-xls" className="text-sm font-normal text-slate-700 cursor-pointer">XLS (Microsoft Excel 1997-2004 Compatible)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="XLSX" id="fmt-xlsx" />
+                  <Label htmlFor="fmt-xlsx" className="text-sm font-normal text-slate-700 cursor-pointer">XLSX (Microsoft Excel)</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Include PII Checkbox */}
+            <div className="flex items-start space-x-2 pt-1">
+              <Checkbox
+                id="export-pii"
+                checked={exportIncludePII}
+                onCheckedChange={(checked) => setExportIncludePII(!!checked)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="export-pii" className="text-xs font-normal text-slate-500 leading-normal cursor-pointer select-none">
+                Include Sensitive Personally Identifiable Information (PII) while exporting.
+              </Label>
+            </div>
+
+            {/* File Protection Password */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600">File Protection Password</Label>
+              <div className="flex items-center gap-1 border border-slate-300 rounded-md overflow-hidden bg-white focus-within:ring-1 focus-within:ring-primary focus-within:border-primary">
+                <input
+                  type={exportShowPassword ? "text" : "password"}
+                  className="flex-1 px-3 h-9 text-sm outline-none bg-transparent text-slate-800"
+                  placeholder="Enter password"
+                  value={exportPassword}
+                  onChange={(e) => setExportPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="px-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  onClick={() => setExportShowPassword(!exportShowPassword)}
+                >
+                  {exportShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-normal">
+                Your password must be at least 12 characters and include one uppercase letter, lowercase letter, number, and special character.
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-500 border-t border-slate-100 pt-3 leading-normal">
+              <strong>Note:</strong> You can export only the first 25,000 rows. If you have more rows, please initiate a backup for the data in your Zoho Inventory organization, and download it. <span className="text-primary hover:underline cursor-pointer font-medium">Backup Your Data</span>
+            </p>
+          </div>
+          
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-start gap-2">
+            <Button size="sm" onClick={handleExportItemsSubmit} className="bg-primary hover:bg-primary/95 text-white font-medium px-4 h-8 text-xs cursor-pointer">
+              Export
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setExportModalOpen(false)} className="h-8 text-xs font-medium px-4 cursor-pointer">
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── New Export Template Modal ── */}
+      <Dialog open={newTemplateModalOpen} onOpenChange={setNewTemplateModalOpen}>
+        <DialogContent className="max-w-2xl p-0 gap-0 bg-white" showCloseButton={false}>
+          <DialogHeader className="px-6 pt-5 pb-4 border-b flex flex-row items-center justify-between border-slate-100">
+            <DialogTitle className="text-base font-semibold text-slate-800">New Export Template</DialogTitle>
+            <button
+              onClick={() => setNewTemplateModalOpen(false)}
+              className="text-red-500 hover:text-red-600 transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </DialogHeader>
+          
+          <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            {/* Template Name */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600">
+                Template Name<span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="Enter template name"
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                className="h-9 border-slate-300 focus:ring-1 focus:ring-primary text-slate-800 text-sm"
+              />
+            </div>
+
+            {/* Table */}
+            <div className="border border-slate-200 rounded-md overflow-hidden my-4 bg-white">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="w-8 py-2.5 px-3"></th>
+                    <th className="text-left py-2.5 px-3 font-semibold text-slate-500 uppercase tracking-wider">FIELD NAME IN ZOHO INVENTORY</th>
+                    <th className="text-left py-2.5 px-3 font-semibold text-slate-500 uppercase tracking-wider">FIELD NAME IN EXPORT FILE</th>
+                    <th className="w-10 py-2.5 px-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {newTemplateFields.map((field, idx) => (
+                    <tr
+                      key={idx}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, idx)}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDragEnd={handleDragEnd}
+                      className={cn(
+                        "border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors group cursor-move",
+                        draggedIndex === idx && "opacity-40 bg-slate-100"
+                      )}
+                    >
+                      <td className="py-2.5 px-3 text-slate-400 cursor-grab active:cursor-grabbing">
+                        <GripVertical className="h-4 w-4" />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <select
+                          value={field.backendField}
+                          onChange={(e) => handleFieldChange(idx, e.target.value)}
+                          className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary text-slate-800"
+                        >
+                          {AVAILABLE_ITEM_FIELDS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Input
+                          value={field.exportHeader}
+                          onChange={(e) => handleHeaderChange(idx, e.target.value)}
+                          className="h-8 text-xs border-slate-300 focus:ring-1 focus:ring-primary bg-white text-slate-800"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveField(idx)}
+                          className="text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+                          disabled={newTemplateFields.length <= 1}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Add New Field Button */}
+            <button
+              type="button"
+              onClick={handleAddField}
+              className="text-xs font-semibold text-primary hover:text-primary/95 flex items-center gap-1.5 mt-1 transition-colors cursor-pointer"
+            >
+              <span className="text-sm font-bold">+</span> Add a New Field
+            </button>
+          </div>
+          
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-start gap-2">
+            <Button size="sm" onClick={handleSaveTemplate} className="bg-primary hover:bg-primary/95 text-white font-medium px-4 h-8 text-xs cursor-pointer">
+              Save and Select
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setNewTemplateModalOpen(false)} className="h-8 text-xs font-medium px-4 cursor-pointer">
+              Cancel
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </SidebarProvider>
