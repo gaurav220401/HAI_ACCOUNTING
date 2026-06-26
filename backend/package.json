@@ -21,6 +21,8 @@
     "@google/genai": "^1.46.0",
     "@types/multer": "^2.0.0",
     "@types/pdfkit": "^0.17.5",
+    "archiver": "^7.0.1",
+    "archiver-zip-encrypted": "^2.0.0",
     "bullmq": "^5.70.1",
     "cloudinary": "^2.9.0",
     "cors": "^2.8.6",
@@ -45,6 +47,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/mailparser": "^3.4.6",

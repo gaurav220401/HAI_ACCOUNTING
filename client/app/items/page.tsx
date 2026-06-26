@@ -452,7 +452,7 @@ function ItemsPageContent() {
     t.name.toLowerCase().includes(templateSearchQuery.toLowerCase())
   );
 
-  const handleExportItemsSubmit = () => {
+  const handleExportItemsSubmit = async () => {
     const template = selectedTemplate || defaultTemplates[0];
     
     let itemsToExport = items;
@@ -661,21 +661,41 @@ function ItemsPageContent() {
     });
 
     try {
-      const wsData = [headers, ...rows];
-      const worksheet = XLSX.utils.aoa_to_sheet(wsData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Items");
-      
       const fileExt = exportFileFormat.toLowerCase(); // 'csv' | 'xls' | 'xlsx'
-      const fileName = `items_export_${new Date().toISOString().split('T')[0]}.${fileExt}`;
-      
-      XLSX.writeFile(workbook, fileName, {
-        bookType: fileExt === "xls" ? "biff8" : fileExt === "csv" ? "csv" : "xlsx"
-      });
+      const baseName = `items_export_${new Date().toISOString().split('T')[0]}`;
+      const fileName = `${baseName}.${fileExt}`;
       
       if (exportPassword) {
+        toast("Preparing password-protected export...");
+        const blob = await itemApi.exportProtected({
+          fileName: baseName,
+          fileFormat: fileExt,
+          password: exportPassword,
+          headers,
+          rows
+        });
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${baseName}.zip`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
         toast.success("Items exported successfully with password protection");
       } else {
+        const wsData = [headers, ...rows];
+        const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Items");
+        
+        XLSX.writeFile(workbook, fileName, {
+          bookType: fileExt === "xls" ? "biff8" : fileExt === "csv" ? "csv" : "xlsx"
+        });
+        
         toast.success("Items exported successfully");
       }
       setExportModalOpen(false);
