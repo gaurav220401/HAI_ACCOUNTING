@@ -1421,143 +1421,173 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col bg-white min-h-full">
       {/* ── Toolbar ── */}
-      <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
-        <h1 className="text-lg font-semibold tracking-tight">{isEdit ? "Edit Item" : "New Item"}</h1>
+      <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-white sticky top-0 z-10">
+        <div>
+          <p className="text-[11px] font-medium text-teal-700 mb-0.5">Items</p>
+          <h1 className="text-lg font-bold text-slate-900 leading-none">{isEdit ? "Edit Item" : "New Item"}</h1>
+        </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push(returnUrl)} disabled={saving}>
+          <button
+            type="button"
+            className="h-8 px-4 rounded-md border border-slate-200 text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors cursor-pointer"
+            onClick={() => router.push(returnUrl)}
+            disabled={saving}
+          >
             Cancel
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || uploading}>
-            {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Saving…</> : isEdit ? "Update" : "Save"}
-          </Button>
+          </button>
+          <button
+            type="button"
+            className="h-8 px-4 rounded-md text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 transition-colors cursor-pointer disabled:opacity-50"
+            onClick={handleSave}
+            disabled={saving || uploading}
+          >
+            {saving ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</span> : isEdit ? "Update" : "Save"}
+          </button>
         </div>
       </div>
 
       {/* ── Body ── */}
-      <div className="px-6 py-4 max-w-4xl space-y-0">
-        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+      <div className="px-6 py-5 w-full max-w-6xl mr-auto space-y-5">
+        {/* Inventory info banner */}
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-800 flex items-start gap-2">
+          <span className="mt-0.5 shrink-0 h-3.5 w-3.5 rounded-full bg-amber-400 flex items-center justify-center text-white text-[9px] font-bold">i</span>
           Turn on inventory tracking below to manage stock, valuation, replenishment, and fulfillment details.
         </div>
 
-        {/* ── Basic Info: fields left, image controls right ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_430px] gap-6 pb-1">
-          <div className="space-y-3">
-            <Row label="Name" required>
-              <Input
-                className={`h-9 text-sm${errors.name ? " border-destructive" : ""}`}
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                placeholder="Item name"
-                autoFocus
-              />
-              {errors.name && <p className="text-xs text-destructive mt-0.5">{errors.name}</p>}
-            </Row>
-
-            <Row label="Type">
-              <RadioGroup
-                value={form.itemType}
-                onValueChange={(v) => set("itemType", v as "Goods" | "Service")}
-                className="flex gap-5 pt-1.5"
-              >
-                <div className="flex items-center gap-1.5">
-                  <RadioGroupItem value="Goods" id="type-goods" />
-                  <Label htmlFor="type-goods" className="font-normal cursor-pointer text-sm">Goods</Label>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <RadioGroupItem value="Service" id="type-service" disabled={form.hasInventoryInfo} />
-                  <Label
-                    htmlFor="type-service"
-                    className={`font-normal cursor-pointer text-sm ${form.hasInventoryInfo ? "opacity-50" : ""}`}
-                  >
-                    Service
-                  </Label>
-                </div>
-              </RadioGroup>
-            </Row>
-
-            {form.itemType !== "Service" && (
-              <>
-                <Row label="Brand">
-                  <Input
-                    className="h-9 text-sm"
-                    value={form.brand}
-                    onChange={(e) => set("brand", e.target.value)}
-                    placeholder="Select or add brand"
-                  />
-                </Row>
-
-                <Row label="Manufacturer">
-                  <Input
-                    className="h-9 text-sm"
-                    value={form.manufacturer}
-                    onChange={(e) => set("manufacturer", e.target.value)}
-                    placeholder="Select or add manufacturer"
-                  />
-                </Row>
-              </>
-            )}
+        {/* ── Basic Info card ── */}
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+            <h2 className="text-[13px] font-semibold text-slate-700">Basic Information</h2>
           </div>
+          <div className="p-5 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+            {/* Left: text fields */}
+            <div className="space-y-4">
+              {/* Name */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-medium text-slate-600">Item Name <span className="text-rose-500">*</span></label>
+                <Input
+                  className={`h-9 text-sm border-slate-200 focus-visible:ring-teal-500${errors.name ? " border-rose-400" : ""}`}
+                  value={form.name}
+                  onChange={(e) => set("name", e.target.value)}
+                  placeholder="Enter item name"
+                  autoFocus
+                />
+                {errors.name && <p className="text-[11px] text-rose-500">{errors.name}</p>}
+              </div>
 
-          <div className="rounded-lg border p-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Front View</Label>
-                <ImageUploader
-                  imageUrl={form.image}
-                  uploading={frontUploading}
-                  onUpload={handleFrontImageUpload}
-                  onRemove={handleFrontImageRemove}
-                />
+              {/* Type */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-medium text-slate-600">Type</label>
+                <RadioGroup
+                  value={form.itemType}
+                  onValueChange={(v) => set("itemType", v as "Goods" | "Service")}
+                  className="flex gap-4 pt-0.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="Goods" id="type-goods" className="border-slate-300 text-teal-600" />
+                    <Label htmlFor="type-goods" className="font-normal cursor-pointer text-[13px] text-slate-700">Goods</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="Service" id="type-service" disabled={form.hasInventoryInfo} className="border-slate-300 text-teal-600" />
+                    <Label
+                      htmlFor="type-service"
+                      className={`font-normal cursor-pointer text-[13px] text-slate-700 ${form.hasInventoryInfo ? "opacity-40" : ""}`}
+                    >
+                      Service
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Rear View</Label>
-                <ImageUploader
-                  imageUrl={form.rearImage}
-                  uploading={rearUploading}
-                  onUpload={handleRearImageUpload}
-                  onRemove={handleRearImageRemove}
-                />
-              </div>
+
+              {form.itemType !== "Service" && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[12px] font-medium text-slate-600">Brand</label>
+                    <Input
+                      className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                      value={form.brand}
+                      onChange={(e) => set("brand", e.target.value)}
+                      placeholder="e.g. Samsung"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[12px] font-medium text-slate-600">Manufacturer</label>
+                    <Input
+                      className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                      value={form.manufacturer}
+                      onChange={(e) => set("manufacturer", e.target.value)}
+                      placeholder="e.g. Samsung Electronics"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">Other Images</Label>
-              <OtherImagesUploader
-                images={form.otherImages}
-                uploading={otherUploading}
-                onUpload={handleOtherImagesUpload}
-                onRemove={handleOtherImageRemove}
-              />
+            {/* Right: image uploaders */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-4">
+              <h3 className="text-[12px] font-semibold text-slate-600">Item Images</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[11px] text-slate-500">Front View</Label>
+                  <ImageUploader
+                    imageUrl={form.image}
+                    uploading={frontUploading}
+                    onUpload={handleFrontImageUpload}
+                    onRemove={handleFrontImageRemove}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[11px] text-slate-500">Rear View</Label>
+                  <ImageUploader
+                    imageUrl={form.rearImage}
+                    uploading={rearUploading}
+                    onUpload={handleRearImageUpload}
+                    onRemove={handleRearImageRemove}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-[11px] text-slate-500">Other Images</Label>
+                <OtherImagesUploader
+                  images={form.otherImages}
+                  uploading={otherUploading}
+                  onUpload={handleOtherImagesUpload}
+                  onRemove={handleOtherImageRemove}
+                />
+              </div>
             </div>
           </div>
         </div>
-
-        <div className="border-t mt-6 pt-5 space-y-4">
-          <h2 className="text-2xl font-semibold tracking-tight">Item Details</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-muted-foreground">Item Type</label>
+        {/* ── Item Details card ── */}
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+            <h2 className="text-[13px] font-semibold text-slate-700">Item Details</h2>
+          </div>
+          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            {/* Item Mode */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-slate-600">Item Mode</label>
               <RadioGroup
                 value={form.itemMode}
                 onValueChange={(v) => set("itemMode", v as FormState["itemMode"])}
                 className="flex gap-3"
               >
-                <div className="flex items-center gap-1.5 rounded-md border px-3 py-2">
-                  <RadioGroupItem value="SingleItem" id="mode-single" />
-                  <Label htmlFor="mode-single" className="font-medium cursor-pointer text-sm">Single Item</Label>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
+                  <RadioGroupItem value="SingleItem" id="mode-single" className="border-slate-300 text-teal-600" />
+                  <Label htmlFor="mode-single" className="font-medium cursor-pointer text-[13px]">Single Item</Label>
                 </div>
-                <div className="flex items-center gap-1.5 rounded-md border px-3 py-2">
-                  <RadioGroupItem value="Variants" id="mode-variants" />
-                  <Label htmlFor="mode-variants" className="font-medium cursor-pointer text-sm">Contains Variants</Label>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
+                  <RadioGroupItem value="Variants" id="mode-variants" className="border-slate-300 text-teal-600" />
+                  <Label htmlFor="mode-variants" className="font-medium cursor-pointer text-[13px]">Contains Variants</Label>
                 </div>
               </RadioGroup>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-destructive font-medium">Unit<span className="text-destructive">*</span></label>
+            {/* Unit */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-rose-600">Unit <span className="text-rose-500">*</span></label>
               <Select
                 value={form.unit}
                 disabled={loadingDropdowns}
@@ -1596,20 +1626,22 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
               />
             </div>
 
-            <div className="flex flex-col gap-1 md:col-span-1">
-              <label className="text-sm text-muted-foreground">SKU</label>
+            {/* SKU */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-slate-600">SKU</label>
               <Input
-                className="h-9 text-sm"
+                className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
                 value={form.sku}
                 onChange={(e) => set("sku", e.target.value)}
-                placeholder="SKU"
+                placeholder="e.g. SKU-001"
               />
             </div>
 
+            {/* Identifiers */}
             <div className="md:col-span-2 space-y-2">
               <button
                 type="button"
-                className="text-sm text-primary hover:underline"
+                className="text-[12px] font-medium text-teal-700 hover:text-teal-800 hover:underline"
                 onClick={addIdentifier}
               >
                 + Add Identifier
@@ -1618,10 +1650,10 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
               {form.identifiers.map((identifier, index) => (
                 <div key={`identifier-${index}`} className="flex gap-2">
                   <Input
-                    className="h-9 text-sm"
+                    className="h-9 text-sm border-slate-200"
                     value={identifier}
                     onChange={(e) => updateIdentifier(index, e.target.value)}
-                    placeholder="Identifier"
+                    placeholder="Barcode / serial / batch"
                   />
                   <Button
                     type="button"
@@ -1638,24 +1670,27 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
           </div>
         </div>
 
-        <div className="border-t mt-6 pt-5 space-y-4">
-          <h2 className="text-2xl font-semibold tracking-tight">Item Description</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-            <div className="flex flex-col gap-1 md:col-span-2">
-              <label className="text-sm text-muted-foreground">Description</label>
+        {/* ── Item Description card ── */}
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+            <h2 className="text-[13px] font-semibold text-slate-700">Description & Tax</h2>
+          </div>
+          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            <div className="flex flex-col gap-1.5 md:col-span-2">
+              <label className="text-[12px] font-medium text-slate-600">Description</label>
               <Textarea
                 rows={3}
-                className="text-sm resize-none"
+                className="text-sm resize-none border-slate-200 focus-visible:ring-teal-500"
                 value={form.description}
                 onChange={(e) => set("description", e.target.value)}
                 placeholder="Item description"
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-muted-foreground">HSN/SAC Code</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-slate-600">HSN/SAC Code</label>
               <Input
-                className="h-9 text-sm"
+                className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
                 value={form.hsnSacCode}
                 onChange={(e) => set("hsnSacCode", e.target.value)}
                 placeholder="e.g. 8471"
@@ -1787,88 +1822,94 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
           </div>
         </div>
 
-        {/* ── Sales Information ─────────────────────────────────────────────── */}
-        <SectionHeader
-          id="sales-info"
-          label="Sales Information"
-          checked={form.hasSalesInfo}
-          onToggle={(v) => set("hasSalesInfo", v)}
-        />
-        {form.hasSalesInfo && (
-          <div className="grid grid-cols-2 gap-x-8 gap-y-3 pl-6 pb-2">
-            {/* Selling Price */}
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-destructive font-medium">
-                Selling Price<span className="text-destructive">*</span>
-              </label>
-              <div className="flex h-9">
-                <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-muted text-muted-foreground">INR</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className="rounded-l-none h-9 text-sm"
-                  value={form.sellingPrice}
-                  onChange={(e) => set("sellingPrice", e.target.value)}
-                  onWheel={preventNumberWheelChange}
-                  placeholder="0.00"
+        {/* ── Sales Information Card ── */}
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2.5">
+            <Checkbox
+              id="sales-info"
+              checked={form.hasSalesInfo}
+              onCheckedChange={(c) => set("hasSalesInfo", !!c)}
+              className="h-4 w-4 border-slate-300 text-teal-600"
+            />
+            <label htmlFor="sales-info" className="text-[13px] font-semibold text-slate-700 cursor-pointer select-none">
+              Sales Information
+            </label>
+          </div>
+          {form.hasSalesInfo && (
+            <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+              {/* Selling Price */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-medium text-slate-600">Selling Price <span className="text-rose-500">*</span></label>
+                <div className="flex h-9">
+                  <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-slate-50 text-slate-500 border-slate-200">INR</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="rounded-l-none h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                    value={form.sellingPrice}
+                    onChange={(e) => set("sellingPrice", e.target.value)}
+                    onWheel={preventNumberWheelChange}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              {/* Sales Account */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-medium text-slate-600">Account <span className="text-rose-500">*</span></label>
+                <AccountSelect
+                  value={form.salesAccountId}
+                  onChange={(v) => set("salesAccountId", v)}
+                  grouped={salesAccounts}
+                  error={errors.salesAccountId}
+                  section="sales"
+                  parentAccounts={allSalesAccounts}
+                  onAccountCreated={handleSalesAccountCreated}
+                />
+              </div>
+
+              {/* Sales Description */}
+              <div className="md:col-span-2 flex flex-col gap-1.5">
+                <label className="text-[12px] font-medium text-slate-600">Description</label>
+                <Textarea
+                  rows={2}
+                  className="text-sm resize-none border-slate-200 focus-visible:ring-teal-500"
+                  value={form.salesDescription}
+                  onChange={(e) => set("salesDescription", e.target.value)}
+                  placeholder="Description shown on invoices"
                 />
               </div>
             </div>
+          )}
+        </div>
 
-            {/* Sales Account */}
-            <div className="flex flex-col gap-1">
-              <label className="text-sm text-destructive font-medium">
-                Account<span className="text-destructive">*</span>
-              </label>
-              <AccountSelect
-                value={form.salesAccountId}
-                onChange={(v) => set("salesAccountId", v)}
-                grouped={salesAccounts}
-                error={errors.salesAccountId}
-                section="sales"
-                parentAccounts={allSalesAccounts}
-                onAccountCreated={handleSalesAccountCreated}
-              />
-            </div>
-
-            {/* Sales Description */}
-            <div className="col-span-2 flex flex-col gap-1">
-              <label className="text-sm text-muted-foreground">Description</label>
-              <Textarea
-                rows={2}
-                className="text-sm resize-none"
-                value={form.salesDescription}
-                onChange={(e) => set("salesDescription", e.target.value)}
-                placeholder="Description shown on invoices"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* ── Purchase Information ──────────────────────────────────────────── */}
+        {/* ── Purchase Information Card ── */}
         {form.itemType !== "Service" && (
-          <>
-            <SectionHeader
-              id="purchase-info"
-              label="Purchase Information"
-              checked={form.hasPurchaseInfo}
-              onToggle={(v) => set("hasPurchaseInfo", v)}
-            />
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2.5">
+              <Checkbox
+                id="purchase-info"
+                checked={form.hasPurchaseInfo}
+                onCheckedChange={(c) => set("hasPurchaseInfo", !!c)}
+                className="h-4 w-4 border-slate-300 text-teal-600"
+              />
+              <label htmlFor="purchase-info" className="text-[13px] font-semibold text-slate-700 cursor-pointer select-none">
+                Purchase Information
+              </label>
+            </div>
             {form.hasPurchaseInfo && (
-              <div className="grid grid-cols-2 gap-x-8 gap-y-3 pl-6 pb-2">
+              <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                 {/* Cost Price */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm text-destructive font-medium">
-                    Cost Price<span className="text-destructive">*</span>
-                  </label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Cost Price <span className="text-rose-500">*</span></label>
                   <div className="flex h-9">
-                    <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-muted text-muted-foreground">INR</span>
+                    <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-slate-50 text-slate-500 border-slate-200">INR</span>
                     <Input
                       type="number"
                       min={0}
                       step="0.01"
-                      className="rounded-l-none h-9 text-sm"
+                      className="rounded-l-none h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
                       value={form.costPrice}
                       onChange={(e) => set("costPrice", e.target.value)}
                       onWheel={preventNumberWheelChange}
@@ -1878,10 +1919,8 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 </div>
 
                 {/* Purchase Account */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm text-destructive font-medium">
-                    Account<span className="text-destructive">*</span>
-                  </label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Account <span className="text-rose-500">*</span></label>
                   <AccountSelect
                     value={form.purchaseAccountId}
                     onChange={(v) => set("purchaseAccountId", v)}
@@ -1894,25 +1933,25 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 </div>
 
                 {/* Purchase Description */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm text-muted-foreground">Description</label>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Description</label>
                   <Textarea
                     rows={2}
-                    className="text-sm resize-none"
+                    className="text-sm resize-none border-slate-200 focus-visible:ring-teal-500"
                     value={form.purchaseDescription}
                     onChange={(e) => set("purchaseDescription", e.target.value)}
                     placeholder="Description for purchase orders"
                   />
                 </div>
 
-                {/* Preferred Vendor — now linked to real vendor list */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm text-muted-foreground">Preferred Vendor</label>
+                {/* Preferred Vendor */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Preferred Vendor</label>
                   <Select
                     value={form.preferredVendorId || "__none"}
                     onValueChange={(v) => set("preferredVendorId", v === "__none" ? "" : v)}
                   >
-                    <SelectTrigger className="h-9 text-sm">
+                    <SelectTrigger className="h-9 text-sm border-slate-200">
                       <SelectValue placeholder="Select vendor" />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
@@ -1931,237 +1970,247 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
 
-        {/* ── Inventory Information ──────────────────────────────────────── */}
-        <SectionHeader
-          id="inventory-info"
-          label="Track Inventory for this item"
-          checked={form.hasInventoryInfo}
-          onToggle={(v) => {
-            set("hasInventoryInfo", v);
-            if (v) set("itemType", "Goods");
-          }}
-        />
-        {form.hasInventoryInfo && (
-          <div className="space-y-5 pl-6 pb-2">
-            <p className="text-sm text-muted-foreground">
-              You cannot enable/disable inventory tracking once you&apos;ve created transactions for this item.
-            </p>
+        {/* ── Inventory Information Card ── */}
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2.5">
+            <Checkbox
+              id="inventory-info"
+              checked={form.hasInventoryInfo}
+              onCheckedChange={(c) => {
+                set("hasInventoryInfo", !!c);
+                if (c) set("itemType", "Goods");
+              }}
+              className="h-4 w-4 border-slate-300 text-teal-600"
+            />
+            <label htmlFor="inventory-info" className="text-[13px] font-semibold text-slate-700 cursor-pointer select-none">
+              Track Inventory for this item
+            </label>
+          </div>
+          {form.hasInventoryInfo && (
+            <div className="p-5 space-y-6">
+              <p className="text-[12px] text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                Note: You cannot enable/disable inventory tracking once you&apos;ve created transactions for this item.
+              </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-sm text-destructive font-medium">
-                  Inventory Account<span className="text-destructive">*</span>
-                </label>
-                <Select
-                  value={form.inventoryAccountId || "__none"}
-                  onValueChange={(v) => set("inventoryAccountId", v === "__none" ? "" : v)}
-                >
-                  <SelectTrigger className={`h-9 text-sm ${errors.inventoryAccountId ? "border-destructive" : ""}`}>
-                    <SelectValue placeholder="Select an account" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    <SelectItem value="__none">— Select —</SelectItem>
-                    {inventoryAccounts.length === 0 ? (
-                      <SelectItem value="__empty" disabled>No asset accounts found</SelectItem>
-                    ) : (
-                      inventoryAccounts.map((acc) => (
-                        <SelectItem key={acc._id} value={acc._id}>
-                          {acc.name} ({acc.accountType})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {errors.inventoryAccountId && <p className="text-xs text-destructive">{errors.inventoryAccountId}</p>}
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                {/* Inventory Account */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Inventory Account <span className="text-rose-500">*</span></label>
+                  <Select
+                    value={form.inventoryAccountId || "__none"}
+                    onValueChange={(v) => set("inventoryAccountId", v === "__none" ? "" : v)}
+                  >
+                    <SelectTrigger className={`h-9 text-sm border-slate-200 ${errors.inventoryAccountId ? "border-rose-400" : ""}`}>
+                      <SelectValue placeholder="Select an account" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value="__none">— Select —</SelectItem>
+                      {inventoryAccounts.length === 0 ? (
+                        <SelectItem value="__empty" disabled>No asset accounts found</SelectItem>
+                      ) : (
+                        inventoryAccounts.map((acc) => (
+                          <SelectItem key={acc._id} value={acc._id}>
+                            {acc.name} ({acc.accountType})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {errors.inventoryAccountId && <p className="text-[11px] text-rose-500">{errors.inventoryAccountId}</p>}
+                </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-sm text-destructive font-medium">
-                  Inventory Valuation Method<span className="text-destructive">*</span>
-                </label>
-                <Select
-                  value={form.valuationMethod}
-                  onValueChange={(v) => set("valuationMethod", v as FormState["valuationMethod"])}
-                >
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Select the valuation method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="FIFO">FIFO (First In, First Out)</SelectItem>
-                    <SelectItem value="MovingAverage">WAC (Weighted Average Costing)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                {/* Valuation Method */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Valuation Method <span className="text-rose-500">*</span></label>
+                  <Select
+                    value={form.valuationMethod}
+                    onValueChange={(v) => set("valuationMethod", v as FormState["valuationMethod"])}
+                  >
+                    <SelectTrigger className="h-9 text-sm border-slate-200">
+                      <SelectValue placeholder="Select the valuation method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="FIFO">FIFO (First In, First Out)</SelectItem>
+                      <SelectItem value="MovingAverage">WAC (Weighted Average Costing)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-sm text-muted-foreground">Reorder Point</label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className="h-9 text-sm"
-                  value={form.reorderPoint}
-                  onChange={(e) => set("reorderPoint", e.target.value)}
-                  onWheel={preventNumberWheelChange}
-                  placeholder="0"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm text-muted-foreground">Opening Stock</label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className={`h-9 text-sm ${errors.stockOnHand ? "border-destructive" : ""}`}
-                  value={form.stockOnHand}
-                  onChange={(e) => set("stockOnHand", e.target.value)}
-                  onWheel={preventNumberWheelChange}
-                  placeholder="0"
-                />
-                {errors.stockOnHand && <p className="text-xs text-destructive">{errors.stockOnHand}</p>}
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-sm text-muted-foreground">Opening Cost / Unit</label>
-                <div className="flex h-9">
-                  <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-muted text-muted-foreground">INR</span>
+                {/* Reorder Point */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Reorder Point</label>
                   <Input
                     type="number"
                     min={0}
                     step="0.01"
-                    className={`rounded-l-none h-9 text-sm ${errors.averageCost ? "border-destructive" : ""}`}
-                    value={form.averageCost}
-                    onChange={(e) => set("averageCost", e.target.value)}
+                    className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                    value={form.reorderPoint}
+                    onChange={(e) => set("reorderPoint", e.target.value)}
                     onWheel={preventNumberWheelChange}
-                    placeholder="0.00"
+                    placeholder="0"
                   />
                 </div>
-                {errors.averageCost && <p className="text-xs text-destructive">{errors.averageCost}</p>}
-              </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-sm text-muted-foreground">Warehouse</label>
-                <Select
-                  value={form.warehouseId || "__none"}
-                  onValueChange={(v) => set("warehouseId", v === "__none" ? "" : v)}
-                >
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Select warehouse" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    <SelectItem value="__none">— None —</SelectItem>
-                    {warehouses.length === 0 ? (
-                      <SelectItem value="__empty" disabled>No warehouses configured</SelectItem>
-                    ) : (
-                      warehouses.map((warehouse) => (
-                        <SelectItem key={warehouse._id} value={warehouse._id}>
-                          {warehouse.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="border-t pt-5 space-y-4">
-              <h3 className="text-2xl font-semibold tracking-tight">Cancellation and Returns</h3>
-              <div className="grid grid-cols-[160px_1fr] gap-4 items-start">
-                <label className="text-sm text-muted-foreground pt-1">Returnable Item</label>
-                <RadioGroup
-                  value={form.returnableItem ? "yes" : "no"}
-                  onValueChange={(v) => set("returnableItem", v === "yes")}
-                  className="flex gap-6"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <RadioGroupItem value="yes" id="returnable-yes" />
-                    <Label htmlFor="returnable-yes" className="font-normal cursor-pointer text-sm">Yes</Label>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <RadioGroupItem value="no" id="returnable-no" />
-                    <Label htmlFor="returnable-no" className="font-normal cursor-pointer text-sm">No</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-            </div>
-
-            <div className="border-t pt-5 space-y-4">
-              <h3 className="text-2xl font-semibold tracking-tight">Fulfillment Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm text-muted-foreground">Dimensions</label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="h-9 text-sm"
-                      value={form.dimensionLength}
-                      onChange={(e) => set("dimensionLength", e.target.value)}
-                      placeholder="L"
-                    />
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="h-9 text-sm"
-                      value={form.dimensionWidth}
-                      onChange={(e) => set("dimensionWidth", e.target.value)}
-                      placeholder="W"
-                    />
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="h-9 text-sm"
-                      value={form.dimensionHeight}
-                      onChange={(e) => set("dimensionHeight", e.target.value)}
-                      placeholder="H"
-                    />
-                    <Select value={form.dimensionUnit} onValueChange={(v) => set("dimensionUnit", v as FormState["dimensionUnit"])}>
-                      <SelectTrigger className="h-9 text-sm w-[90px]"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cm">cm</SelectItem>
-                        <SelectItem value="m">m</SelectItem>
-                        <SelectItem value="in">in</SelectItem>
-                        <SelectItem value="ft">ft</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-xs text-muted-foreground">(Length x Width x Height)</p>
+                {/* Warehouse */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Warehouse</label>
+                  <Select
+                    value={form.warehouseId || "__none"}
+                    onValueChange={(v) => set("warehouseId", v === "__none" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-9 text-sm border-slate-200">
+                      <SelectValue placeholder="Select warehouse" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value="__none">— None —</SelectItem>
+                      {warehouses.length === 0 ? (
+                        <SelectItem value="__empty" disabled>No warehouses configured</SelectItem>
+                      ) : (
+                        warehouses.map((warehouse) => (
+                          <SelectItem key={warehouse._id} value={warehouse._id}>
+                            {warehouse.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm text-muted-foreground">Weight</label>
-                  <div className="flex gap-2">
+                {/* Opening Stock */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Opening Stock</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`h-9 text-sm border-slate-200 focus-visible:ring-teal-500 ${errors.stockOnHand ? "border-rose-400" : ""}`}
+                    value={form.stockOnHand}
+                    onChange={(e) => set("stockOnHand", e.target.value)}
+                    onWheel={preventNumberWheelChange}
+                    placeholder="0"
+                  />
+                  {errors.stockOnHand && <p className="text-[11px] text-rose-500">{errors.stockOnHand}</p>}
+                </div>
+
+                {/* Opening Cost */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] font-medium text-slate-600">Opening Cost / Unit</label>
+                  <div className="flex h-9">
+                    <span className="flex items-center px-2.5 text-xs border border-r-0 rounded-l-md bg-slate-50 text-slate-500 border-slate-200">INR</span>
                     <Input
                       type="number"
                       min={0}
                       step="0.01"
-                      className="h-9 text-sm"
-                      value={form.weightValue}
-                      onChange={(e) => set("weightValue", e.target.value)}
-                      placeholder="Weight"
+                      className={`rounded-l-none h-9 text-sm border-slate-200 focus-visible:ring-teal-500 ${errors.averageCost ? "border-rose-400" : ""}`}
+                      value={form.averageCost}
+                      onChange={(e) => set("averageCost", e.target.value)}
+                      onWheel={preventNumberWheelChange}
+                      placeholder="0.00"
                     />
-                    <Select value={form.weightUnit} onValueChange={(v) => set("weightUnit", v as FormState["weightUnit"])}>
-                      <SelectTrigger className="h-9 text-sm w-[90px]"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="kg">kg</SelectItem>
-                        <SelectItem value="g">g</SelectItem>
-                        <SelectItem value="lb">lb</SelectItem>
-                        <SelectItem value="oz">oz</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  </div>
+                  {errors.averageCost && <p className="text-[11px] text-rose-500">{errors.averageCost}</p>}
+                </div>
+              </div>
+
+              {/* Cancellation and Returns */}
+              <div className="border-t pt-5 space-y-3">
+                <h3 className="text-[13px] font-semibold text-slate-700">Cancellation and Returns</h3>
+                <div className="flex items-center gap-4">
+                  <label className="text-[12px] font-medium text-slate-600 w-32">Returnable Item</label>
+                  <RadioGroup
+                    value={form.returnableItem ? "yes" : "no"}
+                    onValueChange={(v) => set("returnableItem", v === "yes")}
+                    className="flex gap-6"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <RadioGroupItem value="yes" id="returnable-yes" className="border-slate-300 text-teal-600" />
+                      <Label htmlFor="returnable-yes" className="font-normal cursor-pointer text-[13px] text-slate-700">Yes</Label>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <RadioGroupItem value="no" id="returnable-no" className="border-slate-300 text-teal-600" />
+                      <Label htmlFor="returnable-no" className="font-normal cursor-pointer text-[13px] text-slate-700">No</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              </div>
+
+              {/* Fulfillment Details */}
+              <div className="border-t pt-5 space-y-4">
+                <h3 className="text-[13px] font-semibold text-slate-700">Fulfillment Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[12px] font-medium text-slate-600">Dimensions (L x W x H)</label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                        value={form.dimensionLength}
+                        onChange={(e) => set("dimensionLength", e.target.value)}
+                        placeholder="L"
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                        value={form.dimensionWidth}
+                        onChange={(e) => set("dimensionWidth", e.target.value)}
+                        placeholder="W"
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                        value={form.dimensionHeight}
+                        onChange={(e) => set("dimensionHeight", e.target.value)}
+                        placeholder="H"
+                      />
+                      <Select value={form.dimensionUnit} onValueChange={(v) => set("dimensionUnit", v as FormState["dimensionUnit"])}>
+                        <SelectTrigger className="h-9 text-sm w-[90px] border-slate-200"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cm">cm</SelectItem>
+                          <SelectItem value="m">m</SelectItem>
+                          <SelectItem value="in">in</SelectItem>
+                          <SelectItem value="ft">ft</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[12px] font-medium text-slate-600">Weight</label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="h-9 text-sm border-slate-200 focus-visible:ring-teal-500"
+                        value={form.weightValue}
+                        onChange={(e) => set("weightValue", e.target.value)}
+                        placeholder="Weight"
+                      />
+                      <Select value={form.weightUnit} onValueChange={(v) => set("weightUnit", v as FormState["weightUnit"])}>
+                        <SelectTrigger className="h-9 text-sm w-[90px] border-slate-200"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="g">g</SelectItem>
+                          <SelectItem value="lb">lb</SelectItem>
+                          <SelectItem value="oz">oz</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1403,16 +1403,18 @@ function ItemsPageContent() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col overflow-hidden h-svh">
+      <SidebarInset className="flex flex-col overflow-hidden h-svh bg-white">
         <PageHeader
-          breadcrumb={<span className="text-sm font-medium">Items</span>}
+          breadcrumb={
+            <span className="text-sm font-semibold text-slate-700">Items</span>
+          }
           actions={
             <>
               <div className="relative w-52">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-2.5 h-3 w-3 text-slate-400" />
                 <Input
                   placeholder="Search items..."
-                  className="pl-7 h-8 text-xs"
+                  className="pl-7 h-8 text-xs bg-slate-50/50 border-slate-200 focus-visible:ring-1 focus-visible:ring-blue-500 rounded-md text-slate-800 placeholder:text-slate-400"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -1422,25 +1424,25 @@ function ItemsPageContent() {
                   <button
                     key={f}
                     onClick={() => setTypeFilter(f)}
-                    className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
+                    className={`text-xs px-2.5 py-0.5 rounded-full border transition-all duration-150 cursor-pointer ${
                       typeFilter === f
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60"
+                        ? "bg-teal-600 text-white border-teal-600 font-semibold"
+                        : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
                     {f === "Service" ? "Services" : f}
                   </button>
                 ))}
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchItems} disabled={fetching}>
-                <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
+              <Button variant="outline" size="icon" className="h-8 w-8 border border-slate-200 text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 shrink-0" onClick={fetchItems} disabled={fetching}>
+                <RefreshCw className={`h-3 w-3 ${fetching ? "animate-spin" : ""}`} />
               </Button>
-              <Button size="sm" className="h-8 text-xs gap-1" onClick={() => router.push("/items/new")}>
+              <Button size="sm" className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md transition-all duration-150" onClick={() => router.push("/items/new")}>
                 <Plus className="h-3.5 w-3.5" /> New
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-8 w-8 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <Button variant="outline" size="icon" className="h-8 w-8 border border-slate-200 text-slate-600 hover:text-slate-900 bg-white shrink-0">
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -1513,7 +1515,8 @@ function ItemsPageContent() {
         {/* ── Body: table OR split panel ── */}
         {!selectedId ? (
           /* ── Full-width table view (initial state) ── */
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="bg-white flex flex-col flex-1 overflow-hidden border-t border-slate-100">
             {fetching ? (
               <div className="flex items-center justify-center py-24">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -1530,14 +1533,14 @@ function ItemsPageContent() {
               </div>
             ) : (
               <div className="space-y-0">
-                <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-2">
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-6 py-2.5">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8" disabled={selectedItemIds.length === 0 || bulkActioning}>
+                      <Button variant="outline" size="sm" className="h-8 border-slate-200 hover:bg-slate-100 text-slate-700 font-medium" disabled={selectedItemIds.length === 0 || bulkActioning}>
                         Bulk Update
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-44">
+                    <DropdownMenuContent align="start" className="w-44 bg-white">
                       <DropdownMenuItem disabled={bulkActioning} onClick={() => handleBulkAction("activate")}>Mark as Active</DropdownMenuItem>
                       <DropdownMenuItem disabled={bulkActioning} onClick={() => handleBulkAction("deactivate")}>Mark as Inactive</DropdownMenuItem>
                       <DropdownMenuSeparator />
@@ -1553,11 +1556,11 @@ function ItemsPageContent() {
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8" disabled={selectedItemIds.length === 0 || bulkActioning}>
+                      <Button variant="outline" size="sm" className="h-8 border-slate-200 hover:bg-slate-100 text-slate-700 font-medium" disabled={selectedItemIds.length === 0 || bulkActioning}>
                         New Transaction
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuContent align="start" className="w-48 bg-white">
                       <DropdownMenuItem onClick={() => handleNewTransaction("quote")}>Quote</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleNewTransaction("salesOrder")}>Sales Order</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleNewTransaction("invoice")}>Invoice</DropdownMenuItem>
@@ -1569,7 +1572,7 @@ function ItemsPageContent() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8"
+                    className="h-8 border-slate-200 hover:bg-slate-100 text-slate-700 font-medium"
                     disabled={selectedItemIds.length === 0 || bulkActioning}
                     onClick={() => handleBulkAction("activate")}
                   >
@@ -1578,7 +1581,7 @@ function ItemsPageContent() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8"
+                    className="h-8 border-slate-200 hover:bg-slate-100 text-slate-700 font-medium"
                     disabled={selectedItemIds.length === 0 || bulkActioning}
                     onClick={() => handleBulkAction("deactivate")}
                   >
@@ -1587,46 +1590,48 @@ function ItemsPageContent() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    className="h-8"
+                    className="h-8 bg-rose-600 hover:bg-rose-700 text-white font-medium"
                     disabled={selectedItemIds.length === 0 || bulkActioning}
                     onClick={() => setBulkDeleteDialogOpen(true)}
                   >
                     Delete
                   </Button>
 
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {selectedItemIds.length} selected
-                  </span>
+                  {selectedItemIds.length > 0 && (
+                    <span className="ml-auto text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
+                      {selectedItemIds.length} selected
+                    </span>
+                  )}
                 </div>
 
                 <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40">
-                      <TableHead className="w-10">
+                  <TableHeader className="bg-slate-50">
+                    <TableRow className="hover:bg-transparent border-b border-slate-200">
+                      <TableHead className="w-10 px-4">
                         <Checkbox
                           checked={selectAllState}
                           onCheckedChange={(checked) => toggleSelectAllFiltered(!!checked, filteredIds)}
                           aria-label="Select all filtered items"
                         />
                       </TableHead>
-                      <TableHead className="w-[220px] font-semibold text-xs uppercase tracking-wide">Name</TableHead>
-                      <TableHead className="font-semibold text-xs uppercase tracking-wide">Purchase Description</TableHead>
-                      <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Purchase Rate</TableHead>
-                      <TableHead className="font-semibold text-xs uppercase tracking-wide">Description</TableHead>
-                      <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Rate</TableHead>
-                      <TableHead className="font-semibold text-xs uppercase tracking-wide text-right">Stock On Hand</TableHead>
-                      <TableHead className="font-semibold text-xs uppercase tracking-wide">HSN/SAC</TableHead>
-                      <TableHead className="font-semibold text-xs uppercase tracking-wide">Usage Unit</TableHead>
+                      <TableHead className="w-[220px] font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Name</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Purchase Description</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Purchase Rate</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Description</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Rate</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Stock On Hand</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">HSN/SAC</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Usage Unit</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.map((item) => (
                       <TableRow
                         key={item._id}
-                        className="cursor-pointer hover:bg-muted/30"
+                        className="cursor-pointer hover:bg-blue-50/20 transition-colors border-b border-slate-100 last:border-0"
                         onClick={() => selectItem(item._id)}
                       >
-                        <TableCell onClick={(e) => e.stopPropagation()}>
+                        <TableCell className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={selectedItemIds.includes(item._id)}
                             onCheckedChange={(checked) => toggleItemSelection(item._id, !!checked)}
@@ -1634,42 +1639,51 @@ function ItemsPageContent() {
                             aria-label={`Select ${item.name}`}
                           />
                         </TableCell>
-                        <TableCell>
-                          <span className="text-sm font-medium text-primary hover:underline">
+                        <TableCell className="px-4 py-2 font-medium text-slate-800">
+                          <span className="text-[13px] text-teal-700 hover:text-teal-800 hover:underline">
                             {item.name}
                           </span>
-                          {!item.isActive && (
-                            <Badge variant="secondary" className="ml-2 text-[10px] h-4 px-1">Inactive</Badge>
+                          {!item.isActive ? (
+                            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none">
+                              <span className="h-1 w-1 rounded-full bg-slate-400" />
+                              Inactive
+                            </span>
+                          ) : (
+                            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100 select-none">
+                              <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                              Active
+                            </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 max-w-[200px] truncate">
                           {item.purchaseDescription || "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">
+                        <TableCell className="px-4 py-2 text-[13px] text-right tabular-nums text-slate-600">
                           {item.costPrice != null ? `₹${Number(item.costPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 max-w-[200px] truncate">
                           {item.sellingDescription || "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">
+                        <TableCell className="px-4 py-2 text-[13px] text-right tabular-nums text-slate-700 font-semibold">
                           {item.sellingPrice != null ? `₹${Number(item.sellingPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">
+                        <TableCell className="px-4 py-2 text-[13px] text-right tabular-nums">
                           {item.itemType === "Service" ? (
                             "—"
                           ) : (
                             <div className="flex items-center justify-end gap-1.5">
                               {item.inventoryTracked && item.reorderPoint != null && item.stockOnHand <= item.reorderPoint && (
-                                <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4 bg-red-100 text-red-700 hover:bg-red-100 border-red-200">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-pink-50 text-pink-700 border border-pink-100 select-none">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-pink-500" />
                                   Low Stock
-                                </Badge>
+                                </span>
                               )}
-                              <span>{formatQuantity(item.stockOnHand)}</span>
+                              <span className="text-slate-800 font-semibold">{formatQuantity(item.stockOnHand)}</span>
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm">{item.hsnSacCode || "—"}</TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500">{item.hsnSacCode || "—"}</TableCell>
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500">
                           {typeof item.unit === "object" && item.unit
                             ? (item.unit as { abbreviation: string }).abbreviation
                             : item.unit || "—"}
@@ -1680,48 +1694,55 @@ function ItemsPageContent() {
                 </Table>
               </div>
             )}
+            </div>
           </div>
         ) : (
           /* ── Split panel (list left + detail right) ── */
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex-1 p-4 flex gap-4 overflow-hidden bg-slate-50/50">
 
             {/* Narrow left list */}
-            <div className="w-72 min-w-[18rem] flex flex-col border-r bg-background overflow-hidden">
+            <div className="w-80 min-w-[20rem] flex flex-col rounded-2xl border border-slate-100 bg-white shadow-2xs overflow-hidden shrink-0">
               <div className="flex-1 overflow-y-auto">
                 {filtered.map((item) => (
                   <button
                     key={item._id}
                     onClick={() => selectItem(item._id)}
-                    className={`w-full text-left px-4 py-3 border-b last:border-b-0 transition-colors ${
+                    className={`w-full text-left px-4 py-3.5 border-b border-slate-100 last:border-b-0 transition-all duration-150 cursor-pointer ${
                       selectedId === item._id
-                        ? "bg-primary/5 border-l-2 border-l-primary pl-[14px]"
-                        : "hover:bg-muted/50"
+                        ? "bg-teal-50/50 border-l-[3px] border-l-teal-600 pl-[13px]"
+                        : "hover:bg-slate-50/50"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`text-sm font-medium truncate ${selectedId === item._id ? "text-primary" : ""}`}>
+                      <span className={`text-[13px] font-bold truncate ${selectedId === item._id ? "text-teal-700" : "text-slate-800"}`}>
                         {item.name}
                       </span>
-                      {!item.isActive && (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1 shrink-0">Inactive</Badge>
+                      {!item.isActive ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+                          Inactive
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 shrink-0">
+                          Active
+                        </span>
                       )}
                     </div>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <span className="text-xs text-muted-foreground">{item.sku || item.itemType}</span>
-                      <span className="text-xs tabular-nums font-medium">
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[11px] text-slate-400 font-medium">{item.sku || item.itemType}</span>
+                      <span className="text-[11px] tabular-nums font-semibold text-slate-600">
                         {item.sellingPrice != null ? `₹${item.sellingPrice.toLocaleString("en-IN")}` : "—"}
                       </span>
                     </div>
                   </button>
                 ))}
               </div>
-              <div className="px-4 py-2 border-t text-xs text-muted-foreground shrink-0">
+              <div className="px-4 py-2.5 border-t border-slate-100 text-xs text-slate-400 font-medium shrink-0 bg-slate-50/50">
                 {filtered.length} item{filtered.length !== 1 ? "s" : ""}
               </div>
             </div>
 
             {/* Detail panel */}
-            <div className="flex-1 flex flex-col overflow-hidden bg-background">
+            <div className="flex-1 flex flex-col rounded-2xl border border-slate-100 bg-white shadow-2xs overflow-hidden">
               {detailLoading || !detail ? (
                 <div className="flex flex-1 items-center justify-center">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -1729,7 +1750,7 @@ function ItemsPageContent() {
               ) : (
                 <>
                   {/* Detail header */}
-                  <div className="flex items-center gap-3 px-6 py-3 border-b bg-background shrink-0">
+                  <div className="flex items-center gap-3 px-6 py-3.5 border-b border-slate-100 bg-white shrink-0">
                     <h2 className="text-base font-semibold flex-1 truncate">{detail.name}</h2>
                     <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => router.push(`/items/${detail._id}/edit`)}>
                       <Pencil className="h-3.5 w-3.5" /> Edit
@@ -1783,15 +1804,15 @@ function ItemsPageContent() {
                   </div>
 
                   {/* Tabs */}
-                  <div className="flex gap-0 border-b px-6 shrink-0">
+                  <div className="flex gap-0 border-b border-slate-100 px-6 shrink-0 bg-white">
                     {(["overview", "transactions", "history"] as const).map((tab) => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`text-sm px-0 py-2.5 mr-6 border-b-2 transition-colors ${
+                        className={`text-[13px] px-0 py-3.5 mr-6 border-b-2 transition-all duration-150 cursor-pointer ${
                           activeTab === tab
-                            ? "border-primary text-primary font-medium"
-                            : "border-transparent text-muted-foreground hover:text-foreground"
+                            ? "border-teal-600 text-teal-700 font-bold"
+                            : "border-transparent text-slate-500 hover:text-slate-800"
                         }`}
                       >
                         {tab === "overview" && "Overview"}
@@ -1846,67 +1867,77 @@ function ItemsPageContent() {
                             <DetailRow
                               label="Status"
                               value={
-                                <Badge variant={detail.isActive ? "default" : "secondary"}>
-                                  {detail.isActive ? "Active" : "Inactive"}
-                                </Badge>
+                                detail.isActive ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 select-none">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                                    Inactive
+                                  </span>
+                                )
                               }
                             />
                           </div>
 
                           {detail.inventoryTracked && (
                             <>
-                              <Separator />
+                              <Separator className="border-slate-100" />
                               <div className="space-y-4">
                                 <div>
                                   <div className="flex items-center justify-between mb-2">
-                                    <p className="text-sm font-bold text-gray-800">Inventory Details</p>
+                                    <p className="text-sm font-bold text-slate-800">Inventory Details</p>
                                   </div>
-                                  <div className="grid grid-cols-2 gap-4 mt-2 mb-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                  <div className="grid grid-cols-2 gap-4 mt-2 mb-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
                                     <div>
-                                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Accounting Stock</p>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">Accounting Stock</p>
                                       <div className="space-y-2">
                                         <div className="flex justify-between items-center">
-                                          <span className="text-sm text-gray-600">Stock on Hand</span>
+                                          <span className="text-xs text-slate-500">Stock on Hand</span>
                                           <div className="flex items-center gap-1.5">
                                             {detail.reorderPoint != null && stockOnHandValue <= detail.reorderPoint && (
-                                              <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4 bg-red-100 text-red-700 hover:bg-red-100 border-red-200 font-medium">
-                                                Low
-                                              </Badge>
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-50 text-pink-700 border border-pink-100 select-none">
+                                                <span className="h-1 w-1 rounded-full bg-pink-500" />
+                                                Low Stock
+                                              </span>
                                             )}
-                                            <span className="text-sm font-medium">{formatQuantity(stockOnHandValue)}</span>
+                                            <span className="text-xs font-semibold text-slate-700">{formatQuantity(stockOnHandValue)}</span>
                                           </div>
                                         </div>
                                         <div className="flex justify-between">
-                                          <span className="text-sm text-gray-600">Committed Stock</span>
-                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(committedStockValue)}</span>
+                                          <span className="text-xs text-slate-500">Committed Stock</span>
+                                          <span className="text-xs font-semibold text-amber-600">{formatQuantity(committedStockValue)}</span>
                                         </div>
-                                        <div className="flex justify-between border-t pt-1 mt-1">
-                                          <span className="text-sm font-medium text-gray-800">Available for Sale</span>
-                                          <span className="text-sm font-bold text-green-600">{formatQuantity(availableForSaleValue)}</span>
+                                        <div className="flex justify-between border-t border-slate-100 pt-1.5 mt-1.5">
+                                          <span className="text-xs font-bold text-slate-700">Available for Sale</span>
+                                          <span className="text-xs font-bold text-emerald-600">{formatQuantity(availableForSaleValue)}</span>
                                         </div>
                                       </div>
                                     </div>
                                     <div>
-                                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Physical Stock</p>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">Physical Stock</p>
                                       <div className="space-y-2">
                                         <div className="flex justify-between items-center">
-                                          <span className="text-sm text-gray-600">Stock on Hand</span>
+                                          <span className="text-xs text-slate-500">Stock on Hand</span>
                                           <div className="flex items-center gap-1.5">
                                             {detail.reorderPoint != null && physicalStockOnHandValue <= detail.reorderPoint && (
-                                              <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4 bg-red-100 text-red-700 hover:bg-red-100 border-red-200 font-medium">
-                                                Low
-                                              </Badge>
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-50 text-pink-700 border border-pink-100 select-none">
+                                                <span className="h-1 w-1 rounded-full bg-pink-500" />
+                                                Low Stock
+                                              </span>
                                             )}
-                                            <span className="text-sm font-medium">{formatQuantity(physicalStockOnHandValue)}</span>
+                                            <span className="text-xs font-semibold text-slate-700">{formatQuantity(physicalStockOnHandValue)}</span>
                                           </div>
                                         </div>
                                         <div className="flex justify-between">
-                                          <span className="text-sm text-gray-600">Committed Stock</span>
-                                          <span className="text-sm font-medium text-orange-600">{formatQuantity(physicalCommittedStockValue)}</span>
+                                          <span className="text-xs text-slate-500">Committed Stock</span>
+                                          <span className="text-xs font-semibold text-amber-600">{formatQuantity(physicalCommittedStockValue)}</span>
                                         </div>
-                                        <div className="flex justify-between border-t pt-1 mt-1">
-                                          <span className="text-sm font-medium text-gray-800">Available for Sale</span>
-                                          <span className="text-sm font-bold text-green-600">{formatQuantity(physicalAvailableForSaleValue)}</span>
+                                        <div className="flex justify-between border-t border-slate-100 pt-1.5 mt-1.5">
+                                          <span className="text-xs font-bold text-slate-700">Available for Sale</span>
+                                          <span className="text-xs font-bold text-emerald-600">{formatQuantity(physicalAvailableForSaleValue)}</span>
                                         </div>
                                       </div>
                                     </div>
