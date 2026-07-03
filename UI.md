@@ -208,6 +208,28 @@ To maintain consistent, high-end professional aesthetics, all form screens must 
 
 ---
 
+## 7c. Component: Purchase Orders
+
+**Files:**
+- List Page: [client/app/purchases/orders/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/purchases/orders/page.tsx)
+- Create Form: [client/app/purchases/orders/new/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/purchases/orders/new/page.tsx)
+- Edit Form: [client/app/purchases/orders/[id]/edit/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/purchases/orders/[id]/edit/page.tsx)
+
+### List & Table Rules
+- **Breadcrumb Selection**: Uses double-line page header with small teal section title `Purchases` and the active filter category dropdown (e.g. `All Purchase Orders`, `Draft Purchase Orders`) as subtitle.
+- **Loading State**: Uses `TableSkeleton` for main list grids and `ListSkeleton` for details panel views during data fetching, applying pulsing `animate-pulse` blocks matching columns.
+- **Active Selection**: Compact list elements use `bg-teal-50/50 border-l-[3px] border-l-teal-600` for active indicators and slate backgrounds on hover.
+- **Status Badges**: Custom `StatusPill` with matching background, border, text, and dot indicator representing statuses (Draft, Open, Received, Billed, Closed, Canceled).
+- **Banner Alerts**: Detail panels display status context banners utilizing soft alerts in matching status colors (amber, teal, emerald, purple, slate, rose).
+
+### Form Rules
+- **Page Breadcrumbs**: Display double-line text headers indicating the module hierarchy (e.g. `Purchases` in teal and `New Purchase Order` / `Edit Purchase Order` as secondary text).
+- **Form Wrapper**: Structured inside a `SidebarInset className="bg-white flex flex-col overflow-hidden h-svh"`.
+- **Primary Buttons**: Submit and save action buttons are styled as Teal primary items (`bg-teal-600 hover:bg-teal-700 text-white rounded-md`).
+- **Cancel Button**: Slate borders and text (`border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md`).
+
+---
+
 ## 8. Loading States & Shimmer Skeletons
 
 Whenever fetching data from the backend, implement exact UI-matching shimmer/skeleton effects:
