@@ -161,6 +161,7 @@ Structure:
 - Item name link: `text-teal-700 hover:text-teal-800 hover:underline`
 - Filter pills active: `bg-teal-600 text-white border-teal-600`
 - New item button: `bg-teal-600 hover:bg-teal-700 text-white`
+- **Loading State**: When fetching table data, show a table-structured skeleton shimmer (using `animate-pulse` or similar shimmer effect) that matches the exact column width/row structure. Never use a simple spinning wheel or generic "Loading..." text.
 
 ### Split panel (when item selected)
 - Wrapper: `p-4 gap-4 bg-slate-50/50`
@@ -183,10 +184,27 @@ Structure:
 - Save: `h-8 px-4 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md`
 - Form body: `px-6 py-5 w-full max-w-6xl mr-auto space-y-5` (left-aligned)
 - Info banner: `bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-2.5 text-[12px] text-amber-800`
+- **Dynamic Field Loading**: When fetching options or detail data for relation fields (like Vendors, Customers, or Items), display a tailored shimmer/skeleton effect that represents the visual shape of the expected component (e.g. small loading input skeleton or inline text line skeletons). Avoid round spinner wheels or standard text loading placeholders.
 
 ---
 
-## 8. What NOT To Change
+## 8. Loading States & Shimmer Skeletons
+
+Whenever fetching data from the backend, implement exact UI-matching shimmer/skeleton effects:
+
+### Table/List Views (Main Section)
+- **Visual Style**: Skeleton structure that mirrors the actual table row/cell structure.
+- **Pattern**: Multiple rows (e.g. 5 rows) of horizontal gray blocks representing cell data, with a smooth pulsing fade-in-out shimmer animation (`animate-pulse`).
+- **NO**: Simple circular spinner or "Loading..." label in the center of the screen.
+
+### Form Fields & Selector Dropdowns (e.g., Vendor, Customer, Items Selectors)
+- **Visual Style**: Compact skeleton matching the expected form control height and width.
+- **Pattern**: A pulsing skeleton bar inside the custom Select trigger or inline dropdown options when loading options like vendors, customers, or items.
+- **NO**: Generic loading spinners inside dropdown overlays.
+
+---
+
+## 9. What NOT To Change
 
 - Any TypeScript logic, state management, API calls, hooks, routes
 - Auth logic (`useAuth`, `useOrganization`)
