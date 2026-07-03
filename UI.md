@@ -230,6 +230,22 @@ To maintain consistent, high-end professional aesthetics, all form screens must 
 
 ---
 
+## 7d. Component: Login & Signup Forms
+
+**Files:**
+- Login Page: [client/app/login/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/login/page.tsx)
+- Signup Page: [client/app/signup/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/signup/page.tsx)
+- Login Form: [client/components/login-form.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/components/login-form.tsx)
+- Signup Form: [client/components/signup-form.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/components/signup-form.tsx)
+
+### Rules
+- **Split Layout**: Widescreen two-column split (`grid lg:grid-cols-2`). Left holds the form, right holds the brand graphic cover panel.
+- **Brand Cover Panel (Right)**: Fully covered by a widescreen landscape SaaS dashboard illustration (`object-cover w-full h-full`) containing real-time reports, charts, and currency symbols (Indian Rupees ₹). Features a dark teal premium gradient overlay (`from-teal-950/80 via-slate-900/40 to-transparent`) and bottom-aligned white text branding with the company logo.
+- **Form Colors (Left)**: Active tab selection indicators, primary action buttons, step markers, and link anchors use the Teal theme (`bg-teal-600`, `hover:bg-teal-700`, `text-teal-700`).
+- **Logo Branding**: The official logo is displayed at the top center of the form container.
+
+---
+
 ## 8. Loading States & Shimmer Skeletons
 
 Whenever fetching data from the backend, implement exact UI-matching shimmer/skeleton effects:
