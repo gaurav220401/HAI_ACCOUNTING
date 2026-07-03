@@ -1518,8 +1518,63 @@ function ItemsPageContent() {
           <div className="flex-1 overflow-hidden flex flex-col">
             <div className="bg-white flex flex-col flex-1 overflow-hidden border-t border-slate-100">
             {fetching ? (
-              <div className="flex items-center justify-center py-24">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <div className="space-y-0">
+                {/* Dummy action panel space with a pulse to keep alignment consistent */}
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-6 py-2.5 h-13 animate-pulse">
+                  <div className="h-8 w-24 bg-slate-200 rounded" />
+                  <div className="h-8 w-32 bg-slate-200 rounded" />
+                  <div className="h-8 w-24 bg-slate-200 rounded" />
+                </div>
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow className="hover:bg-transparent border-b border-slate-200">
+                      <TableHead className="w-10 px-4">
+                        <Checkbox disabled checked={false} aria-label="Loading selection" />
+                      </TableHead>
+                      <TableHead className="w-[220px] font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Name</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Purchase Description</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Purchase Rate</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Description</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Rate</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Stock On Hand</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">HSN/SAC</TableHead>
+                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Usage Unit</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i} className="animate-pulse border-b border-slate-100 last:border-0">
+                        <TableCell className="px-4 py-3">
+                          <div className="h-4 w-4 bg-slate-100 rounded" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <div className="h-4 w-32 bg-slate-200/80 rounded" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <div className="h-4 w-40 bg-slate-100 rounded" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-right">
+                          <div className="h-4 w-12 bg-slate-100 rounded ml-auto" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <div className="h-4 w-32 bg-slate-100 rounded" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-right">
+                          <div className="h-4 w-12 bg-slate-100 rounded ml-auto" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-right">
+                          <div className="h-4 w-16 bg-slate-100 rounded ml-auto" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <div className="h-4 w-20 bg-slate-100 rounded" />
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <div className="h-4 w-16 bg-slate-100 rounded" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
@@ -1744,8 +1799,31 @@ function ItemsPageContent() {
             {/* Detail panel */}
             <div className="flex-1 flex flex-col rounded-2xl border border-slate-100 bg-white shadow-2xs overflow-hidden">
               {detailLoading || !detail ? (
-                <div className="flex flex-1 items-center justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <div className="flex flex-1 flex-col animate-pulse bg-white">
+                  {/* Detail header shimmer */}
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-white shrink-0">
+                    <div className="h-5 w-48 bg-slate-200 rounded" />
+                    <div className="ml-auto flex items-center gap-2">
+                      <div className="h-8 w-16 bg-slate-100 rounded" />
+                      <div className="h-8 w-20 bg-slate-100 rounded" />
+                      <div className="h-8 w-8 bg-slate-100 rounded-full" />
+                    </div>
+                  </div>
+                  {/* Detail tabs shimmer */}
+                  <div className="flex gap-6 border-b border-slate-100 px-6 shrink-0 bg-white py-3">
+                    <div className="h-4 w-16 bg-slate-200 rounded" />
+                    <div className="h-4 w-20 bg-slate-200/50 rounded" />
+                    <div className="h-4 w-24 bg-slate-200/50 rounded" />
+                  </div>
+                  {/* Detail content shimmer */}
+                  <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+                    {Array.from({ length: 7 }).map((_, idx) => (
+                      <div key={idx} className="flex py-2 border-b border-slate-50 last:border-0 items-center">
+                        <div className="w-1/3 h-4 bg-slate-100 rounded" />
+                        <div className="w-1/2 h-4 bg-slate-200/80 rounded ml-4" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <>

@@ -594,6 +594,7 @@ function AccountSelect({
   section,
   parentAccounts,
   onAccountCreated,
+  loading,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -602,9 +603,15 @@ function AccountSelect({
   section: AccountSection;
   parentAccounts: Account[];
   onAccountCreated: (account: Account) => void;
+  loading?: boolean;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const entries = Object.entries(grouped);
+
+  if (loading) {
+    return <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />;
+  }
+
   return (
     <div className="space-y-0.5">
       <Select
@@ -1588,36 +1595,39 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
             {/* Unit */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-rose-600">Unit <span className="text-rose-500">*</span></label>
-              <Select
-                value={form.unit}
-                disabled={loadingDropdowns}
-                onValueChange={(v) => {
-                  if (v === "__new_unit__") { setCreateUnitOpen(true); return; }
-                  set("unit", v);
-                }}
-              >
-                <SelectTrigger className="h-9 text-sm w-full">
-                  <SelectValue placeholder={loadingDropdowns ? "Loading units..." : "Select or type to add"} />
-                </SelectTrigger>
-                <SelectContent className="max-h-72">
-                  {units.length === 0 ? (
-                    <SelectItem value="__none" disabled className="text-muted-foreground text-xs py-2 px-3">
-                      No units yet — create one
-                    </SelectItem>
-                  ) : (
-                    units.map((u) => (
-                      <SelectItem key={u._id} value={u._id}>
-                        {u.name} ({u.abbreviation})
+              {loadingDropdowns ? (
+                <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />
+              ) : (
+                <Select
+                  value={form.unit}
+                  onValueChange={(v) => {
+                    if (v === "__new_unit__") { setCreateUnitOpen(true); return; }
+                    set("unit", v);
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-sm w-full">
+                    <SelectValue placeholder="Select or type to add" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {units.length === 0 ? (
+                      <SelectItem value="__none" disabled className="text-muted-foreground text-xs py-2 px-3">
+                        No units yet — create one
                       </SelectItem>
-                    ))
-                  )}
-                  <SelectSeparator />
-                  <SelectItem value="__new_unit__" className="text-primary font-medium">
-                    <Plus className="h-3.5 w-3.5" />
-                    New Unit
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                    ) : (
+                      units.map((u) => (
+                        <SelectItem key={u._id} value={u._id}>
+                          {u.name} ({u.abbreviation})
+                        </SelectItem>
+                      ))
+                    )}
+                    <SelectSeparator />
+                    <SelectItem value="__new_unit__" className="text-primary font-medium">
+                      <Plus className="h-3.5 w-3.5" />
+                      New Unit
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
               <CreateUnitDialog
                 open={createUnitOpen}
                 onOpenChange={setCreateUnitOpen}
@@ -1740,38 +1750,42 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   <p className="text-xs text-muted-foreground">
                     Intra state tax rate can be used when transactions are raised for contacts within your home state.
                   </p>
-                  <Select
-                    value={String(form.intraStateTaxId || INTRA_TAX_PLACEHOLDER)}
-                    onValueChange={(v) => {
-                      if (v === INTRA_TAX_PLACEHOLDER) return;
-                      set("intraStateTaxId", String(v));
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-sm w-full">
-                      <SelectValue placeholder="Select Intra State Tax Rate" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-72">
-                      <SelectItem value={INTRA_TAX_PLACEHOLDER} disabled>
-                        Select Intra State Tax Rate
-                      </SelectItem>
-                      <SelectGroup>
-                        <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
-                          Tax Group
-                        </SelectLabel>
-                        {intraTaxOptions.length === 0 ? (
-                          <SelectItem value="__empty_intra" disabled>
-                            No active GST tax groups in settings
-                          </SelectItem>
-                        ) : (
-                          intraTaxOptions.map((t) => (
-                            <SelectItem key={String(t._id)} value={String(t._id)}>
-                              {formatTaxOptionLabel(t)}
+                  {loadingDropdowns ? (
+                    <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />
+                  ) : (
+                    <Select
+                      value={String(form.intraStateTaxId || INTRA_TAX_PLACEHOLDER)}
+                      onValueChange={(v) => {
+                        if (v === INTRA_TAX_PLACEHOLDER) return;
+                        set("intraStateTaxId", String(v));
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-sm w-full">
+                        <SelectValue placeholder="Select Intra State Tax Rate" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        <SelectItem value={INTRA_TAX_PLACEHOLDER} disabled>
+                          Select Intra State Tax Rate
+                        </SelectItem>
+                        <SelectGroup>
+                          <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
+                            Tax Group
+                          </SelectLabel>
+                          {intraTaxOptions.length === 0 ? (
+                            <SelectItem value="__empty_intra" disabled>
+                              No active GST tax groups in settings
                             </SelectItem>
-                          ))
-                        )}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                          ) : (
+                            intraTaxOptions.map((t) => (
+                              <SelectItem key={String(t._id)} value={String(t._id)}>
+                                {formatTaxOptionLabel(t)}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  )}
                   {errors.intraStateTaxId && <p className="text-xs text-destructive">{errors.intraStateTaxId}</p>}
                 </div>
 
@@ -1783,38 +1797,42 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   <p className="text-xs text-muted-foreground">
                     Inter state tax rate can be used when transactions are raised for contacts outside your home state.
                   </p>
-                  <Select
-                    value={String(form.interStateTaxId || INTER_TAX_PLACEHOLDER)}
-                    onValueChange={(v) => {
-                      if (v === INTER_TAX_PLACEHOLDER) return;
-                      set("interStateTaxId", String(v));
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-sm w-full">
-                      <SelectValue placeholder="Select Inter State Tax Rate" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-72">
-                      <SelectItem value={INTER_TAX_PLACEHOLDER} disabled>
-                        Select Inter State Tax Rate
-                      </SelectItem>
-                      <SelectGroup>
-                        <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
-                          Tax
-                        </SelectLabel>
-                        {interTaxOptions.length === 0 ? (
-                          <SelectItem value="__empty_inter" disabled>
-                            No active IGST taxes in settings
-                          </SelectItem>
-                        ) : (
-                          interTaxOptions.map((t) => (
-                            <SelectItem key={String(t._id)} value={String(t._id)}>
-                              {formatTaxOptionLabel(t)}
+                  {loadingDropdowns ? (
+                    <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />
+                  ) : (
+                    <Select
+                      value={String(form.interStateTaxId || INTER_TAX_PLACEHOLDER)}
+                      onValueChange={(v) => {
+                        if (v === INTER_TAX_PLACEHOLDER) return;
+                        set("interStateTaxId", String(v));
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-sm w-full">
+                        <SelectValue placeholder="Select Inter State Tax Rate" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        <SelectItem value={INTER_TAX_PLACEHOLDER} disabled>
+                          Select Inter State Tax Rate
+                        </SelectItem>
+                        <SelectGroup>
+                          <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">
+                            Tax
+                          </SelectLabel>
+                          {interTaxOptions.length === 0 ? (
+                            <SelectItem value="__empty_inter" disabled>
+                              No active IGST taxes in settings
                             </SelectItem>
-                          ))
-                        )}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                          ) : (
+                            interTaxOptions.map((t) => (
+                              <SelectItem key={String(t._id)} value={String(t._id)}>
+                                {formatTaxOptionLabel(t)}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  )}
                   {errors.interStateTaxId && <p className="text-xs text-destructive">{errors.interStateTaxId}</p>}
                 </div>
               </>
@@ -1866,6 +1884,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                   section="sales"
                   parentAccounts={allSalesAccounts}
                   onAccountCreated={handleSalesAccountCreated}
+                  loading={loadingDropdowns}
                 />
               </div>
 
@@ -1929,6 +1948,7 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                     section="purchase"
                     parentAccounts={allPurchaseAccounts}
                     onAccountCreated={handlePurchaseAccountCreated}
+                    loading={loadingDropdowns}
                   />
                 </div>
 
@@ -1947,26 +1967,30 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 {/* Preferred Vendor */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] font-medium text-slate-600">Preferred Vendor</label>
-                  <Select
-                    value={form.preferredVendorId || "__none"}
-                    onValueChange={(v) => set("preferredVendorId", v === "__none" ? "" : v)}
-                  >
-                    <SelectTrigger className="h-9 text-sm border-slate-200">
-                      <SelectValue placeholder="Select vendor" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      <SelectItem value="__none">— None —</SelectItem>
-                      {vendors.length === 0 ? (
-                        <SelectItem value="__empty" disabled>No vendors yet</SelectItem>
-                      ) : (
-                        vendors.map((v) => (
-                          <SelectItem key={v._id} value={v._id}>
-                            {v.displayName || v.companyName || `${v.firstName} ${v.lastName}`.trim()}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  {loadingDropdowns ? (
+                    <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />
+                  ) : (
+                    <Select
+                      value={form.preferredVendorId || "__none"}
+                      onValueChange={(v) => set("preferredVendorId", v === "__none" ? "" : v)}
+                    >
+                      <SelectTrigger className="h-9 text-sm border-slate-200">
+                        <SelectValue placeholder="Select vendor" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        <SelectItem value="__none">— None —</SelectItem>
+                        {vendors.length === 0 ? (
+                          <SelectItem value="__empty" disabled>No vendors yet</SelectItem>
+                        ) : (
+                          vendors.map((v) => (
+                            <SelectItem key={v._id} value={v._id}>
+                              {v.displayName || v.companyName || `${v.firstName} ${v.lastName}`.trim()}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
             )}
@@ -1999,26 +2023,30 @@ export function ItemForm({ initialData, isEdit = false }: ItemFormProps) {
                 {/* Inventory Account */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12px] font-medium text-slate-600">Inventory Account <span className="text-rose-500">*</span></label>
-                  <Select
-                    value={form.inventoryAccountId || "__none"}
-                    onValueChange={(v) => set("inventoryAccountId", v === "__none" ? "" : v)}
-                  >
-                    <SelectTrigger className={`h-9 text-sm border-slate-200 ${errors.inventoryAccountId ? "border-rose-400" : ""}`}>
-                      <SelectValue placeholder="Select an account" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-72">
-                      <SelectItem value="__none">— Select —</SelectItem>
-                      {inventoryAccounts.length === 0 ? (
-                        <SelectItem value="__empty" disabled>No asset accounts found</SelectItem>
-                      ) : (
-                        inventoryAccounts.map((acc) => (
-                          <SelectItem key={acc._id} value={acc._id}>
-                            {acc.name} ({acc.accountType})
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  {loadingDropdowns ? (
+                    <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />
+                  ) : (
+                    <Select
+                      value={form.inventoryAccountId || "__none"}
+                      onValueChange={(v) => set("inventoryAccountId", v === "__none" ? "" : v)}
+                    >
+                      <SelectTrigger className={`h-9 text-sm border-slate-200 ${errors.inventoryAccountId ? "border-rose-400" : ""}`}>
+                        <SelectValue placeholder="Select an account" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        <SelectItem value="__none">— Select —</SelectItem>
+                        {inventoryAccounts.length === 0 ? (
+                          <SelectItem value="__empty" disabled>No asset accounts found</SelectItem>
+                        ) : (
+                          inventoryAccounts.map((acc) => (
+                            <SelectItem key={acc._id} value={acc._id}>
+                              {acc.name} ({acc.accountType})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {errors.inventoryAccountId && <p className="text-[11px] text-rose-500">{errors.inventoryAccountId}</p>}
                 </div>
 
