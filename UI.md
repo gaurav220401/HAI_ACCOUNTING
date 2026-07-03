@@ -171,7 +171,27 @@ Structure:
 
 ---
 
-## 7. Component: Item Form
+## 7. Component: Form Spacing & Layout Guidelines
+
+### General Form Design Principles
+To maintain consistent, high-end professional aesthetics, all form screens must follow these layout and spacing rules to eliminate empty "unwanted" white space on wide viewports:
+
+1. **Forms WITH Sidebar (e.g., Expense Form with receipt upload):**
+   - **Structure**: Multi-column split screen. Left side holds the inputs, right side holds the upload panel/sidebar.
+   - **Sizing**: Form column uses `max-w-2xl w-full` to prevent inputs from stretching excessively. Sidebar uses `w-96 border-l bg-slate-50/50`.
+   - **Alignment**: Left-aligned, snap to edge layouts.
+
+2. **Forms WITHOUT Sidebar (e.g., Recurring Expense Form, Recurring Bill Form, Item Form):**
+   - **Structure**: Center-aligned, balanced two-column grid (`grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 max-w-5xl mx-auto`).
+   - **Clurrence Clustering**:
+     - **Left Column**: Recurrence Schedule, General Details, Customer Settings.
+     - **Right Column**: Expense Details, Accounts, Amount/Currency, Notes.
+   - **Fields**: Each form row utilizes a grid of `grid grid-cols-[140px_1fr] items-center gap-4` to clean up spacing and prevent fields from stretching all the way across wide monitors.
+   - **Buttons**: Positioned at the bottom, left-aligned, below a horizontal `<Separator />`.
+
+---
+
+## 7b. Component: Item Form
 
 **File:** `client/app/items/_components/item-form.tsx`
 
