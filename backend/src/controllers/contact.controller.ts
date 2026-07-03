@@ -1204,3 +1204,62 @@ export const executeImport = asyncHandler(async (req: AuthenticatedRequest, res:
     },
   });
 });
+
+const archiverModule = require("archiver");
+const archiver = typeof archiverModule === "function" ? archiverModule : archiverModule.default;
+const zipEncryptedModule = require("archiver-zip-encrypted");
+const zipEncrypted = typeof zipEncryptedModule === "function" ? zipEncryptedModule : zipEncryptedModule.default;
+
+try {
+  archiver.registerFormat("zip-encrypted", zipEncrypted);
+} catch (e) {
+  // Already registered or error
+}
+
+export const exportProtectedContacts = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { fileName, fileFormat, password, headers, rows } = req.body;
+
+  if (!password) {
+    throw new ValidationError("Password is required for protected export");
+  }
+  if (!headers || !Array.isArray(headers) || !rows || !Array.isArray(rows)) {
+    throw new ValidationError("Headers and rows are required");
+  }
+
+  // Create sheet & workbook
+  const wsData = [headers, ...rows];
+  const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Contacts");
+
+  const fileExt = (fileFormat || "xlsx").toLowerCase();
+  const innerFileName = `contacts_export_${new Date().toISOString().split('T')[0]}.${fileExt}`;
+
+  // Write workbook to a buffer
+  let fileBuffer: Buffer;
+  if (fileExt === "csv") {
+    const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+    fileBuffer = Buffer.from(csvContent, "utf-8");
+  } else {
+    fileBuffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: fileExt === "xls" ? "biff8" : "xlsx"
+    });
+  }
+
+  // Create an encrypted ZIP using zip20 for standard Windows extractor compatibility
+  const archive = archiver("zip-encrypted", {
+    zlib: { level: 8 },
+    encryptionMethod: "zip20",
+    password
+  });
+
+  const outputZipName = `${fileName || "contacts_export"}.zip`;
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${outputZipName}"`);
+
+  archive.pipe(res);
+  archive.append(fileBuffer, { name: innerFileName });
+  await archive.finalize();
+});
+

@@ -211,3 +211,49 @@ Whenever fetching data from the backend, implement exact UI-matching shimmer/ske
 - All dialog/modal behavior
 - Nav items and their URLs in AppSidebar
 - Any functionality of the DropdownMenu items (only styles)
+
+---
+
+## 10. Component: Dashboard Page
+
+**File:** `client/app/dashboard/page.tsx`
+
+### Layout & Page Header
+- Background: Changed container to `bg-white` (no gray background, flush alignment).
+- Breadcrumb: Styled as `<span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Dashboard</span>`.
+- Welcome Heading: Styled heading as `text-2xl font-bold text-slate-900` and description as `text-sm text-slate-500`.
+
+### Cards & Dropdown Controls
+- Receivable & Payable Cards:
+  - Card borders updated to `border-slate-100 shadow-2xs`.
+  - Dropdown triggers styled as outline buttons: `variant="outline" size="sm" className="h-8 px-2.5 gap-1.5 text-xs font-semibold text-slate-600 bg-white border-slate-200 hover:bg-slate-50 rounded-md shadow-2xs"`.
+  - Dropdown menu items active background styled as `bg-teal-600` and focus state to `focus:bg-teal-700`. Inside icons styled as `text-teal-600`.
+  - Overdue progress bars styled as soft rounded badges (`h-1.5 w-full rounded-full bg-slate-100`) with indicator colors updated to `bg-amber-500` (receivables) and `bg-rose-500` (payables).
+  - Stat sub-labels current and overdue are laid out in a flex space-between pattern inside a subtle top-border border-t: `text-xs pt-1 border-t border-slate-100`.
+
+### Cash Flow Chart
+- Color scheme: Area chart line fill gradient converted to teal (`#0f766e`).
+- Right-side balance indicator uses `text-teal-700` and `bg-teal-600` for active items.
+- Full custom shimmer block rendering when `loadingDashboard` is true.
+
+### Income & Expenses
+- Accrual & Cash toggle buttons updated to use `bg-teal-600 text-white` for active elements.
+- Income/Expense LineChart stroke widths updated to `2.5` with `#10b981` (emerald-500) for income and `#f43f5e` (rose-500) for expenses.
+- Visual skeleton shimmers added for loading state.
+
+### Top Expenses List
+- Replaced plain text listings with a custom visual breakdown featuring horizontal progress bars representing the percentage of total expenses (`bg-teal-600` indicators on `bg-slate-100` tracks).
+- Shimmer skeleton rows rendered when `loadingDashboard` is true.
+
+### Low Stock Alert
+- Status count pill styled to follow the standard pattern: `bg-rose-50 text-rose-600 border border-rose-100` with a `bg-rose-500` status indicator dot.
+- Text sizes, SKU details, and unit values styled to align with global design system tokens.
+- Replaced spinners and circular loading overlays with a custom multi-row text and value shimmer layout (`animate-pulse`).
+
+### Bank and Credit Cards
+- Row items styled with bullet dots `bg-teal-500` and border spacing.
+- Visual shimmers added to match structure during data fetch.
+
+### Account Watchlist
+- Widgets styled as light cards with rounded corners: `rounded-xl border border-slate-100 bg-slate-50/30 p-4 transition-all hover:bg-slate-50/60`.
+- Shimmer skeletons added for loading state.
