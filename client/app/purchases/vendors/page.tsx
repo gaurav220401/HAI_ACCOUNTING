@@ -183,19 +183,19 @@ export default function VendorsPage() {
       <SidebarInset className="flex h-svh min-h-0 flex-col overflow-hidden">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Vendors</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <span className="text-sm font-semibold text-slate-700">Vendors</span>
+            </div>
           }
           actions={
             !panelOpen ? (
               <>
                 <div className="flex items-center gap-2">
                   <div className="relative w-52">
-                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                     <Input
-                      className="pl-8 h-8 text-sm"
+                      className="pl-8 h-8 text-xs border-slate-200 focus-visible:ring-teal-500"
                       placeholder="Search vendors…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -204,18 +204,18 @@ export default function VendorsPage() {
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value as "Active" | "Inactive" | "All")}
-                    className="h-8 rounded border border-muted px-2 text-xs"
+                    className="h-8 rounded border border-slate-200 px-2 text-xs text-slate-600 focus-visible:ring-teal-500"
                   >
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
                     <option value="All">All</option>
                   </select>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching} className="px-2">
-                  <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+                <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching} className="h-8 w-8 px-0 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50">
+                  <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
                 </Button>
-                <Button size="sm" className="gap-1.5" onClick={() => router.push("/purchases/vendors/new")}>
-                  <Plus className="h-4 w-4 mr-1" /> New Vendor
+                <Button size="sm" className="h-8 gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md text-xs px-3" onClick={() => router.push("/purchases/vendors/new")}>
+                  <Plus className="h-3.5 w-3.5" /> New Vendor
                 </Button>
 
                 <DropdownMenu>
@@ -288,10 +288,10 @@ export default function VendorsPage() {
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                   </button>
                   <div className="flex items-center gap-1">
-                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchContacts} disabled={fetching}>
+                    <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-slate-600" onClick={fetchContacts} disabled={fetching}>
                       <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
                     </Button>
-                    <Button size="icon" className="h-6 w-6" onClick={() => router.push("/purchases/vendors/new")}>
+                    <Button size="icon" className="h-6 w-6 bg-teal-600 hover:bg-teal-700 text-white rounded" onClick={() => router.push("/purchases/vendors/new")}>
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -323,13 +323,57 @@ export default function VendorsPage() {
             )}
 
             {/* Content */}
-            {fetching && contacts.length === 0 ? (
-              <div className="flex justify-center items-center flex-1">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
+            {/* Content */}
+            {fetching ? (
+              panelOpen ? (
+                /* Narrow sidebar list skeleton */
+                <div className="flex-1 overflow-y-auto divide-y animate-pulse bg-white">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="px-4 py-3.5 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div className="h-3.5 w-24 bg-slate-200 rounded" />
+                        <div className="h-3 w-16 bg-slate-100 rounded" />
+                      </div>
+                      <div className="h-3 w-36 bg-slate-100 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Full-width table skeleton */
+                <div className="flex-1 overflow-auto px-6 py-4 animate-pulse">
+                  <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-2xs">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+                          <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Company Name</th>
+                          <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                          <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Email</th>
+                          <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Work Phone</th>
+                          <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Payables (BCY)</th>
+                          <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Unused Credits (BCY)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <tr key={i} className="border-b border-slate-100 last:border-0">
+                            <td className="px-4 py-3"><div className="h-4 w-28 bg-slate-200 rounded" /></td>
+                            <td className="px-4 py-3"><div className="h-4 w-32 bg-slate-100 rounded" /></td>
+                            <td className="px-4 py-3"><div className="h-4 w-12 bg-slate-100 rounded" /></td>
+                            <td className="px-4 py-3"><div className="h-4 w-40 bg-slate-100 rounded" /></td>
+                            <td className="px-4 py-3"><div className="h-4 w-24 bg-slate-100 rounded" /></td>
+                            <td className="px-4 py-3 text-right"><div className="h-4 w-16 bg-slate-100 rounded ml-auto" /></td>
+                            <td className="px-4 py-3 text-right"><div className="h-4 w-16 bg-slate-100 rounded ml-auto" /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
             ) : panelOpen ? (
               /* Narrow sidebar list */
-              <div className="flex-1 overflow-y-auto divide-y">
+              <div className="flex-1 overflow-y-auto divide-y bg-white">
                 {filtered.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-10 gap-3 text-muted-foreground">
                     <Building2 className="h-8 w-8 opacity-30" />
@@ -340,29 +384,39 @@ export default function VendorsPage() {
                   <button
                     key={c._id}
                     className={cn(
-                      "w-full text-left px-3 py-3 transition-colors hover:bg-muted/20 border-l-2",
-                      c.isActive === false && "bg-muted/60 text-muted-foreground",
-                      selectedId === c._id ? "bg-blue-50 border-l-primary" : "border-l-transparent",
+                      "w-full text-left px-4 py-3.5 border-b border-slate-100 last:border-b-0 transition-all duration-150 cursor-pointer border-l-[3px]",
+                      c.isActive === false && "bg-slate-50/50 text-slate-400",
+                      selectedId === c._id ? "bg-teal-50/50 border-l-teal-600 pl-[13px]" : "border-l-transparent hover:bg-slate-50/50",
                     )}
                     onClick={() => selectVendor(c._id)}
                   >
                     <div className="flex items-center justify-between gap-2 min-w-0">
                       <div className="min-w-0 flex-1">
-                        <p className={cn("text-xs font-medium truncate", selectedId === c._id && c.isActive !== false && "text-primary")}>
+                        <p className={cn("text-[13px] font-semibold truncate", selectedId === c._id && c.isActive !== false ? "text-teal-700" : "text-slate-800")}>
                           {c.displayName}
                         </p>
                         {c.companyName && c.companyName !== c.displayName && (
-                          <p className="text-[10px] text-muted-foreground truncate">{c.companyName}</p>
+                          <p className="text-[10px] text-slate-400 truncate mt-0.5">{c.companyName}</p>
                         )}
-                        {c.isActive === false && <p className="text-[10px] text-muted-foreground">Inactive</p>}
                       </div>
-                      <span className="text-[10px] tabular-nums text-muted-foreground shrink-0">
-                        {fmt(c.openingBalance ?? 0, c.currency ?? "INR")}
-                      </span>
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        {c.isActive === false ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 select-none">
+                            Inactive
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 select-none">
+                            Active
+                          </span>
+                        )}
+                        <span className="text-[10px] tabular-nums text-slate-500 font-medium">
+                          {fmt(c.openingBalance ?? 0, c.currency ?? "INR")}
+                        </span>
+                      </div>
                     </div>
                   </button>
                 ))}
-                <div className="px-3 py-2 text-xs text-muted-foreground border-t">
+                <div className="px-4 py-2.5 text-xs text-slate-400 font-medium border-t bg-slate-50/50">
                   {filtered.length} vendor{filtered.length !== 1 ? "s" : ""}
                 </div>
               </div>
@@ -372,7 +426,7 @@ export default function VendorsPage() {
                 <Building2 className="h-12 w-12 opacity-20" />
                 <p className="text-sm font-medium">{search ? "No vendors match your search" : "No vendors yet"}</p>
                 {!search && (
-                  <Button size="sm" onClick={() => router.push("/purchases/vendors/new")}>
+                  <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/purchases/vendors/new")}>
                     <Plus className="h-4 w-4 mr-1" /> New Vendor
                   </Button>
                 )}
@@ -380,17 +434,17 @@ export default function VendorsPage() {
             ) : (
               /* Full-width table */
               <div className="flex-1 overflow-auto px-6 py-4">
-                <div className="border rounded-xl overflow-hidden bg-white dark:bg-card shadow-sm">
+                <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-2xs">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b bg-muted/30">
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Company Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Email</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Work Phone</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payables (BCY)</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Unused Credits (BCY)</th>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Company Name</th>
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Email</th>
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Work Phone</th>
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Payables (BCY)</th>
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Unused Credits (BCY)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -402,17 +456,29 @@ export default function VendorsPage() {
                           <tr
                             key={c._id}
                             className={cn(
-                              "border-b last:border-0 hover:bg-muted/40 cursor-pointer transition-colors",
-                              c.isActive === false && "bg-muted/60 text-muted-foreground",
+                              "border-b border-slate-100 last:border-0 hover:bg-slate-100/70 cursor-pointer transition-colors px-4 py-2.5",
+                              c.isActive === false && "bg-slate-50/50 text-slate-400",
                             )}
                             onClick={() => selectVendor(c._id)}
                           >
                             <td className="px-4 py-3">
-                              <span className={cn("font-medium hover:underline", c.isActive === false ? "text-muted-foreground" : "text-primary")}>{c.displayName}</span>
+                              <span className={cn("text-[13px] font-medium hover:underline", c.isActive === false ? "text-slate-400" : "text-teal-700 hover:text-teal-800")}>{c.displayName}</span>
                             </td>
-                            <td className="px-4 py-3 text-muted-foreground">{c.companyName ?? "—"}</td>
-                            <td className="px-4 py-3 text-muted-foreground">{c.isActive === false ? "Inactive" : "Active"}</td>
-                            <td className="px-4 py-3 text-muted-foreground">
+                            <td className="px-4 py-3 text-slate-500">{c.companyName ?? "—"}</td>
+                            <td className="px-4 py-3 text-slate-500">
+                              {c.isActive === false ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none">
+                                  <span className="h-1 w-1 rounded-full bg-slate-400" />
+                                  Inactive
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 select-none">
+                                  <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                                  Active
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500">
                               {email ? (
                                 <span className="flex items-center gap-1">
                                   <Mail className="h-3.5 w-3.5" />
@@ -420,7 +486,7 @@ export default function VendorsPage() {
                                 </span>
                               ) : "—"}
                             </td>
-                            <td className="px-4 py-3 text-muted-foreground">
+                            <td className="px-4 py-3 text-slate-500">
                               {phone ? (
                                 <span className="flex items-center gap-1">
                                   <Phone className="h-3.5 w-3.5" />
@@ -428,10 +494,10 @@ export default function VendorsPage() {
                                 </span>
                               ) : "—"}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums font-medium">
+                            <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-700">
                               {fmt(c.openingBalance ?? 0, c.currency ?? "INR")}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                            <td className="px-4 py-3 text-right tabular-nums text-slate-500">
                               {fmt(0, c.currency ?? "INR")}
                             </td>
                           </tr>
@@ -446,10 +512,32 @@ export default function VendorsPage() {
 
           {/* ── RIGHT: vendor detail panel ── */}
           {panelOpen && (
-            <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-white">
               {loadingVendor && !selectedVendor ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="flex flex-1 flex-col animate-pulse bg-white">
+                  {/* Detail header shimmer */}
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-white shrink-0">
+                    <div className="h-5 w-48 bg-slate-200 rounded" />
+                    <div className="ml-auto flex items-center gap-2">
+                      <div className="h-8 w-16 bg-slate-100 rounded" />
+                      <div className="h-8 w-8 bg-slate-100 rounded-full" />
+                    </div>
+                  </div>
+                  {/* Detail tabs shimmer */}
+                  <div className="flex gap-6 border-b border-slate-100 px-6 shrink-0 bg-white py-3">
+                    <div className="h-4 w-16 bg-slate-200 rounded" />
+                    <div className="h-4 w-20 bg-slate-200/50 rounded" />
+                    <div className="h-4 w-24 bg-slate-200/50 rounded" />
+                  </div>
+                  {/* Detail content shimmer */}
+                  <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+                    {Array.from({ length: 7 }).map((_, idx) => (
+                      <div key={idx} className="flex py-2 border-b border-slate-50 last:border-0 items-center">
+                        <div className="w-1/3 h-4 bg-slate-100 rounded" />
+                        <div className="w-1/2 h-4 bg-slate-200/80 rounded ml-4" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : selectedVendor ? (
                 <VendorDetailView

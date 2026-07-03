@@ -228,12 +228,10 @@ export default function EditRecurringExpensePage() {
       <SidebarInset className="flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <a href="/purchases/recurring-expenses" className="hover:underline">Recurring Expenses</a>
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Edit</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <span className="text-sm font-semibold text-slate-700">Edit Recurring Expense</span>
+            </div>
           }
         />
 
@@ -241,175 +239,191 @@ export default function EditRecurringExpensePage() {
           {/* Tab-style header bar */}
           <div className="border-b bg-background shrink-0">
             <div className="flex gap-0 px-6">
-              <div className="text-sm px-4 py-3 border-b-2 border-primary text-primary font-medium">
+              <div className="text-sm px-4 py-3 border-b-2 border-teal-600 text-teal-700 font-semibold">
                 Edit Recurring Expense
               </div>
             </div>
           </div>
-
           <div className="flex gap-0 min-h-full">
-            <div className="flex-1 p-8 max-w-2xl">
-              <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="flex-1 p-8">
+              <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
 
-                {/* Profile Name */}
-                <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                  <Label className="text-sm text-right">
-                    Profile Name <span className="text-destructive">*</span>
-                  </Label>
-                  <Input className="h-9" value={form.profileName}
-                    onChange={(e) => set("profileName", e.target.value)} maxLength={100}
-                    placeholder="e.g. Monthly Office Rent" />
-                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                  
+                  {/* Left Column: Schedule & Customer */}
+                  <div className="space-y-6">
+                    <div className="border-b pb-2 mb-2 border-slate-100">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Recurrence Schedule</h3>
+                    </div>
 
-                {/* Repeat Every */}
-                <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                  <Label className="text-sm text-right">
-                    Repeat Every <span className="text-destructive">*</span>
-                  </Label>
-                  <Select value={form.freqKey} onValueChange={(v) => set("freqKey", v)}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {FREQ_OPTIONS.map((o) => (
-                        <SelectItem key={freqKey(o)} value={freqKey(o)} className="text-sm">{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    {/* Profile Name */}
+                    <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                      <Label className="text-sm text-right">
+                        Profile Name <span className="text-destructive">*</span>
+                      </Label>
+                      <Input className="h-9" value={form.profileName}
+                        onChange={(e) => set("profileName", e.target.value)} maxLength={100}
+                        placeholder="e.g. Monthly Office Rent" />
+                    </div>
 
-                {/* Start Date */}
-                <div className="grid grid-cols-[180px_1fr] items-start gap-4">
-                  <Label className="text-sm text-right pt-2">
-                    Start Date <span className="text-destructive">*</span>
-                  </Label>
-                  <div>
-                    <Input type="date" className="h-9" value={form.startDate}
-                      onChange={(e) => set("startDate", e.target.value)} />
-                    {firstRunDate && (
-                      <p className="text-xs text-muted-foreground mt-1.5">
-                        The first expense will be created on <strong>{firstRunDate}</strong>
-                      </p>
+                    {/* Repeat Every */}
+                    <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                      <Label className="text-sm text-right">
+                        Repeat Every <span className="text-destructive">*</span>
+                      </Label>
+                      <Select value={form.freqKey} onValueChange={(v) => set("freqKey", v)}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {FREQ_OPTIONS.map((o) => (
+                            <SelectItem key={freqKey(o)} value={freqKey(o)} className="text-sm">{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Start Date */}
+                    <div className="grid grid-cols-[140px_1fr] items-start gap-4">
+                      <Label className="text-sm text-right pt-2">
+                        Start Date <span className="text-destructive">*</span>
+                      </Label>
+                      <div>
+                        <Input type="date" className="h-9" value={form.startDate}
+                          onChange={(e) => set("startDate", e.target.value)} />
+                        {firstRunDate && (
+                          <p className="text-xs text-muted-foreground mt-1.5">
+                            The first expense will be created on <strong>{firstRunDate}</strong>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Ends On */}
+                    <div className="grid grid-cols-[140px_1fr] items-start gap-4">
+                      <Label className="text-sm text-right pt-2">Ends On</Label>
+                      <div className="space-y-2">
+                        <Input type="date" className="h-9" value={form.endsOn}
+                          disabled={form.neverExpires}
+                          onChange={(e) => set("endsOn", e.target.value)} />
+                        <div className="flex items-center gap-2">
+                          <Checkbox id="neverExpires" checked={form.neverExpires}
+                            onCheckedChange={(v) => {
+                              set("neverExpires", Boolean(v));
+                              if (v) set("endsOn", "");
+                            }} />
+                          <label htmlFor="neverExpires" className="text-sm cursor-pointer select-none">Never Expires</label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-b pb-2 pt-4 mb-2 border-slate-100">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Customer Details</h3>
+                    </div>
+
+                    {/* Customer Name */}
+                    <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                      <Label className="text-sm text-right">Customer Name</Label>
+                      <ContactCombobox contacts={customers} value={form.customerId}
+                        onChange={(v) => {
+                          set("customerId", v);
+                          if (!v) {
+                            set("isBillable", false);
+                            set("projectId", "");
+                          }
+                        }}
+                        placeholder="Select a customer" />
+                    </div>
+
+                    {/* Billable — shown only when customer selected */}
+                    {form.customerId && (
+                      <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                        <div />
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <Checkbox checked={form.isBillable}
+                            onCheckedChange={(v) => set("isBillable", v === true)} />
+                          <span className="text-sm">Billable to Customer</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Projects — shown only when customer selected */}
+                    {form.customerId && (
+                      <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                        <Label className="text-sm text-right">Projects</Label>
+                        <div className="h-9 border rounded-md flex items-center justify-between px-3 text-sm text-muted-foreground bg-muted/5 cursor-not-allowed select-none">
+                          <span className="text-xs">No projects configured yet</span>
+                          <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
 
-                {/* Ends On */}
-                <div className="grid grid-cols-[180px_1fr] items-start gap-4">
-                  <Label className="text-sm text-right pt-2">Ends On</Label>
-                  <div className="space-y-2">
-                    <Input type="date" className="h-9" value={form.endsOn}
-                      disabled={form.neverExpires}
-                      onChange={(e) => set("endsOn", e.target.value)} />
-                    <div className="flex items-center gap-2">
-                      <Checkbox id="neverExpires" checked={form.neverExpires}
-                        onCheckedChange={(v) => {
-                          set("neverExpires", Boolean(v));
-                          if (v) set("endsOn", "");
-                        }} />
-                      <label htmlFor="neverExpires" className="text-sm cursor-pointer select-none">Never Expires</label>
+                  {/* Right Column: Expense Details & Accounting */}
+                  <div className="space-y-6">
+                    <div className="border-b pb-2 mb-2 border-slate-100">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Expense Details</h3>
+                    </div>
+
+                    {/* Expense Account */}
+                    <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                      <Label className="text-sm text-right">
+                        Expense Account <span className="text-destructive">*</span>
+                      </Label>
+                      <AccountSelect accounts={expenseAccounts} value={form.expenseAccountId}
+                        onChange={(v) => set("expenseAccountId", v)} />
+                    </div>
+
+                    {/* Amount */}
+                    <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                      <Label className="text-sm text-right">
+                        Amount <span className="text-destructive">*</span>
+                      </Label>
+                      <div className="flex gap-2">
+                        <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
+                          <SelectTrigger className="h-9 w-24 shrink-0"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {["INR", "USD", "EUR", "GBP"].map((c) => (
+                              <SelectItem key={c} value={c}>{c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input type="number" min="0" step="0.01" className="h-9 flex-1"
+                          placeholder="0.00" value={form.amount}
+                          onChange={(e) => set("amount", e.target.value)} />
+                      </div>
+                    </div>
+
+                    {/* Paid Through */}
+                    <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                      <Label className="text-sm text-right">Paid Through</Label>
+                      <AccountSelect accounts={bankAccounts} value={form.paidThroughAccountId}
+                        onChange={(v) => set("paidThroughAccountId", v)} />
+                    </div>
+
+                    {/* Vendor */}
+                    <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                      <Label className="text-sm text-right">Vendor</Label>
+                      <ContactCombobox contacts={vendors} value={form.vendorId}
+                        onChange={(v) => set("vendorId", v)} placeholder="Select a vendor" />
+                    </div>
+
+                    {/* Notes */}
+                    <div className="grid grid-cols-[140px_1fr] items-start gap-4">
+                      <Label className="text-sm text-right pt-2">Notes</Label>
+                      <Textarea className="resize-none text-sm" rows={4} maxLength={500}
+                        placeholder="Max. 500 characters" value={form.notes}
+                        onChange={(e) => set("notes", e.target.value)} />
                     </div>
                   </div>
                 </div>
-
-                <Separator />
-
-                {/* Expense Account */}
-                <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                  <Label className="text-sm text-right">
-                    Expense Account <span className="text-destructive">*</span>
-                  </Label>
-                  <AccountSelect accounts={expenseAccounts} value={form.expenseAccountId}
-                    onChange={(v) => set("expenseAccountId", v)} />
-                </div>
-
-                {/* Amount */}
-                <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                  <Label className="text-sm text-right">
-                    Amount <span className="text-destructive">*</span>
-                  </Label>
-                  <div className="flex gap-2">
-                    <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
-                      <SelectTrigger className="h-9 w-24 shrink-0"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {["INR", "USD", "EUR", "GBP"].map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input type="number" min="0" step="0.01" className="h-9 flex-1"
-                      placeholder="0.00" value={form.amount}
-                      onChange={(e) => set("amount", e.target.value)} />
-                  </div>
-                </div>
-
-                {/* Paid Through */}
-                <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                  <Label className="text-sm text-right">Paid Through</Label>
-                  <AccountSelect accounts={bankAccounts} value={form.paidThroughAccountId}
-                    onChange={(v) => set("paidThroughAccountId", v)} />
-                </div>
-
-                {/* Vendor */}
-                <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                  <Label className="text-sm text-right">Vendor</Label>
-                  <ContactCombobox contacts={vendors} value={form.vendorId}
-                    onChange={(v) => set("vendorId", v)} placeholder="Select a vendor" />
-                </div>
-
-                {/* Notes */}
-                <div className="grid grid-cols-[180px_1fr] items-start gap-4">
-                  <Label className="text-sm text-right pt-2">Notes</Label>
-                  <Textarea className="resize-none text-sm" rows={3} maxLength={500}
-                    placeholder="Max. 500 characters" value={form.notes}
-                    onChange={(e) => set("notes", e.target.value)} />
-                </div>
-
-                <Separator />
-
-                {/* Customer Name */}
-                <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                  <Label className="text-sm text-right">Customer Name</Label>
-                  <ContactCombobox contacts={customers} value={form.customerId}
-                    onChange={(v) => {
-                      set("customerId", v);
-                      if (!v) {
-                        set("isBillable", false);
-                        set("projectId", "");
-                      }
-                    }}
-                    placeholder="Select a customer" />
-                </div>
-
-                {/* Billable — shown only when customer selected */}
-                {form.customerId && (
-                  <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                    <div />
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <Checkbox checked={form.isBillable}
-                        onCheckedChange={(v) => set("isBillable", v === true)} />
-                      <span className="text-sm">Billable to Customer</span>
-                    </label>
-                  </div>
-                )}
-
-                {/* Projects — shown only when customer selected */}
-                {form.customerId && (
-                  <div className="grid grid-cols-[180px_1fr] items-center gap-4">
-                    <Label className="text-sm text-right">Projects</Label>
-                    <div className="h-9 border rounded-md flex items-center justify-between px-3 text-sm text-muted-foreground bg-muted/5 cursor-not-allowed select-none">
-                      <span className="text-xs">No projects configured yet</span>
-                      <ChevronDown className="h-3.5 w-3.5 opacity-50" />
-                    </div>
-                  </div>
-                )}
 
                 <Separator />
                 <div className="flex gap-3 pt-2">
-                  <Button type="submit" size="sm" disabled={submitting} className="px-6">
+                  <Button type="submit" size="sm" disabled={submitting} className="px-6 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
                     {submitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
                     Update
                   </Button>
                   <Button type="button" variant="outline" size="sm"
-                    onClick={() => router.back()} disabled={submitting} className="px-6">
+                    onClick={() => router.back()} disabled={submitting} className="px-6 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                     Cancel
                   </Button>
                 </div>

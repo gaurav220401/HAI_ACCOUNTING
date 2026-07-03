@@ -2709,7 +2709,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                     {vendor.documents?.map((doc, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-sm bg-muted/30 rounded px-2.5 py-1.5">
                         <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-primary hover:underline text-xs">{doc.name}</a>
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-teal-700 hover:text-teal-800 hover:underline text-xs font-semibold">{doc.name}</a>
                         <button onClick={() => handleRemoveAttachment(idx)} className="text-destructive hover:text-destructive/80 shrink-0">
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -2718,14 +2718,14 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                   </div>
                 )}
                 <button
-                  className="flex items-center justify-center gap-2 w-full py-2.5 text-sm text-primary hover:bg-primary/5 rounded-md border border-dashed border-primary/30 transition-colors"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 text-sm text-teal-700 hover:bg-teal-50/50 rounded-md border border-dashed border-teal-200 transition-colors cursor-pointer"
                   onClick={() => attachmentInputRef.current?.click()}
                   disabled={attachmentUploading}
                 >
                   {attachmentUploading ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</>
+                    <><Loader2 className="h-4 w-4 animate-spin text-teal-600" /> Uploading...</>
                   ) : (
-                    <><Upload className="h-4 w-4" /> Upload your Files <span className="text-primary">✓</span></>
+                    <><Upload className="h-4 w-4 text-teal-600" /> Upload your Files <span className="text-teal-700 font-semibold">✓</span></>
                   )}
                 </button>
                 <input
@@ -2743,7 +2743,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
           {/* New Transaction dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" className="h-8 text-xs">
+              <Button size="sm" className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
                 New Transaction <ChevronDown className="h-3.5 w-3.5 ml-1" />
               </Button>
             </DropdownMenuTrigger>
@@ -2835,7 +2835,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
             <TabsTrigger
               key={t.value}
               value={t.value}
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary h-full px-4 text-sm"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:bg-transparent data-[state=active]:text-teal-700 data-[state=active]:font-bold h-full px-4 text-sm transition-all duration-150"
             >
               {t.label}
             </TabsTrigger>
@@ -2850,14 +2850,14 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
               {/* Profile Section */}
               <div className="mb-6 flex items-start justify-between">
                 <div className="flex items-start gap-4">
-                  <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border shadow-sm overflow-hidden">
+                  <div className="h-16 w-16 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 border border-teal-100 shadow-sm overflow-hidden">
                     {primaryContact?.photoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={primaryContact.photoUrl} alt={primaryContact.name} className="h-full w-full object-cover" />
                     ) : vendor.companyName ? (
-                      <span className="text-2xl font-bold text-primary">{vendor.companyName.charAt(0).toUpperCase()}</span>
+                      <span className="text-2xl font-bold text-teal-700">{vendor.companyName.charAt(0).toUpperCase()}</span>
                     ) : (
-                      <User className="h-8 w-8 text-primary" />
+                      <User className="h-8 w-8 text-teal-600" />
                     )}
                   </div>
                   <div className="pt-1">
@@ -3841,7 +3841,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
           <div className="border-t px-6 py-6">
             <div className="flex items-center gap-3">
               <Button
-                className="h-10 px-5 bg-blue-500 hover:bg-blue-600"
+                className="h-10 px-5 bg-teal-600 hover:bg-teal-700 text-white"
                 onClick={handleMergeVendors}
                 disabled={merging || !mergeTargetVendorId}
               >

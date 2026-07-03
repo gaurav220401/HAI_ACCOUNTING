@@ -51,14 +51,61 @@ import { apiFetch, apiFetchBlob } from "@/lib/api/client";
 const fmtCur = (v: number) =>
   new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
-const statusColor: Record<PurchaseOrderStatus, string> = {
-  Draft:  "text-gray-500",
-  Open:   "text-blue-600",
-  Received: "text-purple-600",
-  Billed: "text-green-600",
-  Closed: "text-slate-500",
-  Canceled: "text-red-600",
-};
+function StatusPill({ status }: { status: PurchaseOrderStatus }) {
+  const configMap: Record<PurchaseOrderStatus, { bg: string; text: string; border: string; dot: string }> = {
+    Draft: { bg: "bg-slate-100", text: "text-slate-500", border: "border-slate-200", dot: "bg-slate-400" },
+    Open: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-100", dot: "bg-emerald-500" },
+    Received: { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-100", dot: "bg-purple-500" },
+    Billed: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-100", dot: "bg-blue-500" },
+    Closed: { bg: "bg-slate-100", text: "text-slate-500", border: "border-slate-200", dot: "bg-slate-400" },
+    Canceled: { bg: "bg-rose-50", text: "text-rose-600", border: "border-rose-100", dot: "bg-rose-500" },
+  };
+  const config = configMap[status] || configMap.Draft;
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border", config.bg, config.text, config.border)}>
+      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot)} />
+      {status}
+    </span>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="divide-y divide-slate-100 animate-pulse">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="grid items-center px-4 py-4" style={{ gridTemplateColumns: "36px 90px 150px 120px 1fr 110px 100px 110px 100px 36px" }}>
+          <div className="h-4 w-4 bg-slate-100 rounded" />
+          <div className="h-3 w-16 bg-slate-100 rounded ml-2" />
+          <div className="h-3 w-24 bg-slate-100 rounded ml-2" />
+          <div className="h-3 w-16 bg-slate-100 rounded ml-2" />
+          <div className="h-3 w-32 bg-slate-100 rounded ml-2" />
+          <div className="h-4 w-20 bg-slate-100 rounded-full ml-2" />
+          <div className="h-3 w-12 bg-slate-100 rounded ml-2" />
+          <div className="h-3 w-16 bg-slate-100 rounded ml-2 text-right" />
+          <div className="h-3 w-16 bg-slate-100 rounded ml-2" />
+          <div className="h-4 w-4 bg-slate-100 rounded ml-2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="divide-y divide-slate-100 animate-pulse">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="px-4 py-3.5 space-y-2">
+          <div className="flex justify-between">
+            <div className="h-3.5 w-32 bg-slate-100 rounded" />
+            <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          </div>
+          <div className="h-3 w-24 bg-slate-100 rounded" />
+          <div className="h-4 w-16 bg-slate-100 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const statusBadge: Record<PurchaseOrderStatus, string> = {
   Draft: "bg-slate-100 text-slate-700 border-slate-200",
@@ -840,32 +887,32 @@ function OrderDetailPanel({
     Draft: {
       label: "Draft",
       message: "Send this purchase order to your vendor or mark it as issued when the details are finalized.",
-      tone: "bg-amber-50 border-amber-200 text-amber-900",
+      tone: "bg-amber-50 border-amber-100 text-amber-900",
     },
     Open: {
       label: "Issued",
       message: "This purchase order is active. Convert it to a bill once goods or services are received.",
-      tone: "bg-blue-50 border-blue-200 text-blue-900",
+      tone: "bg-teal-50/50 border-teal-100 text-teal-800",
     },
     Billed: {
       label: "Billed",
       message: "This purchase order has already been converted to a bill and is now linked to payables.",
-      tone: "bg-emerald-50 border-emerald-200 text-emerald-900",
+      tone: "bg-emerald-50 border-emerald-100 text-emerald-700",
     },
     Received: {
       label: "Received",
       message: "The goods for this purchase order have been received. You can now convert it to a bill.",
-      tone: "bg-purple-50 border-purple-200 text-purple-900",
+      tone: "bg-purple-50 border-purple-100 text-purple-700",
     },
     Closed: {
       label: "Closed",
       message: "This purchase order is completed and marked as received.",
-      tone: "bg-zinc-100 border-zinc-200 text-zinc-800",
+      tone: "bg-slate-100 border-slate-200 text-slate-600",
     },
     Canceled: {
       label: "Canceled",
       message: "This purchase order has been canceled. You can clone it to create a fresh one.",
-      tone: "bg-rose-50 border-rose-200 text-rose-900",
+      tone: "bg-rose-50 border-rose-100 text-rose-700",
     },
   };
 
@@ -1067,8 +1114,8 @@ function OrderDetailPanel({
               <PackageCheck className="h-3.5 w-3.5" /> Convert to Bill
             </button>
           ) : (
-            <div className={cn("px-3 py-1.5 text-xs font-bold uppercase tracking-wider border mx-1 rounded", statusBadge[order.status])}>
-              {order.status}
+            <div className="mx-1">
+              <StatusPill status={order.status} />
             </div>
           )}
         </div>
@@ -1086,7 +1133,7 @@ function OrderDetailPanel({
             <DropdownMenuContent align="end" className="w-52 shadow-xl border-gray-200 mt-1">
               {order.status === "Draft" ? (
                 <>
-                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer focus:bg-blue-50 focus:text-blue-600 font-medium" onClick={handleMarkAsIssued}>
+                  <DropdownMenuItem className="text-xs py-2.5 cursor-pointer focus:bg-teal-50 focus:text-teal-700 font-medium" onClick={handleMarkAsIssued}>
                     <CheckCircle className="h-3.5 w-3.5 mr-2.5" /> Mark as Issued
                   </DropdownMenuItem>
                   <DropdownMenuItem className="text-xs py-2.5 cursor-pointer" onClick={handleConvertToBill}>
@@ -1099,7 +1146,7 @@ function OrderDetailPanel({
               ) : (
                 <>
                   <DropdownMenuItem 
-                    className="text-xs py-2.5 cursor-pointer text-blue-600 font-semibold bg-blue-50/50 hover:bg-blue-50 focus:bg-blue-50 focus:text-blue-600"
+                    className="text-xs py-2.5 cursor-pointer text-teal-700 font-semibold bg-teal-50/50 hover:bg-teal-50 focus:bg-teal-50 focus:text-teal-700"
                     onClick={() => setShowDeliveryDialog(true)}
                   >
                     Expected Delivery Date
@@ -1129,7 +1176,7 @@ function OrderDetailPanel({
         <div className="ml-auto flex items-center relative gap-1">
           <button
             type="button"
-            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showAttachments ? "text-primary bg-muted/30" : "text-muted-foreground")}
+            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showAttachments ? "text-teal-700 bg-teal-50/60 font-semibold" : "text-muted-foreground")}
             title="Attachments"
             onClick={() => { setShowAttachments((v) => !v); setShowComments(false); }}
           >
@@ -1138,13 +1185,13 @@ function OrderDetailPanel({
           
           <button
             type="button"
-            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showComments ? "text-primary bg-muted/30" : "text-muted-foreground")}
+            className={cn("p-2 transition-colors relative hover:text-foreground rounded", showComments ? "text-teal-700 bg-teal-50/60 font-semibold" : "text-muted-foreground")}
             title="Comments & History"
             onClick={() => { setShowComments((v) => !v); setShowAttachments(false); }}
           >
             <MessageSquare className="h-4 w-4" />
             {comments.length > 0 && (
-              <span className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-primary text-[9px] text-white flex items-center justify-center font-bold">
+              <span className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-teal-600 text-[9px] text-white flex items-center justify-center font-bold">
                 {comments.length}
               </span>
             )}
@@ -1200,7 +1247,7 @@ function OrderDetailPanel({
                 <div className="pt-2">
                   <Button
                     variant="outline" size="sm"
-                    className="gap-2 text-primary border-primary/20 text-xs w-full py-4 bg-blue-50/30 hover:bg-blue-50/50 border-dashed"
+                    className="gap-2 text-teal-700 border-teal-600/20 text-xs w-full py-4 bg-teal-50/30 hover:bg-teal-50/50 border-dashed"
                     disabled={uploading || attachments.length >= 10}
                     onClick={() => attachFileRef.current?.click()}
                   >
@@ -1248,7 +1295,7 @@ function OrderDetailPanel({
                   <div className="px-3 py-2.5 bg-gray-50/50 flex justify-start border-t">
                     <button
                       disabled={!commentText.replace(/<[^>]*>/g, "").trim() || updatingStatus}
-                      className="h-8 px-5 py-0 text-xs font-semibold border border-primary/20 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all shadow-sm"
+                      className="h-8 px-5 py-0 text-xs font-semibold border border-teal-600/20 rounded bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition-all shadow-sm"
                       onClick={async () => {
                         const txt = commentText.trim();
                         if (!txt || !txt.replace(/<[^>]*>/g, "").trim()) return;
@@ -1279,7 +1326,7 @@ function OrderDetailPanel({
                   <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/80">
                     ALL COMMENTS
                   </h4>
-                  <span className="bg-primary/10 text-primary rounded-full text-[11px] px-2.5 py-0.5 font-bold">
+                  <span className="bg-teal-50 text-teal-700 rounded-full text-[11px] px-2.5 py-0.5 font-bold">
                     {comments.length}
                   </span>
                 </div>
@@ -1294,14 +1341,14 @@ function OrderDetailPanel({
                     const isDelivery = c.text.toLowerCase().includes("order expected on");
                     
                     let Icon = MessageSquare;
-                    let iconBg = "bg-blue-50 text-blue-600 border-blue-200";
+                    let iconBg = "bg-teal-50 text-teal-700 border-teal-100";
                     if (c.isSystem) {
                       if (isCreation) { Icon = FileText; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
-                      else if (isStatus) { Icon = CheckCircle; iconBg = "bg-green-50 text-green-600 border-green-200"; }
+                      else if (isStatus) { Icon = CheckCircle; iconBg = "bg-emerald-50 text-emerald-700 border-emerald-100"; }
                       else { Icon = History; iconBg = "bg-amber-50 text-amber-600 border-amber-200"; }
                     } else if (isDelivery) {
                       Icon = PackageCheck;
-                      iconBg = "bg-blue-50 text-blue-600 border-blue-200";
+                      iconBg = "bg-teal-50 text-teal-700 border-teal-100";
                     }
 
                     return (
@@ -1368,12 +1415,12 @@ function OrderDetailPanel({
         </span>
         {order.status === "Draft" && (
           <>
-            <Button size="sm" className="ml-auto shrink-0" onClick={() => onSendEmail(order._id)}>Send Purchase Order</Button>
-            <Button size="sm" variant="outline" className="shrink-0" onClick={handleMarkAsIssued} disabled={updatingStatus}>Mark as Issued</Button>
+            <Button size="sm" className="ml-auto shrink-0 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => onSendEmail(order._id)}>Send Purchase Order</Button>
+            <Button size="sm" variant="outline" className="shrink-0 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={handleMarkAsIssued} disabled={updatingStatus}>Mark as Issued</Button>
           </>
         )}
         {order.status === "Open" && (
-          <Button size="sm" className="ml-auto shrink-0 bg-blue-500 hover:bg-blue-600" onClick={handleConvertToBill}>Convert to Bill</Button>
+          <Button size="sm" className="ml-auto shrink-0 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={handleConvertToBill}>Convert to Bill</Button>
         )}
       </div>
 
@@ -1394,7 +1441,7 @@ function OrderDetailPanel({
               type="button"
               className={cn(
                 "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                showPdf ? "bg-primary" : "bg-muted-foreground/30",
+                showPdf ? "bg-teal-600" : "bg-muted-foreground/30",
               )}
               onClick={() => setShowPdf((v) => !v)}
             >
@@ -1413,7 +1460,7 @@ function OrderDetailPanel({
                 ) : pdfPreviewUrl ? (
                   <div>
                     <div className="flex items-center justify-end gap-2 px-3 py-2 border-b bg-muted/20">
-                      <a href={pdfPreviewUrl} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">Open full preview</a>
+                      <a href={pdfPreviewUrl} target="_blank" rel="noreferrer" className="text-xs text-teal-700 hover:text-teal-800 font-semibold hover:underline">Open full preview</a>
                     </div>
                     <embed
                       src={pdfPreviewUrl}
@@ -1436,8 +1483,8 @@ function OrderDetailPanel({
                     <div className="text-lg font-semibold">Purchase Order {order.purchaseOrderNumber}</div>
                     <div className="text-xs text-muted-foreground">Vendor: {getName(order.vendorId) || "-"}</div>
                   </div>
-                  <div className={cn("px-2.5 py-1 rounded border text-xs font-semibold uppercase", statusBadge[order.status])}>
-                    {order.status}
+                  <div>
+                    <StatusPill status={order.status} />
                   </div>
                 </div>
 
@@ -1696,32 +1743,35 @@ export default function PurchaseOrdersPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
         <div className="flex flex-col h-screen overflow-hidden">
           <PageHeader
-            breadcrumb={(
-              <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className="flex items-center gap-1 text-base font-semibold hover:text-primary">
-                    {filterStatus ? `${filterStatus} Purchase Orders` : "All Purchase Orders"} <ChevronDown className="h-4 w-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuItem onClick={() => { setFilterStatus(""); setShowFilterDD(false); }}>All Purchase Orders</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setFilterStatus("Draft"); setShowFilterDD(false); }}>Draft</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setFilterStatus("Open"); setShowFilterDD(false); }}>Open</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setFilterStatus("Billed"); setShowFilterDD(false); }}>Billed</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setFilterStatus("Closed"); setShowFilterDD(false); }}>Closed</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            breadcrumb={
+              <div className="flex flex-col">
+                <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+                <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-teal-700">
+                      {filterStatus ? `${filterStatus} Purchase Orders` : "All Purchase Orders"} <ChevronDown className="h-3 w-3 ml-0.5 opacity-70" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    <DropdownMenuItem onClick={() => { setFilterStatus(""); setShowFilterDD(false); }}>All Purchase Orders</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setFilterStatus("Draft"); setShowFilterDD(false); }}>Draft</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setFilterStatus("Open"); setShowFilterDD(false); }}>Open</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setFilterStatus("Billed"); setShowFilterDD(false); }}>Billed</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setFilterStatus("Closed"); setShowFilterDD(false); }}>Closed</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            }
             actions={(
               <div className="flex items-center gap-1.5">
-                <Button size="sm" className="h-8 gap-1 text-sm bg-blue-600 hover:bg-blue-700" onClick={() => router.push("/purchases/orders/new")}>
+                <Button size="sm" className="h-8 gap-1 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => router.push("/purchases/orders/new")}>
                   <Plus className="h-3.5 w-3.5" /> New
                 </Button>
               <Link href="/batch-import?section=purchases&type=Purchase Orders&back=/purchases/orders">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                   <FileUp className="h-3.5 w-3.5" /> Batch Import
                 </Button>
               </Link>
@@ -1733,8 +1783,8 @@ export default function PurchaseOrdersPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[200px] p-0 overflow-hidden">
                     <DropdownMenuSub>
-                      <DropdownMenuSubTrigger className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-blue-600 hover:text-white group">
-                        <ArrowUpDown className="h-4 w-4 text-blue-600 group-hover:text-white" />
+                      <DropdownMenuSubTrigger className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-teal-600 hover:text-white group">
+                        <ArrowUpDown className="h-4 w-4 text-teal-600 group-hover:text-white" />
                         <span className="flex-1">Sort by</span>
                         <ChevronRight className="h-4 w-4" />
                       </DropdownMenuSubTrigger>
@@ -1751,13 +1801,13 @@ export default function PurchaseOrdersPage() {
                     <DropdownMenuSeparator className="m-0" />
 
                     <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
-                      <Download className="h-4 w-4 text-blue-600" />
+                      <Download className="h-4 w-4 text-teal-600" />
                       <span>Import Purchase Orders</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
-                        <Upload className="h-4 w-4 text-blue-600" />
+                        <Upload className="h-4 w-4 text-teal-600" />
                         <span className="flex-1">Export</span>
                         <ChevronRight className="h-4 w-4" />
                       </DropdownMenuSubTrigger>
@@ -1770,19 +1820,19 @@ export default function PurchaseOrdersPage() {
                     <DropdownMenuSeparator className="m-0" />
 
                     <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
-                      <Settings className="h-4 w-4 text-blue-600" />
+                      <Settings className="h-4 w-4 text-teal-600" />
                       <span>Preferences</span>
                     </DropdownMenuItem>
                     
                     <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50">
-                      <Columns className="h-4 w-4 text-blue-600" />
+                      <Columns className="h-4 w-4 text-teal-600" />
                       <span>Manage Custom Fields</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator className="m-0" />
 
                     <DropdownMenuItem className="flex items-center gap-3 px-3 py-2.5 text-[13px] hover:bg-gray-50" onClick={fetchOrders}>
-                      <RefreshCw className="h-4 w-4 text-blue-600" />
+                      <RefreshCw className="h-4 w-4 text-teal-600" />
                       <span>Refresh List</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -1823,17 +1873,17 @@ export default function PurchaseOrdersPage() {
 
               {/* Full-width table header (only when no detail panel) */}
               {!selectedOrder && (
-                <div className="grid text-[11px] uppercase tracking-wide text-muted-foreground font-medium border-b bg-muted/10 shrink-0"
+                <div className="grid text-[11px] uppercase tracking-wide text-slate-500 font-semibold border-b bg-slate-50 shrink-0"
                   style={{ gridTemplateColumns: "36px 90px 150px 120px 1fr 110px 100px 110px 100px 36px" }}>
-                  <div className="px-3 py-2 flex items-center"><input type="checkbox" className="rounded border" /></div>
-                  <div className="px-2 py-2">Date</div>
-                  <div className="px-2 py-2">Purchase Order#</div>
-                  <div className="px-2 py-2">Reference#</div>
-                  <div className="px-2 py-2">Vendor Name</div>
-                  <div className="px-2 py-2">Status</div>
-                  <div className="px-2 py-2">Billed Status</div>
-                  <div className="px-2 py-2 text-right">Amount</div>
-                  <div className="px-2 py-2">Delivery Date</div>
+                  <div className="px-3 py-2.5 flex items-center"><input type="checkbox" className="rounded border" /></div>
+                  <div className="px-2 py-2.5">Date</div>
+                  <div className="px-2 py-2.5">Purchase Order#</div>
+                  <div className="px-2 py-2.5">Reference#</div>
+                  <div className="px-2 py-2.5">Vendor Name</div>
+                  <div className="px-2 py-2.5">Status</div>
+                  <div className="px-2 py-2.5">Billed Status</div>
+                  <div className="px-2 py-2.5 text-right">Amount</div>
+                  <div className="px-2 py-2.5">Delivery Date</div>
                   <div className="px-2 py-2 flex items-center justify-end">
                     <button onClick={() => setShowAdvancedSearch(true)} className="p-1 hover:bg-muted rounded transition-colors" title="Advanced Search">
                       <Search className="h-4 w-4" />
@@ -1845,14 +1895,12 @@ export default function PurchaseOrdersPage() {
               {/* List content */}
               <div className="flex-1 overflow-y-auto">
                 {fetching ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
+                  selectedOrder ? <ListSkeleton /> : <TableSkeleton />
                 ) : filtered.length === 0 && !search && !filterStatus ? (
                   <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
                     <h2 className="text-xl font-semibold mb-2">Start Managing Your Purchase Activities!</h2>
                     <p className="text-muted-foreground text-sm mb-6">Create, customize, and send professional Purchase Orders to your vendors.</p>
-                    <Button className="px-6 py-2 text-sm font-semibold uppercase tracking-wide" onClick={() => router.push("/purchases/orders/new")}>
+                    <Button className="px-6 py-2 text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white rounded-md" onClick={() => router.push("/purchases/orders/new")}>
                       Create New Purchase Order
                     </Button>
                     <div className="mt-10 w-full max-w-2xl">
@@ -1894,18 +1942,18 @@ export default function PurchaseOrdersPage() {
                         key={o._id}
                         type="button"
                         className={cn(
-                          "w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors",
-                          selectedId === o._id && "bg-blue-50 border-l-2 border-l-primary",
+                          "w-full text-left px-4 py-3 hover:bg-slate-50/80 transition-colors",
+                          selectedId === o._id && "bg-teal-50/50 border-l-[3px] border-l-teal-600",
                         )}
                         onClick={() => setSelectedId(o._id)}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <div className="font-medium text-sm text-foreground truncate">{getName(o.vendorId) || "—"}</div>
+                            <div className="font-semibold text-sm text-teal-700 hover:text-teal-800 hover:underline truncate">{getName(o.vendorId) || "—"}</div>
                             <div className="text-xs text-muted-foreground mt-0.5">
                               {o.purchaseOrderNumber} • {new Date(o.purchaseOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>
-                            <div className={cn("text-xs font-medium mt-0.5 uppercase tracking-wide", statusColor[o.status])}>{o.status}</div>
+                            <div className="mt-1"><StatusPill status={o.status} /></div>
                           </div>
                           <div className="text-sm font-semibold shrink-0">₹{fmtCur(o.total)}</div>
                         </div>
@@ -1918,7 +1966,7 @@ export default function PurchaseOrdersPage() {
                     {filtered.map((o) => (
                       <div
                         key={o._id}
-                        className="grid items-center border-b hover:bg-muted/20 cursor-pointer transition-colors text-sm group"
+                        className="grid items-center border-b hover:bg-teal-50/20 cursor-pointer transition-colors text-sm group"
                         style={{ gridTemplateColumns: "36px 90px 150px 120px 1fr 110px 100px 110px 100px 36px" }}
                         onClick={() => setSelectedId(o._id)}
                       >
@@ -1928,10 +1976,10 @@ export default function PurchaseOrdersPage() {
                         <div className="px-2 py-2.5 text-muted-foreground text-xs">
                           {new Date(o.purchaseOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </div>
-                        <div className="px-2 py-2.5 text-primary font-medium">{o.purchaseOrderNumber}</div>
+                        <div className="px-2 py-2.5 text-teal-700 font-semibold hover:text-teal-800 hover:underline">{o.purchaseOrderNumber}</div>
                         <div className="px-2 py-2.5 text-muted-foreground">{o.referenceNumber || ""}</div>
                         <div className="px-2 py-2.5">{getName(o.vendorId)}</div>
-                        <div className={cn("px-2 py-2.5 text-xs font-medium uppercase tracking-wide", statusColor[o.status])}>{o.status}</div>
+                        <div className="px-2 py-2.5"><StatusPill status={o.status} /></div>
                         <div className="px-2 py-2.5 text-muted-foreground text-xs"></div>
                         <div className="px-2 py-2.5 text-right font-medium">₹{fmtCur(o.total)}</div>
                         <div className="px-2 py-2.5 text-muted-foreground text-xs">{o.deliveryDate ? new Date(o.deliveryDate).toLocaleDateString("en-IN") : ""}</div>
@@ -2052,16 +2100,16 @@ function ExpectedDeliveryDialog({ open, onClose, onSave, initialDate }: { open: 
             />
           </div>
         </div>
-        <div className="px-6 py-4 bg-gray-50 flex gap-3">
+        <div className="px-6 py-4 bg-gray-50 flex gap-3 border-t">
           <Button 
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-9" 
+            className="bg-teal-600 hover:bg-teal-700 text-white px-6 h-9 font-semibold rounded-md" 
             onClick={() => onSave(date, notes)}
           >
             Save
           </Button>
           <Button 
             variant="outline" 
-            className="border-gray-200 text-gray-600 px-6 h-9" 
+            className="border-slate-200 text-slate-600 px-6 h-9 bg-white hover:bg-slate-50 rounded-md" 
             onClick={onClose}
           >
             Cancel

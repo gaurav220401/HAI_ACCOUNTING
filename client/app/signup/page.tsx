@@ -37,11 +37,23 @@ export default function SignupPage() {
         </div>
       </div>
 
-      {/* Right: brand panel */}
-      <div className="relative hidden flex-col items-center justify-center gap-6 bg-primary p-12 lg:flex">
-        <div className="relative z-10 flex flex-col items-center gap-4 text-center">
-          <p className="max-w-xs text-lg font-medium text-primary-foreground/80">
-            Join HAI Accounting and take control of your finances.
+      {/* Right: brand panel (Full bleed dashboard graphic) */}
+      <div className="relative hidden overflow-hidden border-l border-slate-100 lg:flex w-full h-full bg-slate-50">
+        <img
+          src="/login_accounting_graphic_full.png"
+          alt="HAI Accounting Platform"
+          className="absolute inset-0 w-full h-full object-cover object-center"
+        />
+        {/* Subtle premium dark gradient overlay for text readability and SaaS aesthetic */}
+        <div className="absolute inset-0 bg-gradient-to-t from-teal-950/80 via-slate-900/40 to-transparent" />
+        <div className="absolute bottom-12 left-12 right-12 z-10 text-white text-left">
+          <div className="flex items-center gap-2 mb-3">
+            <img src="/hailogo.png" alt="HAI logo" className="h-9 w-9 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm p-1" />
+            <span className="text-lg font-bold tracking-tight">HAI ACCOUNTING</span>
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Control Your Business Finances</h2>
+          <p className="text-sm text-white/80 max-w-md leading-relaxed font-medium">
+            Create a free account to raise professional GST invoices, trace inventory assets, and streamline bookkeeping.
           </p>
         </div>
       </div>

@@ -213,7 +213,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const router = useRouter();
   const { dbUser, firebaseUser, signOut } = useAuth();
-  const { activeOrganization, organizations, switchOrganization } = useOrganization();
+  const { activeOrganization, organizations, switchOrganization, loading: orgLoading } = useOrganization();
   const { toggleSidebar, state } = useSidebar();
   const isCollapsed = state === "collapsed";
 
@@ -445,31 +445,50 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <DropdownMenuSeparator className="bg-slate-100 mx-1" />
 
             {/* Organisation switcher section */}
-            {organizations.length > 0 && (
+            {orgLoading ? (
               <>
                 <DropdownMenuLabel className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   Organisation
                 </DropdownMenuLabel>
-                {organizations.map((org) => {
-                  const isActive = activeOrganization?._id === org._id;
-                  const cls = orgAvatarColor(org.name);
-                  const orgInitials = nameInitials(org.name);
-                  return (
-                    <DropdownMenuItem
-                      key={org._id}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-50"
-                      onClick={() => handleSwitchOrg(org)}
-                    >
-                      <div className={cn("h-6 w-6 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold", cls)}>
-                        {orgInitials}
-                      </div>
-                      <span className="flex-1 text-[13px] text-slate-700 truncate">{org.name}</span>
-                      {isActive && <Check className="h-3.5 w-3.5 text-teal-600 shrink-0" />}
-                    </DropdownMenuItem>
-                  );
-                })}
+                <div className="px-3 py-1 space-y-2.5 animate-pulse">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 bg-slate-200 rounded shrink-0" />
+                    <div className="h-3.5 w-32 bg-slate-200 rounded" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 bg-slate-200 rounded shrink-0" />
+                    <div className="h-3.5 w-24 bg-slate-200 rounded" />
+                  </div>
+                </div>
                 <DropdownMenuSeparator className="bg-slate-100 mx-1" />
               </>
+            ) : (
+              organizations.length > 0 && (
+                <>
+                  <DropdownMenuLabel className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Organisation
+                  </DropdownMenuLabel>
+                  {organizations.map((org) => {
+                    const isActive = activeOrganization?._id === org._id;
+                    const cls = orgAvatarColor(org.name);
+                    const orgInitials = nameInitials(org.name);
+                    return (
+                      <DropdownMenuItem
+                        key={org._id}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-50"
+                        onClick={() => handleSwitchOrg(org)}
+                      >
+                        <div className={cn("h-6 w-6 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold", cls)}>
+                          {orgInitials}
+                        </div>
+                        <span className="flex-1 text-[13px] text-slate-700 truncate">{org.name}</span>
+                        {isActive && <Check className="h-3.5 w-3.5 text-teal-600 shrink-0" />}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  <DropdownMenuSeparator className="bg-slate-100 mx-1" />
+                </>
+              )
             )}
 
             {/* Log Out */}

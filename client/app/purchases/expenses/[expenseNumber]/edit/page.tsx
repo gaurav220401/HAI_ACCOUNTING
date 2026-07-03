@@ -37,12 +37,10 @@ export default function EditExpensePage() {
       <SidebarInset className="flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <a href="/purchases/expenses" className="hover:text-foreground transition-colors">Expenses</a>
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Edit {expenseNumber}</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <span className="text-sm font-semibold text-slate-700">Edit Expense</span>
+            </div>
           }
         />
         <ExpenseForm mode="edit" expenseNumber={expenseNumber} />

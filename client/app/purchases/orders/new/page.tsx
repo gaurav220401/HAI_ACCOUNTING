@@ -1200,31 +1200,31 @@ export default function NewPurchaseOrderPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
         <PageHeader
-          breadcrumb={(
-            <div className="flex items-center gap-2 text-lg font-semibold">
-              <ShoppingBagIcon className="h-5 w-5" />
-              New Purchase Order
+          breadcrumb={
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <span className="text-sm font-semibold text-slate-700">New Purchase Order</span>
             </div>
-          )}
+          }
         />
-        <div className="min-h-screen bg-white">
-          <div className="px-8 py-6 max-w-5xl space-y-6">
+        <div className="flex-1 overflow-y-auto bg-white">
+          <div className="px-8 py-6 max-w-5xl mx-auto space-y-6">
             {/* ── Auto Scan / Upload Banner ────────────────────────── */}
-            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-5 flex items-start gap-4 mb-6">
-              <div className="h-10 w-10 text-blue-600 bg-blue-100/50 rounded-full flex items-center justify-center shrink-0">
+            <div className="bg-teal-50/40 border border-teal-100 rounded-lg p-5 flex items-start gap-4 mb-6">
+              <div className="h-10 w-10 text-teal-700 bg-teal-100/50 rounded-full flex items-center justify-center shrink-0">
                 <Upload className="h-5 w-5" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-blue-900 mb-1">Scan your image/pdf and Auto-populate</h3>
-                <p className="text-sm text-blue-800/80 mb-3">
+                <h3 className="font-semibold text-teal-900 mb-1">Scan your image/pdf and Auto-populate</h3>
+                <p className="text-sm text-teal-800/80 mb-3">
                   Upload an invoice or purchase order document to automatically fill out the form fields below. You can always review and edit the extracted information.
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="bg-white hover:bg-blue-50 border-blue-200 text-blue-700"
+                  className="bg-white hover:bg-teal-50 border-slate-200 text-teal-700 hover:text-teal-850 rounded-md font-semibold"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                 >
@@ -1235,12 +1235,12 @@ export default function NewPurchaseOrderPage() {
             </div>
 
             {/* ── Vendor Name ─────────────────────────────────────── */}
-            <div className="grid grid-cols-[160px_1fr] items-start gap-4 py-4 border-b">
+            <div className="grid grid-cols-[140px_1fr] items-start gap-4 py-4 border-b">
               <Label className="text-sm font-medium text-red-500 pt-2">Vendor Name *</Label>
-              <div className="relative flex gap-2 max-w-md">
+              <div className="relative flex gap-2 max-w-xl">
                 <div className="relative flex-1">
                   <select
-                    className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
                     value={vendorId}
                     onChange={(e) => setVendorId(e.target.value)}
                   >
@@ -1251,24 +1251,24 @@ export default function NewPurchaseOrderPage() {
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 </div>
-                <Button size="icon" className="h-9 w-9 bg-primary">
+                <Button size="icon" type="button" className="h-9 w-9 bg-teal-600 hover:bg-teal-700 text-white rounded-md">
                   <Search className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
             {/* ── Delivery Address ─────────────────────────────────── */}
-            <div className="grid grid-cols-[160px_1fr] items-start gap-4 py-4 border-b">
+            <div className="grid grid-cols-[140px_1fr] items-start gap-4 py-4 border-b">
               <Label className="text-sm font-medium text-red-500 pt-2">Delivery Address *</Label>
               <div className="space-y-3">
                 {/* Radios */}
                 <div className="flex items-center gap-6">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="deliveryAddrType" value="Organization" checked={deliveryAddrType === "Organization"} onChange={() => setDeliveryAddrType("Organization")} className="accent-primary" />
+                    <input type="radio" name="deliveryAddrType" value="Organization" checked={deliveryAddrType === "Organization"} onChange={() => setDeliveryAddrType("Organization")} className="accent-teal-600" />
                     <span className="text-sm">Organization</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="deliveryAddrType" value="Customer" checked={deliveryAddrType === "Customer"} onChange={() => setDeliveryAddrType("Customer")} className="accent-primary" />
+                    <input type="radio" name="deliveryAddrType" value="Customer" checked={deliveryAddrType === "Customer"} onChange={() => setDeliveryAddrType("Customer")} className="accent-teal-600" />
                     <span className="text-sm">Customer</span>
                   </label>
                 </div>
@@ -1279,7 +1279,7 @@ export default function NewPurchaseOrderPage() {
                     {/* Org name + pencil */}
                     <div className="flex items-center gap-1.5 font-medium mb-1">
                       <span>{currentAddr.label}</span>
-                      <button type="button" className="text-primary/70 hover:text-primary" title="Edit">
+                      <button type="button" className="text-teal-700 hover:text-teal-800" title="Edit">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -1292,7 +1292,7 @@ export default function NewPurchaseOrderPage() {
                     <div className="mt-2">
                       <DropdownMenu open={showAddrDropdown} onOpenChange={setShowAddrDropdown}>
                         <DropdownMenuTrigger asChild>
-                          <button type="button" className="text-sm text-primary hover:underline">
+                          <button type="button" className="text-sm text-teal-700 hover:underline">
                             Change destination to deliver
                           </button>
                         </DropdownMenuTrigger>
@@ -1307,7 +1307,7 @@ export default function NewPurchaseOrderPage() {
                                 type="button"
                                 className={cn(
                                   "w-full text-left px-3 py-2.5 text-sm hover:bg-muted/50 border-b last:border-0",
-                                  selectedAddrIdx === idx && "bg-blue-50",
+                                  selectedAddrIdx === idx && "bg-teal-50",
                                 )}
                                 onClick={() => { setSelectedAddrIdx(idx); setShowAddrDropdown(false); }}
                               >
@@ -1320,7 +1320,7 @@ export default function NewPurchaseOrderPage() {
                           <div className="p-2 border-t">
                             <button
                               type="button"
-                              className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium"
+                              className="flex items-center gap-1.5 text-sm text-teal-700 hover:text-teal-800 font-medium"
                               onClick={() => { setShowAddrDropdown(false); setShowNewAddrDialog(true); }}
                             >
                               <Plus className="h-4 w-4" /> New Address
@@ -1335,10 +1335,10 @@ export default function NewPurchaseOrderPage() {
                 {/* Customer mode */}
                 {deliveryAddrType === "Customer" && (
                   <div className="space-y-3">
-                    <div className="flex gap-2 max-w-sm">
+                    <div className="flex gap-2 max-w-xl">
                       <div className="relative flex-1">
                         <select
-                          className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-teal-500"
                           value={customerDeliveryId}
                           onChange={(e) => setCustomerDeliveryId(e.target.value)}
                         >
@@ -1349,11 +1349,11 @@ export default function NewPurchaseOrderPage() {
                         </select>
                         <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                       </div>
-                      <Button size="icon" className="h-9 w-9 bg-primary">
+                      <Button size="icon" type="button" className="h-9 w-9 bg-teal-600 hover:bg-teal-700 text-white rounded-md">
                         <Search className="h-4 w-4" />
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground max-w-md leading-relaxed">
+                    <p className="text-xs text-muted-foreground max-w-xl leading-relaxed">
                       Stock on Hand will not be affected only in case of dropshipments. Selecting the Customer option in the
                       Deliver To field of a normal purchase order will have an effect on your stock level
                     </p>
@@ -1363,19 +1363,20 @@ export default function NewPurchaseOrderPage() {
             </div>
 
             {/* ── PO #, Reference, Date ────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium text-red-500 w-36 shrink-0">Purchase Order# *</Label>
-                <div className="flex gap-1 flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium text-red-500">Purchase Order# *</Label>
+                <div className="flex gap-1">
                   <Input className="h-9 text-sm flex-1" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
                   <div className="relative group/po">
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-9 w-9"
+                      className="h-9 w-9 border-slate-200"
                       onClick={() => setShowPOConfig(true)}
+                      type="button"
                     >
-                      <Settings2 className="h-4 w-4 text-muted-foreground" />
+                      <Settings2 className="h-4 w-4 text-slate-500" />
                     </Button>
                     <div className="absolute hidden group-hover/po:block z-[180] bottom-full mb-2 right-0 w-56 bg-gray-800 text-white text-xs rounded px-2.5 py-2 leading-relaxed">
                       Click here to enable or disable auto-generation of Purchase Order numbers.
@@ -1383,20 +1384,20 @@ export default function NewPurchaseOrderPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-24 shrink-0">Reference#</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Reference#</Label>
                 <Input className="h-9 text-sm flex-1" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-36 shrink-0">Date</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Date</Label>
                 <Input type="date" className="h-9 text-sm flex-1" value={poDate} onChange={(e) => setPoDate(e.target.value)} />
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-24 shrink-0">Delivery Date</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Delivery Date</Label>
                 <Input type="date" className="h-9 text-sm flex-1" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} placeholder="dd/MM/yyyy" />
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-36 shrink-0">Payment Terms</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Payment Terms</Label>
                 <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
                   <SelectTrigger className="h-9 text-sm flex-1">
                     <SelectValue placeholder="Due on Receipt" />
@@ -1409,11 +1410,11 @@ export default function NewPurchaseOrderPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-36 shrink-0">Shipment Preference</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Shipment Preference</Label>
                 <Select value={shipmentPreference} onValueChange={setShipmentPreference}>
                   <SelectTrigger className="h-9 text-sm flex-1">
-                    <SelectValue placeholder="Choose the shipment preference or type to add…" />
+                    <SelectValue placeholder="Choose shipment preference…" />
                   </SelectTrigger>
                   <SelectContent>
                     {SHIPMENT_OPTIONS.map((opt) => (
@@ -2001,15 +2002,15 @@ export default function NewPurchaseOrderPage() {
             {/* ── Bottom buttons ─────────────────────────────────────── */}
             <div className="border-t pt-4 mt-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleSave("Draft")} disabled={saving || draftLoading}>
+                <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md font-semibold" onClick={() => handleSave("Draft")} disabled={saving || draftLoading}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   Save as Draft
                 </Button>
-                <Button size="sm" onClick={() => handleSave("Open")} disabled={saving || draftLoading}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open")} disabled={saving || draftLoading}>
                   {(saving || draftLoading) ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   {draftLoading ? "Loading..." : "Save and Send"}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => router.back()}>Cancel</Button>
+                <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md font-semibold" onClick={() => router.back()}>Cancel</Button>
               </div>
               <span className="text-xs text-muted-foreground">PDF Template: &apos;Standard Template&apos;</span>
             </div>

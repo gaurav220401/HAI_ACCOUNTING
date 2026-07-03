@@ -134,7 +134,7 @@ export function LoginForm({ className }: { className?: string }) {
             className={cn(
               "flex-1 rounded-md py-1.5 text-xs font-medium transition-colors",
               tab === t.key
-                ? "bg-primary text-primary-foreground shadow-sm"
+                ? "bg-teal-600 text-white shadow-sm font-semibold"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -155,7 +155,7 @@ export function LoginForm({ className }: { className?: string }) {
             <Input id="l-pass" type="password" placeholder="••••••••" required value={pass} onChange={(e) => setPass(e.target.value)} />
           </div>
           {err && <p className="text-destructive text-sm">{err}</p>}
-          <Button type="submit" disabled={busy} className="w-full">
+          <Button type="submit" disabled={busy} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
             {busy ? "Signing in…" : "Sign In"}
           </Button>
         </form>
@@ -196,7 +196,7 @@ export function LoginForm({ className }: { className?: string }) {
             </div>
           )}
           {err && <p className="text-destructive text-sm">{err}</p>}
-          <Button type="submit" disabled={busy} className="w-full">
+          <Button type="submit" disabled={busy} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
             {busy ? (confirm ? "Verifying…" : "Sending OTP…") : (confirm ? "Verify OTP" : "Send OTP")}
           </Button>
           {confirm && (
@@ -218,7 +218,7 @@ export function LoginForm({ className }: { className?: string }) {
                 <Input id="l-ml" type="email" placeholder="you@example.com" required value={mlEmail} onChange={(e) => setMlEmail(e.target.value)} />
               </div>
               {err && <p className="text-destructive text-sm">{err}</p>}
-              <Button type="submit" disabled={busy} className="w-full">
+              <Button type="submit" disabled={busy} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
                 {busy ? "Sending…" : "Send Sign-in Link"}
               </Button>
             </>
@@ -235,7 +235,7 @@ export function LoginForm({ className }: { className?: string }) {
 
       <p className="text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}
-        <a href="/signup" className="font-medium text-primary underline underline-offset-4">
+        <a href="/signup" className="font-semibold text-teal-700 hover:text-teal-800 hover:underline underline-offset-4">
           Sign up
         </a>
       </p>

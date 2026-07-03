@@ -171,7 +171,27 @@ Structure:
 
 ---
 
-## 7. Component: Item Form
+## 7. Component: Form Spacing & Layout Guidelines
+
+### General Form Design Principles
+To maintain consistent, high-end professional aesthetics, all form screens must follow these layout and spacing rules to eliminate empty "unwanted" white space on wide viewports:
+
+1. **Forms WITH Sidebar (e.g., Expense Form with receipt upload):**
+   - **Structure**: Multi-column split screen. Left side holds the inputs, right side holds the upload panel/sidebar.
+   - **Sizing**: Form column uses `max-w-2xl w-full` to prevent inputs from stretching excessively. Sidebar uses `w-96 border-l bg-slate-50/50`.
+   - **Alignment**: Left-aligned, snap to edge layouts.
+
+2. **Forms WITHOUT Sidebar (e.g., Recurring Expense Form, Recurring Bill Form, Item Form):**
+   - **Structure**: Center-aligned, balanced two-column grid (`grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 max-w-5xl mx-auto`).
+   - **Clurrence Clustering**:
+     - **Left Column**: Recurrence Schedule, General Details, Customer Settings.
+     - **Right Column**: Expense Details, Accounts, Amount/Currency, Notes.
+   - **Fields**: Each form row utilizes a grid of `grid grid-cols-[140px_1fr] items-center gap-4` to clean up spacing and prevent fields from stretching all the way across wide monitors.
+   - **Buttons**: Positioned at the bottom, left-aligned, below a horizontal `<Separator />`.
+
+---
+
+## 7b. Component: Item Form
 
 **File:** `client/app/items/_components/item-form.tsx`
 
@@ -185,6 +205,44 @@ Structure:
 - Form body: `px-6 py-5 w-full max-w-6xl mr-auto space-y-5` (left-aligned)
 - Info banner: `bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-2.5 text-[12px] text-amber-800`
 - **Dynamic Field Loading**: When fetching options or detail data for relation fields (like Vendors, Customers, or Items), display a tailored shimmer/skeleton effect that represents the visual shape of the expected component (e.g. small loading input skeleton or inline text line skeletons). Avoid round spinner wheels or standard text loading placeholders.
+
+---
+
+## 7c. Component: Purchase Orders
+
+**Files:**
+- List Page: [client/app/purchases/orders/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/purchases/orders/page.tsx)
+- Create Form: [client/app/purchases/orders/new/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/purchases/orders/new/page.tsx)
+- Edit Form: [client/app/purchases/orders/[id]/edit/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/purchases/orders/[id]/edit/page.tsx)
+
+### List & Table Rules
+- **Breadcrumb Selection**: Uses double-line page header with small teal section title `Purchases` and the active filter category dropdown (e.g. `All Purchase Orders`, `Draft Purchase Orders`) as subtitle.
+- **Loading State**: Uses `TableSkeleton` for main list grids and `ListSkeleton` for details panel views during data fetching, applying pulsing `animate-pulse` blocks matching columns.
+- **Active Selection**: Compact list elements use `bg-teal-50/50 border-l-[3px] border-l-teal-600` for active indicators and slate backgrounds on hover.
+- **Status Badges**: Custom `StatusPill` with matching background, border, text, and dot indicator representing statuses (Draft, Open, Received, Billed, Closed, Canceled).
+- **Banner Alerts**: Detail panels display status context banners utilizing soft alerts in matching status colors (amber, teal, emerald, purple, slate, rose).
+
+### Form Rules
+- **Page Breadcrumbs**: Display double-line text headers indicating the module hierarchy (e.g. `Purchases` in teal and `New Purchase Order` / `Edit Purchase Order` as secondary text).
+- **Form Wrapper**: Structured inside a `SidebarInset className="bg-white flex flex-col overflow-hidden h-svh"`.
+- **Primary Buttons**: Submit and save action buttons are styled as Teal primary items (`bg-teal-600 hover:bg-teal-700 text-white rounded-md`).
+- **Cancel Button**: Slate borders and text (`border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md`).
+
+---
+
+## 7d. Component: Login & Signup Forms
+
+**Files:**
+- Login Page: [client/app/login/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/login/page.tsx)
+- Signup Page: [client/app/signup/page.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/app/signup/page.tsx)
+- Login Form: [client/components/login-form.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/components/login-form.tsx)
+- Signup Form: [client/components/signup-form.tsx](file:///c:/Users/somes/Desktop/Haldar/HAI_Accounting/client/components/signup-form.tsx)
+
+### Rules
+- **Split Layout**: Widescreen two-column split (`grid lg:grid-cols-2`). Left holds the form, right holds the brand graphic cover panel.
+- **Brand Cover Panel (Right)**: Fully covered by a widescreen landscape SaaS dashboard illustration (`object-cover w-full h-full`) containing real-time reports, charts, and currency symbols (Indian Rupees ₹). Features a dark teal premium gradient overlay (`from-teal-950/80 via-slate-900/40 to-transparent`) and bottom-aligned white text branding with the company logo.
+- **Form Colors (Left)**: Active tab selection indicators, primary action buttons, step markers, and link anchors use the Teal theme (`bg-teal-600`, `hover:bg-teal-700`, `text-teal-700`).
+- **Logo Branding**: The official logo is displayed at the top center of the form container.
 
 ---
 

@@ -47,9 +47,18 @@ function initials(name: string) {
  */
 export function HeaderOrgSwitcher() {
   const router = useRouter();
-  const { activeOrganization, organizations, switchOrganization } =
+  const { activeOrganization, organizations, switchOrganization, loading } =
     useOrganization();
   const [open, setOpen] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="flex h-7 items-center gap-1.5 px-2 animate-pulse rounded border border-slate-100 bg-slate-50/50">
+        <div className="h-4 w-4 bg-slate-200 rounded shrink-0" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+      </div>
+    );
+  }
 
   const name = activeOrganization?.name ?? "Select Organization";
   const avatarCls = activeOrganization

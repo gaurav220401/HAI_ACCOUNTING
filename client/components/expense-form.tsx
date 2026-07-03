@@ -796,8 +796,18 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
 
   if (loadingData) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex-1 p-8 space-y-6 animate-pulse max-w-2xl bg-white">
+        <div className="flex gap-4 border-b pb-4">
+          <div className="h-6 w-32 bg-slate-200 rounded" />
+          <div className="h-6 w-32 bg-slate-100 rounded" />
+          <div className="h-6 w-32 bg-slate-100 rounded" />
+        </div>
+        {Array.from({ length: 6 }).map((_, idx) => (
+          <div key={idx} className="grid grid-cols-[180px_1fr] gap-4 items-center">
+            <div className="h-4 w-28 bg-slate-100 rounded justify-self-end mr-4" />
+            <div className="h-9 bg-slate-50 rounded border border-slate-100" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -836,8 +846,8 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
               className={cn(
                 "text-sm px-4 py-3 border-b-2 transition-colors",
                 activeTab === t.id
-                  ? "border-primary text-primary font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
+                  ? "border-teal-600 text-teal-700 font-semibold"
+                  : "border-transparent text-slate-500 hover:text-slate-800",
               )}
             >
               {t.label}
@@ -852,11 +862,11 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
         {/* ── Record Expense ──────────────────────────────────── */}
         {activeTab === "expense" && (
           <div className="flex gap-0 min-h-full">
-            <div className="flex-1 p-8 max-w-2xl">
-              <div className="space-y-5">
+            <div className="flex-1 p-8">
+              <div className="max-w-2xl space-y-5">
 
                 {/* Date */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Date <span className="text-destructive">*</span></Label>
                   <Input type="date" className="h-9" value={expForm.date}
                     onChange={(e) => setExp("date", e.target.value)} />
@@ -865,7 +875,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 {/* Expense Account / Itemize */}
                 {!isItemized ? (
                   <>
-                    <div className="grid grid-cols-[180px_1fr] gap-4 items-start">
+                    <div className="grid grid-cols-[140px_1fr] gap-4 items-start">
                       <Label className="text-sm text-right pt-2">
                         Expense Account <span className="text-destructive">*</span>
                       </Label>
@@ -880,7 +890,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                     </div>
 
                     {/* Amount */}
-                    <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                    <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                       <Label className="text-sm text-right">Amount <span className="text-destructive">*</span></Label>
                       <div className="flex gap-2">
                         <Select value={expForm.currency} onValueChange={(v) => setExp("currency", v)}>
@@ -905,14 +915,14 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 )}
 
                 {/* Paid Through */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Paid Through <span className="text-destructive">*</span></Label>
                   <AccountSelect accounts={paidThroughAccounts} value={expForm.paidThroughAccountId}
                     onChange={(v) => setExp("paidThroughAccountId", v)} placeholder="Select an account" />
                 </div>
 
                 {/* Vendor */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Vendor</Label>
                   <ContactCombobox contacts={vendors} value={expForm.vendorId}
                     onChange={(v) => setExp("vendorId", v)} placeholder="Select a vendor"
@@ -920,14 +930,14 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Invoice # */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Invoice #</Label>
                   <Input className="h-9" value={expForm.invoiceNumber}
                     onChange={(e) => setExp("invoiceNumber", e.target.value)} />
                 </div>
 
                 {/* Notes */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-start">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-start">
                   <Label className="text-sm text-right pt-2">Notes</Label>
                   <Textarea className="resize-none text-sm" rows={3} placeholder="Max. 500 characters"
                     maxLength={500} value={expForm.notes} onChange={(e) => setExp("notes", e.target.value)} />
@@ -936,7 +946,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 <Separator />
 
                 {/* Customer */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Customer Name</Label>
                   <ContactCombobox contacts={customers} value={expForm.customerId}
                     onChange={(v) => setExp("customerId", v)} placeholder="Select a customer"
@@ -944,7 +954,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Billable */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <div />
                   <label className="flex items-center gap-2 cursor-pointer">
                     <Checkbox checked={expForm.isBillable}
@@ -954,7 +964,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Projects */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Projects</Label>
                   <div className="h-9 border rounded-md flex items-center justify-between px-3 text-sm text-muted-foreground bg-muted/5 cursor-not-allowed select-none">
                     <span className="text-xs">No projects configured yet</span>
@@ -964,15 +974,15 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
 
                 {/* Actions */}
                 <div className="flex gap-3 pt-4">
-                  <Button size="sm" onClick={() => handleSaveExpense(false)} disabled={saving}>
+                  <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSaveExpense(false)} disabled={saving}>
                     {saving ? "Saving…" : saveLabel}
                   </Button>
                   {!isEdit && (
-                    <Button size="sm" variant="outline" onClick={() => handleSaveExpense(true)} disabled={saving}>
+                    <Button size="sm" variant="outline" className="border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md" onClick={() => handleSaveExpense(true)} disabled={saving}>
                       {andNewLabel}
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => router.push("/purchases/expenses")}>
+                  <Button size="sm" variant="ghost" className="text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-md" onClick={() => router.push("/purchases/expenses")}>
                     Cancel
                   </Button>
                 </div>
@@ -980,13 +990,15 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
             </div>
 
             {/* Receipt upload sidebar */}
-            <div className="w-72 border-l bg-muted/10 p-6 flex flex-col items-center justify-center gap-3 shrink-0">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <Upload className="h-8 w-8 text-primary/60" />
+            <div className="w-72 border-l bg-slate-50 p-6 flex flex-col items-center justify-center gap-3 shrink-0">
+              <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center border border-teal-100">
+                <Upload className="h-8 w-8 text-teal-600/60" />
               </div>
-              <p className="text-sm font-medium text-center">Drag or Drop your Receipts</p>
-              <p className="text-xs text-muted-foreground text-center">Maximum file size allowed is 10MB</p>
-              <Button variant="outline" size="sm" className="gap-2">
+              <p className="text-sm font-semibold text-center mt-1">Upload Receipt</p>
+              <p className="text-[10px] text-muted-foreground text-center max-w-[200px] leading-relaxed">
+                Drag or Drop receipt files here. Max size is 10MB per file.
+              </p>
+              <Button variant="outline" size="sm" className="gap-2 border-teal-200 text-teal-700 hover:bg-teal-50 w-full mt-2">
                 <Upload className="h-3.5 w-3.5" /> Upload your Files
               </Button>
             </div>
@@ -996,7 +1008,8 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
         {/* ── Record Mileage ───────────────────────────────────── */}
         {activeTab === "mileage" && (
           <div className="flex gap-0 min-h-full">
-            <div className="flex-1 p-8 max-w-2xl">
+            <div className="flex-1 p-8">
+              <div className="max-w-2xl">
 
               {/* Mileage summary bar */}
               <div className="flex items-center justify-between rounded-lg border bg-muted/10 px-3 py-2 mb-2">
@@ -1018,14 +1031,14 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
               <div className="space-y-5">
 
                 {/* Date */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Date <span className="text-destructive">*</span></Label>
                   <Input type="date" className="h-9" value={milForm.date}
                     onChange={(e) => setMil("date", e.target.value)} />
                 </div>
 
                 {/* Employee */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Employee</Label>
                   <Select value={milForm.employeeId} onValueChange={(v) => setMil("employeeId", v)}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Select employee" /></SelectTrigger>
@@ -1034,7 +1047,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Calculation method */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">
                     Calculate mileage using <span className="text-destructive">*</span>
                   </Label>
@@ -1053,7 +1066,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Distance */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Distance <span className="text-destructive">*</span></Label>
                   <div className="flex gap-2">
                     <Input className="h-9 flex-1" type="number" min="0" step="0.1" placeholder="0"
@@ -1069,7 +1082,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Amount (read-only computed) */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Amount <span className="text-destructive">*</span></Label>
                   <div className="h-9 border rounded-md overflow-hidden flex items-center text-sm bg-muted/10">
                     <span className="px-3 h-full flex items-center text-muted-foreground border-r bg-muted/30 text-xs shrink-0">INR</span>
@@ -1083,14 +1096,14 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Paid Through */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Paid Through <span className="text-destructive">*</span></Label>
                   <AccountSelect accounts={paidThroughAccounts} value={milForm.paidThroughAccountId}
                     onChange={(v) => setMil("paidThroughAccountId", v)} />
                 </div>
 
                 {/* Vendor */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Vendor</Label>
                   <ContactCombobox contacts={vendors} value={milForm.vendorId}
                     onChange={(v) => setMil("vendorId", v)} placeholder="Select a vendor"
@@ -1098,14 +1111,14 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Invoice # */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Invoice #</Label>
                   <Input className="h-9" value={milForm.invoiceNumber}
                     onChange={(e) => setMil("invoiceNumber", e.target.value)} />
                 </div>
 
                 {/* Notes */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-start">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-start">
                   <Label className="text-sm text-right pt-2">Notes</Label>
                   <Textarea className="resize-none text-sm" rows={3} placeholder="Max. 500 characters"
                     maxLength={500} value={milForm.notes} onChange={(e) => setMil("notes", e.target.value)} />
@@ -1114,7 +1127,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 <Separator />
 
                 {/* Customer */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Customer Name</Label>
                   <ContactCombobox contacts={customers} value={milForm.customerId}
                     onChange={(v) => setMil("customerId", v)} placeholder="Select a customer"
@@ -1122,7 +1135,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Billable */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <div />
                   <label className="flex items-center gap-2 cursor-pointer">
                     <Checkbox checked={milForm.isBillable}
@@ -1132,7 +1145,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 </div>
 
                 {/* Projects */}
-                <div className="grid grid-cols-[180px_1fr] gap-4 items-center">
+                <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Projects</Label>
                   <div className="h-9 border rounded-md flex items-center justify-between px-3 text-sm text-muted-foreground bg-muted/5 cursor-not-allowed select-none">
                     <span className="text-xs">No projects configured yet</span>
@@ -1142,20 +1155,21 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
 
                 {/* Actions */}
                 <div className="flex gap-3 pt-4">
-                  <Button size="sm" onClick={() => handleSaveMileage(false)} disabled={saving}>
+                  <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSaveMileage(false)} disabled={saving}>
                     {saving ? "Saving…" : saveLabel}
                   </Button>
                   {!isEdit && (
-                    <Button size="sm" variant="outline" onClick={() => handleSaveMileage(true)} disabled={saving}>
+                    <Button size="sm" variant="outline" className="border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md" onClick={() => handleSaveMileage(true)} disabled={saving}>
                       {andNewLabel}
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => router.push("/purchases/expenses")}>
+                  <Button size="sm" variant="ghost" className="text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-md" onClick={() => router.push("/purchases/expenses")}>
                     Cancel
                   </Button>
                 </div>
               </div>
             </div>
+          </div>
 
             {/* Receipt upload sidebar */}
             <div className="w-72 border-l bg-muted/10 p-6 flex flex-col items-center justify-center gap-3 shrink-0">
@@ -1263,10 +1277,10 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
               <Plus className="h-3 w-3" /> Add More Expenses
             </button>
             <div className="flex gap-3 mt-6">
-              <Button size="sm" onClick={handleSaveBulk} disabled={saving}>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={handleSaveBulk} disabled={saving}>
                 {saving ? "Saving…" : "Save"}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => router.push("/purchases/expenses")}>Cancel</Button>
+              <Button size="sm" variant="ghost" className="text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-md" onClick={() => router.push("/purchases/expenses")}>Cancel</Button>
             </div>
           </div>
         )}
