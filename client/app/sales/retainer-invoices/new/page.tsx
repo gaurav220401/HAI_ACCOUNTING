@@ -162,7 +162,7 @@ function NewRetainerInvoicePageContent() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -177,7 +177,7 @@ function NewRetainerInvoicePageContent() {
               Sales <span className="mx-1">/</span>
               <button
                 type="button"
-                className="font-medium text-primary hover:underline"
+                className="font-medium text-teal-600 hover:text-teal-700 hover:underline"
                 onClick={() => router.push("/sales/retainer-invoices")}
               >
                 Retainer Invoices
@@ -324,7 +324,7 @@ function NewRetainerInvoicePageContent() {
               <Button type="button" variant="outline" onClick={() => router.push("/sales/retainer-invoices")}> 
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" type="submit" disabled={saving}>
                 {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} 
                 Save Retainer Invoice
               </Button>

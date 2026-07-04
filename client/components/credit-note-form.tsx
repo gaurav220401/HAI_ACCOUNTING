@@ -512,7 +512,7 @@ export function CreditNoteForm({
           </div>
 
           <div className="space-y-2 text-sm">
-            <button type="button" className="text-blue-600 hover:underline">
+            <button type="button" className="text-teal-600 hover:text-teal-700 font-medium hover:underline">
               View Customer Details
             </button>
             <div>
@@ -666,7 +666,7 @@ export function CreditNoteForm({
         <div className="border rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b bg-muted/20 flex items-center justify-between">
             <h3 className="text-sm font-semibold">Item Table</h3>
-            <button type="button" className="text-blue-600 text-sm">
+            <button type="button" className="text-teal-600 hover:text-teal-700 font-medium text-sm">
               Bulk Actions
             </button>
           </div>
@@ -1013,7 +1013,7 @@ export function CreditNoteForm({
         <Button variant="outline" disabled={saving} onClick={() => submit("DRAFT")}>
           Save as Draft
         </Button>
-        <Button disabled={saving} onClick={() => submit("OPEN")}>
+        <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" disabled={saving} onClick={() => submit("OPEN")}>
           Save as Open
         </Button>
         <Button variant="outline" disabled={saving} onClick={onCancel}>

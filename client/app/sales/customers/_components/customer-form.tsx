@@ -1037,9 +1037,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
                     <button
                       key={i}
                       type="button"
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors ${
-                        i === 0 ? "font-medium text-primary bg-primary/5" : "text-foreground"
-                      } ${displayName === s ? "bg-primary/10" : ""}`}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 transition-colors ${
+                        i === 0 ? "font-medium text-teal-700 bg-teal-50/40" : "text-foreground"
+                      } ${displayName === s ? "bg-teal-50" : ""}`}
                       onMouseDown={(e) => {
                         e.preventDefault();
                       }}
@@ -1199,7 +1199,7 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
                   <Button
                     type="button"
                     variant="link"
-                    className="h-auto px-0"
+                    className="h-auto px-0 text-teal-700 hover:text-teal-800 hover:underline font-medium"
                     onClick={() => {
                       toast.info("GST portal lookup can be done from the GSTIN dialog flow.");
                     }}
@@ -1378,7 +1378,7 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
                   {documents.map((doc, index) => (
                     <div key={`${doc.publicId}-${index}`} className="flex items-center justify-between rounded border px-3 py-2">
                       <div className="min-w-0">
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="block truncate text-sm text-primary hover:underline">
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="block truncate text-sm text-teal-700 hover:text-teal-800 hover:underline">
                           {doc.name}
                         </a>
                         <p className="text-xs text-muted-foreground">{formatBytes(doc.size)}</p>
@@ -1412,7 +1412,7 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
           <Row label="">
             <button
               type="button"
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-medium text-teal-700 hover:text-teal-850 hover:underline"
               onClick={() => setShowMoreDetails((v) => !v)}
             >
               {showMoreDetails ? "Hide more details" : "Add more details"}
@@ -1438,7 +1438,7 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
                 <h3 className="text-base font-semibold">Shipping Address</h3>
                 <button
                   type="button"
-                  className="text-sm font-medium text-primary hover:underline"
+                  className="text-sm font-medium text-teal-700 hover:text-teal-850 hover:underline"
                   onClick={copyBillingToShipping}
                 >
                   Copy billing address
@@ -1589,8 +1589,8 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
       ) : null}
 
       <div className="sticky bottom-0 z-10 flex items-center gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur">
-        <Button onClick={() => void handleSave()} disabled={saving || documentUploading || profilePhotoUploading}>
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+        <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void handleSave()} disabled={saving || documentUploading || profilePhotoUploading}>
+          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-white" /> : null}
           {isEdit ? "Save Changes" : "Save"}
         </Button>
         <Button variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>

@@ -265,7 +265,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                       value="Goods"
                       checked={itemType === "Goods"}
                       onChange={() => setItemType("Goods")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     Goods
                   </label>
@@ -276,7 +276,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                       value="Service"
                       checked={itemType === "Service"}
                       onChange={() => setItemType("Service")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     Service
                   </label>
@@ -575,7 +575,7 @@ function BulkItemsModal({
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold">
                 Selected Items{" "}
-                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-teal-600 text-white text-xs font-bold">
                   {selectedIds.size}
                 </span>
               </span>
@@ -782,7 +782,7 @@ function SendEmailModal({
             {/* Email content */}
             <div className="p-6 space-y-4 bg-gray-50">
               {/* Invoice Header Banner */}
-              <div className="bg-blue-600 text-white text-center py-4 rounded">
+              <div className="bg-teal-600 text-white text-center py-4 rounded">
                 <h2 className="text-lg font-semibold">
                   Invoice #{invoiceNumber}
                 </h2>
@@ -1522,7 +1522,7 @@ function NewInvoicePageContent() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -1585,7 +1585,7 @@ function NewInvoicePageContent() {
                 </SelectTrigger>
                 <SelectContent position="popper">
                   <SelectItem value="__add_new">
-                    <span className="text-blue-600 font-medium">
+                    <span className="text-teal-600 font-medium">
                       + Add a customer
                     </span>
                   </SelectItem>
@@ -1844,7 +1844,7 @@ function NewInvoicePageContent() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="__new">
-                                <span className="text-blue-600 font-medium">
+                                <span className="text-teal-600 font-medium">
                                   + Add new item
                                 </span>
                               </SelectItem>
@@ -2156,7 +2156,7 @@ function NewInvoicePageContent() {
                       value="none"
                       checked={taxType === "none"}
                       onChange={() => setTaxType("none")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     None
                   </label>
@@ -2167,7 +2167,7 @@ function NewInvoicePageContent() {
                       value="TDS"
                       checked={taxType === "TDS"}
                       onChange={() => setTaxType("TDS")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TDS
                   </label>
@@ -2178,7 +2178,7 @@ function NewInvoicePageContent() {
                       value="TCS"
                       checked={taxType === "TCS"}
                       onChange={() => setTaxType("TCS")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TCS
                   </label>
@@ -2398,7 +2398,7 @@ function NewInvoicePageContent() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Configure payment gateways and receive payments online.{" "}
-                <button className="text-blue-600 hover:underline">
+                <button className="text-teal-600 hover:underline font-semibold">
                   Set up Payment Gateway
                 </button>
               </p>
@@ -2483,7 +2483,7 @@ function NewInvoicePageContent() {
                 >
                   <Checkbox defaultChecked />
                   <span className="inline-flex items-center gap-1">
-                    <span className="w-6 h-6 rounded bg-blue-600 text-white flex items-center justify-center text-xs font-medium">
+                    <span className="w-6 h-6 rounded bg-teal-600 text-white flex items-center justify-center text-xs font-medium">
                       {(selectedCustomer?.displayName ||
                         email)[0]?.toUpperCase()}
                     </span>
@@ -2538,7 +2538,7 @@ function NewInvoicePageContent() {
                 <Button
                   disabled={saving}
                   onClick={() => handleSave("Sent")}
-                  className="rounded-r-none"
+                  className="rounded-r-none bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 >
                   {saving ?
                     <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -2549,7 +2549,7 @@ function NewInvoicePageContent() {
                   <DropdownMenuTrigger asChild>
                     <Button
                       disabled={saving}
-                      className="rounded-l-none border-l border-l-primary-foreground/20 px-2"
+                      className="rounded-l-none border-l border-l-teal-500 bg-teal-600 hover:bg-teal-700 text-white px-2"
                     >
                       <ChevronDown className="h-3.5 w-3.5" />
                     </Button>
@@ -2582,8 +2582,8 @@ function NewInvoicePageContent() {
 
             {/* Right: Make Recurring + Total */}
             <div className="flex items-center gap-4">
-              <button className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                <RefreshCw className="h-3.5 w-3.5" />
+              <button className="text-sm text-teal-600 hover:underline flex items-center gap-1 font-semibold">
+                <RefreshCw className="h-3.5 w-3.5 text-teal-600" />
                 Make Recurring
               </button>
               <div className="text-right">
@@ -2690,7 +2690,7 @@ export default function NewInvoicePage() {
     <Suspense
       fallback={
         <div className="flex min-h-svh items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
         </div>
       }
     >

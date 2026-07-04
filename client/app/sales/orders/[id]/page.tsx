@@ -333,13 +333,13 @@ function SendEmailModal({ open, onClose, order, onSent }: SendEmailModalProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden rounded-xl border-none shadow-2xl">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
+        <div className="bg-gradient-to-r from-teal-600 to-teal-800 p-6 text-white">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
               <Mail className="h-5 w-5" />
               Send Sales Order
             </DialogTitle>
-            <p className="text-blue-100 text-sm mt-1">
+            <p className="text-teal-100 text-sm mt-1">
               Send professionally formatted order details to your customers.
             </p>
           </DialogHeader>
@@ -355,7 +355,7 @@ function SendEmailModal({ open, onClose, order, onSent }: SendEmailModalProps) {
                 placeholder="customer@example.com, colleague@example.com"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="bg-muted/30 focus-visible:ring-blue-500"
+                className="bg-muted/30 focus-visible:ring-teal-500"
               />
               <p className="text-[10px] text-muted-foreground italic">
                 Use commas to separate multiple emails
@@ -405,18 +405,18 @@ function SendEmailModal({ open, onClose, order, onSent }: SendEmailModalProps) {
             />
           </div>
 
-          <div className="flex items-center space-x-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+          <div className="flex items-center space-x-2 bg-teal-50/50 p-3 rounded-lg border border-teal-100">
             <Checkbox
               id="attach"
               checked={attachPdf}
               onCheckedChange={(v) => setAttachPdf(v === true)}
-              className="data-[state=checked]:bg-blue-600"
+              className="data-[state=checked]:bg-teal-600"
             />
             <Label
               htmlFor="attach"
-              className="text-sm font-medium text-blue-900 cursor-pointer flex items-center gap-2"
+              className="text-sm font-medium text-teal-900 cursor-pointer flex items-center gap-2"
             >
-              <FileText className="h-4 w-4 text-blue-600" />
+              <FileText className="h-4 w-4 text-teal-600" />
               Attach Sales Order PDF
             </Label>
           </div>
@@ -429,7 +429,7 @@ function SendEmailModal({ open, onClose, order, onSent }: SendEmailModalProps) {
           <Button
             onClick={handleSend}
             disabled={sending}
-            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
+            className="bg-teal-600 hover:bg-teal-700 text-white min-w-[120px] font-semibold"
           >
             {sending ?
               <RefreshCw className="h-4 w-4 animate-spin mr-2" />
@@ -680,7 +680,7 @@ export default function SalesOrderDetailsPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -729,6 +729,7 @@ export default function SalesOrderDetailsPage() {
               </Button>
               <Button
                 size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 onClick={() => router.push("/sales/orders/new")}
               >
                 <Plus className="h-4 w-4 mr-1" />
@@ -827,7 +828,7 @@ export default function SalesOrderDetailsPage() {
                       {activeShipmentStatus !== "Pending" && (
                         <Badge
                           variant="outline"
-                          className="border-blue-500 text-blue-600"
+                          className="border-teal-500 text-teal-600"
                         >
                           <Truck className="h-3 w-3 mr-1" />
                           {activeShipmentStatus}
@@ -857,6 +858,7 @@ export default function SalesOrderDetailsPage() {
                     </Button>
                     <Button
                       size="sm"
+                      className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                       onClick={handleConvertToInvoice}
                       disabled={
                         activeStatus === "INVOICED" ||
@@ -979,19 +981,19 @@ export default function SalesOrderDetailsPage() {
                     <TabsList className="w-full justify-start border-b rounded-none px-0 bg-transparent h-auto">
                       <TabsTrigger
                         value="overview"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:bg-transparent px-6 py-3"
                       >
                         Sales Order
                       </TabsTrigger>
                       <TabsTrigger
                         value="packages"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:bg-transparent px-6 py-3"
                       >
                         Packages
                       </TabsTrigger>
                       <TabsTrigger
                         value="documents"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-6 py-3"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:bg-transparent px-6 py-3"
                       >
                         Linked Documents
                       </TabsTrigger>
@@ -1025,7 +1027,7 @@ export default function SalesOrderDetailsPage() {
                               }
                             >
                               <div>
-                                <div className="font-medium text-blue-600">
+                                <div className="font-medium text-teal-700">
                                   {pkg.packageSlipNumber}
                                 </div>
                                 <div className="text-sm text-muted-foreground mt-1">
@@ -1058,7 +1060,7 @@ export default function SalesOrderDetailsPage() {
                         <Card>
                           <CardHeader className="pb-3">
                             <CardTitle className="text-sm font-semibold flex items-center">
-                              <FileText className="h-4 w-4 mr-2 text-blue-500" />
+                              <FileText className="h-4 w-4 mr-2 text-teal-600" />
                               Linked Invoices
                             </CardTitle>
                           </CardHeader>
@@ -1076,7 +1078,7 @@ export default function SalesOrderDetailsPage() {
                                   }
                                 >
                                   <div>
-                                    <div className="text-sm font-medium text-blue-600">
+                                    <div className="text-sm font-medium text-teal-700">
                                       {inv.invoiceNumber}
                                     </div>
                                     <div className="text-[10px] text-muted-foreground">
@@ -1206,9 +1208,9 @@ export default function SalesOrderDetailsPage() {
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-bold ${
                               activeShipmentStatus === "Delivered" ?
-                                "bg-green-100 text-green-700"
+                                "bg-emerald-100 text-emerald-700"
                               : activeShipmentStatus === "Shipped" ?
-                                "bg-blue-100 text-blue-700"
+                                "bg-teal-100 text-teal-700"
                               : "bg-gray-100 text-gray-700"
                             }`}
                           >
@@ -1233,9 +1235,9 @@ export default function SalesOrderDetailsPage() {
                             <div className="absolute top-0 left-0 z-10 w-32 h-32 overflow-hidden pointer-events-none">
                               <div
                                 className={`absolute top-6 -left-8 text-white text-xs font-bold px-10 py-1 transform -rotate-45 shadow-md tracking-wider ${
-                                  activeStatus === "CLOSED" ? "bg-green-500"
+                                  activeStatus === "CLOSED" ? "bg-emerald-600"
                                   : activeStatus === "DRAFT" ? "bg-gray-400"
-                                  : "bg-blue-500"
+                                  : "bg-teal-600"
                                 }`}
                               >
                                 {activeStatus.toUpperCase()}
@@ -1286,7 +1288,7 @@ export default function SalesOrderDetailsPage() {
                                 <div className="font-semibold text-gray-800 mb-1">
                                   Bill To
                                 </div>
-                                <div className="text-blue-600 font-medium text-base">
+                                <div className="text-teal-700 font-semibold text-base">
                                   {getCustomerName(active.customerId)}
                                 </div>
                               </div>
@@ -1709,8 +1711,8 @@ export default function SalesOrderDetailsPage() {
                                                       li.quantity,
                                                   ) === 0
                                                 ) ?
-                                                  "text-xs font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700"
-                                                : "text-xs font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700"
+                                                  "text-xs font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700"
+                                                : "text-xs font-semibold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700"
                                               }
                                             >
                                               {formatQty(
@@ -1802,7 +1804,7 @@ export default function SalesOrderDetailsPage() {
             </DialogHeader>
             <div className="grid grid-cols-2 gap-4 py-6">
               <div
-                className="flex flex-col items-center justify-center p-6 border-2 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center space-y-4"
+                className="flex flex-col items-center justify-center p-6 border-2 rounded-xl cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all text-center space-y-4"
                 onClick={() => {
                   setShowShipmentTypeModal(false);
                   router.push(
@@ -1810,13 +1812,13 @@ export default function SalesOrderDetailsPage() {
                   );
                 }}
               >
-                <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-500">
+                <div className="h-16 w-16 rounded-full bg-teal-100 flex items-center justify-center text-teal-600">
                   <PackageIcon className="h-8 w-8" />
                 </div>
                 <div className="font-medium text-gray-700">Ship Manually</div>
               </div>
               <div
-                className="flex flex-col items-center justify-center p-6 border-2 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all text-center space-y-4"
+                className="flex flex-col items-center justify-center p-6 border-2 rounded-xl cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all text-center space-y-4"
                 onClick={() => {
                   setShowShipmentTypeModal(false);
                   router.push(
@@ -1824,7 +1826,7 @@ export default function SalesOrderDetailsPage() {
                   );
                 }}
               >
-                <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-500 border border-dashed border-blue-400">
+                <div className="h-16 w-16 rounded-full bg-teal-100 flex items-center justify-center text-teal-600 border border-dashed border-teal-400">
                   <Truck className="h-8 w-8" />
                 </div>
                 <div className="font-medium text-gray-700">

@@ -55,7 +55,7 @@ const STATUS_FILTERS: Array<RetainerInvoiceStatus | "All"> = [
 
 const STATUS_STYLES: Record<RetainerInvoiceStatus, string> = {
   Draft: "bg-slate-100 text-slate-700 border-slate-200",
-  Sent: "bg-blue-50 text-blue-700 border-blue-200",
+  Sent: "bg-teal-50 text-teal-700 border-teal-200",
   "Partially Paid": "bg-amber-50 text-amber-700 border-amber-200",
   Paid: "bg-green-50 text-green-700 border-green-200",
   "Partially Applied": "bg-cyan-50 text-cyan-700 border-cyan-200",
@@ -211,7 +211,7 @@ export default function RetainerInvoicesPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -241,7 +241,7 @@ export default function RetainerInvoicesPage() {
               <Button variant="outline" size="sm" onClick={() => void fetchRows()}>
                 <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
               </Button>
-              <Button size="sm" onClick={() => router.push("/sales/retainer-invoices/new")}>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/retainer-invoices/new")}>
                 <Plus className="mr-1 h-4 w-4" />
                 New
               </Button>
@@ -282,7 +282,7 @@ export default function RetainerInvoicesPage() {
                 <p className="text-sm text-muted-foreground">
                   Create a retainer invoice to collect and apply customer advances against invoices.
                 </p>
-                <Button onClick={() => router.push("/sales/retainer-invoices/new")}>
+                <Button onClick={() => router.push("/sales/retainer-invoices/new")} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
                   Create Retainer Invoice
                 </Button>
               </div>
@@ -311,7 +311,7 @@ export default function RetainerInvoicesPage() {
                       onClick={() => router.push(`/sales/retainer-invoices/${retainer._id}`)}
                     >
                       <TableCell>{formatDate(retainer.retainer_date)}</TableCell>
-                      <TableCell className="font-medium text-blue-700">{retainer.retainer_number}</TableCell>
+                      <TableCell className="font-medium text-teal-700">{retainer.retainer_number}</TableCell>
                       <TableCell>{customerName(retainer.customer_id)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(retainer.total_amount)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(retainer.amount_received)}</TableCell>

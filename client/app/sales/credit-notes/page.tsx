@@ -75,7 +75,7 @@ const STATUS_FILTERS: Array<CreditNoteStatus | "All"> = [
 
 const statusColor: Record<string, string> = {
   DRAFT: "bg-gray-100 text-gray-700 border-gray-300",
-  OPEN: "bg-blue-50 text-blue-700 border-blue-300",
+  OPEN: "bg-teal-50 text-teal-700 border-teal-300",
   APPLIED: "bg-indigo-50 text-indigo-700 border-indigo-300",
   PARTIALLY_APPLIED: "bg-yellow-50 text-yellow-700 border-yellow-300",
   CLOSED: "bg-green-50 text-green-700 border-green-300",
@@ -484,7 +484,7 @@ export default function CreditNotesPage() {
                 <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
               </Button>
 
-              <Button size="sm" onClick={() => router.push("/sales/credit-notes/new")}>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/credit-notes/new")}>
                 <Plus className="h-4 w-4 mr-1" />
                 New
               </Button>
@@ -532,7 +532,7 @@ export default function CreditNotesPage() {
               <p className="text-sm mt-2 mb-4">
                 Create a sales credit note for returns, rate difference, or post-sale adjustments.
               </p>
-              <Button onClick={() => router.push("/sales/credit-notes/new")}>
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/credit-notes/new")}>
                 <Plus className="h-4 w-4 mr-1" />
                 CREATE CREDIT NOTE
               </Button>
@@ -561,7 +561,7 @@ export default function CreditNotesPage() {
                       onClick={() => setSelectedId(credit._id)}
                     >
                       <TableCell>{fmtDate(credit.creditNoteDate)}</TableCell>
-                      <TableCell className="text-blue-600 font-medium">
+                      <TableCell className="text-teal-600 hover:text-teal-700 font-medium">
                         {credit.creditNoteNumber}
                       </TableCell>
                       <TableCell>{credit.referenceNumber || "-"}</TableCell>
@@ -685,6 +685,7 @@ export default function CreditNotesPage() {
                       </Button>
                       <Button
                         size="sm"
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                         onClick={() => setShowApplyDialog(true)}
                         disabled={
                           ["VOID", "CLOSED"].includes(selectedCredit.status) ||
@@ -837,7 +838,7 @@ export default function CreditNotesPage() {
                           value={commentText}
                           onChange={(e) => setCommentText(e.target.value)}
                         />
-                        <Button size="sm" onClick={() => void submitComment()} disabled={actionBusy}>
+                        <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void submitComment()} disabled={actionBusy}>
                           Add Comment
                         </Button>
                       </div>
@@ -945,7 +946,7 @@ export default function CreditNotesPage() {
                 <Button variant="outline" onClick={() => setShowApplyDialog(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => void submitApply()} disabled={actionBusy}>
+                <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void submitApply()} disabled={actionBusy}>
                   Apply
                 </Button>
               </DialogFooter>
@@ -977,7 +978,7 @@ export default function CreditNotesPage() {
                 <Button variant="outline" onClick={() => setShowUnapplyDialog(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => void submitUnapply()} disabled={actionBusy}>
+                <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void submitUnapply()} disabled={actionBusy}>
                   Unapply
                 </Button>
               </DialogFooter>
@@ -1006,7 +1007,7 @@ export default function CreditNotesPage() {
                 <Button variant="outline" onClick={() => setShowRefundDialog(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => void submitRefund()} disabled={actionBusy}>
+                <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void submitRefund()} disabled={actionBusy}>
                   Record Refund
                 </Button>
               </DialogFooter>

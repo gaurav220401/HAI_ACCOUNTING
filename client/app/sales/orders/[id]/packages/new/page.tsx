@@ -162,7 +162,7 @@ export default function NewPackagePage() {
   if (loading) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin" />
+        <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
       </div>
     );
   }
@@ -188,7 +188,7 @@ export default function NewPackagePage() {
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <div className="flex items-center gap-2">
-              <PackageIcon className="h-5 w-5" />
+              <PackageIcon className="h-5 w-5 text-teal-600" />
               <h1 className="text-2xl font-semibold">New Package</h1>
             </div>
           </div>
@@ -196,28 +196,28 @@ export default function NewPackagePage() {
           <div className="bg-card border rounded-xl p-6 shadow-sm mb-6 space-y-6">
             <div className="grid grid-cols-2 gap-x-8 gap-y-6">
               <div className="space-y-2">
-                <Label className="text-red-500 font-semibold flex gap-1">Package Slip# *</Label>
+                <Label className="text-teal-700 font-semibold flex gap-1">Package Slip# *</Label>
                 <Input 
                   value={packageSlipNumber} 
                   onChange={e => setPackageSlipNumber(e.target.value)} 
-                  className="bg-blue-50/50 border-blue-200"
+                  className="bg-teal-50/50 border-teal-200 focus-visible:ring-teal-500"
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-red-500 font-semibold flex gap-1">Date *</Label>
-                <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+                <Label className="text-teal-700 font-semibold flex gap-1">Date *</Label>
+                <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="focus-visible:ring-teal-500" />
               </div>
               
               <div className="space-y-2">
                 <Label>Dimensions</Label>
                 <div className="flex items-center gap-2">
-                  <Input placeholder="L" className="w-20" value={dimLength} onChange={e => setDimLength(e.target.value)} type="number" />
+                  <Input placeholder="L" className="w-20 focus-visible:ring-teal-500" value={dimLength} onChange={e => setDimLength(e.target.value)} type="number" />
                   <span className="text-muted-foreground">x</span>
-                  <Input placeholder="W" className="w-20" value={dimWidth} onChange={e => setDimWidth(e.target.value)} type="number" />
+                  <Input placeholder="W" className="w-20 focus-visible:ring-teal-500" value={dimWidth} onChange={e => setDimWidth(e.target.value)} type="number" />
                   <span className="text-muted-foreground">x</span>
-                  <Input placeholder="H" className="w-20" value={dimHeight} onChange={e => setDimHeight(e.target.value)} type="number" />
+                  <Input placeholder="H" className="w-20 focus-visible:ring-teal-500" value={dimHeight} onChange={e => setDimHeight(e.target.value)} type="number" />
                   <select 
-                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
                     value={dimUnit}
                     onChange={e => setDimUnit(e.target.value)}
                   >
@@ -230,9 +230,9 @@ export default function NewPackagePage() {
               <div className="space-y-2">
                 <Label>Weight</Label>
                 <div className="flex items-center gap-2">
-                  <Input className="w-32" value={weightValue} onChange={e => setWeightValue(e.target.value)} type="number" />
+                  <Input className="w-32 focus-visible:ring-teal-500" value={weightValue} onChange={e => setWeightValue(e.target.value)} type="number" />
                   <select 
-                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
                     value={weightUnit}
                     onChange={e => setWeightUnit(e.target.value)}
                   >
@@ -277,7 +277,7 @@ export default function NewPackagePage() {
                             newItems[idx].quantityToPack = val;
                             setItems(newItems);
                           }}
-                          className="w-full text-right h-8"
+                          className="w-full text-right h-8 focus-visible:ring-teal-500"
                         />
                         <div className="text-[10px] text-muted-foreground">
                           Stock on Hand: <span className="font-semibold">{item.stockOnHand}</span>
@@ -300,13 +300,14 @@ export default function NewPackagePage() {
                 value={internalNotes} 
                 onChange={e => setInternalNotes(e.target.value)} 
                 placeholder="Add any internal notes..."
+                className="focus-visible:ring-teal-500"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-between border-t py-4">
             <div className="flex gap-3">
-              <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
+              <Button onClick={handleSave} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
                 {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Save
               </Button>

@@ -1,6 +1,6 @@
 "use client";
-import Link from "next/link";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -18,7 +18,9 @@ import {
   Trash2,
   X,
   Loader2,
-  Maximize2,  FileUp} from "lucide-react";
+  Maximize2,
+  FileUp,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -27,7 +29,6 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -58,15 +59,86 @@ const STATUS_FILTERS: Array<InvoiceStatus | "All"> = [
   "Void",
 ];
 
-const statusColor: Record<InvoiceStatus, string> = {
-  Draft: "bg-gray-100 text-gray-700 border-gray-300",
-  Sent: "bg-blue-50 text-blue-700 border-blue-300",
-  Viewed: "bg-indigo-50 text-indigo-700 border-indigo-300",
-  Overdue: "bg-red-50 text-red-700 border-red-300",
-  "Partially Paid": "bg-yellow-50 text-yellow-700 border-yellow-300",
-  Paid: "bg-green-50 text-green-700 border-green-300",
-  Void: "bg-gray-50 text-gray-400 border-gray-200",
-};
+function StatusPill({ status }: { status: InvoiceStatus }) {
+  const configMap: Record<
+    InvoiceStatus,
+    { bg: string; text: string; border: string; dot: string }
+  > = {
+    Draft: {
+      bg: "bg-slate-100",
+      text: "text-slate-500",
+      border: "border-slate-200",
+      dot: "bg-slate-400",
+    },
+    Sent: {
+      bg: "bg-amber-50",
+      text: "text-amber-700",
+      border: "border-amber-100",
+      dot: "bg-amber-500",
+    },
+    Viewed: {
+      bg: "bg-purple-50",
+      text: "text-purple-700",
+      border: "border-purple-100",
+      dot: "bg-purple-500",
+    },
+    Overdue: {
+      bg: "bg-rose-50",
+      text: "text-rose-700",
+      border: "border-rose-100",
+      dot: "bg-rose-500",
+    },
+    "Partially Paid": {
+      bg: "bg-amber-50",
+      text: "text-amber-700",
+      border: "border-amber-100",
+      dot: "bg-amber-500",
+    },
+    Paid: {
+      bg: "bg-emerald-50",
+      text: "text-emerald-700",
+      border: "border-emerald-100",
+      dot: "bg-emerald-500",
+    },
+    Void: {
+      bg: "bg-slate-100",
+      text: "text-slate-400",
+      border: "border-slate-200",
+      dot: "bg-slate-400",
+    },
+  };
+  const config = configMap[status] || configMap.Draft;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${config.bg} ${config.text} ${config.border}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
+      {status}
+    </span>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="divide-y divide-slate-100 animate-pulse border-t border-slate-100">
+      {[...Array(5)].map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-between px-6 py-4 gap-4"
+        >
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-24 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-32 bg-slate-100 rounded" />
+          <div className="h-3.5 w-24 bg-slate-100 rounded" />
+          <div className="h-4 w-20 bg-slate-100 rounded-full" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-4 w-4 bg-slate-100 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -147,6 +219,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | "All">(
     "All",
   );
+  const [showFilterDD, setShowFilterDD] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -323,8 +396,8 @@ export default function InvoicesPage() {
 
   if (loading || orgLoading || !firebaseUser) {
     return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-svh items-center justify-center bg-white">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -332,688 +405,711 @@ export default function InvoicesPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <PageHeader
-          breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Sales <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Invoices</span>
-            </span>
-          }
-          actions={
-            <>
-              <div className="relative w-56">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search invoices..."
-                  className="pl-8 h-8 text-sm"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchInvoices}
-                disabled={fetching}
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`}
-                />
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => router.push("/sales/invoices/new")}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                New
-              </Button>
-              <Link href="/batch-import?section=sales&type=Invoices&back=/sales/invoices">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
-                  <FileUp className="h-3.5 w-3.5" /> Batch Import
-                </Button>
-              </Link>
-            </>
-          }
-        />
-
-        <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1">
-                    {statusFilter === "All" ?
-                      "All Invoices"
-                    : `${statusFilter} Invoices`}
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {STATUS_FILTERS.map((s) => (
-                    <DropdownMenuItem
-                      key={s}
-                      onClick={() => setStatusFilter(s)}
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
+        <div className="flex flex-col h-screen overflow-hidden">
+          <PageHeader
+            breadcrumb={
+              <div className="flex flex-col">
+                <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">
+                  Sales
+                </span>
+                <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-teal-700"
                     >
-                      {s === "All" ? "All Invoices" : s}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <span className="text-sm text-muted-foreground">
-                {filtered.length} invoice{filtered.length !== 1 && "s"}
-              </span>
-            </div>
-          </div>
-
-          {filtered.length === 0 ?
-            <div className="flex flex-1 flex-col items-center justify-center gap-6 py-20 text-muted-foreground">
-              <FileText className="h-16 w-16 opacity-30" />
-              <div className="max-w-md space-y-2 text-center">
-                <h2 className="text-xl font-semibold text-foreground">
-                  Get paid faster.
-                </h2>
-                <p className="text-sm">
-                  Create professional invoices and send them to your customers
-                  to get paid on time.
-                </p>
+                      {statusFilter === "All" ?
+                        "All Invoices"
+                      : `${statusFilter} Invoices`}{" "}
+                      <ChevronDown className="h-3 w-3 ml-0.5 opacity-70" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    {STATUS_FILTERS.map((s) => (
+                      <DropdownMenuItem
+                        key={s}
+                        onClick={() => {
+                          setStatusFilter(s);
+                          setShowFilterDD(false);
+                        }}
+                      >
+                        {s === "All" ? "All Invoices" : s}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
+            }
+            actions={
+              <div className="flex items-center gap-1.5">
+                <div className="relative w-56">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Search invoices..."
+                    className="pl-8 h-8 text-sm border-slate-200 focus-visible:ring-teal-600"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 border-slate-200 text-slate-600 hover:bg-slate-50"
+                  onClick={fetchInvoices}
+                  disabled={fetching}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`}
+                  />
+                </Button>
+                <Link href="/batch-import?section=sales&type=Invoices&back=/sales/invoices">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
+                  >
+                    <FileUp className="h-3.5 w-3.5" /> Batch Import
+                  </Button>
+                </Link>
+                <Button
+                  size="sm"
+                  className="h-8 gap-1 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
+                  onClick={() => router.push("/sales/invoices/new")}
+                >
+                  <Plus className="h-3.5 w-3.5" /> New
+                </Button>
+              </div>
+            }
+          />
 
-              <Button onClick={() => router.push("/sales/invoices/new")}>
-                <Plus className="h-4 w-4 mr-1" />
-                CREATE NEW INVOICE
-              </Button>
-            </div>
-          : <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-white">
-              <div
-                className={
-                  selectedInvoice ?
-                    "w-[380px] shrink-0 overflow-y-auto border-r bg-gray-50/60"
-                  : "min-w-0 flex-1 overflow-auto"
-                }
-              >
-                {selectedInvoice ?
-                  <div className="divide-y">
-                    {filtered.map((inv) => {
-                      const dueStatus = getDueStatus(inv);
-                      const active = selectedId === inv._id;
-                      return (
-                        <button
-                          key={inv._id}
-                          type="button"
-                          className={`block w-full px-4 py-3 text-left transition-colors ${
-                            active ? "bg-blue-50" : "bg-white hover:bg-muted/50"
-                          }`}
-                          onClick={() => setSelectedId(inv._id)}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-blue-700">
-                                {inv.invoiceNumber}
-                              </div>
-                              <div className="mt-0.5 truncate text-sm text-foreground">
-                                {getCustomerName(inv.customerId)}
-                              </div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {formatDate(inv.invoiceDate)}
-                                {inv.orderNumber ? ` - ${inv.orderNumber}` : ""}
-                              </div>
-                              {dueStatus && (
-                                <div
-                                  className={`mt-1 text-xs ${
-                                    dueStatus.includes("overdue") ?
-                                      "font-medium text-red-600"
-                                    : "text-muted-foreground"
-                                  }`}
-                                >
-                                  {dueStatus}
-                                </div>
-                              )}
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <div className="text-sm font-semibold tabular-nums">
-                                {formatCurrency(inv.total)}
-                              </div>
-                              <Badge
-                                variant="outline"
-                                className={`mt-1 ${statusColor[inv.status]}`}
-                              >
-                                {inv.status}
-                              </Badge>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                : <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Invoice#</TableHead>
-                        <TableHead>Order#</TableHead>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Due Date</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="text-right">
-                          Balance Due
-                        </TableHead>
-                        <TableHead className="w-10" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+          <div className="flex flex-1 flex-col overflow-hidden p-6 gap-4">
+            {fetching && invoices.length === 0 ?
+              <TableSkeleton />
+            : filtered.length === 0 ?
+              <div className="flex flex-1 flex-col items-center justify-center gap-6 text-muted-foreground py-20">
+                <FileText className="h-16 w-16 opacity-30 text-teal-600" />
+                <div className="text-center max-w-md space-y-2">
+                  <h2 className="text-xl font-semibold text-slate-800">
+                    Get paid faster.
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Create professional invoices and send them to your customers
+                    to get paid on time.
+                  </p>
+                </div>
+
+                <Button
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                  onClick={() => router.push("/sales/invoices/new")}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  CREATE NEW INVOICE
+                </Button>
+              </div>
+            : <div className="flex-1 flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                {/* Left panel: List */}
+                <div
+                  className={
+                    selectedInvoice ?
+                      "w-[380px] shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/30"
+                    : "min-w-0 flex-1 overflow-auto"
+                  }
+                >
+                  {selectedInvoice ?
+                    <div className="divide-y divide-slate-100">
                       {filtered.map((inv) => {
                         const dueStatus = getDueStatus(inv);
+                        const active = selectedId === inv._id;
                         return (
-                          <TableRow
+                          <button
                             key={inv._id}
-                            className="cursor-pointer hover:bg-muted/50"
+                            type="button"
+                            className={`block w-full px-4 py-3 text-left transition-colors relative ${
+                              active ?
+                                "bg-teal-50/50 border-l-[3px] border-l-teal-600"
+                              : "bg-white hover:bg-slate-50/70"
+                            }`}
                             onClick={() => setSelectedId(inv._id)}
                           >
-                            <TableCell className="text-sm">
-                              {formatDate(inv.invoiceDate)}
-                            </TableCell>
-                            <TableCell className="text-sm font-medium text-blue-600">
-                              {inv.invoiceNumber}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {inv.orderNumber || "-"}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {getCustomerName(inv.customerId)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={statusColor[inv.status]}
-                              >
-                                {inv.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              <div>{formatDate(inv.dueDate)}</div>
-                              {dueStatus && (
-                                <div
-                                  className={`text-xs ${
-                                    dueStatus.includes("overdue") ?
-                                      "font-medium text-red-600"
-                                    : "text-muted-foreground"
-                                  }`}
-                                >
-                                  {dueStatus}
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-bold text-teal-700">
+                                  {inv.invoiceNumber}
                                 </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right text-sm font-medium tabular-nums">
-                              {formatCurrency(inv.total)}
-                            </TableCell>
-                            <TableCell className="text-right text-sm font-medium tabular-nums">
-                              {formatCurrency(inv.balanceDue)}
-                            </TableCell>
-                            <TableCell>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger
-                                  asChild
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
+                                <div className="mt-0.5 truncate text-sm font-medium text-slate-700">
+                                  {getCustomerName(inv.customerId)}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-400">
+                                  {formatDate(inv.invoiceDate)}
+                                  {inv.orderNumber ? ` - ${inv.orderNumber}` : ""}
+                                </div>
+                                {dueStatus && (
+                                  <div
+                                    className={`mt-1 text-xs ${
+                                      dueStatus.includes("overdue") ?
+                                        "font-medium text-rose-600"
+                                      : "text-slate-500 font-medium"
+                                    }`}
                                   >
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      router.push(
-                                        `/sales/invoices/${inv._id}/edit`,
-                                      )
-                                    }
-                                  >
-                                    Edit
-                                  </DropdownMenuItem>
-                                  {inv.status === "Draft" && (
-                                    <DropdownMenuItem
-                                      onClick={() => markAsSent(inv)}
-                                    >
-                                      Mark as Sent
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      router.push(
-                                        `/sales/invoices/${inv._id}/send-email`,
-                                      )
-                                    }
-                                  >
-                                    Send Email
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => downloadPdf(inv)}
-                                  >
-                                    Download PDF
-                                  </DropdownMenuItem>
-                                  {inv.status !== "Paid" &&
-                                    inv.status !== "Void" && (
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          router.push(
-                                            `/sales/payments-received/new?invoiceId=${inv._id}`,
-                                          )
-                                        }
-                                      >
-                                        Record Payment
-                                      </DropdownMenuItem>
-                                    )}
-                                  {inv.status !== "Void" && (
-                                    <DropdownMenuItem
-                                      onClick={() => voidInvoice(inv)}
-                                    >
-                                      Void
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuItem
-                                    className="text-destructive"
-                                    onClick={() => deleteInvoice(inv)}
-                                  >
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </TableCell>
-                          </TableRow>
+                                    {dueStatus}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <div className="text-sm font-bold text-slate-800 tabular-nums">
+                                  {formatCurrency(inv.total)}
+                                </div>
+                                <div className="mt-1">
+                                  <StatusPill status={inv.status} />
+                                </div>
+                              </div>
+                            </div>
+                          </button>
                         );
                       })}
-                    </TableBody>
-                  </Table>
-                }
-              </div>
+                    </div>
+                  : <Table>
+                      <TableHeader className="bg-slate-50 border-b border-slate-200">
+                        <TableRow>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                            Date
+                          </TableHead>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                            Invoice#
+                          </TableHead>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                            Order#
+                          </TableHead>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                            Customer
+                          </TableHead>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                            Status
+                          </TableHead>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                            Due Date
+                          </TableHead>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
+                            Amount
+                          </TableHead>
+                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
+                            Balance Due
+                          </TableHead>
+                          <TableHead className="w-10" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filtered.map((inv) => {
+                          const dueStatus = getDueStatus(inv);
+                          return (
+                            <TableRow
+                              key={inv._id}
+                              className="cursor-pointer hover:bg-teal-50/10"
+                              onClick={() => setSelectedId(inv._id)}
+                            >
+                              <TableCell className="text-sm px-4 py-2.5">
+                                {formatDate(inv.invoiceDate)}
+                              </TableCell>
+                              <TableCell className="text-sm font-semibold text-teal-700 hover:underline px-4 py-2.5">
+                                {inv.invoiceNumber}
+                              </TableCell>
+                              <TableCell className="text-sm text-slate-500 px-4 py-2.5">
+                                {inv.orderNumber || "—"}
+                              </TableCell>
+                              <TableCell className="text-sm px-4 py-2.5">
+                                {getCustomerName(inv.customerId)}
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5">
+                                <StatusPill status={inv.status} />
+                              </TableCell>
+                              <TableCell className="text-sm px-4 py-2.5">
+                                <div>{formatDate(inv.dueDate)}</div>
+                                {dueStatus && (
+                                  <div
+                                    className={`text-[10px] ${
+                                      dueStatus.includes("overdue") ?
+                                        "font-semibold text-rose-600"
+                                      : "text-slate-500"
+                                    }`}
+                                  >
+                                    {dueStatus}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right text-sm font-medium tabular-nums px-4 py-2.5">
+                                {formatCurrency(inv.total)}
+                              </TableCell>
+                              <TableCell className="text-right text-sm font-medium tabular-nums px-4 py-2.5">
+                                {formatCurrency(inv.balanceDue)}
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger
+                                    asChild
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-slate-400 hover:text-slate-600"
+                                    >
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        router.push(
+                                          `/sales/invoices/${inv._id}/edit`,
+                                        )
+                                      }
+                                    >
+                                      Edit
+                                    </DropdownMenuItem>
+                                    {inv.status === "Draft" && (
+                                      <DropdownMenuItem
+                                        onClick={() => markAsSent(inv)}
+                                      >
+                                        Mark as Sent
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        router.push(
+                                          `/sales/invoices/${inv._id}/send-email`,
+                                        )
+                                      }
+                                    >
+                                      Send Email
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => downloadPdf(inv)}
+                                    >
+                                      Download PDF
+                                    </DropdownMenuItem>
+                                    {inv.status !== "Paid" &&
+                                      inv.status !== "Void" && (
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            router.push(
+                                              `/sales/payments-received/new?invoiceId=${inv._id}`,
+                                            )
+                                          }
+                                        >
+                                          Record Payment
+                                        </DropdownMenuItem>
+                                      )}
+                                    {inv.status !== "Void" && (
+                                      <DropdownMenuItem
+                                        onClick={() => voidInvoice(inv)}
+                                      >
+                                        Void
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem
+                                      className="text-rose-600 hover:bg-rose-50"
+                                      onClick={() => deleteInvoice(inv)}
+                                    >
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  }
+                </div>
 
-              {selectedInvoice && (
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <div className="flex min-h-[48px] items-center gap-1 border-b px-3">
-                    {["Draft", "Sent"].includes(selectedInvoice.status) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          router.push(
-                            `/sales/invoices/${selectedInvoice._id}/edit`,
-                          )
-                        }
-                      >
-                        <Pencil className="h-3.5 w-3.5 mr-1" />
-                        Edit
-                      </Button>
-                    )}
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        router.push(
-                          `/sales/invoices/${selectedInvoice._id}/send-email`,
-                        )
-                      }
-                    >
-                      <Send className="h-3.5 w-3.5 mr-1" />
-                      Send Email
-                    </Button>
-
-                    {selectedInvoice.status === "Draft" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => markAsSent(selectedInvoice)}
-                      >
-                        <FileText className="h-3.5 w-3.5 mr-1" />
-                        Mark as Sent
-                      </Button>
-                    )}
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <Printer className="h-3.5 w-3.5 mr-1" />
-                          PDF/Print
-                          <ChevronDown className="h-3 w-3 ml-1" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuItem
-                          onClick={() => printInvoice(selectedInvoice)}
-                        >
-                          <Printer className="h-4 w-4 mr-2" />
-                          Print
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => downloadPdf(selectedInvoice)}
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Download PDF
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    {selectedInvoice.status !== "Paid" &&
-                      selectedInvoice.status !== "Void" && (
+                {/* Right panel: Details preview */}
+                {selectedInvoice && (
+                  <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
+                    <div className="flex min-h-[48px] items-center gap-1 border-b border-slate-100 px-4 py-2 shrink-0 bg-slate-50/50">
+                      {["Draft", "Sent"].includes(selectedInvoice.status) && (
                         <Button
+                          variant="outline"
                           size="sm"
+                          className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50"
                           onClick={() =>
                             router.push(
-                              `/sales/payments-received/new?invoiceId=${selectedInvoice._id}`,
+                              `/sales/invoices/${selectedInvoice._id}/edit`,
                             )
                           }
                         >
-                          <CreditCard className="h-3.5 w-3.5 mr-1" />
-                          Record Payment
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          Edit
                         </Button>
                       )}
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        router.push(`/sales/invoices/${selectedInvoice._id}`)
-                      }
-                    >
-                      <Maximize2 className="h-3.5 w-3.5 mr-1" />
-                      Open Full Detail
-                    </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50"
+                        onClick={() =>
+                          router.push(
+                            `/sales/invoices/${selectedInvoice._id}/send-email`,
+                          )
+                        }
+                      >
+                        <Send className="h-3.5 w-3.5 mr-1" />
+                        Send Email
+                      </Button>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {selectedInvoice.status !== "Void" && (
-                          <DropdownMenuItem
-                            onClick={() => voidInvoice(selectedInvoice)}
-                          >
-                            Void Invoice
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => deleteInvoice(selectedInvoice)}
+                      {selectedInvoice.status === "Draft" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50"
+                          onClick={() => markAsSent(selectedInvoice)}
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Invoice
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <FileText className="h-3.5 w-3.5 mr-1" />
+                          Mark as Sent
+                        </Button>
+                      )}
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-auto h-8 w-8"
-                      onClick={() => setSelectedId(null)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50">
+                            <Printer className="h-3.5 w-3.5 mr-1" />
+                            PDF/Print
+                            <ChevronDown className="h-3 w-3 ml-1" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem
+                            onClick={() => printInvoice(selectedInvoice)}
+                          >
+                            <Printer className="h-4 w-4 mr-2 text-slate-500" />
+                            Print
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => downloadPdf(selectedInvoice)}
+                          >
+                            <Download className="h-4 w-4 mr-2 text-slate-500" />
+                            Download PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
 
-                  <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50 p-5">
-                    <div className="mx-auto max-w-4xl rounded-lg border bg-white shadow-sm">
-                      {previewData && (
-                        <>
-                          <div className="border-b p-6">
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Tax Invoice
+                      {selectedInvoice.status !== "Paid" &&
+                        selectedInvoice.status !== "Void" && (
+                          <Button
+                            size="sm"
+                            className="h-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                            onClick={() =>
+                              router.push(
+                                `/sales/payments-received/new?invoiceId=${selectedInvoice._id}`,
+                              )
+                            }
+                          >
+                            <CreditCard className="h-3.5 w-3.5 mr-1" />
+                            Record Payment
+                          </Button>
+                        )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50"
+                        onClick={() =>
+                          router.push(`/sales/invoices/${selectedInvoice._id}`)
+                        }
+                      >
+                        <Maximize2 className="h-3.5 w-3.5 mr-1" />
+                        Open Full Detail
+                      </Button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="icon" className="h-8 w-8 border-slate-200 text-slate-600 hover:bg-slate-50">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {selectedInvoice.status !== "Void" && (
+                            <DropdownMenuItem
+                              onClick={() => voidInvoice(selectedInvoice)}
+                            >
+                              Void Invoice
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="text-rose-600 hover:bg-rose-50"
+                            onClick={() => deleteInvoice(selectedInvoice)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Invoice
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="ml-auto h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                        onClick={() => setSelectedId(null)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/50 p-6">
+                      <div className="mx-auto max-w-4xl rounded-xl border border-slate-200/60 bg-white shadow-xs">
+                        {previewData && (
+                          <>
+                            <div className="border-b border-slate-100 p-6">
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-teal-700">
+                                    Tax Invoice
+                                  </div>
+                                  <div className="mt-1 flex items-center gap-2">
+                                    <h1 className="text-xl font-bold text-slate-900">
+                                      {previewData.invoiceNumber}
+                                    </h1>
+                                    {previewLoading && (
+                                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                                    )}
+                                  </div>
+                                  <div className="mt-1.5 text-sm font-medium text-slate-600">
+                                    {getCustomerName(previewData.customerId)}
+                                    {previewData.orderNumber ?
+                                      ` - Order ${previewData.orderNumber}`
+                                    : ""}
+                                  </div>
                                 </div>
-                                <div className="mt-1 flex items-center gap-2">
-                                  <h1 className="text-2xl font-bold">
-                                    {previewData.invoiceNumber}
-                                  </h1>
-                                  {previewLoading && (
-                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                <div className="text-right">
+                                  <div>
+                                    <StatusPill status={previewData.status} />
+                                  </div>
+                                  <div className="mt-3 text-xl font-bold text-slate-900 tabular-nums">
+                                    {formatCurrency(previewData.total)}
+                                  </div>
+                                  <div className="text-xs font-medium text-slate-500">
+                                    Balance Due:{" "}
+                                    {formatCurrency(previewData.balanceDue)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-6 grid gap-4 text-xs md:grid-cols-4 bg-slate-50/50 p-4 rounded-lg border border-slate-100">
+                                <div>
+                                  <div className="text-slate-400 font-medium">
+                                    Invoice Date
+                                  </div>
+                                  <div className="font-semibold text-slate-700 mt-0.5">
+                                    {formatDate(previewData.invoiceDate)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400 font-medium">
+                                    Due Date
+                                  </div>
+                                  <div className="font-semibold text-slate-700 mt-0.5">
+                                    {formatDate(previewData.dueDate)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400 font-medium">
+                                    Terms
+                                  </div>
+                                  <div className="font-semibold text-slate-700 mt-0.5">
+                                    {getPaymentTerms(previewData.paymentTermsId)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-400 font-medium">
+                                    Salesperson
+                                  </div>
+                                  <div className="font-semibold text-slate-700 mt-0.5">
+                                    {(
+                                      typeof previewData.salesPersonId ===
+                                      "object"
+                                    ) ?
+                                      previewData.salesPersonId?.name || "—"
+                                    : "—"}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="p-6">
+                              <div className="rounded-lg border border-slate-200 overflow-hidden">
+                                <Table>
+                                  <TableHeader className="bg-slate-50">
+                                    <TableRow>
+                                      <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Item & Description</TableHead>
+                                      <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                        Qty
+                                      </TableHead>
+                                      <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                        Rate
+                                      </TableHead>
+                                      <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                        Tax
+                                      </TableHead>
+                                      <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                        Amount
+                                      </TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {previewData.items.map((item, index) => (
+                                      <TableRow key={item._id || index} className="hover:bg-slate-50/50">
+                                        <TableCell>
+                                          <div className="font-semibold text-slate-800 text-sm">
+                                            {item.name}
+                                          </div>
+                                          {item.description && (
+                                            <div className="text-xs text-slate-400 mt-0.5">
+                                              {item.description}
+                                            </div>
+                                          )}
+                                        </TableCell>
+                                        <TableCell className="text-right text-sm text-slate-600 tabular-nums">
+                                          {Number(item.quantity || 0).toFixed(2)}
+                                        </TableCell>
+                                        <TableCell className="text-right text-sm text-slate-600 tabular-nums">
+                                          {Number(item.rate || 0).toFixed(2)}
+                                        </TableCell>
+                                        <TableCell className="text-right text-xs text-slate-500 tabular-nums">
+                                          {Number(item.taxPercent || 0) > 0 ?
+                                            `${Number(item.taxPercent || 0).toFixed(2)}%`
+                                          : "—"}
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-slate-800 text-sm tabular-nums">
+                                          {Number(item.amount || 0).toFixed(2)}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+
+                              <div className="mt-6 flex justify-end">
+                                <div className="w-80 space-y-2.5 text-xs text-slate-600">
+                                  <div className="flex justify-between">
+                                    <span>Sub Total</span>
+                                    <span className="font-semibold tabular-nums text-slate-800">
+                                      {Number(previewData.subTotal || 0).toFixed(
+                                        2,
+                                      )}
+                                    </span>
+                                  </div>
+                                  {getLineDiscount(previewData) > 0 && (
+                                    <div className="flex justify-between text-slate-500">
+                                      <span>Line Item Discount</span>
+                                      <span className="font-semibold tabular-nums text-rose-600">
+                                        -{" "}
+                                        {getLineDiscount(previewData).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {getLineTax(previewData) > 0 && (
+                                    <div className="flex justify-between text-slate-500">
+                                      <span>Line Item Tax</span>
+                                      <span className="font-semibold tabular-nums text-slate-800">
+                                        + {getLineTax(previewData).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {Number(previewData.discountAmount || 0) >
+                                    0 && (
+                                    <div className="flex justify-between text-slate-500">
+                                      <span>Discount</span>
+                                      <span className="font-semibold tabular-nums text-rose-600">
+                                        -{" "}
+                                        {Number(
+                                          previewData.discountAmount || 0,
+                                        ).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {Number(previewData.taxAmount || 0) > 0 && (
+                                    <div className="flex justify-between text-slate-500">
+                                      <span>{previewData.taxType}</span>
+                                      <span className="font-semibold tabular-nums text-slate-800">
+                                        {previewData.taxType === "TDS" ?
+                                          "- "
+                                        : "+ "}
+                                        {Number(
+                                          previewData.taxAmount || 0,
+                                        ).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {Number(previewData.adjustmentAmount || 0) !==
+                                    0 && (
+                                    <div className="flex justify-between text-slate-500">
+                                      <span>
+                                        {previewData.adjustmentLabel ||
+                                          "Adjustment"}
+                                      </span>
+                                      <span className="font-semibold tabular-nums text-slate-800">
+                                        {(
+                                          Number(previewData.adjustmentAmount) > 0
+                                        ) ?
+                                          "+ "
+                                        : ""}
+                                        {Number(
+                                          previewData.adjustmentAmount || 0,
+                                        ).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="border-t border-slate-100 pt-2.5">
+                                    <div className="flex justify-between text-sm font-bold text-slate-800">
+                                      <span>Total</span>
+                                      <span className="text-teal-700">
+                                        {formatCurrency(previewData.total)}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 flex justify-between font-semibold text-slate-700">
+                                      <span>Balance Due</span>
+                                      <span className="text-slate-800">
+                                        {formatCurrency(previewData.balanceDue)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {(previewData.customerNotes ||
+                                previewData.termsAndConditions) && (
+                                <div className="mt-8 grid gap-6 text-xs md:grid-cols-2 border-t border-slate-100 pt-6">
+                                  {previewData.customerNotes && (
+                                    <div>
+                                      <div className="font-semibold text-slate-800">Notes</div>
+                                      <p className="mt-1 whitespace-pre-wrap text-slate-500">
+                                        {previewData.customerNotes}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {previewData.termsAndConditions && (
+                                    <div>
+                                      <div className="font-semibold text-slate-800">
+                                        Terms & Conditions
+                                      </div>
+                                      <p className="mt-1 whitespace-pre-wrap text-slate-500">
+                                        {previewData.termsAndConditions}
+                                      </p>
+                                    </div>
                                   )}
                                 </div>
-                                <div className="mt-2 text-sm text-muted-foreground">
-                                  {getCustomerName(previewData.customerId)}
-                                  {previewData.orderNumber ?
-                                    ` - Order ${previewData.orderNumber}`
-                                  : ""}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <Badge
-                                  variant="outline"
-                                  className={statusColor[previewData.status]}
-                                >
-                                  {previewData.status}
-                                </Badge>
-                                <div className="mt-3 text-2xl font-bold tabular-nums">
-                                  {formatCurrency(previewData.total)}
-                                </div>
-                                <div className="text-sm text-muted-foreground">
-                                  Balance{" "}
-                                  {formatCurrency(previewData.balanceDue)}
-                                </div>
-                              </div>
+                              )}
                             </div>
-
-                            <div className="mt-6 grid gap-4 text-sm md:grid-cols-4">
-                              <div>
-                                <div className="text-muted-foreground">
-                                  Invoice Date
-                                </div>
-                                <div className="font-medium">
-                                  {formatDate(previewData.invoiceDate)}
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-muted-foreground">
-                                  Due Date
-                                </div>
-                                <div className="font-medium">
-                                  {formatDate(previewData.dueDate)}
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-muted-foreground">
-                                  Terms
-                                </div>
-                                <div className="font-medium">
-                                  {getPaymentTerms(previewData.paymentTermsId)}
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-muted-foreground">
-                                  Salesperson
-                                </div>
-                                <div className="font-medium">
-                                  {(
-                                    typeof previewData.salesPersonId ===
-                                    "object"
-                                  ) ?
-                                    previewData.salesPersonId?.name || "-"
-                                  : "-"}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="p-6">
-                            <div className="rounded-lg border">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead>Item & Description</TableHead>
-                                    <TableHead className="text-right">
-                                      Qty
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                      Rate
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                      Tax
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                      Amount
-                                    </TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {previewData.items.map((item, index) => (
-                                    <TableRow key={item._id || index}>
-                                      <TableCell>
-                                        <div className="font-medium">
-                                          {item.name}
-                                        </div>
-                                        {item.description && (
-                                          <div className="text-xs text-muted-foreground">
-                                            {item.description}
-                                          </div>
-                                        )}
-                                      </TableCell>
-                                      <TableCell className="text-right tabular-nums">
-                                        {Number(item.quantity || 0).toFixed(2)}
-                                      </TableCell>
-                                      <TableCell className="text-right tabular-nums">
-                                        {Number(item.rate || 0).toFixed(2)}
-                                      </TableCell>
-                                      <TableCell className="text-right text-xs tabular-nums">
-                                        {Number(item.taxPercent || 0) > 0 ?
-                                          `${Number(item.taxPercent || 0).toFixed(2)}%`
-                                        : "-"}
-                                      </TableCell>
-                                      <TableCell className="text-right font-medium tabular-nums">
-                                        {Number(item.amount || 0).toFixed(2)}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-
-                            <div className="mt-6 flex justify-end">
-                              <div className="w-80 space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span>Sub Total</span>
-                                  <span className="tabular-nums">
-                                    {Number(previewData.subTotal || 0).toFixed(
-                                      2,
-                                    )}
-                                  </span>
-                                </div>
-                                {getLineDiscount(previewData) > 0 && (
-                                  <div className="flex justify-between text-muted-foreground">
-                                    <span>Line Item Discount</span>
-                                    <span className="tabular-nums">
-                                      -{" "}
-                                      {getLineDiscount(previewData).toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
-                                {getLineTax(previewData) > 0 && (
-                                  <div className="flex justify-between text-muted-foreground">
-                                    <span>Line Item Tax</span>
-                                    <span className="tabular-nums">
-                                      + {getLineTax(previewData).toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
-                                {Number(previewData.discountAmount || 0) >
-                                  0 && (
-                                  <div className="flex justify-between text-muted-foreground">
-                                    <span>Discount</span>
-                                    <span className="tabular-nums">
-                                      -{" "}
-                                      {Number(
-                                        previewData.discountAmount || 0,
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
-                                {Number(previewData.taxAmount || 0) > 0 && (
-                                  <div className="flex justify-between text-muted-foreground">
-                                    <span>{previewData.taxType}</span>
-                                    <span className="tabular-nums">
-                                      {previewData.taxType === "TDS" ?
-                                        "- "
-                                      : "+ "}
-                                      {Number(
-                                        previewData.taxAmount || 0,
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
-                                {Number(previewData.adjustmentAmount || 0) !==
-                                  0 && (
-                                  <div className="flex justify-between text-muted-foreground">
-                                    <span>
-                                      {previewData.adjustmentLabel ||
-                                        "Adjustment"}
-                                    </span>
-                                    <span className="tabular-nums">
-                                      {(
-                                        Number(previewData.adjustmentAmount) > 0
-                                      ) ?
-                                        "+ "
-                                      : ""}
-                                      {Number(
-                                        previewData.adjustmentAmount || 0,
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
-                                <div className="border-t pt-2">
-                                  <div className="flex justify-between text-base font-bold">
-                                    <span>Total</span>
-                                    <span>
-                                      {formatCurrency(previewData.total)}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 flex justify-between font-semibold">
-                                    <span>Balance Due</span>
-                                    <span>
-                                      {formatCurrency(previewData.balanceDue)}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {(previewData.customerNotes ||
-                              previewData.termsAndConditions) && (
-                              <div className="mt-8 grid gap-4 text-sm md:grid-cols-2">
-                                {previewData.customerNotes && (
-                                  <div>
-                                    <div className="font-semibold">Notes</div>
-                                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                                      {previewData.customerNotes}
-                                    </p>
-                                  </div>
-                                )}
-                                {previewData.termsAndConditions && (
-                                  <div>
-                                    <div className="font-semibold">
-                                      Terms & Conditions
-                                    </div>
-                                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                                      {previewData.termsAndConditions}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          }
+                )}
+              </div>
+            }
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>

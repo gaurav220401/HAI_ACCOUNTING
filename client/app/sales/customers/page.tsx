@@ -774,7 +774,7 @@ export default function CustomersPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -842,7 +842,7 @@ export default function CustomersPage() {
                   <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
                 </Button>
 
-                <Button size="sm" className="gap-1.5" onClick={() => router.push("/sales/customers/new")}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold gap-1.5" onClick={() => router.push("/sales/customers/new")}>
                   <Plus className="mr-1 h-4 w-4" />
                   New Customer
                 </Button>
@@ -983,7 +983,7 @@ export default function CustomersPage() {
                     className={cn(
                       "w-full border-l-2 px-3 py-3 text-left transition-colors hover:bg-muted/20",
                       row.isActive === false && "bg-muted/60 text-muted-foreground",
-                      selectedId === row._id ? "border-l-primary bg-blue-50" : "border-l-transparent",
+                      selectedId === row._id ? "border-l-teal-600 bg-teal-50/40" : "border-l-transparent",
                     )}
                     onClick={() => void selectCustomer(row._id)}
                   >
@@ -1013,7 +1013,7 @@ export default function CustomersPage() {
                   {search ? "No customers match your search" : "No customers yet"}
                 </p>
                 {!search ? (
-                  <Button size="sm" onClick={() => router.push("/sales/customers/new")}>
+                  <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/customers/new")}>
                     <Plus className="mr-1 h-4 w-4" /> New Customer
                   </Button>
                 ) : null}
@@ -1047,7 +1047,7 @@ export default function CustomersPage() {
                             onClick={() => void selectCustomer(row._id)}
                           >
                             <td className="px-4 py-3">
-                              <span className="font-medium text-primary hover:underline">{row.displayName}</span>
+                              <span className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{row.displayName}</span>
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">{row.companyName || "-"}</td>
                             <td className="px-4 py-3 text-muted-foreground">
@@ -1121,9 +1121,9 @@ export default function CustomersPage() {
           
           <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
             {/* Info box */}
-            <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-md p-3">
-              <Info className="h-4.5 w-4.5 text-blue-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-blue-700 leading-normal">
+            <div className="flex items-start gap-2.5 bg-teal-50 border border-teal-100 rounded-md p-3">
+              <Info className="h-4.5 w-4.5 text-teal-600 mt-0.5 shrink-0" />
+              <p className="text-xs text-teal-800 leading-normal">
                 You can export your customer data in CSV, XLS or XLSX format.
               </p>
             </div>

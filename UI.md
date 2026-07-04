@@ -315,3 +315,69 @@ Whenever fetching data from the backend, implement exact UI-matching shimmer/ske
 ### Account Watchlist
 - Widgets styled as light cards with rounded corners: `rounded-xl border border-slate-100 bg-slate-50/30 p-4 transition-all hover:bg-slate-50/60`.
 - Shimmer skeletons added for loading state.
+
+---
+
+## 11. Component: Quotes UI Pages
+
+**Files:**
+- List Page: `client/app/sales/quotes/page.tsx`
+- Detail Page: `client/app/sales/quotes/[id]/page.tsx`
+- Form Pages: `client/app/sales/quotes/new/page.tsx`, `client/app/sales/quotes/[id]/edit/page.tsx`
+- Template Editor: `client/app/sales/quotes/[id]/edit-template/page.tsx`, `panels.tsx`
+- Email Modal: `client/app/sales/quotes/_components/send-email-modal.tsx`
+
+### List Page Rules
+- Double-line header: Section title `Sales` in teal-700, and current view (e.g. `All Quotes`) as subtitle.
+- Split screen details/list format on click, with detail card active selection styled as `bg-teal-50/50 border-l-[3px] border-l-teal-600`.
+- Status pills use `StatusPill` component with appropriate color schemes for (Draft, Sent, Accepted, Declined, Invoiced, Expired).
+
+### Detail Page Rules
+- Layout matches invoice detail pages, showing transaction actions at the top (Edit, Email, Print/PDF, Convert).
+- PDF customization side panel with a real-time updating live preview canvas.
+
+### Form Pages Rules
+- Form fields organized into a clean grid. Customer selection contains inline action to add new records.
+- Line items are dynamically looked up from inventory. Tax and discount options are laid out in a tabular form.
+- Save and submit buttons are styled in Teal primary actions (`bg-teal-600 hover:bg-teal-700 text-white`).
+
+### Template Editor & Email Rules
+- Dual column config workspace with a live mock quote render.
+- Form inputs, sliders, and toggle radio buttons styled using `accent-teal-600`.
+- Modals and dialog headers styled using a gradient background from `teal-600` to `teal-800`.
+
+---
+
+## 12. Component: Credit Notes, Delivery Challans, Recurring Invoices, and Retainer Invoices UI Pages
+
+**Files:**
+- Credit Notes: `client/app/sales/credit-notes/page.tsx`, `client/app/sales/credit-notes/[id]/edit/page.tsx`, `client/components/credit-note-form.tsx`
+- Delivery Challans: `client/app/sales/delivery-challans/page.tsx`, `client/app/sales/delivery-challans/[id]/page.tsx`, `client/app/sales/delivery-challans/new/page.tsx`, `client/app/sales/delivery-challans/[id]/edit/page.tsx`
+- Recurring Invoices: `client/app/sales/recurring-invoices/page.tsx`, `client/app/sales/recurring-invoices/[id]/page.tsx`, `client/app/sales/recurring-invoices/_components/recurring-invoice-form.tsx`
+- Retainer Invoices: `client/app/sales/retainer-invoices/page.tsx`, `client/app/sales/retainer-invoices/new/page.tsx`, `client/app/sales/retainer-invoices/[id]/page.tsx`
+
+### Credit Notes & Delivery Challans
+- Status badges and ribbons styled using Teal-based color schemes (e.g. `bg-teal-50 text-teal-700 border-teal-300`, `bg-teal-600` for active ribbons, and `bg-teal-800` for table headers).
+- Loader components updated to use `border-teal-600` or `text-teal-600` instead of primary blue.
+- Bulk items and new item modals styled using `accent-teal-600` for radio/checkbox inputs and standard Teal primary colors (`bg-teal-600 hover:bg-teal-700 text-white font-semibold`) for action buttons.
+
+### Recurring & Retainer Invoices
+- Layout lists, profiles, and action menus updated to align with the Teal design theme.
+- Record payment, record refund, apply/unapply buttons, and next cycle previews styled using standard Teal primary actions (`bg-teal-600 hover:bg-teal-700 text-white`).
+- Breadcrumbs and internal hyperlinks updated to `text-teal-600` / `text-teal-700` and hover variants.
+
+---
+
+## 13. Component: Sales Orders UI Pages
+
+**Files:**
+- List Page: `client/app/sales/orders/page.tsx`
+- Detail Page: `client/app/sales/orders/[id]/page.tsx`
+- Form Pages: `client/app/sales/orders/new/page.tsx`, `client/app/sales/orders/[id]/edit/page.tsx`
+- Email Modal: `client/app/sales/orders/[id]/send-email/page.tsx`
+
+### Sales Orders Rules
+- All action buttons and icons (e.g. Convert to Invoice, Save Draft, Save and Send) styled in Teal primary actions (`bg-teal-600 hover:bg-teal-700 text-white`).
+- Form elements, inputs, and radio buttons use Teal color indicators (`accent-teal-600` and focus rings `focus:ring-teal-600/20`).
+- Status pills, badges, and loader spinners styled to follow the Teal theme (`border-teal-600` loader, `text-teal-700` highlights, `bg-teal-600 text-white border-teal-600` for active filters/labels).
+

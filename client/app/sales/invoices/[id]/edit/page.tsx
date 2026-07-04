@@ -473,7 +473,7 @@ export default function EditInvoicePage() {
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -524,7 +524,7 @@ export default function EditInvoicePage() {
               </Button>
               <Button
                 size="sm"
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 onClick={() => handleUpdate(false)}
                 disabled={saving}
               >
@@ -535,7 +535,7 @@ export default function EditInvoicePage() {
               </Button>
               <Button
                 size="sm"
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                 onClick={() => handleUpdate(true)}
                 disabled={saving}
               >
@@ -564,12 +564,12 @@ export default function EditInvoicePage() {
                       setCustomerId(v);
                     }}
                   >
-                    <SelectTrigger className="w-full h-11 border-slate-200 focus:ring-blue-500">
+                    <SelectTrigger className="w-full h-11 border-slate-200 focus:ring-teal-500">
                       <SelectValue placeholder="Select a customer" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__add_new">
-                        <span className="text-blue-600 font-bold">
+                        <span className="text-teal-600 font-bold">
                           + Add New Customer
                         </span>
                       </SelectItem>
@@ -591,7 +591,7 @@ export default function EditInvoicePage() {
                       <Input
                         value={invoiceNumber}
                         onChange={(e) => setInvoiceNumber(e.target.value)}
-                        className="h-11 border-slate-200 focus:ring-blue-500 font-mono"
+                        className="h-11 border-slate-200 focus:ring-teal-500 font-mono"
                       />
                       <Button
                         variant="outline"
@@ -609,7 +609,7 @@ export default function EditInvoicePage() {
                     <Input
                       value={orderNumber}
                       onChange={(e) => setOrderNumber(e.target.value)}
-                      className="h-11 border-slate-200 focus:ring-blue-500"
+                      className="h-11 border-slate-200 focus:ring-teal-500"
                       placeholder="e.g. SO-00001"
                     />
                   </div>
@@ -626,7 +626,7 @@ export default function EditInvoicePage() {
                       type="date"
                       value={invoiceDate}
                       onChange={(e) => setInvoiceDate(e.target.value)}
-                      className="h-11 border-slate-200 focus:ring-blue-500"
+                      className="h-11 border-slate-200 focus:ring-teal-500"
                     />
                   </div>
                   <div className="space-y-2">
@@ -637,7 +637,7 @@ export default function EditInvoicePage() {
                       type="date"
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
-                      className="h-11 border-slate-200 focus:ring-blue-500"
+                      className="h-11 border-slate-200 focus:ring-teal-500"
                     />
                   </div>
                 </div>
@@ -651,7 +651,7 @@ export default function EditInvoicePage() {
                       value={salesPersonId || undefined}
                       onValueChange={setSalesPersonId}
                     >
-                      <SelectTrigger className="w-full h-11 border-slate-200 focus:ring-blue-500">
+                      <SelectTrigger className="w-full h-11 border-slate-200 focus:ring-teal-500">
                         <SelectValue placeholder="Select Salesperson" />
                       </SelectTrigger>
                       <SelectContent>
@@ -671,7 +671,7 @@ export default function EditInvoicePage() {
                     <Input
                       value={referenceNumber}
                       onChange={(e) => setReferenceNumber(e.target.value)}
-                      className="h-11 border-slate-200 focus:ring-blue-500"
+                      className="h-11 border-slate-200 focus:ring-teal-500"
                       placeholder="Reference Number"
                     />
                   </div>
@@ -689,7 +689,7 @@ export default function EditInvoicePage() {
                 placeholder="Briefly describe the purpose of this invoice"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                className="h-11 border-slate-200 focus:ring-blue-500"
+                className="h-11 border-slate-200 focus:ring-teal-500"
               />
             </div>
 
@@ -701,7 +701,7 @@ export default function EditInvoicePage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                    className="text-xs font-bold text-teal-700 hover:text-teal-800 hover:bg-teal-50"
                   >
                     <ScanBarcode className="h-4 w-4 mr-1.5" /> Barcode Scanning
                   </Button>
@@ -885,10 +885,10 @@ export default function EditInvoicePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="font-bold border-dashed border-2 hover:bg-slate-50 h-10 px-6 border-slate-200"
+                  className="font-bold border-dashed border-2 hover:bg-slate-50 h-10 px-6 border-slate-200 text-teal-700 hover:text-teal-800 border-teal-200 hover:border-teal-300"
                   onClick={() => setLines((prev) => [...prev, newLine()])}
                 >
-                  <Plus className="h-4 w-4 mr-2 text-blue-600" /> Add New Row
+                  <Plus className="h-4 w-4 mr-2 text-teal-600" /> Add New Row
                 </Button>
                 <Button
                   variant="ghost"
@@ -910,7 +910,7 @@ export default function EditInvoicePage() {
                     Customer Notes
                   </Label>
                   <textarea
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all"
                     placeholder="Notes added here will be visible on the invoice"
                     value={customerNotes}
                     onChange={(e) => setCustomerNotes(e.target.value)}
@@ -921,7 +921,7 @@ export default function EditInvoicePage() {
                     Terms & Conditions
                   </Label>
                   <textarea
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all"
                     placeholder="Enter the terms and conditions of your business"
                     value={termsAndConditions}
                     onChange={(e) => setTermsAndConditions(e.target.value)}
@@ -981,7 +981,7 @@ export default function EditInvoicePage() {
                           setTaxType("none");
                           setTotalTaxId("");
                         }}
-                        className="accent-blue-600"
+                        className="accent-teal-600"
                       />
                       None
                     </label>
@@ -995,7 +995,7 @@ export default function EditInvoicePage() {
                           setTaxType("TDS");
                           setTotalTaxId("");
                         }}
-                        className="accent-blue-600"
+                        className="accent-teal-600"
                       />
                       TDS
                     </label>
@@ -1009,7 +1009,7 @@ export default function EditInvoicePage() {
                           setTaxType("TCS");
                           setTotalTaxId("");
                         }}
-                        className="accent-blue-600"
+                        className="accent-teal-600"
                       />
                       TCS
                     </label>
@@ -1123,7 +1123,7 @@ export default function EditInvoicePage() {
                   <div className="flex items-center justify-between">
                     <Badge
                       variant="outline"
-                      className="bg-blue-50 text-blue-700 border-blue-100 font-bold px-3 py-1"
+                      className="bg-teal-50 text-teal-700 border-teal-100 font-bold px-3 py-1"
                     >
                       {invoice.status}
                     </Badge>
@@ -1163,7 +1163,7 @@ export default function EditInvoicePage() {
               : "Save Changes"}
             </Button>
             <Button
-              className="px-8 font-bold bg-blue-600 hover:bg-blue-700"
+              className="px-8 font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={() => handleUpdate(true)}
               disabled={saving}
             >

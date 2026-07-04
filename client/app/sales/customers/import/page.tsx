@@ -606,7 +606,7 @@ export default function CustomerImportPage() {
       {/* Top Header */}
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <FileSpreadsheet className="h-5 w-5 text-blue-600" />
+          <FileSpreadsheet className="h-5 w-5 text-teal-600" />
           <h1 className="text-lg font-semibold text-slate-800">
             {step === 1 ? "Customers - Select File" : step === 2 ? "Customers - Map Fields" : "Customers - Preview"}
           </h1>
@@ -623,21 +623,21 @@ export default function CustomerImportPage() {
       <div className="bg-white border-b px-6 py-3 flex justify-center">
         <div className="flex items-center gap-12 max-w-2xl w-full justify-between">
           <div className="flex items-center gap-2">
-            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 1 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 1 ? "bg-teal-600 text-white" : "bg-slate-200 text-slate-600"}`}>
               {step > 1 ? <Check className="h-3.5 w-3.5" /> : "1"}
             </div>
             <span className={`text-sm font-medium ${step >= 1 ? "text-slate-900" : "text-slate-500"}`}>Configure</span>
           </div>
           <div className="h-px bg-slate-200 flex-1" />
           <div className="flex items-center gap-2">
-            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 2 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 2 ? "bg-teal-600 text-white" : "bg-slate-200 text-slate-600"}`}>
               {step > 2 ? <Check className="h-3.5 w-3.5" /> : "2"}
             </div>
             <span className={`text-sm font-medium ${step >= 2 ? "text-slate-900" : "text-slate-500"}`}>Map Fields</span>
           </div>
           <div className="h-px bg-slate-200 flex-1" />
           <div className="flex items-center gap-2">
-            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step === 3 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step === 3 ? "bg-teal-600 text-white" : "bg-slate-200 text-slate-600"}`}>
               3
             </div>
             <span className={`text-sm font-medium ${step === 3 ? "text-slate-900" : "text-slate-500"}`}>Preview</span>
@@ -657,7 +657,7 @@ export default function CustomerImportPage() {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all ${
-                isDragActive ? "border-blue-500 bg-blue-50/50" : "border-slate-300 bg-white hover:border-slate-400"
+                isDragActive ? "border-teal-500 bg-teal-50/40" : "border-slate-300 bg-white hover:border-slate-400"
               }`}
             >
               <input
@@ -686,19 +686,19 @@ export default function CustomerImportPage() {
             {/* Templates download links */}
             <p className="text-xs text-slate-500">
               Download a sample file ({" "}
-              <button onClick={() => handleDownloadSample("csv")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadSample("csv")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 CSV
               </button>{" "}
               •{" "}
-              <button onClick={() => handleDownloadSample("excel")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadSample("excel")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 Excel
               </button>{" "}
               ) or a blank template ({" "}
-              <button onClick={() => handleDownloadBlank("csv")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadBlank("csv")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 CSV
               </button>{" "}
               •{" "}
-              <button onClick={() => handleDownloadBlank("excel")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadBlank("excel")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 Excel
               </button>{" "}
               ) and compare it to your import file to ensure you have the file perfect for the import.
@@ -767,7 +767,7 @@ export default function CustomerImportPage() {
             </Card>
 
             <div className="flex items-center gap-3 pt-4 border-t">
-              <Button onClick={handleNextFromStep1} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Button onClick={handleNextFromStep1} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
                 Next
               </Button>
               <Button variant="outline" onClick={() => router.push("/sales/customers")} className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
@@ -781,7 +781,7 @@ export default function CustomerImportPage() {
           <div className="space-y-6">
             <Card className="p-6 bg-white space-y-4">
               <div className="flex items-center gap-2 text-sm text-slate-500">
-                <Info className="h-4 w-4 text-blue-500" />
+                <Info className="h-4 w-4 text-teal-600" />
                 <span>Map the columns in your CSV/Excel file to the corresponding fields in HAI Accounting.</span>
               </div>
 
@@ -856,7 +856,7 @@ export default function CustomerImportPage() {
                 id="saveMappingCheckbox"
                 checked={saveMapping}
                 onChange={(e) => setSaveMapping(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
               />
               <Label htmlFor="saveMappingCheckbox" className="text-sm text-slate-600 font-medium cursor-pointer">
                 Save these selections for use during future imports.
@@ -864,7 +864,7 @@ export default function CustomerImportPage() {
             </div>
 
             <div className="flex items-center gap-3 pt-4 border-t">
-              <Button onClick={handleNextFromStep2} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Button onClick={handleNextFromStep2} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
                 Next
               </Button>
               <Button variant="outline" onClick={() => setStep(1)} className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
@@ -934,8 +934,8 @@ export default function CustomerImportPage() {
                     </div>
                     {readyItems.length > 0 && (
                       <button
-                        onClick={() => setShowReadyDetails(!showReadyDetails)}
-                        className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                        onClick={() => void setShowReadyDetails(!showReadyDetails)}
+                        className="text-xs text-teal-700 font-semibold hover:text-teal-800 hover:underline flex items-center gap-1"
                       >
                         {showReadyDetails ? "Hide Details" : "View Details"}
                       </button>
@@ -993,7 +993,7 @@ export default function CustomerImportPage() {
                           Download skipped customers ({" "}
                           <button
                             onClick={downloadSkippedRowsCSV}
-                            className="text-blue-600 hover:underline font-semibold"
+                            className="text-teal-700 hover:text-teal-800 hover:underline font-semibold"
                           >
                             CSV
                           </button>
@@ -1002,8 +1002,8 @@ export default function CustomerImportPage() {
                       )}
                       {skippedItems.length > 0 && (
                         <button
-                          onClick={() => setShowSkippedDetails(!showSkippedDetails)}
-                          className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                          onClick={() => void setShowSkippedDetails(!showSkippedDetails)}
+                          className="text-xs text-teal-700 font-semibold hover:text-teal-800 hover:underline flex items-center gap-1"
                         >
                           {showSkippedDetails ? "Hide Details" : "View Details"}
                         </button>
@@ -1046,8 +1046,8 @@ export default function CustomerImportPage() {
                     </div>
                     {unmappedHeaders.length > 0 && (
                       <button
-                        onClick={() => setShowUnmappedDetails(!showUnmappedDetails)}
-                        className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                        onClick={() => void setShowUnmappedDetails(!showUnmappedDetails)}
+                        className="text-xs text-teal-700 font-semibold hover:text-teal-800 hover:underline flex items-center gap-1"
                       >
                         {showUnmappedDetails ? "Hide Details" : "View Details"}
                       </button>
@@ -1065,7 +1065,7 @@ export default function CustomerImportPage() {
                         ))}
                       </ul>
 
-                      <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-800 mt-4">
+                      <div className="bg-teal-50 border border-teal-200 rounded-md p-3 text-xs text-teal-900 mt-4">
                         Click the Previous/Back button if you want to match the above column header(s) or click the Import button to continue with the import.
                       </div>
                     </div>
@@ -1079,7 +1079,7 @@ export default function CustomerImportPage() {
                       <span>{importProgress}%</span>
                     </div>
                     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div className="bg-blue-600 h-full transition-all duration-150" style={{ width: `${importProgress}%` }} />
+                      <div className="bg-teal-600 h-full transition-all duration-150" style={{ width: `${importProgress}%` }} />
                     </div>
                   </div>
                 )}
@@ -1089,9 +1089,9 @@ export default function CustomerImportPage() {
                 <Button
                   onClick={handleConfirmImport}
                   disabled={isImporting || readyItems.length === 0}
-                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold gap-1.5"
                 >
-                  {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {isImporting ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : null}
                   <span>Import Customers ({readyItems.length})</span>
                 </Button>
                 <Button variant="outline" onClick={() => setStep(2)} disabled={isImporting} className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white">

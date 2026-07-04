@@ -37,13 +37,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { itemApi, type Item } from "@/lib/api/items";
@@ -61,7 +54,6 @@ import {
 import {
   quoteApi,
   type CreateQuoteInput,
-  type QuoteItem,
   type SendQuoteEmailInput,
 } from "@/lib/api/quotes";
 import { settingsApi, type SalesPerson, type Tax } from "@/lib/api/settings";
@@ -218,8 +210,6 @@ export default function NewQuotePage() {
   const [saving, setSaving] = useState(false);
   const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
-  const [sendingEmail, setSendingEmail] = useState(false);
-  const [attachments, setAttachments] = useState<File[]>([]);
   const [placeOfSupply, setPlaceOfSupply] = useState("");
 
   // Load master data
@@ -253,8 +243,6 @@ export default function NewQuotePage() {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup)
       router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
-
-
 
   // ─── Line item helpers ────────────────────────────────────────────
 
@@ -544,8 +532,8 @@ export default function NewQuotePage() {
 
   if (loading || orgLoading || !firebaseUser) {
     return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-svh items-center justify-center bg-white">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -553,25 +541,28 @@ export default function NewQuotePage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Sales <span className="mx-1">/</span>
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="font-semibold text-teal-700">Sales</span>
+              <span className="text-slate-400">/</span>
               <button
-                className="hover:underline"
+                type="button"
+                className="hover:underline text-slate-500 font-medium"
                 onClick={() => router.push("/sales/quotes")}
               >
                 Quotes
               </button>
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">New Quote</span>
-            </span>
+              <span className="text-slate-400">/</span>
+              <span className="font-semibold text-slate-700">New Quote</span>
+            </div>
           }
           actions={
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
+              className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50"
               onClick={() => router.push("/sales/quotes")}
             >
               <ArrowLeft className="h-4 w-4 mr-1" />
@@ -580,15 +571,18 @@ export default function NewQuotePage() {
           }
         />
 
-        <div className="flex flex-1 flex-col p-6 gap-6 max-w-6xl">
-          <h1 className="text-xl font-bold">New Quote</h1>
+        <div className="flex-1 overflow-auto p-6 max-w-6xl space-y-6">
+          <div>
+            <h1 className="text-lg font-bold text-slate-800">New Quote</h1>
+            <p className="text-xs text-slate-500">Create a new price quote for your customer.</p>
+          </div>
 
           {/* ═══ Header Fields ═══ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5 bg-slate-50/50 p-6 rounded-xl border border-slate-100">
             {/* Customer Name */}
             <div className="space-y-1.5">
-              <Label>
-                Customer Name<span className="text-red-500">*</span>
+              <Label className="text-xs text-slate-600 font-semibold">
+                Customer Name<span className="text-rose-500">*</span>
               </Label>
               <Select
                 value={customerId || undefined}
@@ -600,12 +594,12 @@ export default function NewQuotePage() {
                   setCustomerId(v);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="border-slate-200 focus-visible:ring-teal-600 h-9">
                   <SelectValue placeholder="Select or add a customer" />
                 </SelectTrigger>
                 <SelectContent position="popper">
                   <SelectItem value="__add_new">
-                    <span className="text-blue-600 font-medium">
+                    <span className="text-teal-600 font-semibold">
                       + Add a customer
                     </span>
                   </SelectItem>
@@ -616,10 +610,10 @@ export default function NewQuotePage() {
                   )}
                   {customers.map((c) => (
                     <SelectItem key={c._id} value={c._id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{c.displayName}</span>
+                      <div className="flex flex-col text-left">
+                        <span className="font-semibold text-slate-700">{c.displayName}</span>
                         {c.companyName && (
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-[10px] text-slate-400">
                             {c.companyName}
                           </span>
                         )}
@@ -635,15 +629,16 @@ export default function NewQuotePage() {
 
             {/* Quote # */}
             <div className="space-y-1.5">
-              <Label>
-                Quote#<span className="text-red-500">*</span>
+              <Label className="text-xs text-slate-600 font-semibold">
+                Quote#<span className="text-rose-500">*</span>
               </Label>
               <div className="flex gap-2">
                 <Input
                   value={quoteNumber}
                   onChange={(e) => setQuoteNumber(e.target.value)}
+                  className="border-slate-200 focus-visible:ring-teal-600 h-9"
                 />
-                <Button variant="outline" size="icon" className="shrink-0">
+                <Button variant="outline" size="icon" className="shrink-0 h-9 w-9 border-slate-200 text-slate-500">
                   <Settings className="h-4 w-4" />
                 </Button>
               </div>
@@ -651,40 +646,43 @@ export default function NewQuotePage() {
 
             {/* Reference # */}
             <div className="space-y-1.5">
-              <Label>Reference#</Label>
+              <Label className="text-xs text-slate-600 font-semibold">Reference#</Label>
               <Input
                 value={referenceNumber}
                 onChange={(e) => setReferenceNumber(e.target.value)}
+                className="border-slate-200 focus-visible:ring-teal-600 h-9"
               />
             </div>
 
             {/* Quote Date */}
             <div className="space-y-1.5">
-              <Label className="text-red-600">
-                Quote Date<span className="text-red-500">*</span>
+              <Label className="text-xs text-slate-600 font-semibold">
+                Quote Date<span className="text-rose-500">*</span>
               </Label>
               <Input
                 type="date"
                 value={quoteDate}
                 onChange={(e) => setQuoteDate(e.target.value)}
+                className="border-slate-200 focus-visible:ring-teal-600 h-9"
               />
             </div>
 
             {/* Expiry Date */}
             <div className="space-y-1.5">
-              <Label>Expiry Date</Label>
+              <Label className="text-xs text-slate-600 font-semibold">Expiry Date</Label>
               <Input
                 type="date"
                 value={expiryDate}
                 onChange={(e) => setExpiryDate(e.target.value)}
+                className="border-slate-200 focus-visible:ring-teal-600 h-9"
               />
             </div>
 
             {/* Salesperson */}
             <div className="space-y-1.5">
-              <Label>Salesperson</Label>
+              <Label className="text-xs text-slate-600 font-semibold">Salesperson</Label>
               <Select value={salesPersonId} onValueChange={setSalesPersonId}>
-                <SelectTrigger>
+                <SelectTrigger className="border-slate-200 focus-visible:ring-teal-600 h-9">
                   <SelectValue placeholder="Select or Add Salesperson" />
                 </SelectTrigger>
                 <SelectContent>
@@ -699,7 +697,7 @@ export default function NewQuotePage() {
             </div>
 
             <div className="space-y-1.5 flex flex-col justify-end">
-              <Label>Place Of Supply</Label>
+              <Label className="text-xs text-slate-600 font-semibold">Place Of Supply</Label>
               <LinkField
                 value={placeOfSupply}
                 onChange={setPlaceOfSupply}
@@ -709,50 +707,50 @@ export default function NewQuotePage() {
                 }))}
                 placeholder="Select Place of Supply"
                 clearable={true}
-                triggerClassName="h-9 w-full"
+                triggerClassName="h-9 w-full border-slate-200 focus-visible:ring-teal-600"
               />
             </div>
-
-            {/* Spacer */}
-            <div />
           </div>
 
-          <Separator />
+          <Separator className="bg-slate-100" />
 
           {/* Subject */}
-          <div className="space-y-1.5 max-w-xl">
-            <Label>Subject</Label>
+          <div className="space-y-1.5 max-w-2xl bg-slate-50/50 p-6 rounded-xl border border-slate-100">
+            <Label className="text-xs text-slate-600 font-semibold">Subject</Label>
             <Input
               placeholder="Let your customer know what this Quote is for"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
+              className="border-slate-200 focus-visible:ring-teal-600 h-9"
             />
           </div>
 
-          <Separator />
+          <Separator className="bg-slate-100" />
 
           {/* ═══ Item Table ═══ */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Item Table</h2>
-            </div>
+            <h2 className="text-sm font-bold text-slate-800">Item Table</h2>
 
-            <div className="rounded-lg border overflow-x-auto">
+            <div className="rounded-lg border border-slate-200 overflow-x-auto">
               <Table>
-                <TableHeader>
+                <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="min-w-[240px]">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide min-w-[240px]">
                       ITEM DETAILS
                     </TableHead>
-                    <TableHead className="w-[100px] text-right">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-[100px] text-right">
                       QUANTITY
                     </TableHead>
-                    <TableHead className="w-[180px] text-right">RATE</TableHead>
-                    <TableHead className="w-[100px] text-right">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-[180px] text-right">
+                      RATE
+                    </TableHead>
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-[100px] text-right">
                       DISCOUNT %
                     </TableHead>
-                    <TableHead className="w-[150px] text-right">TAX</TableHead>
-                    <TableHead className="w-[160px] text-right">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-[150px] text-right">
+                      TAX
+                    </TableHead>
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-[160px] text-right">
                       AMOUNT (EXCL. TAX)
                     </TableHead>
                     <TableHead className="w-10" />
@@ -785,17 +783,17 @@ export default function NewQuotePage() {
                               }
                             }}
                           >
-                            <SelectTrigger className="h-8 text-sm">
-                              <SelectValue placeholder="Type or click to select an item." />
+                            <SelectTrigger className="h-8 text-sm border-slate-200">
+                              <SelectValue placeholder="Select an item" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="__add_new">
-                                <span className="text-blue-600 font-medium">
+                                <span className="text-teal-600 font-semibold">
                                   + Add an item
                                 </span>
                               </SelectItem>
                               <SelectItem value="__custom">
-                                <span className="text-muted-foreground">
+                                <span className="text-slate-400">
                                   Custom item…
                                 </span>
                               </SelectItem>
@@ -809,7 +807,7 @@ export default function NewQuotePage() {
                           </Select>
                           {!line.itemId && (
                             <Input
-                              className="mt-1 h-7 text-xs"
+                              className="mt-1 h-7 text-xs border-slate-200"
                               placeholder="Item name"
                               value={line.name}
                               onChange={(e) =>
@@ -822,7 +820,7 @@ export default function NewQuotePage() {
                           <Input
                             type="number"
                             min={0}
-                            className="h-8 text-right text-sm"
+                            className="h-8 text-right text-sm border-slate-200"
                             data-quantity-key={line.key}
                             value={line.quantity}
                             onChange={(e) =>
@@ -835,14 +833,14 @@ export default function NewQuotePage() {
                           />
                         </TableCell>
                         <TableCell>
-                          <RateInput value={line.rate} className="h-8 text-right text-sm w-full font-medium" onChange={(val) => updateLine(line.key, "rate", val)} />
+                          <RateInput value={line.rate} className="h-8 text-right text-sm w-full font-medium border-slate-200" onChange={(val) => updateLine(line.key, "rate", val)} />
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
                             min={0}
                             max={100}
-                            className="h-8 text-right text-sm"
+                            className="h-8 text-right text-sm border-slate-200"
                             value={line.discountPercent}
                             onChange={(e) =>
                               updateLine(
@@ -872,7 +870,7 @@ export default function NewQuotePage() {
                               );
                             }}
                           >
-                            <SelectTrigger className="h-8 text-right text-sm">
+                            <SelectTrigger className="h-8 text-right text-sm border-slate-200">
                               <SelectValue placeholder="Select Tax" />
                             </SelectTrigger>
                             <SelectContent>
@@ -885,14 +883,14 @@ export default function NewQuotePage() {
                             </SelectContent>
                           </Select>
                         </TableCell>
-                        <TableCell className="text-right text-sm font-medium tabular-nums">
+                        <TableCell className="text-right text-sm font-semibold tabular-nums text-slate-700">
                           {decimalToFixed(afterDisc)}
                         </TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                             onClick={() => removeLine(line.key)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -908,6 +906,7 @@ export default function NewQuotePage() {
             <Button
               variant="outline"
               size="sm"
+              className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50"
               onClick={() => setLines((prev) => [...prev, newLine()])}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
@@ -915,26 +914,26 @@ export default function NewQuotePage() {
             </Button>
           </div>
 
-          <Separator />
+          <Separator className="bg-slate-100" />
 
           {/* ═══ Totals Section ═══ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50/20 p-6 rounded-xl border border-slate-100">
             {/* Left: Notes & Terms */}
             <div className="space-y-5">
               <div className="space-y-1.5">
-                <Label>Customer Notes</Label>
+                <Label className="text-xs text-slate-600 font-semibold">Customer Notes</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-teal-600"
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label>Terms & Conditions</Label>
+                <Label className="text-xs text-slate-600 font-semibold">Terms & Conditions</Label>
                 <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[100px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Enter the terms and conditions of your business to be displayed in your transaction"
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm min-h-[100px] resize-y focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  placeholder="Enter the terms and conditions of your business"
                   value={termsAndConditions}
                   onChange={(e) => setTermsAndConditions(e.target.value)}
                 />
@@ -942,23 +941,23 @@ export default function NewQuotePage() {
             </div>
 
             {/* Right: Totals */}
-            <div className="space-y-3">
+            <div className="space-y-3 bg-white p-6 rounded-xl border border-slate-100 shadow-2xs">
               {/* Sub Total */}
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Sub Total</span>
-                <span className="font-medium tabular-nums">
+              <div className="flex items-center justify-between text-sm text-slate-600">
+                <span>Sub Total</span>
+                <span className="font-semibold tabular-nums text-slate-800">
                   {decimalToFixed(subTotal)}
                 </span>
               </div>
 
               {/* Discount */}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm">Discount</span>
+              <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                <span>Discount</span>
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
                     min={0}
-                    className="h-8 w-20 text-right text-sm"
+                    className="h-8 w-20 text-right text-sm border-slate-200"
                     value={discountValue}
                     onChange={(e) =>
                       setDiscountValue(parseFloat(e.target.value) || 0)
@@ -970,7 +969,7 @@ export default function NewQuotePage() {
                       setDiscountType(v)
                     }
                   >
-                    <SelectTrigger className="h-8 w-16">
+                    <SelectTrigger className="h-8 w-16 border-slate-200">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -978,7 +977,7 @@ export default function NewQuotePage() {
                       <SelectItem value="amount">₹</SelectItem>
                     </SelectContent>
                   </Select>
-                  <span className="text-sm tabular-nums w-20 text-right">
+                  <span className="tabular-nums w-20 text-right font-semibold text-slate-800">
                     {decimalToFixed(discountAmount)}
                   </span>
                 </div>
@@ -986,9 +985,9 @@ export default function NewQuotePage() {
 
               {/* Line Discounts */}
               {lineDiscountsSum > 0 && (
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="text-sm">Item Discounts</span>
-                  <span className="tabular-nums w-20 text-right">
+                <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                  <span>Item Discounts</span>
+                  <span className="tabular-nums w-20 text-right font-semibold text-rose-600">
                     - {decimalToFixed(lineDiscountsSum)}
                   </span>
                 </div>
@@ -998,25 +997,25 @@ export default function NewQuotePage() {
               {lineTaxesSum > 0 && (
                 <>
                   {taxBreakdown.cgst > 0 && (
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-sm">CGST</span>
-                      <span className="tabular-nums w-20 text-right">
+                    <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                      <span>CGST</span>
+                      <span className="tabular-nums w-20 text-right font-semibold text-slate-800">
                         {decimalToFixed(taxBreakdown.cgst)}
                       </span>
                     </div>
                   )}
                   {taxBreakdown.sgst > 0 && (
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-sm">SGST</span>
-                      <span className="tabular-nums w-20 text-right">
+                    <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                      <span>SGST</span>
+                      <span className="tabular-nums w-20 text-right font-semibold text-slate-800">
                         {decimalToFixed(taxBreakdown.sgst)}
                       </span>
                     </div>
                   )}
                   {taxBreakdown.igst > 0 && (
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-sm">IGST</span>
-                      <span className="tabular-nums w-20 text-right">
+                    <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                      <span>IGST</span>
+                      <span className="tabular-nums w-20 text-right font-semibold text-slate-800">
                         {decimalToFixed(taxBreakdown.igst)}
                       </span>
                     </div>
@@ -1025,9 +1024,9 @@ export default function NewQuotePage() {
               )}
 
               {/* TDS / TCS */}
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
                 <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1 text-sm">
+                  <label className="flex items-center gap-1">
                     <input
                       type="radio"
                       name="taxType"
@@ -1037,29 +1036,29 @@ export default function NewQuotePage() {
                         setTaxType("none");
                         setTotalTaxId("");
                       }}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     None
                   </label>
-                  <label className="flex items-center gap-1 text-sm">
+                  <label className="flex items-center gap-1">
                     <input
                       type="radio"
                       name="taxType"
                       value="TDS"
                       checked={taxType === "TDS"}
                       onChange={() => setTaxType("TDS")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TDS
                   </label>
-                  <label className="flex items-center gap-1 text-sm">
+                  <label className="flex items-center gap-1">
                     <input
                       type="radio"
                       name="taxType"
                       value="TCS"
                       checked={taxType === "TCS"}
                       onChange={() => setTaxType("TCS")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TCS
                   </label>
@@ -1077,7 +1076,7 @@ export default function NewQuotePage() {
                       if (taxType === "none") setTaxType("TDS");
                     }}
                   >
-                    <SelectTrigger className="h-8 w-40">
+                    <SelectTrigger className="h-8 w-40 border-slate-200">
                       <SelectValue placeholder="Select a Tax" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1089,7 +1088,7 @@ export default function NewQuotePage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-sm tabular-nums w-20 text-right">
+                  <span className="tabular-nums w-20 text-right font-semibold text-slate-800">
                     {taxType === "TCS" ? "+" : taxType === "TDS" ? "-" : ""}{" "}
                     {decimalToFixed(taxAmount)}
                   </span>
@@ -1097,9 +1096,9 @@ export default function NewQuotePage() {
               </div>
 
               {/* Adjustment */}
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
                 <Input
-                  className="h-8 w-32 text-sm"
+                  className="h-8 w-32 border-slate-200"
                   value={adjustmentLabel}
                   onChange={(e) => setAdjustmentLabel(e.target.value)}
                 />
@@ -1107,50 +1106,52 @@ export default function NewQuotePage() {
                   <Input
                     type="number"
                     step="0.01"
-                    className="h-8 w-24 text-right text-sm"
+                    className="h-8 w-24 text-right text-sm border-slate-200"
                     value={adjustmentAmount}
                     onChange={(e) =>
                       setAdjustmentAmount(parseFloat(e.target.value) || 0)
                     }
                   />
-                  <span className="text-sm tabular-nums w-20 text-right">
+                  <span className="tabular-nums w-20 text-right font-semibold text-slate-800">
                     {decimalToFixed(adjustmentAmount)}
                   </span>
                 </div>
               </div>
 
-              <Separator />
+              <Separator className="my-2 bg-slate-100" />
 
               {/* Total */}
-              <div className="flex items-center justify-between text-base font-bold">
+              <div className="flex items-center justify-between text-base font-bold text-slate-800">
                 <span>Total ( ₹ )</span>
-                <span className="tabular-nums">{decimalToFixed(total)}</span>
+                <span className="tabular-nums text-teal-700">{decimalToFixed(total)}</span>
               </div>
             </div>
           </div>
 
-          <Separator />
+          <Separator className="bg-slate-100" />
 
           {/* ═══ Actions ═══ */}
           <div className="flex items-center gap-3 pb-8">
             <Button
               variant="outline"
               disabled={saving}
+              className="h-9 border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold"
               onClick={() => handleSave("Draft")}
             >
-              {saving ?
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              : null}
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Save as Draft
             </Button>
-            <Button disabled={saving} onClick={() => handleSave("Sent")}>
-              {saving ?
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              : null}
+            <Button
+              disabled={saving}
+              className="h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+              onClick={() => handleSave("Sent")}
+            >
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Save and Send
             </Button>
             <Button
               variant="ghost"
+              className="h-9 text-slate-500 hover:bg-slate-50"
               onClick={() => router.push("/sales/quotes")}
             >
               Cancel

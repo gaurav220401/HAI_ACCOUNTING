@@ -470,7 +470,7 @@ export default function NewSalesOrderPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -524,7 +524,7 @@ export default function NewSalesOrderPage() {
                 size="sm"
                 onClick={onSaveAndSend}
                 disabled={saving}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
               >
                 {saving ?
                   <Loader2 className="h-4 w-4 animate-spin mr-1" />
@@ -562,7 +562,7 @@ export default function NewSalesOrderPage() {
                     </SelectTrigger>
                     <SelectContent position="popper">
                       <SelectItem value="__add_new">
-                        <span className="text-blue-600 font-medium">
+                        <span className="text-teal-600 font-semibold">
                           + Add a customer
                         </span>
                       </SelectItem>
@@ -701,8 +701,9 @@ export default function NewSalesOrderPage() {
                   variant="outline"
                   size="sm"
                   onClick={addLine}
+                  className="border-teal-200 text-teal-700 hover:bg-teal-50 hover:text-teal-800"
                 >
-                  <Plus className="h-4 w-4 mr-1" />
+                  <Plus className="h-4 w-4 mr-1 text-teal-600" />
                   Add New Row
                 </Button>
               </div>
@@ -922,7 +923,7 @@ export default function NewSalesOrderPage() {
                             className="flex items-center justify-between text-xs"
                           >
                             <span className="text-muted-foreground flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-teal-600/40" />
                               {b.name}{" "}
                               <span className="text-[10px] opacity-70">
                                 [{b.rate}%]
@@ -951,7 +952,7 @@ export default function NewSalesOrderPage() {
                         <Input
                           value={shippingCharges}
                           onChange={(e) => setShippingCharges(e.target.value)}
-                          className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                          className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-teal-500/20"
                           placeholder="0.00"
                         />
                       </div>
@@ -968,7 +969,7 @@ export default function NewSalesOrderPage() {
                         <Input
                           value={adjustment}
                           onChange={(e) => setAdjustment(e.target.value)}
-                          className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                          className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-teal-500/20"
                           placeholder="0.00"
                         />
                       </div>
@@ -980,7 +981,7 @@ export default function NewSalesOrderPage() {
                           {(["none", "TDS", "TCS"] as const).map((t) => (
                             <label key={t} className={cn(
                               "flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors border",
-                              taxType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input hover:bg-muted"
+                              taxType === t ? "bg-teal-600 text-white border-teal-600" : "bg-background text-muted-foreground border-input hover:bg-muted"
                             )}>
                               <input
                                 type="radio"
@@ -1040,7 +1041,7 @@ export default function NewSalesOrderPage() {
                           Total
                         </span>
                         <div className="text-right">
-                          <span className="text-xl font-bold text-primary tabular-nums">
+                          <span className="text-xl font-bold text-teal-700 tabular-nums">
                             ₹{formatMoney(totals.total)}
                           </span>
                           <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">

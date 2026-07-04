@@ -48,7 +48,7 @@ const STATUS_FILTERS: Array<DeliveryChallanStatus | "All"> = [
 
 const statusColor: Record<DeliveryChallanStatus, string> = {
   Draft: "bg-gray-100 text-gray-700 border-gray-300",
-  Open: "bg-blue-50 text-blue-700 border-blue-300",
+  Open: "bg-teal-50 text-teal-700 border-teal-200",
   Delivered: "bg-green-50 text-green-700 border-green-300",
   Returned: "bg-red-50 text-red-700 border-red-300",
 };
@@ -121,7 +121,7 @@ export default function DeliveryChallansPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -173,6 +173,7 @@ export default function DeliveryChallansPage() {
               </Button>
               <Button
                 size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 onClick={() => router.push("/sales/delivery-challans/new")}
               >
                 <Plus className="h-4 w-4 mr-1" />
@@ -234,7 +235,7 @@ export default function DeliveryChallansPage() {
                       CREATE
                     </span>
                     <span className="text-muted-foreground">&rarr;</span>
-                    <span className="border rounded px-3 py-1.5 bg-blue-50 text-blue-700 border-blue-300 font-medium">
+                    <span className="border rounded px-3 py-1.5 bg-teal-50 text-teal-700 border-teal-200 font-medium">
                       OPEN
                     </span>
                     <span className="text-muted-foreground">&rarr;</span>
@@ -252,6 +253,7 @@ export default function DeliveryChallansPage() {
 
               <Button
                 onClick={() => router.push("/sales/delivery-challans/new")}
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
               >
                 <Plus className="h-4 w-4 mr-1" />
                 CREATE DELIVERY CHALLAN
@@ -284,7 +286,7 @@ export default function DeliveryChallansPage() {
                       <TableCell className="text-sm">
                         {formatDate(dc.challanDate)}
                       </TableCell>
-                      <TableCell className="text-sm font-medium text-blue-600">
+                      <TableCell className="text-sm font-medium text-teal-700 hover:text-teal-800 hover:underline">
                         {dc.challanNumber}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

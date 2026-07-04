@@ -481,7 +481,7 @@ function TxSection({
           <span className="text-base font-semibold">{title}</span>
         </CollapsibleTrigger>
         {onNew ? (
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-primary" onClick={onNew}>
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50/50" onClick={onNew}>
             <Plus className="mr-1 h-3.5 w-3.5" /> New
           </Button>
         ) : null}
@@ -1210,7 +1210,7 @@ export function CustomerDetailView({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm">
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
                 New Transaction
                 <ChevronDown className="ml-1 h-4 w-4" />
               </Button>
@@ -1291,7 +1291,7 @@ export function CustomerDetailView({
                     <p className="truncate font-semibold">{primaryContact.name || customer.displayName}</p>
                     <button
                       type="button"
-                      className="mt-1 text-sm text-primary hover:underline"
+                      className="mt-1 text-sm text-teal-600 hover:text-teal-700 hover:underline"
                       onClick={togglePortal}
                     >
                       {customer.portalEnabled ? "Disable Portal" : "Invite to Portal"}
@@ -1349,7 +1349,7 @@ export function CustomerDetailView({
                   <button
                     type="button"
                     onClick={() => router.push(`/sales/customers/${customer._id}/edit`)}
-                    className="text-primary"
+                    className="text-teal-600 hover:text-teal-700"
                     aria-label="Edit customer"
                   >
                     <Plus className="h-4 w-4" />
@@ -1393,7 +1393,7 @@ export function CustomerDetailView({
                 You can request your contact to directly update the GSTIN by sending an email.
                 <button
                   type="button"
-                  className="ml-1 text-primary hover:underline"
+                  className="ml-1 text-teal-600 hover:text-teal-700 hover:underline"
                   onClick={openEmailDialog}
                 >
                   Send email
@@ -1425,14 +1425,14 @@ export function CustomerDetailView({
                     <tbody>
                       <tr>
                         <td className="px-2 py-2">{currencyCodeWithName(customer.currency || "INR")}</td>
-                        <td className="px-2 py-2 font-semibold text-primary">{fmtCurrency(outstandingReceivables, customer.currency || "INR")}</td>
+                        <td className="px-2 py-2 font-semibold text-teal-750">{fmtCurrency(outstandingReceivables, customer.currency || "INR")}</td>
                         <td className="px-2 py-2 font-semibold">{fmtCurrency(unusedCredits, customer.currency || "INR")}</td>
                       </tr>
                     </tbody>
                   </table>
                   <button
                     type="button"
-                    className="mt-2 text-sm text-primary hover:underline"
+                    className="mt-2 text-sm text-teal-600 hover:text-teal-700 hover:underline"
                     onClick={() => setActiveTab("statement")}
                   >
                     View Opening Balance
@@ -1480,7 +1480,7 @@ export function CustomerDetailView({
                   <div className="flex items-center gap-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-teal-600 hover:text-teal-700 hover:underline">
                           {CHART_PERIOD_LABELS[chartPeriod]} <ChevronDown className="h-3.5 w-3.5" />
                         </button>
                       </DropdownMenuTrigger>
@@ -1489,7 +1489,7 @@ export function CustomerDetailView({
                           <DropdownMenuItem
                             key={value}
                             onClick={() => setChartPeriod(value)}
-                            className={chartPeriod === value ? "bg-primary/10 text-primary" : ""}
+                            className={chartPeriod === value ? "bg-teal-50 text-teal-700 font-semibold" : ""}
                           >
                             {label}
                           </DropdownMenuItem>
@@ -1499,20 +1499,20 @@ export function CustomerDetailView({
                     <span className="text-muted-foreground">|</span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-teal-600 hover:text-teal-700 hover:underline">
                           {chartBasis === "accrual" ? "Accrual" : "Cash"} <ChevronDown className="h-3.5 w-3.5" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
                           onClick={() => setChartBasis("accrual")}
-                          className={chartBasis === "accrual" ? "bg-primary/10 text-primary" : ""}
+                          className={chartBasis === "accrual" ? "bg-teal-50 text-teal-700" : ""}
                         >
                           Accrual
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setChartBasis("cash")}
-                          className={chartBasis === "cash" ? "bg-primary/10 text-primary" : ""}
+                          className={chartBasis === "cash" ? "bg-teal-50 text-teal-700" : ""}
                         >
                           Cash
                         </DropdownMenuItem>
@@ -1588,7 +1588,7 @@ export function CustomerDetailView({
                 onChange={(event) => setCommentText(event.target.value)}
               />
               <div className="flex items-center justify-end border-t px-3 py-2">
-                <Button size="sm" disabled={commentSaving || !commentText.trim()} onClick={() => void addComment()}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" disabled={commentSaving || !commentText.trim()} onClick={() => void addComment()}>
                   {commentSaving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
                   Add Comment
                 </Button>
@@ -1640,7 +1640,7 @@ export function CustomerDetailView({
                       {invoices.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-3 py-5 text-center text-sm text-muted-foreground">
-                            There are no invoices - <button type="button" className="text-primary hover:underline" onClick={() => openNewTransaction(`/sales/invoices/new?${newTransactionBase}`)}>Add New</button>
+                            There are no invoices - <button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => openNewTransaction(`/sales/invoices/new?${newTransactionBase}`)}>Add New</button>
                           </td>
                         </tr>
                       ) : (
@@ -1648,7 +1648,7 @@ export function CustomerDetailView({
                           <tr key={invoice._id} className="border-b last:border-0">
                             <td className="px-3 py-2">{fmtDate(invoice.invoiceDate)}</td>
                             <td className="px-3 py-2">
-                              <button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/invoices/${invoice._id}`)}>
+                              <button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => router.push(`/sales/invoices/${invoice._id}`)}>
                                 {invoice.invoiceNumber}
                               </button>
                             </td>
@@ -1682,7 +1682,7 @@ export function CustomerDetailView({
                       {payments.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="px-3 py-5 text-center text-sm text-muted-foreground">
-                            No payments have been received or recorded yet - <button type="button" className="text-primary hover:underline" onClick={() => openNewTransaction(`/sales/payments-received/new?${newTransactionBase}`)}>Add New</button>
+                            No payments have been received or recorded yet - <button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => openNewTransaction(`/sales/payments-received/new?${newTransactionBase}`)}>Add New</button>
                           </td>
                         </tr>
                       ) : (
@@ -1690,7 +1690,7 @@ export function CustomerDetailView({
                           <tr key={payment._id} className="border-b last:border-0">
                             <td className="px-3 py-2">{fmtDate(payment.payment_date)}</td>
                             <td className="px-3 py-2">
-                              <button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/payments-received/${payment._id}`)}>
+                              <button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => router.push(`/sales/payments-received/${payment._id}`)}>
                                 {payment.payment_number}
                               </button>
                             </td>
@@ -1728,7 +1728,7 @@ export function CustomerDetailView({
                         quotes.map((quote) => (
                           <tr key={quote._id} className="border-b last:border-0">
                             <td className="px-3 py-2">{fmtDate(quote.quoteDate)}</td>
-                            <td className="px-3 py-2"><button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/quotes/${quote._id}`)}>{quote.quoteNumber}</button></td>
+                            <td className="px-3 py-2"><button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => router.push(`/sales/quotes/${quote._id}`)}>{quote.quoteNumber}</button></td>
                             <td className="px-3 py-2">{quote.referenceNumber || "-"}</td>
                             <td className="px-3 py-2 tabular-nums">{fmtCurrency(quote.total, customer.currency || "INR")}</td>
                             <td className="px-3 py-2">{quote.status}</td>
@@ -1762,7 +1762,7 @@ export function CustomerDetailView({
                         retainerInvoices.map((retainer) => (
                           <tr key={retainer._id} className="border-b last:border-0">
                             <td className="px-3 py-2">{fmtDate(retainer.retainer_date)}</td>
-                            <td className="px-3 py-2"><button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/retainer-invoices/${retainer._id}`)}>{retainer.retainer_number}</button></td>
+                            <td className="px-3 py-2"><button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => router.push(`/sales/retainer-invoices/${retainer._id}`)}>{retainer.retainer_number}</button></td>
                             <td className="px-3 py-2">{retainer.reference_number || "-"}</td>
                             <td className="px-3 py-2 tabular-nums">{fmtCurrency(retainer.total_amount, customer.currency || "INR")}</td>
                             <td className="px-3 py-2 tabular-nums">{fmtCurrency(retainer.amount_unapplied, customer.currency || "INR")}</td>
@@ -1796,7 +1796,7 @@ export function CustomerDetailView({
                         salesOrders.map((order) => (
                           <tr key={order._id} className="border-b last:border-0">
                             <td className="px-3 py-2">{fmtDate(order.orderDate)}</td>
-                            <td className="px-3 py-2"><button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/orders/${order._id}`)}>{order.salesOrderNumber}</button></td>
+                            <td className="px-3 py-2"><button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => router.push(`/sales/orders/${order._id}`)}>{order.salesOrderNumber}</button></td>
                             <td className="px-3 py-2">{order.reference || "-"}</td>
                             <td className="px-3 py-2 tabular-nums">{fmtCurrency(order.total, customer.currency || "INR")}</td>
                             <td className="px-3 py-2">{order.status}</td>
@@ -1829,7 +1829,7 @@ export function CustomerDetailView({
                         deliveryChallans.map((challan) => (
                           <tr key={challan._id} className="border-b last:border-0">
                             <td className="px-3 py-2">{fmtDate(challan.challanDate)}</td>
-                            <td className="px-3 py-2"><button type="button" className="text-primary hover:underline" onClick={() => router.push(`/sales/delivery-challans/${challan._id}`)}>{challan.challanNumber}</button></td>
+                            <td className="px-3 py-2"><button type="button" className="text-teal-600 hover:text-teal-700 hover:underline" onClick={() => router.push(`/sales/delivery-challans/${challan._id}`)}>{challan.challanNumber}</button></td>
                             <td className="px-3 py-2">{challan.referenceNumber || "-"}</td>
                             <td className="px-3 py-2 tabular-nums">{fmtCurrency(challan.total, customer.currency || "INR")}</td>
                             <td className="px-3 py-2">{challan.status}</td>
@@ -2155,7 +2155,7 @@ export function CustomerDetailView({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmailDialogOpen(false)} disabled={emailSending}>Cancel</Button>
-            <Button onClick={() => void sendEmail()} disabled={emailSending}>
+            <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void sendEmail()} disabled={emailSending}>
               {emailSending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
               Send
             </Button>
@@ -2191,7 +2191,7 @@ export function CustomerDetailView({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setLinkDialogOpen(false)} disabled={linkSaving}>Cancel</Button>
-            <Button onClick={() => void saveLinkVendor()} disabled={linkSaving}>
+            <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void saveLinkVendor()} disabled={linkSaving}>
               {linkSaving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-1.5 h-4 w-4" />}
               Link
             </Button>
@@ -2227,7 +2227,7 @@ export function CustomerDetailView({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setMergeDialogOpen(false)} disabled={mergeSaving}>Cancel</Button>
-            <Button onClick={() => void mergeCustomer()} disabled={mergeSaving}>
+            <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void mergeCustomer()} disabled={mergeSaving}>
               {mergeSaving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Copy className="mr-1.5 h-4 w-4" />}
               Merge
             </Button>

@@ -392,7 +392,7 @@ export function PaymentReceivedEditor({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
       </div>
     );
   }
@@ -588,7 +588,7 @@ export function PaymentReceivedEditor({
                   <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
                     <span>Apply to Invoices</span>
                     {mode === "create" ? (
-                      <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={clearApplied}>
+                      <Button variant="link" size="sm" className="h-auto p-0 text-xs text-teal-600 hover:text-teal-700" onClick={clearApplied}>
                         Clear Applied Amount
                       </Button>
                     ) : null}
@@ -775,14 +775,14 @@ export function PaymentReceivedEditor({
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Save as Draft
                 </Button>
-                <Button onClick={() => void saveCreate("PAID")} disabled={saving}>
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void saveCreate("PAID")} disabled={saving}>
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-white" /> : null}
                   Save as Paid
                 </Button>
               </>
             ) : (
-              <Button onClick={() => void saveEdit()} disabled={saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void saveEdit()} disabled={saving}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-white" /> : null}
                 Save Changes
               </Button>
             )}
