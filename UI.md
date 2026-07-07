@@ -381,3 +381,23 @@ Whenever fetching data from the backend, implement exact UI-matching shimmer/ske
 - Form elements, inputs, and radio buttons use Teal color indicators (`accent-teal-600` and focus rings `focus:ring-teal-600/20`).
 - Status pills, badges, and loader spinners styled to follow the Teal theme (`border-teal-600` loader, `text-teal-700` highlights, `bg-teal-600 text-white border-teal-600` for active filters/labels).
 
+---
+
+## 14. Component: Purchases Modules (Receives, Bills, Recurring Bills, Payments Made, Vendor Credits)
+
+**Files:**
+- Purchase Receives: `client/app/purchases/receives/page.tsx`, `client/app/purchases/receives/new/page.tsx`
+- Bills: `client/app/purchases/bills/page.tsx`, `client/components/bill-form.tsx`, `client/app/purchases/bills/new/page.tsx`, `client/app/purchases/bills/[id]/edit/page.tsx`
+- Recurring Bills: `client/app/purchases/recurring-bills/page.tsx`, `client/components/recurring-bill-form.tsx`, `client/app/purchases/recurring-bills/new/page.tsx`, `client/app/purchases/recurring-bills/[id]/edit/page.tsx`
+- Payments Made: `client/app/purchases/payments-made/page.tsx`, `client/app/purchases/payments-made/_components/payment-made-editor.tsx`, `client/app/purchases/payments-made/new/page.tsx`, `client/app/purchases/payments-made/[id]/edit/page.tsx`
+- Vendor Credits: `client/app/purchases/vendor-credits/page.tsx`, `client/components/vendor-credit-form.tsx`, `client/app/purchases/vendor-credits/new/page.tsx`, `client/app/purchases/vendor-credits/[id]/edit/page.tsx`
+
+### Redesign & Rules:
+- **Breadcrumbs**: Double-line layout header with small teal section title `Purchases` and the active page name/view as bold Slate subtitle.
+- **Teal Accent Theme**: All primary action buttons, active filters, active tab indicators, and active table item links/selections use standard Teal color schemes (`bg-teal-600 hover:bg-teal-700 text-white`, `text-teal-700 font-semibold`, etc.).
+- **Active Selections**: Compact list panels use `bg-teal-50/50 border-l-[3px] border-l-teal-600` for active indicators when split pane layout is open.
+- **Status Pills**: Replace inline raw status text badges with standard `StatusPill` with matching border, background, and dot indicator representing statuses (Paid: emerald; Unpaid/Open: amber; Overdue: rose; Draft/Void: slate).
+- **Loading Skeletons (Shimmer)**: Replace all central spinning wheel loader icons with visual table shimmers (`TableSkeleton`) and detail list shimmers (`ListSkeleton`) during data fetches.
+- **Form Layout**: Spacing rules are strictly followed (no sidebars forms center-aligned with balanced columns, inputs restricted in widths, buttons aligned at the bottom separated by a horizontal separator).
+
+

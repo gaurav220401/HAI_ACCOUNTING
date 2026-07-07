@@ -41,13 +41,13 @@ export default function NewPaymentMadePage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="h-svh overflow-hidden">
+      <SidebarInset className="h-svh overflow-hidden bg-white">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Payments Made / New</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
+              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">New Payment</span>
+            </div>
           }
         />
         <PaymentMadeEditor mode="create" initialBillId={billId} />

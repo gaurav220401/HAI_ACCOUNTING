@@ -918,7 +918,7 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           </div>
-          <Button size="icon" className="h-9 w-9 bg-primary"><Search className="h-4 w-4" /></Button>
+          <Button size="icon" className="h-9 w-9 bg-teal-600 hover:bg-teal-700 text-white"><Search className="h-4 w-4" /></Button>
         </div>
       </div>
 
@@ -1282,11 +1282,23 @@ export function RecurringBillFormInner({ mode, initialData, onSuccess, onCancel 
       </div>
 
       <div className="border-t pt-4 mt-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button size="sm" onClick={handleSubmit} disabled={saving}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+        <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-5"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
             Save
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCancel}
+            className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-5"
+          >
+            Cancel
           </Button>
         </div>
         <span className="text-xs text-muted-foreground">PDF Template: &apos;Standard Template&apos;</span>
