@@ -18,6 +18,7 @@ import {
   Search,
   X,  FileUp} from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
@@ -338,6 +339,87 @@ function VendorCreditStandardPreview({
             </p>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="flex-1 overflow-auto animate-pulse bg-white">
+      <div className="grid grid-cols-[110px_140px_1fr_120px_120px_120px_120px_36px] gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b">
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-20 bg-slate-200 rounded" />
+        <div className="h-3 w-32 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded ml-auto" />
+        <div className="h-3 w-16 bg-slate-200 rounded ml-auto" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-4 bg-slate-200 rounded" />
+      </div>
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <div key={idx} className="grid grid-cols-[110px_140px_1fr_120px_120px_120px_120px_36px] gap-3 items-center px-4 py-3.5 border-b border-slate-100">
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-32 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-4 bg-slate-100 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="animate-pulse divide-y divide-slate-100 bg-white">
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <div key={idx} className="px-4 py-3.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="h-3.5 w-32 bg-slate-200 rounded" />
+            <div className="h-3.5 w-16 bg-slate-200 rounded ml-auto" />
+          </div>
+          <div className="h-3 w-20 bg-slate-100 rounded" />
+          <div className="flex items-center justify-between">
+            <div className="h-3 w-16 bg-slate-100 rounded" />
+            <div className="h-3.5 w-12 bg-slate-150 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="animate-pulse p-6 bg-white space-y-6 h-full">
+      <div className="flex items-center justify-between border-b pb-4">
+        <div className="space-y-2">
+          <div className="h-6 w-48 bg-slate-200 rounded" />
+          <div className="h-3.5 w-24 bg-slate-100 rounded" />
+        </div>
+        <div className="h-12 w-32 bg-slate-200 rounded" />
+      </div>
+      <div className="space-y-4">
+        <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-36 bg-slate-200 rounded" />
+        </div>
+        <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-28 bg-slate-200 rounded" />
+        </div>
+        <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-40 bg-slate-200 rounded" />
+        </div>
+      </div>
+      <div className="space-y-2 pt-4">
+        <div className="h-4 w-28 bg-slate-200 rounded" />
+        <div className="h-20 bg-slate-50 border border-slate-100 rounded-md" />
       </div>
     </div>
   );
@@ -717,20 +799,28 @@ export default function VendorCreditsPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="bg-gray-50/40">
+      <SidebarInset className="bg-white">
         <PageHeader
-          breadcrumb={<span className="text-sm font-semibold">All Vendor Credits</span>}
+          breadcrumb={
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
+              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">Vendor Credits</span>
+            </div>
+          }
           actions={
             <div className="flex items-center gap-2">
               <div className="relative w-56">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-8 h-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
+                <Input className="pl-8 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
               </div>
-              <Button onClick={() => router.push("/purchases/vendor-credits/new")}>
+              <Button
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-3 text-sm"
+                onClick={() => router.push("/purchases/vendor-credits/new")}
+              >
                 <Plus className="h-4 w-4 mr-1" /> New
               </Button>
               <Link href="/batch-import?section=purchases&type=Vendor Credits&back=/purchases/vendor-credits">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white">
                   <FileUp className="h-3.5 w-3.5" /> Batch Import
                 </Button>
               </Link>
@@ -745,21 +835,28 @@ export default function VendorCreditsPage() {
                 <span>{fetching ? "Loading..." : `${filtered.length} credits`}</span>
                 <button type="button" onClick={() => setSelectedId(null)} className="hover:underline">Close</button>
               </div>
-              <div className="divide-y">
-                {filtered.map((c) => (
-                  <button
-                    key={c._id}
-                    type="button"
-                    className={`w-full text-left px-3 py-3 hover:bg-muted/40 ${selectedId === c._id ? "bg-blue-50" : ""}`}
-                    onClick={() => loadDetail(c._id)}
-                  >
-                    <div className="font-medium text-sm truncate">{getName(c.vendorId) || "Vendor"}</div>
-                    <div className="text-xs text-blue-600">{c.vendorCreditNumber}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{fmtDate(c.vendorCreditDate)}</div>
-                    <div className="text-sm font-semibold mt-1">{fmtCurrency(c.total)}</div>
-                  </button>
-                ))}
-              </div>
+              {fetching ? (
+                <ListSkeleton />
+              ) : (
+                <div className="divide-y">
+                  {filtered.map((c) => (
+                    <button
+                      key={c._id}
+                      type="button"
+                      className={cn(
+                        "w-full text-left px-3 py-3 hover:bg-slate-100/70 transition-colors",
+                        selectedId === c._id && "bg-teal-50/50 border-l-[3px] border-l-teal-600"
+                      )}
+                      onClick={() => loadDetail(c._id)}
+                    >
+                      <div className="font-semibold text-sm text-slate-900 truncate">{getName(c.vendorId) || "Vendor"}</div>
+                      <div className="text-xs text-teal-700 font-semibold hover:underline mt-0.5">{c.vendorCreditNumber}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{fmtDate(c.vendorCreditDate)}</div>
+                      <div className="text-sm font-semibold text-slate-900 mt-1">{fmtCurrency(c.total)}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto bg-white">
@@ -1126,13 +1223,15 @@ export default function VendorCreditsPage() {
               )}
             </div>
           </div>
+        ) : fetching ? (
+          <TableSkeleton />
         ) : (
           <div className="h-[calc(100vh-120px)] border-t bg-white overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
-              <span>{fetching ? "Loading..." : `${filtered.length} vendor credits`}</span>
+              <span>{filtered.length} vendor credits</span>
               <Button size="icon" variant="ghost" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
             </div>
-            <div className="grid grid-cols-[1.1fr_1fr_1.5fr_1fr_1fr_1fr] px-4 py-2 text-xs uppercase text-muted-foreground bg-muted/30">
+            <div className="grid grid-cols-[1.1fr_1fr_1.5fr_1fr_1fr_1fr] px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b">
               <div>Date</div>
               <div>Credit Note#</div>
               <div>Vendor Name</div>
@@ -1142,25 +1241,44 @@ export default function VendorCreditsPage() {
             </div>
             <div className="divide-y">
               {filtered.map((credit) => (
-                <button key={credit._id} type="button" className="w-full text-left px-4 py-3 hover:bg-muted/30" onClick={() => loadDetail(credit._id)}>
+                <button
+                  key={credit._id}
+                  type="button"
+                  className="w-full text-left px-4 py-3.5 hover:bg-teal-50/10 transition-colors border-b border-slate-100"
+                  onClick={() => loadDetail(credit._id)}
+                >
                   <div className="grid grid-cols-[1.1fr_1fr_1.5fr_1fr_1fr_1fr] items-center text-sm gap-2">
-                    <div>{fmtDate(credit.vendorCreditDate)}</div>
-                    <div className="text-blue-600">{credit.vendorCreditNumber}</div>
-                    <div>{getName(credit.vendorId)}</div>
-                    <div>{credit.status}</div>
-                    <div className="text-right font-medium">{fmtCurrency(credit.total)}</div>
-                    <div className="text-right">{fmtCurrency(credit.balanceAmount)}</div>
+                    <div className="text-xs text-muted-foreground">{fmtDate(credit.vendorCreditDate)}</div>
+                    <div className="text-teal-700 font-semibold hover:underline cursor-pointer">{credit.vendorCreditNumber}</div>
+                    <div className="font-semibold text-slate-700">{getName(credit.vendorId)}</div>
+                    <div>
+                      <span className={cn(
+                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                        credit.status === "OPEN" && "bg-emerald-50 text-emerald-700 border-emerald-100",
+                        credit.status === "PARTIALLY_APPLIED" && "bg-teal-50 text-teal-700 border-teal-100",
+                        credit.status === "VOID" && "bg-slate-100 text-slate-500 border-slate-200",
+                        credit.status === "CLOSED" && "bg-slate-100 text-slate-600 border-slate-200",
+                        credit.status === "DRAFT" && "bg-amber-50 text-amber-700 border-amber-100"
+                      )}>
+                        <span className={cn(
+                          "h-1 w-1 rounded-full",
+                          credit.status === "OPEN" && "bg-emerald-500",
+                          credit.status === "PARTIALLY_APPLIED" && "bg-teal-500",
+                          credit.status === "VOID" && "bg-slate-400",
+                          credit.status === "CLOSED" && "bg-slate-500",
+                          credit.status === "DRAFT" && "bg-amber-500"
+                        )} />
+                        {credit.status}
+                      </span>
+                    </div>
+                    <div className="text-right font-semibold text-slate-900">{fmtCurrency(credit.total)}</div>
+                    <div className="text-right text-muted-foreground">{fmtCurrency(credit.balanceAmount)}</div>
                   </div>
                 </button>
               ))}
-              {!fetching && filtered.length === 0 && (
-                <div className="py-16 text-center text-sm text-muted-foreground">
+              {filtered.length === 0 && (
+                <div className="py-16 text-center text-sm text-muted-foreground bg-white">
                   No vendor credits yet. Create your first vendor credit.
-                </div>
-              )}
-              {fetching && (
-                <div className="py-16 flex items-center justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               )}
             </div>

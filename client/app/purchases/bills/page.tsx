@@ -1810,6 +1810,92 @@ function BillDetailPanel({
   );
 }
 
+function TableSkeleton() {
+  return (
+    <div className="flex-1 overflow-auto animate-pulse bg-white">
+      <div
+        className="grid text-[11px] uppercase tracking-wide text-slate-500 font-semibold border-b bg-slate-50 shrink-0"
+        style={{ gridTemplateColumns: "36px 90px 150px 130px 1fr 120px 100px 110px 36px" }}
+      >
+        <div className="px-3 py-2.5"><div className="h-3.5 w-3.5 bg-slate-200 rounded" /></div>
+        <div className="px-2 py-2.5"><div className="h-3 w-12 bg-slate-200 rounded" /></div>
+        <div className="px-2 py-2.5"><div className="h-3 w-16 bg-slate-200 rounded" /></div>
+        <div className="px-2 py-2.5"><div className="h-3 w-16 bg-slate-200 rounded" /></div>
+        <div className="px-2 py-2.5"><div className="h-3 w-28 bg-slate-200 rounded" /></div>
+        <div className="px-2 py-2.5"><div className="h-3 w-12 bg-slate-200 rounded" /></div>
+        <div className="px-2 py-2.5 text-right"><div className="h-3 w-16 bg-slate-200 rounded ml-auto" /></div>
+        <div className="px-2 py-2.5 text-right"><div className="h-3 w-16 bg-slate-200 rounded ml-auto" /></div>
+        <div className="px-3 py-2.5" />
+      </div>
+      {Array.from({ length: 5 }).map((_, idx) => (
+        <div
+          key={idx}
+          className="grid border-b border-slate-100 items-center shrink-0"
+          style={{ gridTemplateColumns: "36px 90px 150px 130px 1fr 120px 100px 110px 36px" }}
+        >
+          <div className="px-3 py-3.5"><div className="h-3.5 w-3.5 bg-slate-100 rounded" /></div>
+          <div className="px-2 py-3.5"><div className="h-3.5 w-16 bg-slate-100 rounded" /></div>
+          <div className="px-2 py-3.5"><div className="h-3.5 w-20 bg-slate-100 rounded" /></div>
+          <div className="px-2 py-3.5"><div className="h-3.5 w-16 bg-slate-100 rounded" /></div>
+          <div className="px-2 py-3.5"><div className="h-3.5 w-32 bg-slate-100 rounded" /></div>
+          <div className="px-2 py-3.5"><div className="h-3.5 w-12 bg-slate-100 rounded" /></div>
+          <div className="px-2 py-3.5 text-right"><div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" /></div>
+          <div className="px-2 py-3.5 text-right"><div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" /></div>
+          <div className="px-3 py-3.5" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="flex-1 overflow-y-auto animate-pulse bg-white divide-y divide-slate-100">
+      {Array.from({ length: 5 }).map((_, idx) => (
+        <div key={idx} className="px-4 py-3.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="h-3.5 w-28 bg-slate-200 rounded" />
+            <div className="h-3.5 w-16 bg-slate-200 rounded" />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-3 w-12 bg-slate-100 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="p-6 space-y-6 bg-white animate-pulse h-full">
+      <div className="flex items-center justify-between border-b pb-4">
+        <div className="flex gap-2">
+          <div className="h-8 w-16 bg-slate-200 rounded" />
+          <div className="h-8 w-16 bg-slate-200 rounded" />
+          <div className="h-8 w-8 bg-slate-200 rounded" />
+        </div>
+        <div className="h-4 w-32 bg-slate-200 rounded" />
+        <div className="h-8 w-8 bg-slate-200 rounded" />
+      </div>
+      <div className="grid grid-cols-2 gap-6 pb-6 border-b">
+        <div className="space-y-2">
+          <div className="h-6 w-36 bg-slate-200 rounded" />
+          <div className="h-4 w-20 bg-slate-100 rounded" />
+          <div className="h-4 w-24 bg-slate-100 rounded" />
+        </div>
+        <div className="h-16 w-32 bg-slate-200 rounded ml-auto" />
+      </div>
+      <div className="space-y-3">
+        <div className="h-4 w-24 bg-slate-200 rounded" />
+        <div className="h-8 w-full bg-slate-100 rounded" />
+        <div className="h-8 w-full bg-slate-100 rounded" />
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 function BillsPageContent() {
   const router = useRouter();
@@ -2201,51 +2287,54 @@ function BillsPageContent() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white">
         <div className="flex flex-col h-screen overflow-hidden">
           <PageHeader
             breadcrumb={
-              <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-base font-semibold hover:text-primary"
-                  >
-                    {filterStatus ? `${filterStatus} Bills` : "All Bills"}{" "}
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setFilterStatus("");
-                      setShowFilterDD(false);
-                    }}
-                  >
-                    All Bills
-                  </DropdownMenuItem>
-                  {(
-                    [
-                      "Draft",
-                      "Open",
-                      "Overdue",
-                      "Partially Paid",
-                      "Paid",
-                      "Void",
-                    ] as BillStatus[]
-                  ).map((s) => (
+              <div className="flex flex-col">
+                <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
+                <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-sm font-bold text-slate-900 leading-none mt-0.5 hover:text-teal-700 transition-colors"
+                    >
+                      {filterStatus ? `${filterStatus} Bills` : "All Bills"}{" "}
+                      <ChevronDown className="h-3 w-3 text-slate-400" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
                     <DropdownMenuItem
-                      key={s}
                       onClick={() => {
-                        setFilterStatus(s);
+                        setFilterStatus("");
                         setShowFilterDD(false);
                       }}
                     >
-                      {s}
+                      All Bills
                     </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    {(
+                      [
+                        "Draft",
+                        "Open",
+                        "Overdue",
+                        "Partially Paid",
+                        "Paid",
+                        "Void",
+                      ] as BillStatus[]
+                    ).map((s) => (
+                      <DropdownMenuItem
+                        key={s}
+                        onClick={() => {
+                          setFilterStatus(s);
+                          setShowFilterDD(false);
+                        }}
+                      >
+                        {s}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             }
             actions={
               <div className="flex items-center gap-1.5">
@@ -2255,7 +2344,7 @@ function BillsPageContent() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1 text-sm border-blue-200 text-blue-700"
+                        className="h-8 gap-1 text-sm border-teal-200 text-teal-700 hover:bg-teal-50"
                       >
                         {selectedIds.length} Selected{" "}
                         <ChevronDown className="h-3.5 w-3.5" />
@@ -2280,7 +2369,7 @@ function BillsPageContent() {
                 )}
                 <Button
                   size="sm"
-                  className="h-8 gap-1 text-sm bg-blue-600 hover:bg-blue-700"
+                  className="h-8 gap-1 text-sm bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
                   onClick={() => router.push("/purchases/bills/new")}
                 >
                   <Plus className="h-3.5 w-3.5" /> New
@@ -2463,14 +2552,11 @@ function BillsPageContent() {
                   <div className="px-2 py-2" />
                 </div>
               )}
-
               {/* List content */}
               <div className="flex-1 overflow-y-auto">
-                {fetching ?
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                : filtered.length === 0 && !search && !filterStatus ?
+                {fetching ? (
+                  selectedId ? <ListSkeleton /> : <TableSkeleton />
+                ) : filtered.length === 0 && !search && !filterStatus ? (
                   <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
                     <h2 className="text-xl font-semibold mb-2">
                       Start Managing Your Bills!
@@ -2479,7 +2565,7 @@ function BillsPageContent() {
                       Record bills from vendors and track payments easily.
                     </p>
                     <Button
-                      className="px-6 py-2 text-sm font-semibold uppercase tracking-wide bg-blue-600 hover:bg-blue-700"
+                      className="px-6 py-2 text-sm font-semibold uppercase tracking-wide bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
                       onClick={() => router.push("/purchases/bills/new")}
                     >
                       Create New Bill
@@ -2517,7 +2603,7 @@ function BillsPageContent() {
                       </div>
                     </div>
                   </div>
-                : filtered.length === 0 ?
+                ) : filtered.length === 0 ?
                   <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                     <FileText className="h-8 w-8 text-muted-foreground/40" />
                     <p className="text-sm">No bills match your filter.</p>
@@ -2530,28 +2616,38 @@ function BillsPageContent() {
                         key={b._id}
                         type="button"
                         className={cn(
-                          "w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors",
+                          "w-full text-left px-4 py-3 hover:bg-slate-100/70 transition-colors",
                           selectedId === b._id &&
-                            "bg-blue-50 border-l-2 border-l-primary",
+                            "bg-teal-50/50 border-l-[3px] border-l-teal-600",
                         )}
                         onClick={() => setSelectedId(b._id)}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <div className="font-medium text-sm text-foreground truncate">{getName(b.vendorId) || "—"}</div>
+                            <div className="font-semibold text-sm text-foreground truncate">{getName(b.vendorId) || "—"}</div>
                             <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
                               {b.billNumber} • {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>
-                            <div
-                              className={cn(
-                                "text-xs font-medium mt-0.5 uppercase tracking-wide",
-                                statusColor[b.status],
-                              )}
-                            >
-                              {getBillStatusLabel(b)}
+                            <div className="mt-1">
+                              <span className={cn(
+                                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                                b.status === "Paid" && "bg-emerald-50 text-emerald-700 border-emerald-100",
+                                (b.status === "Open" || b.status === "Partially Paid") && "bg-amber-50 text-amber-700 border-amber-100",
+                                b.status === "Overdue" && "bg-rose-50 text-rose-600 border-rose-100",
+                                (b.status === "Draft" || b.status === "Void") && "bg-slate-100 text-slate-500 border-slate-200"
+                              )}>
+                                <span className={cn(
+                                  "h-1 w-1 rounded-full",
+                                  b.status === "Paid" && "bg-emerald-500",
+                                  (b.status === "Open" || b.status === "Partially Paid") && "bg-amber-500",
+                                  b.status === "Overdue" && "bg-rose-500",
+                                  (b.status === "Draft" || b.status === "Void") && "bg-slate-400"
+                                )} />
+                                {getBillStatusLabel(b)}
+                              </span>
                             </div>
                           </div>
-                          <div className="text-sm font-semibold shrink-0">
+                          <div className="text-sm font-semibold shrink-0 text-slate-900">
                             ₹{fmtCur(b.total)}
                           </div>
                         </div>
@@ -2563,7 +2659,7 @@ function BillsPageContent() {
                     {filtered.map((b) => (
                       <div
                         key={b._id}
-                        className="grid items-center border-b hover:bg-muted/20 cursor-pointer transition-colors text-sm group"
+                        className="grid items-center border-b border-slate-100 hover:bg-teal-50/30 cursor-pointer transition-colors text-sm group"
                         style={{
                           gridTemplateColumns:
                             "36px 90px 150px 130px 1fr 120px 100px 110px 36px",
@@ -2586,20 +2682,30 @@ function BillsPageContent() {
                         <div className="px-2 py-2.5 text-muted-foreground text-xs" suppressHydrationWarning>
                           {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </div>
-                        <div className="px-2 py-2.5 text-primary font-medium">
+                        <div className="px-2 py-2.5 text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                           {b.billNumber}
                         </div>
                         <div className="px-2 py-2.5 text-muted-foreground">
                           {b.referenceNumber || ""}
                         </div>
-                        <div className="px-2 py-2.5">{getName(b.vendorId)}</div>
-                        <div
-                          className={cn(
-                            "px-2 py-2.5 text-xs font-medium uppercase tracking-wide",
-                            statusColor[b.status],
-                          )}
-                        >
-                          {getBillStatusLabel(b)}
+                        <div className="px-2 py-2.5 font-medium text-slate-700">{getName(b.vendorId)}</div>
+                        <div className="px-2 py-2.5">
+                          <span className={cn(
+                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                            b.status === "Paid" && "bg-emerald-50 text-emerald-700 border-emerald-100",
+                            (b.status === "Open" || b.status === "Partially Paid") && "bg-amber-50 text-amber-700 border-amber-100",
+                            b.status === "Overdue" && "bg-rose-50 text-rose-600 border-rose-100",
+                            (b.status === "Draft" || b.status === "Void") && "bg-slate-100 text-slate-500 border-slate-200"
+                          )}>
+                            <span className={cn(
+                              "h-1 w-1 rounded-full",
+                              b.status === "Paid" && "bg-emerald-500",
+                              (b.status === "Open" || b.status === "Partially Paid") && "bg-amber-500",
+                              b.status === "Overdue" && "bg-rose-500",
+                              (b.status === "Draft" || b.status === "Void") && "bg-slate-400"
+                            )} />
+                            {getBillStatusLabel(b)}
+                          </span>
                         </div>
                         <div className="px-2 py-2.5 text-right font-medium">
                           ₹{fmtCur(b.total)}
@@ -2672,12 +2778,11 @@ function BillsPageContent() {
 
             {/* Right detail panel */}
             {selectedBill && (
-              <div className="flex-1 overflow-hidden">
-                {fetchingSelected && !selectedBillDetails ?
-                  <div className="h-full flex items-center justify-center bg-white">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                : <BillDetailPanel
+              <div className="flex-1 overflow-hidden bg-white">
+                {fetchingSelected && !selectedBillDetails ? (
+                  <DetailSkeleton />
+                ) : (
+                  <BillDetailPanel
                     bill={selectedBill}
                     onClose={() => setSelectedId(null)}
                     onStatusChange={handleStatusChange}
@@ -2697,7 +2802,7 @@ function BillsPageContent() {
                     orgEmail={orgEmail}
                     orgCurrency={orgCurrency}
                   />
-                }
+                )}
               </div>
             )}
           </div>

@@ -17,6 +17,47 @@ import { purchaseReceiveApi, type PurchaseReceiveFromPoLine } from "@/lib/api/pu
 
 type ReceiveLine = PurchaseReceiveFromPoLine & { quantityReceived: number };
 
+function FormSkeleton() {
+  return (
+    <div className="p-6 space-y-6 max-w-5xl animate-pulse">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="space-y-2">
+            <div className="h-4 w-28 bg-slate-200 rounded" />
+            <div className="h-9 w-full bg-slate-100 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-3">
+        <div className="h-4 w-24 bg-slate-200 rounded" />
+        <div className="border border-slate-100 rounded-lg overflow-hidden">
+          <div className="h-10 bg-slate-50 border-b" />
+          <div className="p-4 space-y-3">
+            <div className="h-8 bg-slate-100 rounded" />
+            <div className="h-8 bg-slate-100 rounded" />
+          </div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-4 w-16 bg-slate-200 rounded" />
+        <div className="h-20 w-full bg-slate-100 rounded" />
+      </div>
+      <div className="flex gap-2">
+        <div className="h-9 w-32 bg-slate-200 rounded" />
+        <div className="h-9 w-20 bg-slate-100 rounded" />
+      </div>
+    </div>
+  );
+}
+
+export default function NewPurchaseReceivePage() {
+  return (
+    <Suspense fallback={<FormSkeleton />}>
+      <NewPurchaseReceivePageContent />
+    </Suspense>
+  );
+}
+
 function NewPurchaseReceivePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -98,7 +139,7 @@ function NewPurchaseReceivePageContent() {
   }
 
   async function handleSave() {
-    if (!poData?.purchaseOrder?._id) {
+    if (!poData?.purchaseOrder?.id && !poData?.purchaseOrder?._id) {
       toast.error("Invalid purchase order context");
       return;
     }
@@ -112,7 +153,7 @@ function NewPurchaseReceivePageContent() {
     setSaving(true);
     try {
       await purchaseReceiveApi.create({
-        purchaseOrderId: poData.purchaseOrder._id,
+        purchaseOrderId: poData.purchaseOrder._id || poData.purchaseOrder.id,
         purchaseReceiveNumber,
         receivedDate,
         notes,
@@ -141,86 +182,84 @@ function NewPurchaseReceivePageContent() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col h-svh overflow-auto">
         <PageHeader
-          breadcrumb={<span className="text-sm font-medium">New Purchase Receive</span>}
+          breadcrumb={
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
+              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">New Purchase Receive</span>
+            </div>
+          }
         />
 
         {fetching ? (
-          <div className="h-[70vh] flex items-center justify-center text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading purchase order details...
-          </div>
+          <FormSkeleton />
         ) : (
-          <div className="p-4 space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label>Purchase Receive #</Label>
-                <Input value={purchaseReceiveNumber} onChange={(e) => setPurchaseReceiveNumber(e.target.value)} />
+          <div className="p-6 space-y-6 max-w-5xl">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Purchase Receive #</Label>
+                <Input value={purchaseReceiveNumber} onChange={(e) => setPurchaseReceiveNumber(e.target.value)} className="h-9 text-sm" />
               </div>
-              <div>
-                <Label>Received Date</Label>
-                <Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Received Date</Label>
+                <Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} className="h-9 text-sm" />
               </div>
-              <div>
-                <Label>Purchase Order #</Label>
-                <Input value={poData?.purchaseOrder?.purchaseOrderNumber || ""} disabled />
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Purchase Order #</Label>
+                <Input value={poData?.purchaseOrder?.purchaseOrderNumber || ""} disabled className="h-9 text-sm bg-slate-50" />
               </div>
             </div>
 
-            <div className="rounded border bg-white overflow-hidden">
-              <div className="grid text-xs uppercase tracking-wide text-muted-foreground bg-muted/30" style={{ gridTemplateColumns: "1fr 130px 130px 130px" }}>
-                <div className="px-3 py-2">Item</div>
-                <div className="px-3 py-2 text-right">Ordered</div>
-                <div className="px-3 py-2 text-right">Pending</div>
-                <div className="px-3 py-2 text-right">Receive Now</div>
-              </div>
-              {lines.map((line, idx) => (
-                <div key={`${line.purchaseOrderLineItemId || line.itemId || idx}`} className="grid border-t items-center text-sm" style={{ gridTemplateColumns: "1fr 130px 130px 130px" }}>
-                  <div className="px-3 py-2.5">
-                    <div className="font-medium">{line.name}</div>
-                    {line.description ? <div className="text-xs text-muted-foreground">{line.description}</div> : null}
-                  </div>
-                  <div className="px-3 py-2.5 text-right">{line.quantityOrdered}</div>
-                  <div className="px-3 py-2.5 text-right">{line.quantityToReceive}</div>
-                  <div className="px-3 py-2.5">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={line.quantityToReceive}
-                      value={line.quantityReceived}
-                      onChange={(e) => updateLine(idx, Number(e.target.value))}
-                      className="h-8 text-right"
-                    />
-                  </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-slate-700">Receive Items</Label>
+              <div className="rounded-lg border border-slate-100 bg-white overflow-hidden shadow-2xs">
+                <div className="grid text-[11px] font-semibold text-slate-500 uppercase tracking-wide border-b bg-slate-50" style={{ gridTemplateColumns: "1fr 130px 130px 130px" }}>
+                  <div className="px-4 py-2.5">Item</div>
+                  <div className="px-4 py-2.5 text-right">Ordered</div>
+                  <div className="px-4 py-2.5 text-right">Pending</div>
+                  <div className="px-4 py-2.5 text-right">Receive Now</div>
                 </div>
-              ))}
+                {lines.map((line, idx) => (
+                  <div key={`${line.purchaseOrderLineItemId || line.itemId || idx}`} className="grid border-t border-slate-100 items-center text-sm hover:bg-teal-50/10 transition-colors" style={{ gridTemplateColumns: "1fr 130px 130px 130px" }}>
+                    <div className="px-4 py-3">
+                      <div className="font-semibold text-slate-700">{line.name}</div>
+                      {line.description ? <div className="text-xs text-muted-foreground mt-0.5">{line.description}</div> : null}
+                    </div>
+                    <div className="px-4 py-3 text-right text-slate-600">{line.quantityOrdered}</div>
+                    <div className="px-4 py-3 text-right font-medium text-slate-700">{line.quantityToReceive}</div>
+                    <div className="px-4 py-3">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={line.quantityToReceive}
+                        value={line.quantityReceived}
+                        onChange={(e) => updateLine(idx, Number(e.target.value))}
+                        className="h-8 text-right text-sm"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="text-sm text-muted-foreground">Total quantity to receive now: <span className="font-semibold text-foreground">{totalReceivedQty}</span></div>
+            <div className="text-sm text-slate-500">Total quantity to receive now: <span className="font-semibold text-slate-900">{totalReceivedQty}</span></div>
 
-            <div>
-              <Label>Notes</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal receive notes" />
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Notes</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal receive notes..." className="text-sm min-h-[80px]" />
             </div>
 
-            <div className="flex gap-2">
-              <Button onClick={handleSave} disabled={saving}>
+            <div className="flex gap-3 border-t border-slate-100 pt-5">
+              <Button onClick={handleSave} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-5">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Save as Received
               </Button>
-              <Button variant="outline" onClick={() => router.push("/purchases/orders")}>Cancel</Button>
+              <Button variant="outline" onClick={() => router.push("/purchases/orders")} className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-5">Cancel</Button>
             </div>
           </div>
         )}
       </SidebarInset>
     </SidebarProvider>
-  );
-}
-
-export default function NewPurchaseReceivePage() {
-  return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading purchase receive form...</div>}>
-      <NewPurchaseReceivePageContent />
-    </Suspense>
   );
 }

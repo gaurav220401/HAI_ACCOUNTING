@@ -45,6 +45,55 @@ function getName(field: unknown): string {
   return "";
 }
 
+function ListSkeleton() {
+  return (
+    <div className="animate-pulse divide-y divide-slate-100 bg-white">
+      {Array.from({ length: 5 }).map((_, idx) => (
+        <div key={idx} className="px-4 py-3.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="h-3.5 w-32 bg-slate-200 rounded" />
+            <div className="h-3.5 w-16 bg-slate-200 rounded" />
+          </div>
+          <div className="h-3 w-24 bg-slate-100 rounded" />
+          <div className="flex items-center justify-between">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-3 w-16 bg-slate-100 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="flex-1 overflow-auto animate-pulse bg-white">
+      <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b">
+        <div className="h-3.5 w-3.5 bg-slate-200 rounded flex items-center justify-center mx-auto" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-20 bg-slate-200 rounded" />
+        <div className="h-3 w-12 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-12 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded ml-auto" />
+      </div>
+      {Array.from({ length: 5 }).map((_, idx) => (
+        <div key={idx} className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 items-center px-4 py-3.5 border-b border-slate-100">
+          <div className="h-3.5 w-3.5 bg-slate-100 rounded flex items-center justify-center mx-auto" />
+          <div className="h-3.5 w-24 bg-slate-100 rounded" />
+          <div className="h-3.5 w-32 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-12 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RecurringBillsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -153,19 +202,19 @@ function RecurringBillsPageContent() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="bg-gray-50/50">
+      <SidebarInset className="bg-white">
         <PageHeader
           breadcrumb={
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold">All Recurring Bills</span>
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
+              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">Recurring Bills</span>
             </div>
           }
           actions={
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className="gap-1"
+                className="gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-8 px-3"
                 onClick={() => router.push("/purchases/recurring-bills/new")}
               >
                 <Plus className="h-4 w-4" /> New
@@ -183,38 +232,53 @@ function RecurringBillsPageContent() {
             <div className="sticky top-0 bg-white border-b px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
               <span>{fetching ? "Loading..." : `${recs.length} Profiles`}</span>
             </div>
-            <div className="divide-y">
-              {recs.map((rec) => (
-                <button
-                  key={rec._id}
-                  type="button"
-                  className={cn(
-                    "w-full text-left px-4 py-3 hover:bg-gray-50",
-                    selectedId === rec._id && "bg-blue-50/60"
-                  )}
-                  onClick={() => setSelectedId(rec._id)}
-                >
-                  <div className="flex items-start gap-3">
-                    <input type="checkbox" aria-label={`Select ${rec.profileName}`} onClick={(e) => e.stopPropagation()} className="mt-1" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-medium text-gray-900 truncate">{getName(rec.vendorId) || "Vendor"}</div>
-                        <div className="text-sm font-semibold">{fmtCurrency(rec.total || 0)}</div>
+            {fetching ? (
+              <ListSkeleton />
+            ) : (
+              <div className="divide-y">
+                {recs.map((rec) => (
+                  <button
+                    key={rec._id}
+                    type="button"
+                    className={cn(
+                      "w-full text-left px-4 py-3 hover:bg-slate-100/70 transition-colors",
+                      selectedId === rec._id && "bg-teal-50/50 border-l-[3px] border-l-teal-600"
+                    )}
+                    onClick={() => setSelectedId(rec._id)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input type="checkbox" aria-label={`Select ${rec.profileName}`} onClick={(e) => e.stopPropagation()} className="mt-1" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold text-gray-900 truncate">{getName(rec.vendorId) || "Vendor"}</div>
+                          <div className="text-sm font-semibold">{fmtCurrency(rec.total || 0)}</div>
+                        </div>
+                        <div className="text-xs text-teal-700 font-semibold hover:underline cursor-pointer truncate mt-0.5">{rec.profileName}</div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                          <span>{freqLabel(rec)}</span>
+                          <span>Next Bill on {fmtDate(rec.nextBillDate)}</span>
+                        </div>
+                        <div className="mt-1">
+                          <span className={cn(
+                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                            rec.status === "Active" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"
+                          )}>
+                            <span className={cn(
+                              "h-1 w-1 rounded-full",
+                              rec.status === "Active" ? "bg-emerald-500" : "bg-amber-500"
+                            )} />
+                            {rec.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-xs text-blue-600 truncate">{rec.profileName}</div>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                        <span>{freqLabel(rec)}</span>
-                        <span>Next Bill on {fmtDate(rec.nextBillDate)}</span>
-                      </div>
-                      <div className={cn("text-[10px] uppercase font-semibold mt-1", statusStyle(rec.status))}>{rec.status}</div>
                     </div>
-                  </div>
-                </button>
-              ))}
-              {recs.length === 0 && !fetching && (
-                <div className="px-6 py-8 text-sm text-muted-foreground">No recurring bills</div>
-              )}
-            </div>
+                  </button>
+                ))}
+                {recs.length === 0 && (
+                  <div className="px-6 py-8 text-sm text-muted-foreground text-center">No recurring bills</div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 bg-white overflow-y-auto">
@@ -261,13 +325,13 @@ function RecurringBillsPageContent() {
                 <div className="mt-4 border-b">
                   <div className="flex gap-6 text-sm">
                     <button
-                      className={cn("pb-2", activeTab === "overview" && "border-b-2 border-primary text-primary")}
+                      className={cn("pb-2 transition-all", activeTab === "overview" && "border-b-2 border-teal-600 text-teal-700 font-semibold")}
                       onClick={() => setActiveTab("overview")}
                     >
                       Overview
                     </button>
                     <button
-                      className={cn("pb-2", activeTab === "activities" && "border-b-2 border-primary text-primary")}
+                      className={cn("pb-2 transition-all", activeTab === "activities" && "border-b-2 border-teal-600 text-teal-700 font-semibold")}
                       onClick={() => setActiveTab("activities")}
                     >
                       Recent Activities
@@ -278,13 +342,13 @@ function RecurringBillsPageContent() {
                 {activeTab === "overview" ? (
                   <div className="mt-4 space-y-6">
                     <div className="grid grid-cols-4 gap-4 text-sm">
-                      <div className="col-span-1 border rounded-lg p-4 flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold">
+                      <div className="col-span-1 border border-slate-100 rounded-lg p-4 flex items-center gap-3 bg-white shadow-2xs">
+                        <div className="h-10 w-10 rounded-full bg-teal-50 text-teal-700 border border-teal-100 flex items-center justify-center text-sm font-semibold">
                           {initials(getName(selectedRec.vendorId))}
                         </div>
                         <div>
                           <div className="text-xs text-muted-foreground">Vendor</div>
-                          <div className="font-semibold text-blue-600 truncate max-w-[160px]">{getName(selectedRec.vendorId)}</div>
+                          <div className="font-semibold text-teal-700 hover:text-teal-800 hover:underline cursor-pointer truncate max-w-[160px]">{getName(selectedRec.vendorId)}</div>
                         </div>
                       </div>
                       <div className="col-span-1 border rounded-lg p-4">
@@ -384,13 +448,15 @@ function RecurringBillsPageContent() {
             )}
           </div>
         </div>
+        ) : fetching ? (
+          <TableSkeleton />
         ) : (
         <div className="h-[calc(100vh-120px)] border-t bg-white overflow-y-auto">
           <div className="sticky top-0 bg-white border-b">
             <div className="px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
-              <span>{fetching ? "Loading..." : `${recs.length} Profiles`}</span>
+              <span>{recs.length} Profiles</span>
             </div>
-            <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-gray-50">
+            <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b">
               <div className="flex items-center justify-center">
                 <input type="checkbox" aria-label="Select all" />
               </div>
@@ -408,25 +474,36 @@ function RecurringBillsPageContent() {
               <button
                 key={rec._id}
                 type="button"
-                className="w-full text-left px-4 py-3 hover:bg-gray-50"
+                className="w-full text-left px-4 py-3.5 hover:bg-teal-50/10 transition-colors border-b border-slate-100"
                 onClick={() => setSelectedId(rec._id)}
               >
                 <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 items-center text-sm">
                   <div className="flex items-center justify-center">
                     <input type="checkbox" aria-label={`Select ${rec.profileName}`} onClick={(e) => e.stopPropagation()} />
                   </div>
-                  <div className="font-medium text-gray-900 truncate">{getName(rec.vendorId) || "Vendor"}</div>
-                  <div className="text-blue-600 truncate">{rec.profileName}</div>
-                  <div className="text-gray-700">{freqLabel(rec)}</div>
-                  <div className="text-gray-600">{fmtDate(rec.lastBillDate)}</div>
-                  <div className="text-gray-600">{fmtDate(rec.nextBillDate)}</div>
-                  <div className={cn("text-xs font-semibold uppercase", statusStyle(rec.status))}>{rec.status}</div>
-                  <div className="text-right font-semibold">{fmtCurrency(rec.total || 0)}</div>
+                  <div className="font-semibold text-slate-700 truncate">{getName(rec.vendorId) || "Vendor"}</div>
+                  <div className="text-teal-700 font-semibold hover:underline cursor-pointer truncate">{rec.profileName}</div>
+                  <div className="text-slate-600">{freqLabel(rec)}</div>
+                  <div className="text-slate-500">{fmtDate(rec.lastBillDate)}</div>
+                  <div className="text-slate-500">{fmtDate(rec.nextBillDate)}</div>
+                  <div className="flex items-center">
+                    <span className={cn(
+                      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                      rec.status === "Active" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"
+                    )}>
+                      <span className={cn(
+                        "h-1 w-1 rounded-full",
+                        rec.status === "Active" ? "bg-emerald-500" : "bg-amber-500"
+                      )} />
+                      {rec.status}
+                    </span>
+                  </div>
+                  <div className="text-right font-semibold text-slate-900">{fmtCurrency(rec.total || 0)}</div>
                 </div>
               </button>
             ))}
-            {recs.length === 0 && !fetching && (
-              <div className="px-6 py-8 text-sm text-muted-foreground">No recurring bills</div>
+            {recs.length === 0 && (
+              <div className="px-6 py-8 text-sm text-muted-foreground text-center bg-white">No recurring bills</div>
             )}
           </div>
         </div>

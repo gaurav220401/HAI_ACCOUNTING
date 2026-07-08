@@ -117,6 +117,86 @@ function buildInitialForm(): CreateFormState {
   };
 }
 
+function TableSkeleton() {
+  return (
+    <div className="flex-1 overflow-auto animate-pulse bg-white">
+      <div className="grid grid-cols-9 gap-4 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b">
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-32 bg-slate-200 rounded" />
+        <div className="h-3 w-12 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+        <div className="h-3 w-12 bg-slate-200 rounded" />
+        <div className="h-3 w-16 bg-slate-200 rounded ml-auto" />
+        <div className="h-3 w-16 bg-slate-200 rounded ml-auto" />
+      </div>
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <div key={idx} className="grid grid-cols-9 gap-4 items-center px-4 py-3.5 border-b border-slate-100">
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-32 bg-slate-100 rounded" />
+          <div className="h-3.5 w-12 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          <div className="h-3.5 w-12 bg-slate-100 rounded" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" />
+          <div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="animate-pulse divide-y divide-slate-100 bg-white">
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <div key={idx} className="px-4 py-3.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="h-3.5 w-32 bg-slate-200 rounded" />
+            <div className="h-3.5 w-16 bg-slate-200 rounded animate-none font-semibold text-slate-300" />
+          </div>
+          <div className="h-3 w-24 bg-slate-100 rounded" />
+          <div className="h-3.5 w-12 bg-slate-150 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="animate-pulse p-6 bg-white space-y-6 h-full">
+      <div className="flex items-center justify-between border-b pb-4">
+        <div className="space-y-2">
+          <div className="h-6 w-48 bg-slate-200 rounded" />
+          <div className="h-3.5 w-24 bg-slate-100 rounded" />
+        </div>
+        <div className="h-12 w-32 bg-slate-200 rounded" />
+      </div>
+      <div className="space-y-4">
+        <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-36 bg-slate-200 rounded" />
+        </div>
+        <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-28 bg-slate-200 rounded" />
+        </div>
+        <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+          <div className="h-3.5 w-20 bg-slate-100 rounded" />
+          <div className="h-3.5 w-40 bg-slate-200 rounded" />
+        </div>
+      </div>
+      <div className="space-y-2 pt-4">
+        <div className="h-4 w-28 bg-slate-200 rounded" />
+        <div className="h-20 bg-slate-50 border border-slate-100 rounded-md" />
+      </div>
+    </div>
+  );
+}
+
 export default function PaymentsMadePage() {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
@@ -410,13 +490,13 @@ export default function PaymentsMadePage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="h-svh overflow-hidden">
+      <SidebarInset className="h-svh overflow-hidden bg-white">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Payments Made</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
+              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">Payments Made</span>
+            </div>
           }
           actions={
             <>
@@ -432,7 +512,11 @@ export default function PaymentsMadePage() {
               <Button variant="outline" size="sm" onClick={() => void loadPayments()}>
                 <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
               </Button>
-              <Button size="sm" onClick={() => router.push("/purchases/payments-made/new") }>
+              <Button
+                size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-8 px-3"
+                onClick={() => router.push("/purchases/payments-made/new")}
+              >
                 <Plus className="mr-1 h-4 w-4" /> New
               </Button>
             </>
@@ -450,9 +534,7 @@ export default function PaymentsMadePage() {
 
             <div className="h-[calc(100%-44px)] overflow-auto">
               {isLoading ? (
-                <div className="flex h-full items-center justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
+                selectedPaymentId ? <ListSkeleton /> : <TableSkeleton />
               ) : filteredPayments.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No payments found.
@@ -477,21 +559,36 @@ export default function PaymentsMadePage() {
                       {filteredPayments.map((payment) => (
                         <tr
                           key={payment._id}
-                          className="cursor-pointer border-b hover:bg-blue-50/50"
+                          className="cursor-pointer border-b hover:bg-teal-50/30 transition-colors"
                           onClick={() => {
                             setSelectedPaymentId(payment._id);
                             void loadPaymentDetails(payment._id);
                           }}
                         >
-                          <td className="px-3 py-2">{fmtDate(payment.payment_date)}</td>
-                          <td className="px-3 py-2 text-blue-600">{payment.payment_number}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(payment.payment_date)}</td>
+                          <td className="px-3 py-2 text-teal-700 hover:text-teal-800 hover:underline font-semibold">{payment.payment_number}</td>
                           <td className="px-3 py-2">{payment.reference_number || "-"}</td>
-                          <td className="px-3 py-2">{vendorName(payment.vendor_id)}</td>
+                          <td className="px-3 py-2 font-medium text-slate-700">{vendorName(payment.vendor_id)}</td>
                           <td className="px-3 py-2">-</td>
-                          <td className="px-3 py-2">{payment.payment_mode}</td>
-                          <td className={cn("px-3 py-2 text-xs font-semibold", payment.status === "PAID" ? "text-green-600" : payment.status === "VOID" ? "text-slate-500" : "text-amber-600")}>{payment.status}</td>
-                          <td className="px-3 py-2 text-right">{fmtCurrency(payment.total_amount_paid)}</td>
-                          <td className="px-3 py-2 text-right">{fmtCurrency(payment.amount_in_excess)}</td>
+                          <td className="px-3 py-2 text-slate-600">{payment.payment_mode}</td>
+                          <td className="px-3 py-2">
+                            <span className={cn(
+                              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                              payment.status === "PAID" && "bg-emerald-50 text-emerald-700 border-emerald-100",
+                              payment.status === "VOID" && "bg-slate-100 text-slate-500 border-slate-200",
+                              payment.status === "DRAFT" && "bg-amber-50 text-amber-700 border-amber-100"
+                            )}>
+                              <span className={cn(
+                                "h-1 w-1 rounded-full",
+                                payment.status === "PAID" && "bg-emerald-500",
+                                payment.status === "VOID" && "bg-slate-400",
+                                payment.status === "DRAFT" && "bg-amber-500"
+                              )} />
+                              {payment.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold text-slate-900">{fmtCurrency(payment.total_amount_paid)}</td>
+                          <td className="px-3 py-2 text-right text-muted-foreground">{fmtCurrency(payment.amount_in_excess)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -505,7 +602,7 @@ export default function PaymentsMadePage() {
                       key={payment._id}
                       className={cn(
                         "w-full border-b px-4 py-3 text-left transition-colors",
-                        isActive ? "bg-blue-50" : "hover:bg-slate-50",
+                        isActive ? "bg-teal-50/50 border-l-[3px] border-l-teal-600" : "hover:bg-slate-100/70",
                       )}
                       onClick={() => {
                         setSelectedPaymentId(payment._id);
@@ -513,15 +610,30 @@ export default function PaymentsMadePage() {
                       }}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <p className="truncate text-[13px] font-semibold">{vendorName(payment.vendor_id)}</p>
-                        <p className="text-sm font-semibold tabular-nums">{fmtCurrency(payment.total_amount_paid)}</p>
+                        <p className="truncate text-[13px] font-semibold text-slate-900">{vendorName(payment.vendor_id)}</p>
+                        <p className="text-sm font-semibold tabular-nums text-slate-900">{fmtCurrency(payment.total_amount_paid)}</p>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{fmtDate(payment.payment_date)}</span>
                         <span>•</span>
                         <span>{payment.payment_mode}</span>
                       </div>
-                      <p className={cn("mt-1 text-xs font-semibold", payment.status === "PAID" ? "text-green-600" : payment.status === "VOID" ? "text-slate-500" : "text-amber-600")}>{payment.status}</p>
+                      <div className="mt-1">
+                        <span className={cn(
+                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                          payment.status === "PAID" && "bg-emerald-50 text-emerald-700 border-emerald-100",
+                          payment.status === "VOID" && "bg-slate-100 text-slate-500 border-slate-200",
+                          payment.status === "DRAFT" && "bg-amber-50 text-amber-700 border-amber-100"
+                        )}>
+                          <span className={cn(
+                            "h-1 w-1 rounded-full",
+                            payment.status === "PAID" && "bg-emerald-500",
+                            payment.status === "VOID" && "bg-slate-400",
+                            payment.status === "DRAFT" && "bg-amber-500"
+                          )} />
+                          {payment.status}
+                        </span>
+                      </div>
                     </button>
                   );
                 })
@@ -535,27 +647,25 @@ export default function PaymentsMadePage() {
                 Select a payment to view details.
               </div>
             ) : isLoadingDetails || !selectedPayment ? (
-              <div className="flex h-full items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
+              <DetailSkeleton />
             ) : (
-              <div className="mx-auto max-w-[1040px] p-3 sm:p-6">
-                <div className="mb-3 flex items-center justify-between rounded-md border bg-white px-3 py-2">
+              <div className="mx-auto max-w-[1040px] p-3 sm:p-6 bg-white shadow-xs rounded-lg mt-4 border border-slate-100">
+                <div className="mb-3 flex items-center justify-between rounded-md border bg-slate-50/50 px-3 py-2">
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-2 text-xs"
+                      className="h-8 px-2 text-xs hover:bg-slate-200/50"
                       onClick={() => router.push(`/purchases/payments-made/${selectedPayment._id}/edit`)}
                     >
                       <Eye className="mr-1 h-3.5 w-3.5" /> Edit
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => window.print()}>
+                    <Button variant="ghost" size="sm" className="h-8 px-2 text-xs hover:bg-slate-200/50" onClick={() => window.print()}>
                       <Printer className="mr-1 h-3.5 w-3.5" /> PDF/Print
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 px-0">
+                        <Button variant="ghost" size="sm" className="h-8 w-8 px-0 hover:bg-slate-200/50">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -581,7 +691,7 @@ export default function PaymentsMadePage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-8 w-8 hover:bg-slate-200/50"
                     onClick={() => {
                       setSelectedPaymentId(null);
                       setSelectedPayment(null);
@@ -593,7 +703,7 @@ export default function PaymentsMadePage() {
                   </Button>
                 </div>
 
-                <div className="rounded-lg border bg-white p-6 shadow-sm">
+                <div className="rounded-lg border bg-white p-6 shadow-2xs">
                   <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-5 sm:flex-row">
                     <div className="flex items-start gap-4">
                       {activeOrganization?.logo ? (
@@ -603,7 +713,7 @@ export default function PaymentsMadePage() {
                           className="h-14 w-14 rounded object-contain"
                         />
                       ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded bg-emerald-50 text-emerald-600">
+                        <div className="flex h-14 w-14 items-center justify-center rounded bg-teal-50 text-teal-700 border border-teal-100">
                           <FileText className="h-7 w-7" />
                         </div>
                       )}
@@ -613,26 +723,26 @@ export default function PaymentsMadePage() {
                         <p className="text-sm text-muted-foreground">{activeOrganization?.country || ""}</p>
                       </div>
                     </div>
-                    <div className="rounded-md bg-emerald-600 px-6 py-4 text-center text-white">
+                    <div className="rounded-md bg-teal-700 px-6 py-4 text-center text-white">
                       <p className="text-xs uppercase tracking-wide">Amount Paid</p>
                       <p className="text-2xl font-bold">{fmtCurrency(selectedPayment.total_amount_paid)}</p>
                     </div>
                   </div>
 
-                  <h2 className="mb-4 text-center text-xl font-semibold tracking-wide">PAYMENTS MADE</h2>
+                  <h2 className="mb-4 text-center text-xl font-semibold tracking-wide text-slate-800">PAYMENTS MADE</h2>
 
                   <div className="grid gap-3 border-b pb-6 text-sm sm:grid-cols-[220px_1fr]">
                     <p className="text-muted-foreground">Payment#</p>
-                    <p className="font-semibold">{selectedPayment.payment_number}</p>
+                    <p className="font-semibold text-slate-900">{selectedPayment.payment_number}</p>
 
                     <p className="text-muted-foreground">Payment Date</p>
-                    <p className="font-semibold">{fmtDate(selectedPayment.payment_date)}</p>
+                    <p className="font-semibold text-slate-900">{fmtDate(selectedPayment.payment_date)}</p>
 
                     <p className="text-muted-foreground">Reference Number</p>
-                    <p className="font-semibold">{selectedPayment.reference_number || "-"}</p>
+                    <p className="font-semibold text-slate-900">{selectedPayment.reference_number || "-"}</p>
 
                     <p className="text-muted-foreground">Paid To</p>
-                    <p className="font-semibold text-blue-600">{vendorName(selectedPayment.vendor_id)}</p>
+                    <p className="font-semibold text-teal-700 hover:text-teal-800 hover:underline cursor-pointer">{vendorName(selectedPayment.vendor_id)}</p>
 
                     <p className="text-muted-foreground">Payment Mode</p>
                     <p className="font-semibold">{selectedPayment.payment_mode}</p>

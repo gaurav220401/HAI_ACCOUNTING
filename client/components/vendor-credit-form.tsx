@@ -664,9 +664,29 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
       </div>
 
       <div className="sticky bottom-0 bg-background border-t px-4 py-3 flex items-center gap-2">
-        <Button variant="outline" disabled={saving} onClick={() => submit("DRAFT")}>Save as Draft</Button>
-        <Button disabled={saving} onClick={() => submit("OPEN")}>Save as Open</Button>
-        <Button variant="outline" disabled={saving} onClick={onCancel}>Cancel</Button>
+        <Button
+          variant="outline"
+          disabled={saving}
+          onClick={() => submit("DRAFT")}
+          className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+        >
+          Save as Draft
+        </Button>
+        <Button
+          disabled={saving}
+          onClick={() => submit("OPEN")}
+          className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-4"
+        >
+          Save as Open
+        </Button>
+        <Button
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+          className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+        >
+          Cancel
+        </Button>
       </div>
     </div>
   );

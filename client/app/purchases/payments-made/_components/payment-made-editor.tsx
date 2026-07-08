@@ -756,22 +756,41 @@ export function PaymentMadeEditor({
           <div className="flex items-center gap-2">
             {mode === "create" ? (
               <>
-                <Button variant="outline" onClick={() => void saveCreate("DRAFT")} disabled={saving}>
+                <Button
+                  variant="outline"
+                  onClick={() => void saveCreate("DRAFT")}
+                  disabled={saving}
+                  className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+                >
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Save as Draft
                 </Button>
-                <Button onClick={() => void saveCreate("PAID")} disabled={saving}>
+                <Button
+                  onClick={() => void saveCreate("PAID")}
+                  disabled={saving}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-4"
+                >
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Save as Paid
                 </Button>
               </>
             ) : (
-              <Button onClick={() => void saveEdit()} disabled={saving}>
+              <Button
+                onClick={() => void saveEdit()}
+                disabled={saving}
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-4"
+              >
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save Changes
               </Button>
             )}
-            <Button variant="ghost" onClick={() => router.push("/purchases/payments-made")}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/purchases/payments-made")}
+              className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       </div>

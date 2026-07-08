@@ -39,15 +39,13 @@ export default function EditRecurringBillPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col h-svh overflow-auto">
+      <SidebarInset className="flex flex-col h-svh overflow-auto bg-white">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <a href="/purchases/recurring-bills" className="hover:text-foreground transition-colors">Recurring Bills</a>
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Edit</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
+              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">Edit Recurring Bill</span>
+            </div>
           }
         />
         {rec && (
