@@ -11,6 +11,7 @@ import {
   X,
   Upload,
   Mail,
+  ChevronDown,
 } from "lucide-react";
 import { SendEmailModal } from "../_components/send-email-modal";
 import { useAuth } from "@/contexts/auth-context";
