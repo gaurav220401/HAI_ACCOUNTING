@@ -11,7 +11,10 @@
     "test:integration": "node --import tsx --test src/tests/integration/accounting-voucher.integration.test.ts src/tests/integration/contact-import.integration.test.ts src/tests/integration/account-import.integration.test.ts",
     "backfill:gl": "tsx src/scripts/backfill-gl-history.ts",
     "migrate:journal-number-index": "tsx src/scripts/migrate-journal-number-index.ts",
-    "migrate:journal-number-index:dry-run": "tsx src/scripts/migrate-journal-number-index.ts --dry-run"
+    "migrate:journal-number-index:dry-run": "tsx src/scripts/migrate-journal-number-index.ts --dry-run",
+    "test:db": "tsx src/scripts/test-db-connection.ts",
+    "chatbot:ingest": "tsx src/chatbot/ingest.ts",
+    "chatbot:test-search": "tsx src/chatbot/test-vector-search.ts"
   },
   "keywords": [],
   "author": "",

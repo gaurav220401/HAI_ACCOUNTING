@@ -456,7 +456,7 @@ export default function SendSalesOrderEmailPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-blue-600 h-8"
+                      className="text-teal-600 h-8 font-semibold"
                       onClick={() => {
                         setSelectedRecipientField("to");
                         setShowContactDropdown(false);
@@ -468,7 +468,7 @@ export default function SendSalesOrderEmailPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-blue-600 h-8"
+                      className="text-teal-600 h-8 font-semibold"
                       onClick={() => {
                         setShowCc(true);
                         openDropdownFor("cc");
@@ -479,7 +479,7 @@ export default function SendSalesOrderEmailPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-blue-600 h-8"
+                      className="text-teal-600 h-8 font-semibold"
                       onClick={() => {
                         setShowBcc(true);
                         openDropdownFor("bcc");
@@ -541,13 +541,13 @@ export default function SendSalesOrderEmailPage() {
                       </Command>
                       <button
                         type="button"
-                        className="w-full border-t px-4 py-3 text-left text-blue-600 text-base flex items-center gap-2 hover:bg-muted/50"
+                        className="w-full border-t px-4 py-3 text-left text-teal-600 text-base flex items-center gap-2 hover:bg-muted/50 font-semibold"
                         onClick={() => {
                           setShowAddContact(true);
                           setShowContactDropdown(false);
                         }}
                       >
-                        <PlusCircle className="h-4 w-4" />
+                        <PlusCircle className="h-4 w-4 text-teal-600" />
                         Add Contact Person
                       </button>
                     </div>
@@ -716,7 +716,7 @@ export default function SendSalesOrderEmailPage() {
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">PDF Preview</p>
                       {pdfPreviewUrl && (
-                        <a href={pdfPreviewUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 underline">
+                        <a href={pdfPreviewUrl} target="_blank" rel="noreferrer" className="text-sm text-teal-600 underline font-semibold">
                           Open full preview
                         </a>
                       )}
@@ -741,7 +741,7 @@ export default function SendSalesOrderEmailPage() {
             </div>
 
             <div className="flex items-center gap-2 mt-4">
-              <Button onClick={handleSend} disabled={sending} className="min-w-[120px]">
+              <Button onClick={handleSend} disabled={sending} className="min-w-[120px] bg-teal-600 hover:bg-teal-700 text-white font-semibold">
                 {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                 Send Email
               </Button>
@@ -844,8 +844,8 @@ export default function SendSalesOrderEmailPage() {
                         </div>
                       ) : (
                         <>
-                          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-                            <Upload className="h-6 w-6 text-primary" />
+                          <div className="h-12 w-12 rounded-full bg-teal-50 flex items-center justify-center mb-3">
+                            <Upload className="h-6 w-6 text-teal-600" />
                           </div>
                           <p className="text-sm text-center font-medium">Click to upload photo</p>
                           <p className="text-xs text-muted-foreground mt-1">Max size 5MB</p>
@@ -863,7 +863,7 @@ export default function SendSalesOrderEmailPage() {
 
               <div className="border-t px-6 py-4 bg-muted/20 flex items-center justify-end gap-3">
                 <Button variant="outline" onClick={() => setShowAddContact(false)}>Cancel</Button>
-                <Button onClick={handleSaveContactPerson}>Save and Select</Button>
+                <Button onClick={handleSaveContactPerson} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">Save and Select</Button>
               </div>
             </div>
           </div>

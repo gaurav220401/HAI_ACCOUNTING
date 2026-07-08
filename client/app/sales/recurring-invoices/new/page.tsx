@@ -30,7 +30,7 @@ export default function NewRecurringInvoicePage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -44,7 +44,7 @@ export default function NewRecurringInvoicePage() {
             <span className="text-sm text-muted-foreground">
               Sales <span className="mx-1">/</span>
               <button
-                className="hover:underline"
+                className="hover:underline text-teal-600 hover:text-teal-700 font-medium"
                 onClick={() => router.push("/sales/recurring-invoices")}
               >
                 Recurring Invoices

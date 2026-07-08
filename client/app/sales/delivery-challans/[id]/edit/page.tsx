@@ -359,7 +359,7 @@ export default function EditDeliveryChallanPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -755,7 +755,7 @@ export default function EditDeliveryChallanPage() {
 
               {/* Action Buttons */}
               <div className="flex items-center gap-3 pb-8">
-                <Button onClick={handleSave} disabled={saving}>
+                <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={handleSave} disabled={saving}>
                   {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
                   Save
                 </Button>

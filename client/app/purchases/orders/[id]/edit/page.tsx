@@ -854,46 +854,57 @@ export default function EditPurchaseOrderPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
         <PageHeader
-          breadcrumb={(
-            <div className="flex items-center gap-2 text-lg font-semibold">
-              <ShoppingBagIcon className="h-5 w-5" />
-              Edit Purchase Order {poNumber && <span className="text-muted-foreground text-base font-normal">#{poNumber}</span>}
+          breadcrumb={
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <span className="text-sm font-semibold text-slate-700">
+                Edit Purchase Order {poNumber && <span className="text-slate-500 font-normal">#{poNumber}</span>}
+              </span>
             </div>
-          )}
+          }
         />
-        <div className="min-h-screen bg-white">
-          <div className="px-8 py-6 max-w-5xl space-y-6">
+        <div className="flex-1 overflow-y-auto bg-white">
+          <div className="px-8 py-6 max-w-5xl mx-auto space-y-6">
             {/* ── Vendor Name ─────────────────────────────────────── */}
-            <div className="grid grid-cols-[160px_1fr] items-start gap-4 py-4 border-b">
+            <div className="grid grid-cols-[140px_1fr] items-start gap-4 py-4 border-b">
               <Label className="text-sm font-medium text-red-500 pt-2">Vendor Name *</Label>
-              <div className="relative flex gap-2 max-w-md">
+              <div className="relative flex gap-2 max-w-xl">
                 <div className="relative flex-1">
-                  <select
-                    className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-primary"
-                    value={vendorId}
-                    onChange={(e) => setVendorId(e.target.value)}
-                  >
-                    <option value="">Select a Vendor</option>
-                    {vendors.map((v) => (
-                      <option key={v._id} value={v._id}>{v.displayName || v.companyName}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  {orderLoading ? (
+                    <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                      <span className="text-slate-400 text-xs">Loading vendors...</span>
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    </div>
+                  ) : (
+                    <select
+                      className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                      value={vendorId}
+                      onChange={(e) => setVendorId(e.target.value)}
+                    >
+                      <option value="">Select a Vendor</option>
+                      {vendors.map((v) => (
+                        <option key={v._id} value={v._id}>{v.displayName || v.companyName}</option>
+                      ))}
+                    </select>
+                  )}
+                  {!orderLoading && <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />}
                 </div>
-                <Button size="icon" className="h-9 w-9 bg-primary"><Search className="h-4 w-4" /></Button>
+                <Button size="icon" type="button" className="h-9 w-9 bg-teal-600 hover:bg-teal-700 text-white rounded-md">
+                  <Search className="h-4 w-4" />
+                </Button>
               </div>
             </div>
 
             {/* ── Delivery Address ─────────────────────────────────── */}
-            <div className="grid grid-cols-[160px_1fr] items-start gap-4 py-4 border-b">
+            <div className="grid grid-cols-[140px_1fr] items-start gap-4 py-4 border-b">
               <Label className="text-sm font-medium text-red-500 pt-2">Delivery Address *</Label>
               <div className="space-y-3">
                 <div className="flex items-center gap-6">
                   {(["Organization", "Customer"] as const).map((t) => (
                     <label key={t} className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="deliveryAddrType" value={t} checked={deliveryAddrType === t} onChange={() => setDeliveryAddrType(t)} className="accent-primary" />
+                      <input type="radio" name="deliveryAddrType" value={t} checked={deliveryAddrType === t} onChange={() => setDeliveryAddrType(t)} className="accent-teal-600" />
                       <span className="text-sm">{t}</span>
                     </label>
                   ))}
@@ -903,7 +914,7 @@ export default function EditPurchaseOrderPage() {
                   <div className="text-sm">
                     <div className="flex items-center gap-1.5 font-medium mb-1">
                       <span>{currentAddr.label}</span>
-                      <button type="button" className="text-primary/70 hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button type="button" className="text-teal-700 hover:text-teal-800"><Pencil className="h-3.5 w-3.5" /></button>
                     </div>
                     <div className="text-muted-foreground space-y-0.5 text-sm">
                       {currentAddr.city && <p>{currentAddr.city}</p>}
@@ -912,7 +923,7 @@ export default function EditPurchaseOrderPage() {
                     </div>
                     <DropdownMenu open={showAddrDropdown} onOpenChange={setShowAddrDropdown}>
                       <DropdownMenuTrigger asChild>
-                        <button type="button" className="text-sm text-primary hover:underline mt-2">Change destination to deliver</button>
+                        <button type="button" className="text-sm text-teal-700 hover:underline mt-2">Change destination to deliver</button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
                         <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
@@ -921,7 +932,7 @@ export default function EditPurchaseOrderPage() {
                         <div className="max-h-48 overflow-y-auto">
                           {savedAddresses.map((addr, idx) => (
                             <button key={idx} type="button"
-                              className={cn("w-full text-left px-3 py-2.5 text-sm hover:bg-muted/50 border-b last:border-0", selectedAddrIdx === idx && "bg-blue-50")}
+                              className={cn("w-full text-left px-3 py-2.5 text-sm hover:bg-muted/50 border-b last:border-0", selectedAddrIdx === idx && "bg-teal-50")}
                               onClick={() => { setSelectedAddrIdx(idx); setShowAddrDropdown(false); }}>
                               <div className="font-medium">{addr.label}</div>
                               {addr.city && <div className="text-xs text-muted-foreground">{addr.city}</div>}
@@ -929,7 +940,7 @@ export default function EditPurchaseOrderPage() {
                           ))}
                         </div>
                         <div className="p-2 border-t">
-                          <button type="button" className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium"
+                          <button type="button" className="flex items-center gap-1.5 text-sm text-teal-700 hover:text-teal-800 font-medium"
                             onClick={() => { setShowAddrDropdown(false); setShowNewAddrDialog(true); }}>
                             <Plus className="h-4 w-4" /> New Address
                           </button>
@@ -940,50 +951,64 @@ export default function EditPurchaseOrderPage() {
                 )}
 
                 {deliveryAddrType === "Customer" && (
-                  <div className="flex gap-2 max-w-sm">
+                  <div className="flex gap-2 max-w-xl">
                     <div className="relative flex-1">
-                      <select className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none" value={customerDeliveryId} onChange={(e) => setCustomerDeliveryId(e.target.value)}>
-                        <option value="">Select Customer</option>
-                        {customers.map((c) => <option key={c._id} value={c._id}>{c.displayName || c.companyName}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      {orderLoading ? (
+                        <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                          <span className="text-slate-400 text-xs">Loading customers...</span>
+                          <ChevronDown className="h-4 w-4 text-slate-400" />
+                        </div>
+                      ) : (
+                        <select className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-teal-500" value={customerDeliveryId} onChange={(e) => setCustomerDeliveryId(e.target.value)}>
+                          <option value="">Select Customer</option>
+                          {customers.map((c) => <option key={c._id} value={c._id}>{c.displayName || c.companyName}</option>)}
+                        </select>
+                      )}
+                      {!orderLoading && <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />}
                     </div>
-                    <Button size="icon" className="h-9 w-9 bg-primary"><Search className="h-4 w-4" /></Button>
+                    <Button size="icon" type="button" className="h-9 w-9 bg-teal-600 hover:bg-teal-700 text-white rounded-md"><Search className="h-4 w-4" /></Button>
                   </div>
                 )}
               </div>
             </div>
 
             {/* ── PO #, Reference, Date ────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium text-red-500 w-36 shrink-0">Purchase Order# *</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium text-red-500">Purchase Order# *</Label>
                 <Input className="h-9 text-sm flex-1" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-24 shrink-0">Reference#</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Reference#</Label>
                 <Input className="h-9 text-sm flex-1" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-36 shrink-0">Date</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Date</Label>
                 <Input type="date" className="h-9 text-sm flex-1" value={poDate} onChange={(e) => setPoDate(e.target.value)} />
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-24 shrink-0">Delivery Date</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Delivery Date</Label>
                 <Input type="date" className="h-9 text-sm flex-1" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-36 shrink-0">Payment Terms</Label>
-                <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
-                  <SelectTrigger className="h-9 text-sm flex-1"><SelectValue placeholder="Due on Receipt" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
-                    {paymentTermsList.map((pt) => <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Payment Terms</Label>
+                {orderLoading ? (
+                  <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                    <span className="text-slate-400 text-xs">Loading terms...</span>
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  </div>
+                ) : (
+                  <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
+                    <SelectTrigger className="h-9 text-sm flex-1"><SelectValue placeholder="Due on Receipt" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
+                      {paymentTermsList.map((pt) => <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm font-medium w-36 shrink-0">Shipment Preference</Label>
+              <div className="grid grid-cols-[140px_1fr] items-center gap-4">
+                <Label className="text-sm font-medium">Shipment Preference</Label>
                 <Select value={shipmentPreference} onValueChange={setShipmentPreference}>
                   <SelectTrigger className="h-9 text-sm flex-1"><SelectValue placeholder="Choose shipment preference…" /></SelectTrigger>
                   <SelectContent>
@@ -1234,32 +1259,39 @@ export default function EditPurchaseOrderPage() {
                   {taxType === "TDS" && (
                     <div className="w-56 flex items-center gap-2">
                       <div className="flex-1 min-w-0">
-                        <DropdownMenu open={showTaxDD} onOpenChange={(o) => { setShowTaxDD(o); if (!o) setTdsSearch(""); }}>
-                          <DropdownMenuTrigger asChild>
-                            <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
-                              <span className="truncate text-left flex-1 mr-2">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
-                              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                            <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                              <Input className="h-7 text-xs" placeholder="Search" value={tdsSearch} onChange={(e) => setTdsSearch(e.target.value)} autoFocus />
-                            </div>
-                            <div className="max-h-56 overflow-y-auto">
-                              <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); setTdsSearch(""); }}>None</button>
-                              {tdsTaxes.filter((t) => t.taxName.toLowerCase().includes(tdsSearch.toLowerCase())).map((t) => (
-                                <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tdsId === t._id && "bg-primary/10 font-medium")}
-                                  onClick={() => { setTdsId(t._id); setShowTaxDD(false); setTdsSearch(""); }}>
-                                  {t.taxName} [{t.rate}%]
-                                </button>
-                              ))}
-                            </div>
-                            <div className="border-t p-2 flex items-center gap-1">
-                              <Settings2 className="h-3.5 w-3.5 text-primary" />
-                              <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>Manage TDS</button>
-                            </div>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {orderLoading ? (
+                          <div className="w-full h-8 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                            <span className="text-slate-400 text-xs">Loading tax...</span>
+                            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                          </div>
+                        ) : (
+                          <DropdownMenu open={showTaxDD} onOpenChange={(o) => { setShowTaxDD(o); if (!o) setTdsSearch(""); }}>
+                            <DropdownMenuTrigger asChild>
+                              <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors focus:border-teal-500 focus:ring-teal-500/20">
+                                <span className="truncate text-left flex-1 mr-2">{selectedTds ? `${selectedTds.taxName} [${selectedTds.rate}%]` : "Select a Tax"}</span>
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                              <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                                <Input className="h-7 text-xs" placeholder="Search" value={tdsSearch} onChange={(e) => setTdsSearch(e.target.value)} autoFocus />
+                              </div>
+                              <div className="max-h-56 overflow-y-auto">
+                                <button type="button" className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 italic" onClick={() => { setTdsId(""); setShowTaxDD(false); setTdsSearch(""); }}>None</button>
+                                {tdsTaxes.filter((t) => t.taxName.toLowerCase().includes(tdsSearch.toLowerCase())).map((t) => (
+                                  <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50 focus:bg-teal-50 focus:text-teal-700", tdsId === t._id && "bg-teal-50 text-teal-700 font-medium")}
+                                    onClick={() => { setTdsId(t._id); setShowTaxDD(false); setTdsSearch(""); }}>
+                                    {t.taxName} [{t.rate}%]
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="border-t p-2 flex items-center gap-1">
+                                <Settings2 className="h-3.5 w-3.5 text-teal-600" />
+                                <button type="button" className="text-xs text-teal-600 hover:underline" onClick={() => { setShowTaxDD(false); setShowManageTDS(true); }}>Manage TDS</button>
+                              </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                       <TooltipProvider delayDuration={0}>
                         <Tooltip>
@@ -1277,33 +1309,40 @@ export default function EditPurchaseOrderPage() {
                   {taxType === "TCS" && (
                     <div className="w-56 flex items-center gap-2">
                       <div className="flex-1 min-w-0">
-                        <DropdownMenu open={showTCSDD} onOpenChange={(o) => { setShowTCSDD(o); if (!o) setTcsSearch(""); }}>
-                          <DropdownMenuTrigger asChild>
-                            <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors">
-                              <span className="truncate text-left flex-1 mr-2">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
-                              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                            <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                              <Input className="h-7 text-xs" placeholder="Search" value={tcsSearch} onChange={(e) => setTcsSearch(e.target.value)} autoFocus />
-                            </div>
-                            <div className="max-h-56 overflow-y-auto">
-                              {tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).length === 0 ? (
-                                <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
-                              ) : tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).map((t) => (
-                                <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", tcsId === t._id && "bg-primary/10 font-medium")}
-                                  onClick={() => { setTcsId(t._id); setShowTCSDD(false); setTcsSearch(""); }}>
-                                  {t.taxName} [{t.rate}%]
-                                </button>
-                              ))}
-                            </div>
-                            <div className="border-t p-2 flex items-center gap-1">
-                              <Settings2 className="h-3.5 w-3.5 text-primary" />
-                              <button type="button" className="text-xs text-primary hover:underline" onClick={() => { setShowTCSDD?.(false); setShowManageTCS(true); }}>Manage TCS</button>
-                            </div>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {orderLoading ? (
+                          <div className="w-full h-8 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                            <span className="text-slate-400 text-xs">Loading tax...</span>
+                            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                          </div>
+                        ) : (
+                          <DropdownMenu open={showTCSDD} onOpenChange={(o) => { setShowTCSDD(o); if (!o) setTcsSearch(""); }}>
+                            <DropdownMenuTrigger asChild>
+                              <button type="button" className="flex items-center justify-between w-full min-w-0 text-sm border bg-white rounded-md px-2.5 h-8 hover:bg-muted/30 text-muted-foreground transition-colors focus:border-teal-500 focus:ring-teal-500/20">
+                                <span className="truncate text-left flex-1 mr-2">{selectedTcs ? `${selectedTcs.taxName} [${selectedTcs.rate}%]` : "Select a Tax"}</span>
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                              <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                                <Input className="h-7 text-xs" placeholder="Search" value={tcsSearch} onChange={(e) => setTcsSearch(e.target.value)} autoFocus />
+                              </div>
+                              <div className="max-h-56 overflow-y-auto">
+                                {tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).length === 0 ? (
+                                  <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
+                                ) : tcsTaxes.filter((t) => t.taxName.toLowerCase().includes(tcsSearch.toLowerCase())).map((t) => (
+                                  <button key={t._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50 focus:bg-teal-50 focus:text-teal-700", tcsId === t._id && "bg-teal-50 text-teal-700 font-medium")}
+                                    onClick={() => { setTcsId(t._id); setShowTCSDD(false); setTcsSearch(""); }}>
+                                    {t.taxName} [{t.rate}%]
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="border-t p-2 flex items-center gap-1">
+                                <Settings2 className="h-3.5 w-3.5 text-teal-600" />
+                                <button type="button" className="text-xs text-teal-600 hover:underline" onClick={() => { setShowTCSDD?.(false); setShowManageTCS(true); }}>Manage TCS</button>
+                              </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                       <TooltipProvider delayDuration={0}>
                         <Tooltip>
@@ -1470,13 +1509,13 @@ export default function EditPurchaseOrderPage() {
             {/* ── Bottom buttons ─────────────────────────────────────── */}
             <div className="border-t pt-4 mt-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleSave("Draft")} disabled={saving}>
+                <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md font-semibold" onClick={() => handleSave("Draft")} disabled={saving}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save as Draft
                 </Button>
-                <Button size="sm" onClick={() => handleSave("Open")} disabled={saving}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open")} disabled={saving}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save and Send
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => router.back()}>Cancel</Button>
+                <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md font-semibold" onClick={() => router.back()}>Cancel</Button>
               </div>
               <span className="text-xs text-muted-foreground">PDF Template: &apos;Standard Template&apos;</span>
             </div>

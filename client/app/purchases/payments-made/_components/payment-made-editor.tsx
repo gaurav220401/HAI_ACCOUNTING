@@ -406,22 +406,29 @@ export function PaymentMadeEditor({
                 <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-2", vendorLocked && "[&_.vendor-dependent]:opacity-40")}>
                   <div className="space-y-1.5">
                     <Label>Vendor Name*</Label>
-                    <Select
-                      disabled={mode === "edit"}
-                      value={form.vendor_id}
-                      onValueChange={(v) => setForm((prev) => ({ ...prev, vendor_id: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Vendor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {vendors.map((v) => (
-                          <SelectItem key={v._id} value={v._id}>
-                            {v.displayName || v.companyName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {loading ? (
+                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                        <span className="text-slate-400 text-xs">Loading vendors...</span>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Select
+                        disabled={mode === "edit"}
+                        value={form.vendor_id}
+                        onValueChange={(v) => setForm((prev) => ({ ...prev, vendor_id: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Vendor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {vendors.map((v) => (
+                            <SelectItem key={v._id} value={v._id}>
+                              {v.displayName || v.companyName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   <div className="vendor-dependent space-y-1.5">
@@ -493,70 +500,84 @@ export function PaymentMadeEditor({
 
                   <div className="vendor-dependent space-y-1.5">
                     <Label>Paid Through*</Label>
-                    <DropdownMenu open={showPaidThroughDD} onOpenChange={(o) => { setShowPaidThroughDD(o); if (!o) setPaidThroughSearch(""); }}>
-                      <DropdownMenuTrigger asChild>
-                        <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-3 h-10 hover:bg-muted/30 text-muted-foreground transition-colors" disabled={vendorLocked}>
-                          <span className="truncate text-left flex-1 mr-2">{selectedPaidThrough ? `${selectedPaidThrough.code ? `[${selectedPaidThrough.code}] ` : ""}${selectedPaidThrough.name}` : "Select account"}</span>
-                          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                        <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                          <Input className="h-7 text-xs" placeholder="Search accounts" value={paidThroughSearch} onChange={(e) => setPaidThroughSearch(e.target.value)} autoFocus />
-                        </div>
-                        <div className="max-h-56 overflow-y-auto">
-                          {accounts.filter((account) => 
-                            account.name.toLowerCase().includes(paidThroughSearch.toLowerCase()) || 
-                            (account.code && account.code.toLowerCase().includes(paidThroughSearch.toLowerCase()))
-                          ).map((account) => (
-                            <button key={account._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", form.paid_through_account === account._id && "bg-primary/10 font-medium")}
-                              onClick={() => { setForm((prev) => ({ ...prev, paid_through_account: account._id })); setShowPaidThroughDD(false); setPaidThroughSearch(""); }}>
-                              {account.code ? `[${account.code}] ` : ""}{account.name}
-                            </button>
-                          ))}
-                          {accounts.filter((account) => 
-                            account.name.toLowerCase().includes(paidThroughSearch.toLowerCase()) || 
-                            (account.code && account.code.toLowerCase().includes(paidThroughSearch.toLowerCase()))
-                          ).length === 0 && (
-                            <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
-                          )}
-                        </div>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {loading ? (
+                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                        <span className="text-slate-400 text-xs">Loading accounts...</span>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      </div>
+                    ) : (
+                      <DropdownMenu open={showPaidThroughDD} onOpenChange={(o) => { setShowPaidThroughDD(o); if (!o) setPaidThroughSearch(""); }}>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-3 h-10 hover:bg-muted/30 text-muted-foreground transition-colors focus:border-teal-500 focus:ring-teal-500/20" disabled={vendorLocked}>
+                            <span className="truncate text-left flex-1 mr-2">{selectedPaidThrough ? `${selectedPaidThrough.code ? `[${selectedPaidThrough.code}] ` : ""}${selectedPaidThrough.name}` : "Select account"}</span>
+                            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                            <Input className="h-7 text-xs" placeholder="Search accounts" value={paidThroughSearch} onChange={(e) => setPaidThroughSearch(e.target.value)} autoFocus />
+                          </div>
+                          <div className="max-h-56 overflow-y-auto">
+                            {accounts.filter((account) => 
+                              account.name.toLowerCase().includes(paidThroughSearch.toLowerCase()) || 
+                              (account.code && account.code.toLowerCase().includes(paidThroughSearch.toLowerCase()))
+                            ).map((account) => (
+                              <button key={account._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50 focus:bg-teal-50 focus:text-teal-700", form.paid_through_account === account._id && "bg-teal-50 text-teal-700 font-medium")}
+                                onClick={() => { setForm((prev) => ({ ...prev, paid_through_account: account._id })); setShowPaidThroughDD(false); setPaidThroughSearch(""); }}>
+                                {account.code ? `[${account.code}] ` : ""}{account.name}
+                              </button>
+                            ))}
+                            {accounts.filter((account) => 
+                              account.name.toLowerCase().includes(paidThroughSearch.toLowerCase()) || 
+                              (account.code && account.code.toLowerCase().includes(paidThroughSearch.toLowerCase()))
+                            ).length === 0 && (
+                              <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
+                            )}
+                          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
 
                   <div className="vendor-dependent space-y-1.5">
                     <Label>Deposit To</Label>
-                    <DropdownMenu open={showDepositToDD} onOpenChange={(o) => { setShowDepositToDD(o); if (!o) setDepositToSearch(""); }}>
-                      <DropdownMenuTrigger asChild>
-                        <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-3 h-10 hover:bg-muted/30 text-muted-foreground transition-colors" disabled={vendorLocked}>
-                          <span className="truncate text-left flex-1 mr-2">{selectedDepositTo ? `${selectedDepositTo.code ? `[${selectedDepositTo.code}] ` : ""}${selectedDepositTo.name}` : "Select account"}</span>
-                          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                        <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                          <Input className="h-7 text-xs" placeholder="Search accounts" value={depositToSearch} onChange={(e) => setDepositToSearch(e.target.value)} autoFocus />
-                        </div>
-                        <div className="max-h-56 overflow-y-auto">
-                          {accounts.filter((account) => 
-                            account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
-                            (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
-                          ).map((account) => (
-                            <button key={account._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", form.deposit_to_account === account._id && "bg-primary/10 font-medium")}
-                              onClick={() => { setForm((prev) => ({ ...prev, deposit_to_account: account._id })); setShowDepositToDD(false); setDepositToSearch(""); }}>
-                              {account.code ? `[${account.code}] ` : ""}{account.name}
-                            </button>
-                          ))}
-                          {accounts.filter((account) => 
-                            account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
-                            (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
-                          ).length === 0 && (
-                            <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
-                          )}
-                        </div>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {loading ? (
+                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                        <span className="text-slate-400 text-xs">Loading accounts...</span>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      </div>
+                    ) : (
+                      <DropdownMenu open={showDepositToDD} onOpenChange={(o) => { setShowDepositToDD(o); if (!o) setDepositToSearch(""); }}>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-3 h-10 hover:bg-muted/30 text-muted-foreground transition-colors focus:border-teal-500 focus:ring-teal-500/20" disabled={vendorLocked}>
+                            <span className="truncate text-left flex-1 mr-2">{selectedDepositTo ? `${selectedDepositTo.code ? `[${selectedDepositTo.code}] ` : ""}${selectedDepositTo.name}` : "Select account"}</span>
+                            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
+                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
+                            <Input className="h-7 text-xs" placeholder="Search accounts" value={depositToSearch} onChange={(e) => setDepositToSearch(e.target.value)} autoFocus />
+                          </div>
+                          <div className="max-h-56 overflow-y-auto">
+                            {accounts.filter((account) => 
+                              account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
+                              (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
+                            ).map((account) => (
+                              <button key={account._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50 focus:bg-teal-50 focus:text-teal-700", form.deposit_to_account === account._id && "bg-teal-50 text-teal-700 font-medium")}
+                                onClick={() => { setForm((prev) => ({ ...prev, deposit_to_account: account._id })); setShowDepositToDD(false); setDepositToSearch(""); }}>
+                                {account.code ? `[${account.code}] ` : ""}{account.name}
+                              </button>
+                            ))}
+                            {accounts.filter((account) => 
+                              account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
+                              (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
+                            ).length === 0 && (
+                              <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
+                            )}
+                          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
 
                   <div className="vendor-dependent space-y-1.5">
@@ -756,22 +777,41 @@ export function PaymentMadeEditor({
           <div className="flex items-center gap-2">
             {mode === "create" ? (
               <>
-                <Button variant="outline" onClick={() => void saveCreate("DRAFT")} disabled={saving}>
+                <Button
+                  variant="outline"
+                  onClick={() => void saveCreate("DRAFT")}
+                  disabled={saving}
+                  className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+                >
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Save as Draft
                 </Button>
-                <Button onClick={() => void saveCreate("PAID")} disabled={saving}>
+                <Button
+                  onClick={() => void saveCreate("PAID")}
+                  disabled={saving}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-4"
+                >
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Save as Paid
                 </Button>
               </>
             ) : (
-              <Button onClick={() => void saveEdit()} disabled={saving}>
+              <Button
+                onClick={() => void saveEdit()}
+                disabled={saving}
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-4"
+              >
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save Changes
               </Button>
             )}
-            <Button variant="ghost" onClick={() => router.push("/purchases/payments-made")}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/purchases/payments-made")}
+              className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       </div>

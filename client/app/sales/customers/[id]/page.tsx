@@ -37,7 +37,7 @@ export default function CustomerDetailPage() {
 
   return (
     <div className="flex min-h-svh items-center justify-center">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
     </div>
   );
 }

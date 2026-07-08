@@ -144,12 +144,12 @@ export function SignupForm({ className }: { className?: string }) {
           return (
             <div key={label} className="flex flex-1 items-center gap-1">
               <div className={cn(
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
-                done || active ? "bg-primary text-primary-foreground" : "border border-muted-foreground text-muted-foreground"
+                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold border transition-colors",
+                done || active ? "bg-teal-600 text-white border-teal-600" : "border-slate-200 text-slate-500 bg-slate-50"
               )}>
                 {done ? "✓" : i + 1}
               </div>
-              <span className={cn("text-xs font-medium", active ? "text-foreground" : "text-muted-foreground")}>{label}</span>
+              <span className={cn("text-xs font-medium", active ? "text-teal-700 font-semibold" : "text-slate-500")}>{label}</span>
               {i === 0 && <div className="h-px flex-1 bg-border mx-1" />}
             </div>
           );
@@ -183,7 +183,7 @@ export function SignupForm({ className }: { className?: string }) {
             </select>
           </div>
           {err && <p className="text-destructive text-sm">{err}</p>}
-          <Button type="submit" className="w-full">Continue →</Button>
+          <Button type="submit" className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">Continue →</Button>
 
           <div className="relative flex items-center gap-2">
             <div className="h-px flex-1 bg-border" />
@@ -196,7 +196,7 @@ export function SignupForm({ className }: { className?: string }) {
           </Button>
           <p className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <a href="/login" className="font-medium text-primary underline underline-offset-4">Sign in</a>
+            <a href="/login" className="font-semibold text-teal-700 hover:text-teal-800 hover:underline underline-offset-4">Sign in</a>
           </p>
         </form>
       )}
@@ -212,7 +212,7 @@ export function SignupForm({ className }: { className?: string }) {
                 onClick={() => { setMethod(m); setErr(""); }}
                 className={cn(
                   "flex-1 rounded-md py-1.5 text-xs font-medium transition-colors",
-                  method === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  method === m ? "bg-teal-600 text-white shadow-sm font-semibold" : "text-slate-500 hover:text-slate-700"
                 )}
               >
                 {m === "email" ? "Email & Password" : "Phone OTP"}
@@ -236,8 +236,8 @@ export function SignupForm({ className }: { className?: string }) {
               </div>
               {err && <p className="text-destructive text-sm">{err}</p>}
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => { setStep("profile"); setErr(""); }} className="flex-1">← Back</Button>
-                <Button type="submit" disabled={busy} className="flex-1">{busy ? "Creating…" : "Create Account"}</Button>
+                <Button type="button" variant="outline" onClick={() => { setStep("profile"); setErr(""); }} className="flex-1 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">← Back</Button>
+                <Button type="submit" disabled={busy} className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">{busy ? "Creating…" : "Create Account"}</Button>
               </div>
             </form>
           )}
@@ -269,8 +269,8 @@ export function SignupForm({ className }: { className?: string }) {
               </div>
               {err && <p className="text-destructive text-sm">{err}</p>}
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => { setStep("profile"); setErr(""); }} className="flex-1">← Back</Button>
-                <Button type="submit" disabled={busy} className="flex-1">{busy ? "Sending OTP…" : "Send OTP"}</Button>
+                <Button type="button" variant="outline" onClick={() => { setStep("profile"); setErr(""); }} className="flex-1 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">← Back</Button>
+                <Button type="submit" disabled={busy} className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">{busy ? "Sending OTP…" : "Send OTP"}</Button>
               </div>
             </form>
           )}
@@ -298,7 +298,7 @@ export function SignupForm({ className }: { className?: string }) {
             />
           </div>
           {err && <p className="text-destructive text-sm">{err}</p>}
-          <Button type="submit" disabled={busy} className="w-full">
+          <Button type="submit" disabled={busy} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
             {busy ? "Verifying…" : "Verify & Create Account"}
           </Button>
           <button type="button" className="text-xs text-muted-foreground underline" onClick={() => { setStep("credential"); setConfirm(null); setErr(""); }}>

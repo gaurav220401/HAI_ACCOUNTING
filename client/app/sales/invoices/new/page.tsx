@@ -265,7 +265,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                       value="Goods"
                       checked={itemType === "Goods"}
                       onChange={() => setItemType("Goods")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     Goods
                   </label>
@@ -276,7 +276,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                       value="Service"
                       checked={itemType === "Service"}
                       onChange={() => setItemType("Service")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     Service
                   </label>
@@ -575,7 +575,7 @@ function BulkItemsModal({
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold">
                 Selected Items{" "}
-                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-teal-600 text-white text-xs font-bold">
                   {selectedIds.size}
                 </span>
               </span>
@@ -782,7 +782,7 @@ function SendEmailModal({
             {/* Email content */}
             <div className="p-6 space-y-4 bg-gray-50">
               {/* Invoice Header Banner */}
-              <div className="bg-blue-600 text-white text-center py-4 rounded">
+              <div className="bg-teal-600 text-white text-center py-4 rounded">
                 <h2 className="text-lg font-semibold">
                   Invoice #{invoiceNumber}
                 </h2>
@@ -1522,7 +1522,7 @@ function NewInvoicePageContent() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -1567,52 +1567,59 @@ function NewInvoicePageContent() {
               <Label>
                 Customer Name<span className="text-red-500">*</span>
               </Label>
-              <Select
-                value={customerId || undefined}
-                onValueChange={(v) => {
-                  if (v === "__add_new") {
-                    saveInvoiceDraft();
-                    router.push(
-                      "/sales/customers/new?returnUrl=/sales/invoices/new",
-                    );
-                    return;
-                  }
-                  setCustomerId(v);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select or add a customer" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem value="__add_new">
-                    <span className="text-blue-600 font-medium">
-                      + Add a customer
-                    </span>
-                  </SelectItem>
-                  {masterLoading && customers.length === 0 && (
-                    <SelectItem value="__loading" disabled>
-                      Loading customers...
+              {masterLoading ? (
+                <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading customers...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select
+                  value={customerId || undefined}
+                  onValueChange={(v) => {
+                    if (v === "__add_new") {
+                      saveInvoiceDraft();
+                      router.push(
+                        "/sales/customers/new?returnUrl=/sales/invoices/new",
+                      );
+                      return;
+                    }
+                    setCustomerId(v);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select or add a customer" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="__add_new">
+                      <span className="text-teal-600 font-medium">
+                        + Add a customer
+                      </span>
                     </SelectItem>
-                  )}
-                  {!masterLoading && customers.length === 0 && (
-                    <SelectItem value="__empty" disabled>
-                      No customers found
-                    </SelectItem>
-                  )}
-                  {customers.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{c.displayName}</span>
-                        {c.companyName && (
-                          <span className="text-xs text-muted-foreground">
-                            {c.companyName}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {masterLoading && customers.length === 0 && (
+                      <SelectItem value="__loading" disabled>
+                        Loading customers...
+                      </SelectItem>
+                    )}
+                    {!masterLoading && customers.length === 0 && (
+                      <SelectItem value="__empty" disabled>
+                        No customers found
+                      </SelectItem>
+                    )}
+                    {customers.map((c) => (
+                      <SelectItem key={c._id} value={c._id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{c.displayName}</span>
+                          {c.companyName && (
+                            <span className="text-xs text-muted-foreground">
+                              {c.companyName}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Empty right */}
@@ -1668,34 +1675,41 @@ function NewInvoicePageContent() {
             {/* Payment Terms */}
             <div className="space-y-1.5">
               <Label>Terms</Label>
-              <Select
-                value={paymentTermsId || undefined}
-                onValueChange={(v) => {
-                  setPaymentTermsId(v);
-                  if (v === "__receipt") {
-                    setDueDate(invoiceDate);
-                    return;
-                  }
-                  const pt = paymentTermsList.find((p) => p._id === v);
-                  if (pt) {
-                    const due = new Date(invoiceDate);
-                    due.setDate(due.getDate() + (pt.netDays ?? 0));
-                    setDueDate(due.toISOString().slice(0, 10));
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Due on Receipt" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__receipt">Due on Receipt</SelectItem>
-                  {paymentTermsList.map((pt) => (
-                    <SelectItem key={pt._id} value={pt._id}>
-                      {pt.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {masterLoading ? (
+                <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading terms...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select
+                  value={paymentTermsId || undefined}
+                  onValueChange={(v) => {
+                    setPaymentTermsId(v);
+                    if (v === "__receipt") {
+                      setDueDate(invoiceDate);
+                      return;
+                    }
+                    const pt = paymentTermsList.find((p) => p._id === v);
+                    if (pt) {
+                      const due = new Date(invoiceDate);
+                      due.setDate(due.getDate() + (pt.netDays ?? 0));
+                      setDueDate(due.toISOString().slice(0, 10));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Due on Receipt" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__receipt">Due on Receipt</SelectItem>
+                    {paymentTermsList.map((pt) => (
+                      <SelectItem key={pt._id} value={pt._id}>
+                        {pt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Due Date */}
@@ -1711,22 +1725,29 @@ function NewInvoicePageContent() {
             {/* Salesperson */}
             <div className="space-y-1.5">
               <Label>Salesperson</Label>
-              <Select
-                value={salesPersonId || undefined}
-                onValueChange={setSalesPersonId}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select or Add Salesperson" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">None</SelectItem>
-                  {salesPersons.map((sp) => (
-                    <SelectItem key={sp._id} value={sp._id}>
-                      {sp.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {masterLoading ? (
+                <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading salespersons...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select
+                  value={salesPersonId || undefined}
+                  onValueChange={setSalesPersonId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select or Add Salesperson" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">None</SelectItem>
+                    {salesPersons.map((sp) => (
+                      <SelectItem key={sp._id} value={sp._id}>
+                        {sp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
@@ -1844,7 +1865,7 @@ function NewInvoicePageContent() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="__new">
-                                <span className="text-blue-600 font-medium">
+                                <span className="text-teal-600 font-medium">
                                   + Add new item
                                 </span>
                               </SelectItem>
@@ -2156,7 +2177,7 @@ function NewInvoicePageContent() {
                       value="none"
                       checked={taxType === "none"}
                       onChange={() => setTaxType("none")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     None
                   </label>
@@ -2167,7 +2188,7 @@ function NewInvoicePageContent() {
                       value="TDS"
                       checked={taxType === "TDS"}
                       onChange={() => setTaxType("TDS")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TDS
                   </label>
@@ -2178,70 +2199,84 @@ function NewInvoicePageContent() {
                       value="TCS"
                       checked={taxType === "TCS"}
                       onChange={() => setTaxType("TCS")}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TCS
                   </label>
                 </div>
                 <div className="flex items-center gap-2">
                   {taxType === "TDS" ? (
-                    <Select
-                      value={totalTaxId || undefined}
-                      onValueChange={(value) => {
-                        if (value === "__none") {
-                          setTotalTaxId("");
-                          setTaxType("none");
-                          return;
-                        }
-                        setTotalTaxId(value);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-52">
-                        <SelectValue placeholder="Select TDS" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none">None</SelectItem>
-                        {tdsTaxes.map((t) => (
-                          <SelectItem key={t._id} value={t._id}>
-                            {t.taxName} ({t.rate}%) - {t.sectionCode}
-                          </SelectItem>
-                        ))}
-                        {tdsTaxes.length === 0 && (
-                          <SelectItem value="__empty" disabled>
-                            No TDS taxes configured
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    masterLoading ? (
+                      <div className="h-8 w-52 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                        <span className="text-slate-400 text-xs">Loading TDS...</span>
+                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Select
+                        value={totalTaxId || undefined}
+                        onValueChange={(value) => {
+                          if (value === "__none") {
+                            setTotalTaxId("");
+                            setTaxType("none");
+                            return;
+                          }
+                          setTotalTaxId(value);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-52">
+                          <SelectValue placeholder="Select TDS" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">None</SelectItem>
+                          {tdsTaxes.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.taxName} ({t.rate}%) - {t.sectionCode}
+                            </SelectItem>
+                          ))}
+                          {tdsTaxes.length === 0 && (
+                            <SelectItem value="__empty" disabled>
+                              No TDS taxes configured
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )
                   ) : taxType === "TCS" ? (
-                    <Select
-                      value={totalTaxId || undefined}
-                      onValueChange={(value) => {
-                        if (value === "__none") {
-                          setTotalTaxId("");
-                          setTaxType("none");
-                          return;
-                        }
-                        setTotalTaxId(value);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-52">
-                        <SelectValue placeholder="Select TCS" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none">None</SelectItem>
-                        {tcsTaxes.map((t) => (
-                          <SelectItem key={t._id} value={t._id}>
-                            {t.taxName} ({t.rate}%) - {t.sectionCode}
-                          </SelectItem>
-                        ))}
-                        {tcsTaxes.length === 0 && (
-                          <SelectItem value="__empty" disabled>
-                            No TCS taxes configured
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    masterLoading ? (
+                      <div className="h-8 w-52 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                        <span className="text-slate-400 text-xs">Loading TCS...</span>
+                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Select
+                        value={totalTaxId || undefined}
+                        onValueChange={(value) => {
+                          if (value === "__none") {
+                            setTotalTaxId("");
+                            setTaxType("none");
+                            return;
+                          }
+                          setTotalTaxId(value);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-52">
+                          <SelectValue placeholder="Select TCS" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">None</SelectItem>
+                          {tcsTaxes.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.taxName} ({t.rate}%) - {t.sectionCode}
+                            </SelectItem>
+                          ))}
+                          {tcsTaxes.length === 0 && (
+                            <SelectItem value="__empty" disabled>
+                              No TCS taxes configured
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )
                   ) : (
                     <Select
                       value={totalTaxId || undefined}
@@ -2398,7 +2433,7 @@ function NewInvoicePageContent() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Configure payment gateways and receive payments online.{" "}
-                <button className="text-blue-600 hover:underline">
+                <button className="text-teal-600 hover:underline font-semibold">
                   Set up Payment Gateway
                 </button>
               </p>
@@ -2483,7 +2518,7 @@ function NewInvoicePageContent() {
                 >
                   <Checkbox defaultChecked />
                   <span className="inline-flex items-center gap-1">
-                    <span className="w-6 h-6 rounded bg-blue-600 text-white flex items-center justify-center text-xs font-medium">
+                    <span className="w-6 h-6 rounded bg-teal-600 text-white flex items-center justify-center text-xs font-medium">
                       {(selectedCustomer?.displayName ||
                         email)[0]?.toUpperCase()}
                     </span>
@@ -2538,7 +2573,7 @@ function NewInvoicePageContent() {
                 <Button
                   disabled={saving}
                   onClick={() => handleSave("Sent")}
-                  className="rounded-r-none"
+                  className="rounded-r-none bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 >
                   {saving ?
                     <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -2549,7 +2584,7 @@ function NewInvoicePageContent() {
                   <DropdownMenuTrigger asChild>
                     <Button
                       disabled={saving}
-                      className="rounded-l-none border-l border-l-primary-foreground/20 px-2"
+                      className="rounded-l-none border-l border-l-teal-500 bg-teal-600 hover:bg-teal-700 text-white px-2"
                     >
                       <ChevronDown className="h-3.5 w-3.5" />
                     </Button>
@@ -2582,8 +2617,8 @@ function NewInvoicePageContent() {
 
             {/* Right: Make Recurring + Total */}
             <div className="flex items-center gap-4">
-              <button className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                <RefreshCw className="h-3.5 w-3.5" />
+              <button className="text-sm text-teal-600 hover:underline flex items-center gap-1 font-semibold">
+                <RefreshCw className="h-3.5 w-3.5 text-teal-600" />
                 Make Recurring
               </button>
               <div className="text-right">
@@ -2690,7 +2725,7 @@ export default function NewInvoicePage() {
     <Suspense
       fallback={
         <div className="flex min-h-svh items-center justify-center">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
         </div>
       }
     >

@@ -195,7 +195,7 @@ export default function EditInvoiceTemplatePage() {
   }
 
   if (loading || orgLoading || !firebaseUser || fetching) {
-    return <div className="flex min-h-svh items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
+    return <div className="flex min-h-svh items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" /></div>;
   }
 
   const tabs: { id: EditTemplateTab; label: string; icon: React.ReactNode }[] = [
@@ -218,44 +218,44 @@ export default function EditInvoiceTemplatePage() {
   } as unknown as Invoice;
 
   return (
-    <div className="flex flex-col h-svh bg-background overflow-hidden">
-      <div className="flex items-center justify-between h-12 px-5 border-b bg-background shrink-0">
-        <h2 className="text-sm font-semibold">
+    <div className="flex flex-col h-svh bg-white overflow-hidden">
+      <div className="flex items-center justify-between h-12 px-5 border-b border-slate-200 bg-white shrink-0">
+        <h2 className="text-xs font-bold text-slate-800">
           Edit Invoice Template
-          <span className="ml-2 text-xs text-muted-foreground">({config.templateName || DEFAULT_CONFIG.templateName})</span>
+          <span className="ml-2 text-[10px] font-normal text-slate-400">({config.templateName || DEFAULT_CONFIG.templateName})</span>
         </h2>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 text-xs">
-            {syncStatus==="saving" && <span className="flex items-center gap-1 text-blue-600"><Loader2 className="h-3 w-3 animate-spin" />Saving</span>}
-            {syncStatus==="synced" && <span className="flex items-center gap-1 text-green-600"><CloudCheck className="h-3.5 w-3.5" />Saved</span>}
+            {syncStatus==="saving" && <span className="flex items-center gap-1 text-teal-600"><Loader2 className="h-3 w-3 animate-spin" />Saving</span>}
+            {syncStatus==="synced" && <span className="flex items-center gap-1 text-emerald-600"><CloudCheck className="h-3.5 w-3.5" />Saved</span>}
             {syncStatus==="error" && <span className="flex items-center gap-1 text-rose-600"><CloudOff className="h-3.5 w-3.5" />Failed</span>}
-            {syncStatus==="idle" && !isDirty && <span className="flex items-center gap-1 text-muted-foreground"><Cloud className="h-3.5 w-3.5" />Saved</span>}
-            {syncStatus==="idle" && isDirty && <span className="flex items-center gap-1 text-muted-foreground"><Cloud className="h-3.5 w-3.5" />Unsaved</span>}
+            {syncStatus==="idle" && !isDirty && <span className="flex items-center gap-1 text-slate-400"><Cloud className="h-3.5 w-3.5" />Saved</span>}
+            {syncStatus==="idle" && isDirty && <span className="flex items-center gap-1 text-slate-400"><Cloud className="h-3.5 w-3.5" />Unsaved</span>}
           </div>
           <Select value={config.colorTheme} onValueChange={(v) => { const t = COLOR_THEMES.find(x=>x.id===v); update({ colorTheme: v, tableHeaderBgColor: t?.colors[0]??config.tableHeaderBgColor }); }}>
-            <SelectTrigger className="h-8 text-xs w-44"><SelectValue placeholder="Color Theme" /></SelectTrigger>
+            <SelectTrigger className="h-8 text-xs w-44 border-slate-200"><SelectValue placeholder="Color Theme" /></SelectTrigger>
             <SelectContent>
-              {COLOR_THEMES.map((t)=>(<SelectItem key={t.id} value={t.id}><div className="flex items-center gap-2"><div className="flex gap-0.5">{t.colors.map((c,i)=>(<div key={i} className="w-3 h-3 rounded-sm border border-border" style={{backgroundColor:c}} />))}</div><span>{t.label}</span></div></SelectItem>))}
+              {COLOR_THEMES.map((t)=>(<SelectItem key={t.id} value={t.id}><div className="flex items-center gap-2"><div className="flex gap-0.5">{t.colors.map((c,i)=>(<div key={i} className="w-3 h-3 rounded-sm border border-slate-200" style={{backgroundColor:c}} />))}</div><span>{t.label}</span></div></SelectItem>))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={()=>setPreviewKey(k=>k+1)}><RefreshCw className="h-3.5 w-3.5" />Refresh</Button>
-          <Button size="sm" className="h-8 text-xs" onClick={handleSave}>Save</Button>
-          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={()=>router.push(`/sales/invoices/${params?.id}`)}><X className="h-4 w-4" /></Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:bg-slate-50" onClick={()=>setPreviewKey(k=>k+1)}><RefreshCw className="h-3.5 w-3.5" />Refresh</Button>
+          <Button size="sm" className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={handleSave}>Save</Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:bg-slate-100 hover:text-slate-600" onClick={()=>router.push(`/sales/invoices/${params?.id}`)}><X className="h-4 w-4" /></Button>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-[68px] border-r bg-muted/10 flex flex-col items-stretch py-2 gap-0.5 shrink-0 overflow-y-auto">
+        <div className="w-[68px] border-r border-slate-200 bg-slate-50/50 flex flex-col items-stretch py-2 gap-0.5 shrink-0 overflow-y-auto">
           {tabs.map((t)=>(
             <button key={t.id} onClick={()=>setEtTab(t.id)} title={t.label.replace("\n"," ")}
-              className={`flex flex-col items-center justify-center gap-1.5 py-3 px-1.5 text-center transition-colors rounded-md mx-1 ${etTab===t.id?"bg-primary/10 text-primary":"text-muted-foreground hover:bg-muted/30 hover:text-foreground"}`}>
+              className={`flex flex-col items-center justify-center gap-1.5 py-3 px-1.5 text-center transition-colors rounded-none ${etTab===t.id?"border-l-2 border-teal-600 bg-teal-50/50 text-teal-700":"text-slate-400 hover:bg-slate-100/50 hover:text-slate-700"}`}>
               {t.icon}
-              <span className="text-[9px] leading-tight font-medium whitespace-pre-line">{t.label}</span>
+              <span className="text-[9px] leading-tight font-bold whitespace-pre-line">{t.label}</span>
             </button>
           ))}
         </div>
 
-        <div className="w-72 border-r overflow-y-auto shrink-0 bg-background">
+        <div className="w-72 border-r border-slate-200 overflow-y-auto shrink-0 bg-white">
           <SettingsPanel
             tab={etTab}
             config={config}
@@ -273,8 +273,8 @@ export default function EditInvoiceTemplatePage() {
           />
         </div>
 
-        <div className="flex-1 overflow-auto bg-[#e8e8e8] py-8 px-8">
-          <div key={previewKey}>
+        <div className="flex-1 overflow-auto bg-[#e8e8e8] py-8 px-8 flex items-start justify-center">
+          <div key={previewKey} className="shadow-lg border border-slate-300 rounded-md overflow-hidden bg-white">
             <InvoiceTemplateRenderer
               invoice={previewInvoice}
               config={config}

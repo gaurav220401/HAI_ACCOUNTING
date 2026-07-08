@@ -150,9 +150,9 @@ function invoiceNumbersForPayment(payment: PaymentReceived): string {
 }
 
 function statusClass(status: PaymentReceivedStatus) {
-  if (status === "PAID") return "bg-green-100 text-green-700";
-  if (status === "VOID") return "bg-gray-100 text-gray-700";
-  return "bg-orange-100 text-orange-700";
+  if (status === "PAID") return "bg-emerald-50 text-emerald-700 border border-emerald-100";
+  if (status === "VOID") return "bg-slate-100 text-slate-500 border border-slate-200";
+  return "bg-amber-50 text-amber-700 border border-amber-100";
 }
 
 export default function PaymentsReceivedPage() {
@@ -361,7 +361,7 @@ export default function PaymentsReceivedPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
       </div>
     );
   }
@@ -391,7 +391,7 @@ export default function PaymentsReceivedPage() {
               <Button variant="outline" size="sm" onClick={() => void fetchPayments()} disabled={fetching}>
                 <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin")} />
               </Button>
-              <Button size="sm" onClick={() => router.push("/sales/payments-received/new")}>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/payments-received/new")}>
                 <Plus className="mr-1 h-4 w-4" />
                 New
               </Button>
@@ -406,7 +406,7 @@ export default function PaymentsReceivedPage() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="px-2 text-base font-semibold">
                     {statusFilter === "All" ? "All Received Payments" : statusFilter}
-                    <ChevronDown className="ml-1 h-4 w-4 text-blue-600" />
+                    <ChevronDown className="ml-1 h-4 w-4 text-teal-600" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -419,7 +419,7 @@ export default function PaymentsReceivedPage() {
               </DropdownMenu>
 
               <div className="flex items-center gap-2">
-                <Button size="sm" onClick={() => router.push("/sales/payments-received/new")}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/payments-received/new")}>
                   <Plus className="mr-1 h-4 w-4" />
                   New
                 </Button>
@@ -457,7 +457,7 @@ export default function PaymentsReceivedPage() {
                   Delete
                 </Button>
                 <span className="mx-1 h-5 border-l" />
-                <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">{selectedIds.size}</span>
+                <span className="rounded-full bg-teal-100 px-3 py-1 text-sm font-semibold text-teal-700">{selectedIds.size}</span>
                 <span className="text-sm">Selected</span>
               </div>
             ) : null}
@@ -495,7 +495,7 @@ export default function PaymentsReceivedPage() {
                     filtered.map((payment) => (
                       <tr
                         key={payment._id}
-                        className="border-b hover:bg-blue-50/40"
+                        className="border-b hover:bg-teal-50/20"
                         onDoubleClick={() => openDetail(payment)}
                       >
                         <td className="px-4 py-3">
@@ -507,13 +507,13 @@ export default function PaymentsReceivedPage() {
                         </td>
                         <td className="px-3 py-3">{fmtDate(payment.payment_date)}</td>
                         <td className="px-3 py-3">
-                          <button className="font-medium text-blue-600 hover:underline" onClick={() => openDetail(payment)}>
+                          <button className="font-medium text-teal-700 hover:text-teal-800 hover:underline" onClick={() => openDetail(payment)}>
                             {payment.payment_number}
                           </button>
                         </td>
                         <td className="px-3 py-3">{payment.reference_number || "-"}</td>
                         <td className="px-3 py-3">{customerName(payment.customer_id)}</td>
-                        <td className="px-3 py-3 text-blue-600">{invoiceNumbersForPayment(payment)}</td>
+                        <td className="px-3 py-3 text-teal-700 font-medium">{invoiceNumbersForPayment(payment)}</td>
                         <td className="px-3 py-3">{payment.payment_mode}</td>
                         <td className="px-3 py-3 text-right font-medium">{fmtCurrency(payment.total_amount_received)}</td>
                         <td className="px-3 py-3 text-right">{fmtCurrency(payment.amount_in_excess)}</td>
@@ -684,7 +684,7 @@ export default function PaymentsReceivedPage() {
 
                       <div className="mb-10">
                         <div className="mb-2 text-xs text-gray-500">Received From</div>
-                        <div className="font-bold text-blue-600">{customerName(active.customer_id)}</div>
+                        <div className="font-bold text-teal-700">{customerName(active.customer_id)}</div>
                       </div>
 
                       <div className="mb-10 grid gap-3 text-sm sm:grid-cols-3">
@@ -725,7 +725,7 @@ export default function PaymentsReceivedPage() {
                                 {invoiceApplications.map((app) => (
                                   <tr key={app._id} className="border-b">
                                     <td
-                                      className="cursor-pointer px-4 py-3 font-medium text-blue-600 hover:underline"
+                                      className="cursor-pointer px-4 py-3 font-medium text-teal-700 hover:text-teal-800 hover:underline"
                                       onClick={() => router.push(`/sales/invoices/${invoiceIdFromApplication(app)}`)}
                                     >
                                       {invoiceNumberFromApplication(app)}
@@ -793,7 +793,7 @@ export default function PaymentsReceivedPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button onClick={() => void handleRefund()} disabled={refunding}>
+                  <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void handleRefund()} disabled={refunding}>
                     {refunding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     Save
                   </Button>
@@ -814,7 +814,7 @@ export default function PaymentsReceivedPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => void handleVoid()}>Void</AlertDialogAction>
+              <AlertDialogAction className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void handleVoid()}>Void</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -838,6 +838,7 @@ export default function PaymentsReceivedPage() {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
+                className="bg-rose-600 hover:bg-rose-700 text-white font-semibold"
                 onClick={() => void handleDelete(bulkDeleteTargets.length > 0 ? bulkDeleteTargets : deleteTarget ? [deleteTarget] : [])}
                 disabled={deleting}
               >

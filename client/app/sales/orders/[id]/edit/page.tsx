@@ -538,7 +538,7 @@ export default function EditSalesOrderPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -546,7 +546,7 @@ export default function EditSalesOrderPage() {
   if (loadingOrder || orgLoading || !activeOrganization) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -581,7 +581,7 @@ export default function EditSalesOrderPage() {
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
               </Button>
-              <Button size="sm" onClick={handleConvertToInvoice}>
+              <Button size="sm" onClick={handleConvertToInvoice} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
                 <FileText className="h-4 w-4 mr-1" />
                 Convert to Invoice
               </Button>
@@ -1044,7 +1044,7 @@ export default function EditSalesOrderPage() {
                       value="none"
                       checked={formData.taxType === "none"}
                       onChange={() => setFormData(p => ({...p, taxType: "none"}))}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     None
                   </label>
@@ -1055,7 +1055,7 @@ export default function EditSalesOrderPage() {
                       value="TDS"
                       checked={formData.taxType === "TDS"}
                       onChange={() => setFormData(p => ({...p, taxType: "TDS"}))}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TDS
                   </label>
@@ -1066,7 +1066,7 @@ export default function EditSalesOrderPage() {
                       value="TCS"
                       checked={formData.taxType === "TCS"}
                       onChange={() => setFormData(p => ({...p, taxType: "TCS"}))}
-                      className="accent-primary"
+                      className="accent-teal-600"
                     />
                     TCS
                   </label>
@@ -1123,7 +1123,7 @@ export default function EditSalesOrderPage() {
                   {totals.taxBreakdown.map((b, idx) => (
                     <div key={idx} className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-teal-600/40" />
                         {b.name} <span className="text-[10px] opacity-70">[{b.rate}%]</span>
                       </span>
                       <span className="tabular-nums font-medium">₹{formatMoney(b.amount)}</span>
@@ -1139,7 +1139,7 @@ export default function EditSalesOrderPage() {
                   <Input
                     value={formData.shippingCharges}
                     onChange={(e) => setFormData(p => ({...p, shippingCharges: e.target.value}))}
-                    className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                    className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-teal-600/20"
                     placeholder="0.00"
                   />
                 </div>
@@ -1152,7 +1152,7 @@ export default function EditSalesOrderPage() {
                   <Input
                     value={formData.adjustment}
                     onChange={(e) => setFormData(p => ({...p, adjustment: e.target.value}))}
-                    className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-primary/20"
+                    className="text-right h-8 text-xs pl-5 focus:ring-1 focus:ring-teal-600/20"
                     placeholder="0.00"
                   />
                 </div>
@@ -1164,7 +1164,7 @@ export default function EditSalesOrderPage() {
                     {(["none", "TDS", "TCS"] as const).map((t) => (
                       <label key={t} className={cn(
                         "flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full cursor-pointer transition-colors border",
-                        formData.taxType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-input hover:bg-muted"
+                        formData.taxType === t ? "bg-teal-600 text-white border-teal-600" : "bg-background text-muted-foreground border-input hover:bg-muted"
                       )}>
                         <input
                           type="radio"
@@ -1209,7 +1209,7 @@ export default function EditSalesOrderPage() {
                 <div className="flex items-center justify-between pt-2">
                   <span className="text-base font-bold text-foreground">Total</span>
                   <div className="text-right">
-                    <span className="text-xl font-bold text-primary tabular-nums">
+                    <span className="text-xl font-bold text-teal-700 tabular-nums">
                       ₹{formatMoney(totals.total)}
                     </span>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">Indian Rupee</p>
@@ -1248,7 +1248,7 @@ export default function EditSalesOrderPage() {
           </div>
 
           <div className="flex items-center gap-4 pt-4">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
               {saving ?
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -42,7 +42,7 @@ import { toast } from "sonner";
 
 const statusColor: Record<DeliveryChallanStatus, string> = {
   Draft: "bg-gray-100 text-gray-700 border-gray-300",
-  Open: "bg-blue-50 text-blue-700 border-blue-300",
+  Open: "bg-teal-50 text-teal-700 border-teal-200",
   Delivered: "bg-green-50 text-green-700 border-green-300",
   Returned: "bg-red-50 text-red-700 border-red-300",
 };
@@ -220,7 +220,7 @@ export default function DeliveryChallanDetailPage() {
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -294,6 +294,7 @@ export default function DeliveryChallanDetailPage() {
               </Button>
               <Button
                 size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 onClick={handleConvertToInvoice}
                 disabled={actionLoading || challan.invoiceStatus === "INVOICED"}
               >
@@ -324,6 +325,7 @@ export default function DeliveryChallanDetailPage() {
               {challan.status === "Draft" && (
                 <Button
                   size="sm"
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                   onClick={() => handleAction("convertToOpen")}
                   disabled={actionLoading}
                 >
@@ -336,6 +338,7 @@ export default function DeliveryChallanDetailPage() {
               {challan.status === "Open" && (
                 <Button
                   size="sm"
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                   onClick={() => handleAction("markAsDelivered")}
                   disabled={actionLoading}
                 >
@@ -413,7 +416,7 @@ export default function DeliveryChallanDetailPage() {
                 <div
                   className={`absolute top-6 -left-6 w-36 text-center text-xs font-bold text-white py-1 rotate-[-45deg] ${
                     challan.status === "Draft" ? "bg-gray-500"
-                    : challan.status === "Open" ? "bg-blue-500"
+                    : challan.status === "Open" ? "bg-teal-600"
                     : challan.status === "Delivered" ? "bg-green-500"
                     : "bg-red-500"
                   }`}
@@ -466,7 +469,7 @@ export default function DeliveryChallanDetailPage() {
               {/* Deliver To */}
               <div className="mb-6">
                 <p className="text-sm text-muted-foreground">Deliver To</p>
-                <p className="text-sm font-medium text-blue-600">
+                <p className="text-sm font-medium text-teal-700">
                   {customerName(challan.customerId)}
                 </p>
               </div>
@@ -475,20 +478,20 @@ export default function DeliveryChallanDetailPage() {
               <div className="rounded border overflow-hidden mb-6">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-primary">
-                      <TableHead className="text-primary-foreground font-semibold">
+                    <TableRow className="bg-teal-800 hover:bg-teal-800">
+                      <TableHead className="text-white font-semibold">
                         #
                       </TableHead>
-                      <TableHead className="text-primary-foreground font-semibold">
+                      <TableHead className="text-white font-semibold">
                         Item &amp; Description
                       </TableHead>
-                      <TableHead className="text-primary-foreground font-semibold text-right">
+                      <TableHead className="text-white font-semibold text-right">
                         Qty
                       </TableHead>
-                      <TableHead className="text-primary-foreground font-semibold text-right">
+                      <TableHead className="text-white font-semibold text-right">
                         Rate
                       </TableHead>
-                      <TableHead className="text-primary-foreground font-semibold text-right">
+                      <TableHead className="text-white font-semibold text-right">
                         Amount
                       </TableHead>
                     </TableRow>
@@ -608,7 +611,7 @@ export default function DeliveryChallanDetailPage() {
               <div className="flex items-center gap-3">
                 <Button
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-teal-600 hover:bg-teal-700 text-white"
                   onClick={() => window.print()}
                 >
                   <Printer className="h-4 w-4 mr-1" />

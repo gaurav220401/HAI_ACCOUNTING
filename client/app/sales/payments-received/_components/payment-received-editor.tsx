@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronsUpDown, Calendar, Loader2, Paperclip, Search, X } from "lucide-react";
+import { Check, ChevronsUpDown, Calendar, Loader2, Paperclip, Search, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -392,7 +392,7 @@ export function PaymentReceivedEditor({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
       </div>
     );
   }
@@ -431,22 +431,29 @@ export function PaymentReceivedEditor({
                 <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-2", customerLocked && "[&_.customer-dependent]:opacity-40")}>
                   <div className="space-y-1.5">
                     <Label>Customer Name*</Label>
-                    <Select
-                      disabled={mode === "edit"}
-                      value={form.customer_id}
-                      onValueChange={(v) => setForm((prev) => ({ ...prev, customer_id: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customers.map((c) => (
-                          <SelectItem key={c._id} value={c._id}>
-                            {c.displayName || c.companyName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {loading ? (
+                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                        <span className="text-slate-400 text-xs">Loading customers...</span>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Select
+                        disabled={mode === "edit"}
+                        value={form.customer_id}
+                        onValueChange={(v) => setForm((prev) => ({ ...prev, customer_id: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Customer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {customers.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.displayName || c.companyName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   <div className="customer-dependent space-y-1.5">
@@ -502,25 +509,31 @@ export function PaymentReceivedEditor({
 
                   <div className="customer-dependent space-y-1.5">
                     <Label>Deposited To*</Label>
-                    <Popover open={accountSearchOpen} onOpenChange={setAccountSearchOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={accountSearchOpen}
-                          className="w-full justify-between font-normal"
-                          disabled={customerLocked}
-                        >
-                          {form.deposited_to_account
-                            ? (() => {
-                                const acc = accounts.find((a) => a._id === form.deposited_to_account);
-                                if (!acc) return "Select account...";
-                                return acc.code ? `[ ${acc.code} ] ${acc.name}` : acc.name;
-                              })()
-                            : "Select account..."}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
+                    {loading ? (
+                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                        <span className="text-slate-400 text-xs">Loading accounts...</span>
+                        <ChevronsUpDown className="h-4 w-4 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Popover open={accountSearchOpen} onOpenChange={setAccountSearchOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={accountSearchOpen}
+                            className="w-full justify-between font-normal"
+                            disabled={customerLocked}
+                          >
+                            {form.deposited_to_account
+                              ? (() => {
+                                  const acc = accounts.find((a) => a._id === form.deposited_to_account);
+                                  if (!acc) return "Select account...";
+                                  return acc.code ? `[ ${acc.code} ] ${acc.name}` : acc.name;
+                                })()
+                              : "Select account..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
                       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                         <Command>
                           <CommandInput placeholder="Search account..." />
@@ -572,7 +585,8 @@ export function PaymentReceivedEditor({
                         </Command>
                       </PopoverContent>
                     </Popover>
-                  </div>
+                  )}
+                </div>
 
                   <div className="customer-dependent space-y-1.5">
                     <Label>Reference#</Label>
@@ -588,7 +602,7 @@ export function PaymentReceivedEditor({
                   <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
                     <span>Apply to Invoices</span>
                     {mode === "create" ? (
-                      <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={clearApplied}>
+                      <Button variant="link" size="sm" className="h-auto p-0 text-xs text-teal-600 hover:text-teal-700" onClick={clearApplied}>
                         Clear Applied Amount
                       </Button>
                     ) : null}
@@ -775,14 +789,14 @@ export function PaymentReceivedEditor({
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Save as Draft
                 </Button>
-                <Button onClick={() => void saveCreate("PAID")} disabled={saving}>
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void saveCreate("PAID")} disabled={saving}>
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-white" /> : null}
                   Save as Paid
                 </Button>
               </>
             ) : (
-              <Button onClick={() => void saveEdit()} disabled={saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void saveEdit()} disabled={saving}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-white" /> : null}
                 Save Changes
               </Button>
             )}

@@ -266,182 +266,198 @@ export default function SendInvoiceEmailPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
         <PageHeader
-          breadcrumb={<span className="text-sm font-medium">{title}</span>}
+          breadcrumb={
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="font-semibold text-teal-700">Invoices</span>
+              <span className="text-slate-400">/</span>
+              <span className="font-semibold text-slate-700">{title}</span>
+            </div>
+          }
         />
 
         {fetching ?
-          <div className="flex items-center justify-center h-[70vh]">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="flex items-center justify-center h-[70vh] bg-white">
+            <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
           </div>
-        : <div className="w-full p-3 md:p-4">
-            <div className="border rounded bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b text-2xl font-medium">
-                Email To {getCustomerName(invoice?.customerId) || "Customer"}.
-              </div>
-
-              <div className="divide-y">
-                <div className="grid grid-cols-[90px_1fr] items-center px-4 py-2.5">
-                  <span className="text-sm text-muted-foreground">From</span>
-                  <span className="text-sm">
-                    {fromEmail || (firebaseUser as any)?.email || ""}
-                  </span>
+        : <div className="w-full p-4 overflow-y-auto flex-1 bg-slate-50/30">
+            <div className="max-w-4xl mx-auto space-y-6">
+              <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-2xs">
+                <div className="px-6 py-4 border-b border-slate-200 text-lg font-bold text-slate-800">
+                  Email To {getCustomerName(invoice?.customerId) || "Customer"}
                 </div>
 
-                <div className="grid grid-cols-[90px_1fr] items-center px-4 py-2.5 gap-2">
-                  <span className="text-sm text-muted-foreground">Send To</span>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={to}
-                      onChange={(e) => setTo(e.target.value)}
-                      placeholder="customer@example.com"
-                      className="h-8 flex-1"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-blue-600 h-8"
-                      onClick={() => setShowCc(true)}
-                    >
-                      Cc
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-blue-600 h-8"
-                      onClick={() => setShowBcc(true)}
-                    >
-                      Bcc
-                    </Button>
+                <div className="divide-y divide-slate-100">
+                  <div className="grid grid-cols-[90px_1fr] items-center px-6 py-3">
+                    <span className="text-sm font-semibold text-slate-400">From</span>
+                    <span className="text-sm font-medium text-slate-700">
+                      {fromEmail || (firebaseUser as any)?.email || ""}
+                    </span>
                   </div>
-                </div>
 
-                {showCc && (
-                  <div className="grid grid-cols-[90px_1fr] items-center px-4 py-2.5 gap-2">
-                    <span className="text-sm text-muted-foreground">Cc</span>
-                    <Input
-                      value={cc}
-                      onChange={(e) => setCc(e.target.value)}
-                      placeholder="cc@example.com"
-                      className="h-8"
-                    />
-                  </div>
-                )}
-
-                {showBcc && (
-                  <div className="grid grid-cols-[90px_1fr] items-center px-4 py-2.5 gap-2">
-                    <span className="text-sm text-muted-foreground">Bcc</span>
-                    <Input
-                      value={bcc}
-                      onChange={(e) => setBcc(e.target.value)}
-                      placeholder="bcc@example.com"
-                      className="h-8"
-                    />
-                  </div>
-                )}
-
-                <div className="grid grid-cols-[90px_1fr] items-center px-4 py-2.5 gap-2">
-                  <span className="text-sm text-muted-foreground">Subject</span>
-                  <Input
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="h-8"
-                  />
-                </div>
-
-                <div className="px-4 py-3">
-                  <RichTextEditor
-                    value={body}
-                    onChange={setBody}
-                    minHeight="360px"
-                    placeholder="Write your email body..."
-                  />
-                </div>
-
-                <div className="px-4 py-3 bg-muted/30 flex flex-wrap items-center gap-2">
-                  <Checkbox
-                    id="attach-pdf"
-                    checked={attachPdf}
-                    onCheckedChange={(v) => setAttachPdf(!!v)}
-                  />
-                  <Label
-                    htmlFor="attach-pdf"
-                    className="text-sm cursor-pointer"
-                  >
-                    Attach Invoice PDF
-                  </Label>
-                  <div className="ml-auto border rounded px-3 py-1.5 text-sm text-muted-foreground bg-white flex items-center gap-2 shadow-sm">
-                    <FileText className="h-4 w-4" />
-                    <span>{invoice?.invoiceNumber || "INV"}.pdf</span>
-                  </div>
-                </div>
-
-                <div className="px-4 py-2 bg-muted/30 border-t border-muted-foreground/10 flex items-center gap-2">
-                  <Checkbox
-                    id="mark-as-sent"
-                    checked={true}
-                    disabled
-                  />
-                  <Label
-                    htmlFor="mark-as-sent"
-                    className="text-sm text-muted-foreground cursor-not-allowed"
-                  >
-                    Mark as Sent (Automatically updated upon success)
-                  </Label>
-                </div>
-
-                {attachPdf && (
-                  <div className="px-4 py-4 bg-muted/20 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">PDF Preview</p>
-                      {pdfPreviewUrl && (
-                        <a
-                          href={pdfPreviewUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm text-blue-600 underline"
+                  <div className="grid grid-cols-[90px_1fr] items-center px-6 py-3 gap-2">
+                    <span className="text-sm font-semibold text-slate-400">Send To</span>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={to}
+                        onChange={(e) => setTo(e.target.value)}
+                        placeholder="customer@example.com"
+                        className="h-9 flex-1 border-slate-200 focus-visible:ring-teal-600"
+                      />
+                      {!showCc && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-teal-700 hover:text-teal-800 hover:bg-slate-50 font-bold h-9"
+                          onClick={() => setShowCc(true)}
                         >
-                          Open full preview
-                        </a>
+                          Cc
+                        </Button>
+                      )}
+                      {!showBcc && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-teal-700 hover:text-teal-800 hover:bg-slate-50 font-bold h-9"
+                          onClick={() => setShowBcc(true)}
+                        >
+                          Bcc
+                        </Button>
                       )}
                     </div>
+                  </div>
 
-                    <div className="rounded-md border overflow-hidden shadow-inner bg-white">
-                      {pdfPreviewLoading ?
-                        <div className="h-[500px] w-full flex items-center justify-center">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                      : pdfPreviewUrl ?
-                        <iframe
-                          title="Invoice PDF Preview"
-                          src={pdfPreviewUrl}
-                          className="w-full h-[680px]"
-                        />
-                      : <div className="h-[500px] w-full flex items-center justify-center text-sm text-muted-foreground">
-                          PDF preview could not be loaded.
-                        </div>
-                      }
+                  {showCc && (
+                    <div className="grid grid-cols-[90px_1fr] items-center px-6 py-3 gap-2">
+                      <span className="text-sm font-semibold text-slate-400">Cc</span>
+                      <Input
+                        value={cc}
+                        onChange={(e) => setCc(e.target.value)}
+                        placeholder="cc@example.com"
+                        className="h-9 border-slate-200 focus-visible:ring-teal-600"
+                      />
+                    </div>
+                  )}
+
+                  {showBcc && (
+                    <div className="grid grid-cols-[90px_1fr] items-center px-6 py-3 gap-2">
+                      <span className="text-sm font-semibold text-slate-400">Bcc</span>
+                      <Input
+                        value={bcc}
+                        onChange={(e) => setBcc(e.target.value)}
+                        placeholder="bcc@example.com"
+                        className="h-9 border-slate-200 focus-visible:ring-teal-600"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-[90px_1fr] items-center px-6 py-3 gap-2">
+                    <span className="text-sm font-semibold text-slate-400">Subject</span>
+                    <Input
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="h-9 border-slate-200 focus-visible:ring-teal-600"
+                    />
+                  </div>
+
+                  <div className="px-6 py-4">
+                    <RichTextEditor
+                      value={body}
+                      onChange={setBody}
+                      minHeight="360px"
+                      placeholder="Write your email body..."
+                    />
+                  </div>
+
+                  <div className="px-6 py-4 bg-slate-50/50 flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="attach-pdf"
+                        checked={attachPdf}
+                        onCheckedChange={(v) => setAttachPdf(!!v)}
+                        className="accent-teal-600"
+                      />
+                      <Label
+                        htmlFor="attach-pdf"
+                        className="text-sm font-semibold text-slate-600 cursor-pointer"
+                      >
+                        Attach Invoice PDF
+                      </Label>
+                    </div>
+                    <div className="ml-auto border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-500 bg-white flex items-center gap-2 shadow-2xs">
+                      <FileText className="h-4 w-4 text-slate-400" />
+                      <span>{invoice?.invoiceNumber || "INV"}.pdf</span>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
 
-            <div className="flex items-center gap-2 mt-4">
-              <Button
-                onClick={handleSend}
-                disabled={sending}
-                className="min-w-[120px]"
-              >
-                {sending ?
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                : <Send className="h-4 w-4 mr-2" />}
-                Send Email
-              </Button>
-              <Button variant="outline" onClick={() => router.back()}>
-                Cancel
-              </Button>
+                  <div className="px-6 py-3 bg-slate-50/50 border-t border-slate-200 flex items-center gap-2">
+                    <Checkbox
+                      id="mark-as-sent"
+                      checked={true}
+                      disabled
+                      className="accent-teal-600"
+                    />
+                    <Label
+                      htmlFor="mark-as-sent"
+                      className="text-xs font-semibold text-slate-400 cursor-not-allowed"
+                    >
+                      Mark as Sent (Automatically updated upon success)
+                    </Label>
+                  </div>
+
+                  {attachPdf && (
+                    <div className="px-6 py-6 bg-slate-50/30 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-slate-700">PDF Preview</p>
+                        {pdfPreviewUrl && (
+                          <a
+                            href={pdfPreviewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-bold text-teal-700 hover:text-teal-800 hover:underline"
+                          >
+                            Open full preview
+                          </a>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm bg-white">
+                        {pdfPreviewLoading ?
+                          <div className="h-[500px] w-full flex items-center justify-center">
+                            <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
+                          </div>
+                        : pdfPreviewUrl ?
+                          <iframe
+                            title="Invoice PDF Preview"
+                            src={pdfPreviewUrl}
+                            className="w-full h-[680px]"
+                          />
+                        : <div className="h-[500px] w-full flex items-center justify-center text-xs font-medium text-slate-400">
+                            PDF preview could not be loaded.
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pb-8">
+                <Button
+                  onClick={handleSend}
+                  disabled={sending}
+                  className="min-w-[120px] bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-xs h-9"
+                >
+                  {sending ?
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  : <Send className="h-4 w-4 mr-2" />}
+                  Send Email
+                </Button>
+                <Button variant="outline" className="border-slate-200 text-slate-600 hover:bg-slate-50 h-9 rounded-md" onClick={() => router.back()}>
+                  Cancel
+                </Button>
+              </div>
             </div>
           </div>
         }

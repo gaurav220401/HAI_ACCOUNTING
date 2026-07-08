@@ -90,7 +90,7 @@ export function SettingsPanel({
             <div className="flex items-center gap-5">
               {(["A5","A4","Letter"] as const).map((s) => (
                 <label key={s} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                  <input type="radio" name="paperSize" checked={config.paperSize===s} onChange={()=>update({paperSize:s})} className="h-3.5 w-3.5 accent-primary" />{s}
+                  <input type="radio" name="paperSize" checked={config.paperSize===s} onChange={()=>update({paperSize:s})} className="h-3.5 w-3.5 accent-teal-600" />{s}
                 </label>
               ))}
             </div>
@@ -100,7 +100,7 @@ export function SettingsPanel({
             <div className="flex items-center gap-5">
               {(["Portrait","Landscape"] as const).map((o) => (
                 <label key={o} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                  <input type="radio" name="orientation" checked={config.orientation===o} onChange={()=>update({orientation:o})} className="h-3.5 w-3.5 accent-primary" />{o}
+                  <input type="radio" name="orientation" checked={config.orientation===o} onChange={()=>update({orientation:o})} className="h-3.5 w-3.5 accent-teal-600" />{o}
                 </label>
               ))}
             </div>
@@ -200,7 +200,7 @@ export function SettingsPanel({
                       />
                     </div>
                   )}
-                  <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground shrink-0">Resize</span><input type="range" min="30" max="120" step="5" value={config.orgLogoSize} onChange={(e)=>update({orgLogoSize:parseInt(e.target.value)})} className="flex-1 accent-primary" /><span className="text-xs text-muted-foreground w-10 text-right">{config.orgLogoSize}px</span></div>
+                  <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground shrink-0">Resize</span><input type="range" min="30" max="120" step="5" value={config.orgLogoSize} onChange={(e)=>update({orgLogoSize:parseInt(e.target.value)})} className="flex-1 accent-teal-600" /><span className="text-xs text-muted-foreground w-10 text-right">{config.orgLogoSize}px</span></div>
                 </div>
               )}
               <div className="space-y-1.5">
@@ -333,7 +333,7 @@ export function SettingsPanel({
                       />
                     </div>
                   )}
-                  <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground shrink-0">Resize</span><input type="range" min="30" max="120" step="5" value={config.orgLogoSize} onChange={(e)=>update({orgLogoSize:parseInt(e.target.value)})} className="flex-1 accent-primary" /><span className="text-xs text-muted-foreground w-10 text-right">{config.orgLogoSize}px</span></div>
+                  <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground shrink-0">Resize</span><input type="range" min="30" max="120" step="5" value={config.orgLogoSize} onChange={(e)=>update({orgLogoSize:parseInt(e.target.value)})} className="flex-1 accent-teal-600" /><span className="text-xs text-muted-foreground w-10 text-right">{config.orgLogoSize}px</span></div>
                 </div>
               )}
               <div className="space-y-1.5">
@@ -411,7 +411,7 @@ export function SettingsPanel({
           <p className="text-sm font-semibold">Item Table</p>
           <div className="flex border-b gap-0">
             {(["labels","layout"] as const).map((sub)=>(
-              <button key={sub} onClick={()=>setTableSubTab(sub)} className={`px-5 py-2 text-sm capitalize transition-colors border-b-2 -mb-px ${tableSubTab===sub?"border-primary text-primary font-medium":"border-transparent text-muted-foreground hover:text-foreground"}`}>{sub}</button>
+            <button key={sub} onClick={()=>setTableSubTab(sub)} className={`px-5 py-2 text-sm capitalize transition-colors border-b-2 -mb-px ${tableSubTab===sub?"border-teal-600 text-teal-700 font-medium":"border-transparent text-muted-foreground hover:text-foreground"}`}>{sub}</button>
             ))}
           </div>
           {tableSubTab === "labels" && (

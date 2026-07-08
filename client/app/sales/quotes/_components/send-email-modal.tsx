@@ -147,13 +147,13 @@ ${activeOrganization?.name || "Team HAI"}`;
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden rounded-xl border-none shadow-2xl">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
+        <div className="bg-gradient-to-r from-teal-600 to-teal-800 p-6 text-white">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2 text-white">
               <Mail className="h-5 w-5" />
               Send Quote
             </DialogTitle>
-            <p className="text-blue-100 text-sm mt-1">
+            <p className="text-teal-100 text-sm mt-1">
               Send professionally formatted quote details to your customers.
             </p>
           </DialogHeader>
@@ -316,13 +316,13 @@ ${activeOrganization?.name || "Team HAI"}`;
         </div>
 
         <DialogFooter className="p-4 bg-muted/20 border-t flex justify-between items-center sm:justify-between">
-          <Button variant="ghost" onClick={onClose} disabled={loading}>
+          <Button variant="ghost" onClick={onClose} disabled={loading} className="text-slate-500 hover:bg-slate-50">
             Cancel
           </Button>
           <Button
             onClick={handleSend}
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px] gap-2"
+            className="bg-teal-600 hover:bg-teal-700 text-white min-w-[120px] gap-2 font-semibold"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

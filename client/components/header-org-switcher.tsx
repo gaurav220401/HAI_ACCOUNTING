@@ -47,9 +47,18 @@ function initials(name: string) {
  */
 export function HeaderOrgSwitcher() {
   const router = useRouter();
-  const { activeOrganization, organizations, switchOrganization } =
+  const { activeOrganization, organizations, switchOrganization, loading } =
     useOrganization();
   const [open, setOpen] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="flex h-7 items-center gap-1.5 px-2 animate-pulse rounded border border-slate-100 bg-slate-50/50">
+        <div className="h-4 w-4 bg-slate-200 rounded shrink-0" />
+        <div className="h-3 w-16 bg-slate-200 rounded" />
+      </div>
+    );
+  }
 
   const name = activeOrganization?.name ?? "Select Organization";
   const avatarCls = activeOrganization
@@ -74,21 +83,21 @@ export function HeaderOrgSwitcher() {
         <Button
           variant="ghost"
           size="sm"
-          className="flex h-8 items-center gap-2 px-2 text-sm font-normal"
+          className="flex h-7 items-center gap-1.5 px-2 text-xs font-normal text-slate-600 hover:text-slate-900 hover:bg-slate-100"
         >
           {/* Org avatar */}
           <div
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold ${avatarCls}`}
+            className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded text-[9px] font-bold ${avatarCls}`}
           >
             {activeOrganization ? (
               initials(activeOrganization.name)
             ) : (
-              <Building2 className="h-3 w-3" />
+              <Building2 className="h-2.5 w-2.5" />
             )}
           </div>
 
-          <span className="max-w-[160px] truncate font-medium">{name}</span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
+          <span className="max-w-[110px] truncate font-medium text-[12px]">{name}</span>
+          <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
         </Button>
       </DropdownMenuTrigger>
 
