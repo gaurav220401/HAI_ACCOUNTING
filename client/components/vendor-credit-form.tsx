@@ -113,6 +113,8 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [vendorBills, setVendorBills] = useState<Bill[]>([]);
 
+  const [loadingDropdowns, setLoadingDropdowns] = useState(true);
+
   const [vendorId, setVendorId] = useState("");
   const [sourceOfSupply, setSourceOfSupply] = useState("");
   const [destinationOfSupply, setDestinationOfSupply] = useState("");
@@ -137,12 +139,17 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
   );
 
   useEffect(() => {
-    contactApi.list({ type: "Vendor", page: 1, limit: 200 }).then((res) => setVendors(res.data || [])).catch(() => {});
-    itemApi.list({ page: 1, limit: 200 }).then((res) => setItems(res.data || [])).catch(() => {});
-    accountApi.list({ rootType: "Expense", excludeGroups: true }).then((res) => setAccounts(res.data || [])).catch(() => {});
-    settingsApi.taxes.list().then((res) => setTaxes(res.data || [])).catch(() => {});
-    tdsTaxApi.list().then((res) => setTdsTaxes(res.data || [])).catch(() => {});
-    tcsTaxApi.list().then((res) => setTcsTaxes(res.data || [])).catch(() => {});
+    setLoadingDropdowns(true);
+    Promise.all([
+      contactApi.list({ type: "Vendor", page: 1, limit: 200 }).then((res) => setVendors(res.data || [])),
+      itemApi.list({ page: 1, limit: 200 }).then((res) => setItems(res.data || [])),
+      accountApi.list({ rootType: "Expense", excludeGroups: true }).then((res) => setAccounts(res.data || [])),
+      settingsApi.taxes.list().then((res) => setTaxes(res.data || [])),
+      tdsTaxApi.list().then((res) => setTdsTaxes(res.data || [])),
+      tcsTaxApi.list().then((res) => setTcsTaxes(res.data || [])),
+    ]).catch(() => {}).finally(() => {
+      setLoadingDropdowns(false);
+    });
 
     if (mode === "create") {
       vendorCreditApi.getNextNumber().then((res) => setVendorCreditNumber(res.data.vendorCreditNumber)).catch(() => {});
@@ -359,14 +366,21 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
             <div>
               <Label className="text-red-500">Vendor Name*</Label>
-              <Select value={vendorId} onValueChange={setVendorId}>
-                <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select vendor" /></SelectTrigger>
-                <SelectContent>
-                  {vendors.map((v) => (
-                    <SelectItem key={v._id} value={v._id}>{v.displayName}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading vendors...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={vendorId} onValueChange={setVendorId}>
+                  <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select vendor" /></SelectTrigger>
+                  <SelectContent>
+                    {vendors.map((v) => (
+                      <SelectItem key={v._id} value={v._id}>{v.displayName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div>
               <Label className="text-transparent">Currency</Label>
@@ -389,33 +403,54 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
             <div>
               <Label className="text-red-500">Source Of Supply*</Label>
-              <Select value={sourceOfSupply} onValueChange={setSourceOfSupply}>
-                <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select state" /></SelectTrigger>
-                <SelectContent>
-                  {SUPPLY_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading states...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={sourceOfSupply} onValueChange={setSourceOfSupply}>
+                  <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select state" /></SelectTrigger>
+                  <SelectContent>
+                    {SUPPLY_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div>
               <Label className="text-red-500">Destination Of Supply*</Label>
-              <Select value={destinationOfSupply} onValueChange={setDestinationOfSupply}>
-                <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select state" /></SelectTrigger>
-                <SelectContent>
-                  {SUPPLY_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading states...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={destinationOfSupply} onValueChange={setDestinationOfSupply}>
+                  <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select state" /></SelectTrigger>
+                  <SelectContent>
+                    {SUPPLY_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div>
               <Label>Bill#</Label>
-              <Select value={referenceBillId || "none"} onValueChange={(v) => setReferenceBillId(v === "none" ? "" : v)}>
-                <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select bill" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {vendorBills.map((b) => (
-                    <SelectItem key={b._id} value={b._id}>{b.billNumber}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading bills...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={referenceBillId || "none"} onValueChange={(v) => setReferenceBillId(v === "none" ? "" : v)}>
+                  <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select bill" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {vendorBills.map((b) => (
+                      <SelectItem key={b._id} value={b._id}>{b.billNumber}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div>
               <Label>Bill Type</Label>
@@ -588,30 +623,44 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
           </div>
           {taxType === "TDS" && (
             <div className="flex justify-between items-center gap-3 text-sm">
-              <Select value={tdsId || "none"} onValueChange={(v) => setTdsId(v === "none" ? "" : v)}>
-                <SelectTrigger className="h-8 bg-white w-[220px]"><SelectValue placeholder="Select a Tax" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Select a Tax</SelectItem>
-                  {tdsTaxes.map((t) => (
-                    <SelectItem key={t._id} value={t._id}>{t.taxName} ({t.rate}%)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="h-8 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5 w-[220px]">
+                  <span className="text-slate-400 text-xs">Loading tax...</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={tdsId || "none"} onValueChange={(v) => setTdsId(v === "none" ? "" : v)}>
+                  <SelectTrigger className="h-8 bg-white w-[220px]"><SelectValue placeholder="Select a Tax" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select a Tax</SelectItem>
+                    {tdsTaxes.map((t) => (
+                      <SelectItem key={t._id} value={t._id}>{t.taxName} ({t.rate}%)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <span>- {fmt(tdsAmount)}</span>
             </div>
           )}
           {taxType === "TCS" && (
             <div className="flex justify-between items-center gap-3 text-sm">
-              <Select value={tcsId || "none"} onValueChange={(v) => setTcsId(v === "none" ? "" : v)}>
-                <SelectTrigger className="h-8 bg-white w-[220px]"><SelectValue placeholder="Select a Tax" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Select a Tax</SelectItem>
-                  {tcsTaxes.map((t) => (
-                    <SelectItem key={t._id} value={t._id}>{t.taxName} ({t.rate}%)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span>{fmt(tcsAmount)}</span>
+              {loadingDropdowns ? (
+                <div className="h-8 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5 w-[220px]">
+                  <span className="text-slate-400 text-xs">Loading tax...</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={tcsId || "none"} onValueChange={(v) => setTcsId(v === "none" ? "" : v)}>
+                  <SelectTrigger className="h-8 bg-white w-[220px]"><SelectValue placeholder="Select a Tax" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select a Tax</SelectItem>
+                    {tcsTaxes.map((t) => (
+                      <SelectItem key={t._id} value={t._id}>{t.taxName} ({t.rate}%)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <span>+ {fmt(tcsAmount)}</span>
             </div>
           )}
           <div className="flex justify-between items-center text-sm gap-3">
@@ -664,9 +713,29 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
       </div>
 
       <div className="sticky bottom-0 bg-background border-t px-4 py-3 flex items-center gap-2">
-        <Button variant="outline" disabled={saving} onClick={() => submit("DRAFT")}>Save as Draft</Button>
-        <Button disabled={saving} onClick={() => submit("OPEN")}>Save as Open</Button>
-        <Button variant="outline" disabled={saving} onClick={onCancel}>Cancel</Button>
+        <Button
+          variant="outline"
+          disabled={saving}
+          onClick={() => submit("DRAFT")}
+          className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+        >
+          Save as Draft
+        </Button>
+        <Button
+          disabled={saving}
+          onClick={() => submit("OPEN")}
+          className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-4"
+        >
+          Save as Open
+        </Button>
+        <Button
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+          className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+        >
+          Cancel
+        </Button>
       </div>
     </div>
   );

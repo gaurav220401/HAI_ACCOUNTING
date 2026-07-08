@@ -44,6 +44,120 @@ import {
 import type { Expense } from "@/lib/api/expenses";
 import { cn } from "@/lib/utils";
 
+// ─── Custom UI.md Components ──────────────────────────────────────────────────
+
+function StatusPill({ status }: { status: string }) {
+  if (status === "Active") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+        <span className="h-1 w-1 rounded-full bg-emerald-500" />
+        Active
+      </span>
+    );
+  }
+  if (status === "Stopped" || status === "Inactive") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+        <span className="h-1 w-1 rounded-full bg-slate-400" />
+        Stopped
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+      <span className="h-1 w-1 rounded-full bg-amber-500" />
+      Expired
+    </span>
+  );
+}
+
+const TableSkeleton = () => (
+  <div className="flex-1 overflow-auto animate-pulse">
+    <table className="w-full text-xs">
+      <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
+        <tr>
+          <th className="px-4 py-2.5 w-8"><div className="h-3.5 w-3.5 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5"><div className="h-3 w-20 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5"><div className="h-3 w-24 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5"><div className="h-3 w-20 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5"><div className="h-3 w-16 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5"><div className="h-3 w-20 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5"><div className="h-3 w-20 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5"><div className="h-3 w-16 bg-slate-200 rounded" /></th>
+          <th className="px-4 py-2.5 text-right"><div className="h-3 w-16 bg-slate-200 rounded ml-auto" /></th>
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: 5 }).map((_, r) => (
+          <tr key={r} className="border-b">
+            <td className="px-4 py-3"><div className="h-3.5 w-3.5 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3"><div className="h-3.5 w-24 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3"><div className="h-3.5 w-28 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3"><div className="h-3.5 w-24 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3"><div className="h-3.5 w-16 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3"><div className="h-3.5 w-20 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3"><div className="h-3.5 w-20 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3"><div className="h-3.5 w-16 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-3 text-right"><div className="h-3.5 w-16 bg-slate-100 rounded ml-auto" /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const ListSkeleton = () => (
+  <div className="flex-1 overflow-y-auto animate-pulse">
+    <div className="flex items-center gap-2 px-3 py-1.5 border-b">
+      <div className="h-3.5 w-3.5 bg-slate-200 rounded" />
+      <div className="h-6 w-16 bg-slate-200 rounded" />
+    </div>
+    {Array.from({ length: 5 }).map((_, r) => (
+      <div key={r} className="flex items-start gap-2 px-3 py-2.5 border-b">
+        <div className="h-3.5 w-3.5 mt-0.5 bg-slate-100 rounded shrink-0" />
+        <div className="flex-1 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="h-3.5 w-24 bg-slate-100 rounded" />
+            <div className="h-3.5 w-16 bg-slate-100 rounded" />
+          </div>
+          <div className="h-3 w-32 bg-slate-100 rounded" />
+          <div className="flex items-center justify-between">
+            <div className="h-3 w-12 bg-slate-100 rounded" />
+            <div className="h-3 w-16 bg-slate-100 rounded" />
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const DetailExpensesSkeleton = () => (
+  <div className="overflow-x-auto animate-pulse">
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="border-b bg-slate-50">
+          <th className="text-left px-4 py-2"><div className="h-3 w-12 bg-slate-200 rounded" /></th>
+          <th className="text-left px-4 py-2"><div className="h-3 w-24 bg-slate-200 rounded" /></th>
+          <th className="text-left px-4 py-2"><div className="h-3 w-12 bg-slate-200 rounded" /></th>
+          <th className="text-left px-4 py-2"><div className="h-3 w-20 bg-slate-200 rounded" /></th>
+          <th className="text-right px-4 py-2"><div className="h-3 w-12 bg-slate-200 rounded ml-auto" /></th>
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: 3 }).map((_, r) => (
+          <tr key={r} className="border-b">
+            <td className="px-4 py-2.5"><div className="h-3 w-16 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-2.5"><div className="h-3 w-24 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-2.5"><div className="h-3 w-12 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-2.5"><div className="h-3 w-20 bg-slate-100 rounded" /></td>
+            <td className="px-4 py-2.5 text-right"><div className="h-3 w-12 bg-slate-100 rounded ml-auto" /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getName(field: unknown): string {
@@ -173,19 +287,7 @@ function RecurringDetailPanel({
       <div className="flex items-center justify-between px-4 py-2.5 border-b shrink-0">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">{rec.profileName}</h2>
-          <Badge
-            variant={rec.status === "Active" ? "default" : "secondary"}
-            className={cn(
-              "text-xs px-1.5 py-0",
-              rec.status === "Active"
-                ? "bg-green-100 text-green-700 border-green-200"
-                : rec.status === "Expired"
-                  ? "bg-amber-100 text-amber-700 border-amber-200"
-                  : "bg-gray-100 text-gray-600",
-            )}
-          >
-            {rec.status}
-          </Badge>
+          <StatusPill status={rec.status} />
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -238,13 +340,13 @@ function RecurringDetailPanel({
           <TabsList className="h-9 bg-transparent p-0 gap-0">
             <TabsTrigger
               value="overview"
-              className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-3"
+              className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:font-bold data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-3"
             >
               Overview
             </TabsTrigger>
             <TabsTrigger
               value="expenses"
-              className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-3"
+              className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:font-bold data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-3"
             >
               All Expenses
             </TabsTrigger>
@@ -275,8 +377,8 @@ function RecurringDetailPanel({
                 </div>
               </div>
               <div className="flex items-start gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f766e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 </div>
                 <div>
                   <p className="text-sm font-bold">{fmtDate(rec.nextExpenseDate)}</p>
@@ -319,7 +421,7 @@ function RecurringDetailPanel({
                       <span className="text-xs text-muted-foreground w-20 shrink-0">Customer</span>
                       <button
                         onClick={() => router.push(`/sales/customers/${getId(rec.customerId)}`)}
-                        className="text-xs text-blue-600 font-medium hover:underline text-left"
+                        className="text-xs text-teal-700 font-semibold hover:text-teal-800 hover:underline text-left"
                       >
                         {custName}
                       </button>
@@ -330,7 +432,7 @@ function RecurringDetailPanel({
                       <span className="text-xs text-muted-foreground w-20 shrink-0">Payable To</span>
                       <button
                         onClick={() => router.push(`/purchases/vendors/${getId(rec.vendorId)}`)}
-                        className="text-xs text-blue-600 font-medium hover:underline text-left"
+                        className="text-xs text-teal-700 font-semibold hover:text-teal-800 hover:underline text-left"
                       >
                         {vendorName}
                       </button>
@@ -372,8 +474,8 @@ function RecurringDetailPanel({
                 {rec.lastExpenseDate && (
                   <div className="flex gap-3">
                     <div className="flex flex-col items-center">
-                      <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                        <CheckCircle2 className="h-2.5 w-2.5 text-blue-600" />
+                      <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
                       </div>
                     </div>
                     <div>
@@ -390,9 +492,7 @@ function RecurringDetailPanel({
         {/* All Expenses tab */}
         <TabsContent value="expenses" className="flex-1 overflow-auto mt-0">
           {loadingExpenses ? (
-            <div className="flex items-center justify-center h-32">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
+            <DetailExpensesSkeleton />
           ) : generatedExpenses.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-center px-4">
               <Receipt className="h-8 w-8 text-muted-foreground/40 mb-2" />
@@ -400,7 +500,7 @@ function RecurringDetailPanel({
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-3 text-xs h-7"
+                className="mt-3 text-xs h-7 border-slate-200 text-slate-600 bg-white hover:bg-slate-50"
                 onClick={handleCreateExpense}
                 disabled={creatingExpense}
               >
@@ -427,11 +527,11 @@ function RecurringDetailPanel({
                       <td className="px-4 py-2.5">{getName(exp.expenseAccountId) || "—"}</td>
                       <td className="px-4 py-2.5">
                         <span className={cn(
-                          "text-xs font-medium",
-                          exp.status === "Approved" ? "text-green-600" :
-                          exp.status === "Rejected" ? "text-red-500" :
-                          exp.status === "Reimbursed" ? "text-blue-600" :
-                          exp.isBillable ? "text-blue-500" : "text-muted-foreground"
+                          "text-xs font-semibold",
+                          exp.status === "Approved" ? "text-emerald-700" :
+                          exp.status === "Rejected" ? "text-rose-600" :
+                          exp.status === "Reimbursed" ? "text-teal-700" :
+                          exp.isBillable ? "text-teal-700" : "text-slate-500"
                         )}>
                           {exp.isBillable ? "Billable" : exp.status === "Draft" ? "Non-Billable" : exp.status}
                         </span>
@@ -531,9 +631,9 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold",
-                  step >= n ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  step >= n ? "bg-teal-600 text-white" : "bg-muted text-muted-foreground"
                 )}>{n}</div>
-                <span className={cn("text-sm font-medium", step >= n ? "text-foreground" : "text-muted-foreground")}>
+                <span className={cn("text-sm font-semibold", step >= n ? "text-foreground" : "text-muted-foreground")}>
                   {n === 1 ? "Configure" : n === 2 ? "Map Fields" : "Preview"}
                 </span>
               </div>
@@ -552,7 +652,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
                 onDragLeave={() => setIsDragging(false)}
                 className={cn(
                   "border-2 border-dashed rounded-lg p-10 flex flex-col items-center gap-3 transition-colors cursor-pointer",
-                  isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/20",
+                  isDragging ? "border-teal-600 bg-teal-50/50" : "border-border hover:border-teal-500 hover:bg-slate-50/50",
                   file && "border-green-400 bg-green-50"
                 )}
                 onClick={() => fileInputRef.current?.click()}
@@ -569,10 +669,10 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
                   <p className="text-sm font-medium">Drag and drop file to import</p>
                 )}
                 <div className="flex items-center gap-2">
-                  <Button size="sm" className="h-8 text-xs" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
+                  <Button size="sm" className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
                     Choose File
                   </Button>
-                  <Button size="sm" variant="outline" className="h-8 text-xs px-2">
+                  <Button size="sm" variant="outline" className="h-8 text-xs px-2 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                     <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -584,9 +684,9 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
 
               <p className="text-xs text-muted-foreground">
                 Download a{" "}
-                <button onClick={() => downloadSampleFile("csv")} className="text-primary underline hover:no-underline">sample csv file</button>
+                <button onClick={() => downloadSampleFile("csv")} className="text-teal-700 font-semibold hover:text-teal-800 hover:underline">sample csv file</button>
                 {" "}or{" "}
-                <button onClick={() => downloadSampleFile("xls")} className="text-primary underline hover:no-underline">sample xls file</button>
+                <button onClick={() => downloadSampleFile("xls")} className="text-teal-700 font-semibold hover:text-teal-800 hover:underline">sample xls file</button>
                 {" "}and compare it to your import file to ensure you have the file perfect for the import.
               </p>
 
@@ -615,11 +715,11 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
                 <ul className="space-y-1.5 list-disc list-inside">
                   <li className="text-xs text-muted-foreground">
                     Import data with the details of GST Treatment by referring these{" "}
-                    <span className="text-primary cursor-pointer underline">accepted formats.</span>
+                    <span className="text-teal-700 font-semibold hover:text-teal-800 hover:underline cursor-pointer">accepted formats.</span>
                   </li>
                   <li className="text-xs text-muted-foreground">
                     You can download the{" "}
-                    <button onClick={() => downloadSampleFile("xls")} className="text-primary underline hover:no-underline">sample xls file</button>
+                    <button onClick={() => downloadSampleFile("xls")} className="text-teal-700 font-semibold hover:text-teal-800 hover:underline">sample xls file</button>
                     {" "}to get detailed information about the data fields used while importing.
                   </li>
                   <li className="text-xs text-muted-foreground">
@@ -646,7 +746,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
                       "Expense Category", "Currency Code", "Expense Amount", "Vendor", "Customer Name"].map((col, i) => (
                       <tr key={i} className="border-b hover:bg-muted/20">
                         <td className="px-4 py-2">{col}</td>
-                        <td className="px-4 py-2 text-primary">{col}</td>
+                        <td className="px-4 py-2 text-teal-700 font-medium">{col}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -682,16 +782,16 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
 
         <DialogFooter className="px-6 py-4 border-t bg-muted/20">
           <div className="flex items-center justify-between w-full">
-            <Button variant="outline" size="sm" onClick={step === 1 ? handleClose : () => setStep((s) => (s - 1) as 1 | 2 | 3)}>
+            <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={step === 1 ? handleClose : () => setStep((s) => (s - 1) as 1 | 2 | 3)}>
               {step === 1 ? "Cancel" : "Back"}
             </Button>
             <div className="flex gap-2">
               {step < 3 ? (
-                <Button size="sm" onClick={() => setStep((s) => (s + 1) as 2 | 3)} disabled={step === 1 && !file}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => setStep((s) => (s + 1) as 2 | 3)} disabled={step === 1 && !file}>
                   Next
                 </Button>
               ) : (
-                <Button size="sm" onClick={() => { toast.success("Import initiated"); handleClose(); }}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => { toast.success("Import initiated"); handleClose(); }}>
                   Import
                 </Button>
               )}
@@ -743,9 +843,9 @@ function ExportDialog({
         </DialogHeader>
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
           {/* Info banner */}
-          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-md p-3">
-            <svg className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-            <p className="text-xs text-blue-700">You can export your data in CSV, XLS or XLSX format.</p>
+          <div className="flex items-start gap-2 bg-teal-50/50 border border-teal-100 rounded-md p-3">
+            <svg className="h-4 w-4 text-teal-600 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+            <p className="text-xs text-teal-800">You can export your data in CSV, XLS or XLSX format.</p>
           </div>
 
           {/* Module */}
@@ -844,8 +944,8 @@ function ExportDialog({
           </p>
         </div>
         <DialogFooter className="px-6 py-4 border-t gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={handleExport}>Export</Button>
+          <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={onClose}>Cancel</Button>
+          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={handleExport}>Export</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -884,9 +984,9 @@ function ExportCurrentViewDialog({
           <DialogTitle className="text-base font-semibold">Export Current View</DialogTitle>
         </DialogHeader>
         <div className="px-6 py-5 space-y-5">
-          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-md p-3">
-            <svg className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-            <p className="text-xs text-blue-700">Only the current view with its visible columns will be exported in CSV or XLS format.</p>
+          <div className="flex items-start gap-2 bg-teal-50/50 border border-teal-100 rounded-md p-3">
+            <svg className="h-4 w-4 text-teal-600 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+            <p className="text-xs text-teal-800">Only the current view with its visible columns will be exported in CSV or XLS format.</p>
           </div>
 
           <div className="space-y-1.5">
@@ -940,8 +1040,8 @@ function ExportCurrentViewDialog({
           </p>
         </div>
         <DialogFooter className="px-6 py-4 border-t gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={handleExport}>Export</Button>
+          <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={onClose}>Cancel</Button>
+          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={handleExport}>Export</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1055,13 +1155,13 @@ export default function RecurringExpensesPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Recurring Expenses</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <span className="text-sm font-semibold text-slate-700">Recurring Expenses</span>
+            </div>
           }
           actions={
             <div className="flex items-center gap-1.5">
@@ -1088,7 +1188,7 @@ export default function RecurringExpensesPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
               <Separator orientation="vertical" className="h-5" />
-              <Button size="sm" className="h-8 text-xs gap-1" onClick={() => router.push("/purchases/recurring-expenses/new")}>
+              <Button size="sm" className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => router.push("/purchases/recurring-expenses/new")}>
                 <Plus className="h-3.5 w-3.5" /> New
               </Button>
               <DropdownMenu>
@@ -1112,7 +1212,7 @@ export default function RecurringExpensesPage() {
                         <DropdownMenuItem key={field} className="text-xs gap-2" onClick={() => setSortBy(field)}>
                           {label}
                           {sortField === field && (
-                            <span className="ml-auto text-primary">{sortDir === "asc" ? "↑" : "↓"}</span>
+                            <span className="ml-auto text-teal-600 font-semibold">{sortDir === "asc" ? "↑" : "↓"}</span>
                           )}
                         </DropdownMenuItem>
                       ))}
@@ -1147,22 +1247,22 @@ export default function RecurringExpensesPage() {
         <div className="flex flex-col h-[calc(100vh-56px)] overflow-hidden">
           {/* Toolbar — bulk action bar when selections exist */}
           {anyChecked && !panelOpen && (
-            <div className="flex items-center gap-2 px-4 py-2 border-b bg-blue-50 shrink-0">
+            <div className="flex items-center gap-2 px-4 py-2 border-b bg-teal-50/40 border-teal-100 shrink-0">
               <Checkbox
                 checked={allChecked}
                 onCheckedChange={toggleAll}
-                className="border-blue-400"
+                className="border-teal-500/50"
               />
-              <Button variant="outline" size="sm" className="h-7 text-xs px-3" onClick={() => toast.info("Bulk Update coming soon")}>
+              <Button variant="outline" size="sm" className="h-7 text-xs px-3 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={() => toast.info("Bulk Update coming soon")}>
                 Bulk Update
               </Button>
               <Separator orientation="vertical" className="h-5" />
-              <Button variant="ghost" size="sm" className="h-7 text-xs px-3" onClick={bulkResume}>Resume</Button>
-              <Button variant="ghost" size="sm" className="h-7 text-xs px-3" onClick={bulkStop}>Stop</Button>
-              <Button variant="ghost" size="sm" className="h-7 text-xs px-3 text-destructive hover:text-destructive" onClick={bulkDelete}>Delete</Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs px-3 hover:bg-slate-100" onClick={bulkResume}>Resume</Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs px-3 hover:bg-slate-100" onClick={bulkStop}>Stop</Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs px-3 text-rose-600 hover:bg-rose-50" onClick={bulkDelete}>Delete</Button>
               <Separator orientation="vertical" className="h-5" />
-              <span className="text-xs font-medium text-blue-700">{checkedIds.size} Selected</span>
-              <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" onClick={() => setCheckedIds(new Set())}>
+              <span className="text-xs font-semibold text-teal-700">{checkedIds.size} Selected</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto hover:bg-slate-100" onClick={() => setCheckedIds(new Set())}>
                 <X className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -1176,17 +1276,15 @@ export default function RecurringExpensesPage() {
               panelOpen ? "w-[340px] shrink-0" : "flex-1"
             )}>
               {loading ? (
-                <div className="flex items-center justify-center flex-1">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
+                panelOpen ? <ListSkeleton /> : <TableSkeleton />
               ) : items.length === 0 ? (
-                <div className="flex flex-col items-center justify-center flex-1 text-center px-6">
+                <div className="flex flex-col items-center justify-center flex-1 text-center px-6 animate-fade-in">
                   <RefreshCw className="h-10 w-10 text-muted-foreground/30 mb-3" />
                   <p className="text-sm font-medium text-muted-foreground">No recurring expenses</p>
                   <p className="text-xs text-muted-foreground mt-1">Create your first recurring expense profile</p>
                   <Button
                     size="sm"
-                    className="mt-4 text-xs gap-1"
+                    className="mt-4 text-xs gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
                     onClick={() => router.push("/purchases/recurring-expenses/new")}
                   >
                     <Plus className="h-3.5 w-3.5" /> New Recurring Expense
@@ -1206,7 +1304,7 @@ export default function RecurringExpensesPage() {
                       <>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-6 text-xs gap-1 px-2">
+                            <Button variant="outline" size="sm" className="h-6 text-xs gap-1 px-2 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                               Bulk Actions <ChevronDown className="h-2.5 w-2.5" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -1215,11 +1313,11 @@ export default function RecurringExpensesPage() {
                             <DropdownMenuItem className="text-xs" onClick={bulkResume}>Resume</DropdownMenuItem>
                             <DropdownMenuItem className="text-xs" onClick={bulkStop}>Stop</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-xs text-destructive focus:text-destructive" onClick={bulkDelete}>Delete</DropdownMenuItem>
+                            <DropdownMenuItem className="text-xs text-rose-600 focus:text-rose-600 focus:bg-rose-50" onClick={bulkDelete}>Delete</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <span className="text-[11px] font-medium text-blue-700">{checkedIds.size} Selected</span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto" onClick={() => setCheckedIds(new Set())}>
+                        <span className="text-[11px] font-semibold text-teal-700">{checkedIds.size} Selected</span>
+                        <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto hover:bg-slate-100" onClick={() => setCheckedIds(new Set())}>
                           <X className="h-3 w-3" />
                         </Button>
                       </>
@@ -1227,7 +1325,7 @@ export default function RecurringExpensesPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-6 text-xs gap-1 px-2"
+                        className="h-6 text-xs gap-1 px-2 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                         onClick={() => router.push("/purchases/recurring-expenses/new")}
                       >
                         <Plus className="h-3 w-3" /> New
@@ -1238,8 +1336,8 @@ export default function RecurringExpensesPage() {
                     <div
                       key={rec._id}
                       className={cn(
-                        "flex items-start gap-2 px-3 py-2.5 border-b hover:bg-muted/40 transition-colors",
-                        selectedId === rec._id && "bg-blue-50 border-l-2 border-l-primary"
+                        "flex items-start gap-2 px-3 py-2.5 border-b hover:bg-slate-50/80 transition-colors",
+                        selectedId === rec._id && "bg-teal-50/50 border-l-[3px] border-l-teal-600"
                       )}
                     >
                       <Checkbox
@@ -1253,21 +1351,12 @@ export default function RecurringExpensesPage() {
                         onClick={() => setSelectedId(rec._id)}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium truncate text-blue-600">{rec.profileName}</span>
+                          <span className="text-xs font-semibold truncate text-teal-700 hover:text-teal-800 hover:underline">{rec.profileName}</span>
                           <span className="text-xs font-semibold shrink-0 ml-2">{fmtCurrency(rec.amount, rec.currency)}</span>
                         </div>
                         <p className="text-[11px] text-muted-foreground mt-0.5">{getName(rec.expenseAccountId) || "—"}</p>
                         <div className="flex items-center justify-between mt-0.5">
-                          <span className={cn(
-                            "text-[10px] font-semibold uppercase",
-                            rec.status === "Active"
-                              ? "text-green-700"
-                              : rec.status === "Expired"
-                                ? "text-amber-700"
-                                : "text-gray-500"
-                          )}>
-                            {rec.status}
-                          </span>
+                          <StatusPill status={rec.status} />
                           <span className="text-[11px] text-muted-foreground">{freqLabel(rec)}</span>
                         </div>
                         {rec.nextExpenseDate && (
@@ -1283,7 +1372,7 @@ export default function RecurringExpensesPage() {
                 /* Table when no panel open */
                 <div className="flex-1 overflow-auto">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-background z-10">
+                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
                       <tr className="border-b">
                         <th className="px-4 py-2.5 w-8">
                           <Checkbox
@@ -1292,14 +1381,14 @@ export default function RecurringExpensesPage() {
                             className="h-3.5 w-3.5"
                           />
                         </th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Profile Name</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Expense Account</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Vendor Name</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Frequency</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Last Expense Date</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Next Expense Date</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Status</th>
-                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Amount</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Profile Name</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Expense Account</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Vendor Name</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Frequency</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Last Expense Date</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Next Expense Date</th>
+                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Status</th>
+                        <th className="text-right px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Amount</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1307,8 +1396,8 @@ export default function RecurringExpensesPage() {
                         <tr
                           key={rec._id}
                           className={cn(
-                            "border-b hover:bg-muted/30 cursor-pointer transition-colors",
-                            checkedIds.has(rec._id) && "bg-blue-50"
+                            "border-b hover:bg-teal-50/20 cursor-pointer transition-colors",
+                            checkedIds.has(rec._id) && "bg-teal-50/40"
                           )}
                         >
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1318,23 +1407,14 @@ export default function RecurringExpensesPage() {
                               className="h-3.5 w-3.5"
                             />
                           </td>
-                          <td className="px-4 py-3 font-medium text-blue-600" onClick={() => setSelectedId(rec._id)}>{rec.profileName}</td>
+                          <td className="px-4 py-3 font-medium text-teal-700 hover:text-teal-800 hover:underline" onClick={() => setSelectedId(rec._id)}>{rec.profileName}</td>
                           <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{getName(rec.expenseAccountId) || "—"}</td>
                           <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{getName(rec.vendorId) || "—"}</td>
                           <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{freqLabel(rec)}</td>
                           <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.lastExpenseDate)}</td>
                           <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.nextExpenseDate)}</td>
                           <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>
-                            <span className={cn(
-                              "text-xs font-semibold uppercase tracking-wide",
-                              rec.status === "Active"
-                                ? "text-green-600"
-                                : rec.status === "Expired"
-                                  ? "text-amber-600"
-                                  : "text-gray-500"
-                            )}>
-                              {rec.status}
-                            </span>
+                            <StatusPill status={rec.status} />
                           </td>
                           <td className="px-4 py-3 text-right font-medium" onClick={() => setSelectedId(rec._id)}>
                             {fmtCurrency(rec.amount, rec.currency)}

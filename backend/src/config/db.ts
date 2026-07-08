@@ -1,4 +1,13 @@
 import mongoose from "mongoose";
+import dns from "dns";
+
+// Configure DNS resolution to use Cloudflare and Google public DNS servers
+// to bypass local system/router DNS issues with MongoDB Atlas SRV records.
+try {
+  dns.setServers(["1.1.1.1", "8.8.8.8"]);
+} catch (e: any) {
+  console.warn("⚠️ Failed to set custom DNS servers:", e.message);
+}
 
 let connectPromise: Promise<typeof mongoose> | null = null;
 

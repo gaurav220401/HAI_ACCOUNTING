@@ -515,7 +515,7 @@ export function RecurringInvoiceForm({
   if (masterLoading) {
     return (
       <div className="flex min-h-80 items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -1069,7 +1069,7 @@ export function RecurringInvoiceForm({
             <Separator />
 
             <div className="flex flex-col gap-3">
-              <Button onClick={handleSave} disabled={saving}>
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={handleSave} disabled={saving}>
                 {saving ?
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 : null}

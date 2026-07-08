@@ -265,6 +265,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
   const [captchaLoading, setCaptchaLoading] = useState(false);
 
   // ── Other Details ────────────────────────────────────────────────────────
+  const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [gstin, setGstin] = useState(initialData?.gstin ?? "");
   const [pan, setPan] = useState(initialData?.pan ?? "");
   const [msmeRegistered, setMsmeRegistered] = useState(initialData?.msmeRegistered ?? false);
@@ -376,12 +377,18 @@ export function VendorForm({ initialData }: VendorFormProps) {
 
   // fetch reference data
   useEffect(() => {
-    accountApi.list({ accountType: "Accounts Payable", excludeGroups: true })
-      .then((r) => setAccounts(r.data ?? []))
-      .catch(() => {});
-    settingsApi.paymentTerms.list()
-      .then((r) => setPaymentTermsList(r.data ?? []))
-      .catch(() => {});
+    setLoadingDropdowns(true);
+    Promise.all([
+      accountApi.list({ accountType: "Accounts Payable", excludeGroups: true }).catch(() => ({ data: [] })),
+      settingsApi.paymentTerms.list().catch(() => ({ data: [] }))
+    ])
+      .then(([accountsRes, paymentTermsRes]) => {
+        setAccounts(accountsRes.data ?? []);
+        setPaymentTermsList(paymentTermsRes.data ?? []);
+      })
+      .finally(() => {
+        setLoadingDropdowns(false);
+      });
   }, []);
 
   // Auto-derive displayName if not manually edited
@@ -766,39 +773,52 @@ export function VendorForm({ initialData }: VendorFormProps) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col">
+    <div className="bg-white min-h-full flex flex-col">
 
       {/* ── Toolbar ── */}
-      <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
-        <h1 className="text-lg font-semibold tracking-tight">{isEdit ? "Edit Vendor" : "New Vendor"}</h1>
+      <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-white sticky top-0 z-10">
+        <div>
+          <p className="text-[11px] font-medium text-teal-700 mb-0.5">Purchases</p>
+          <h1 className="text-lg font-bold text-slate-900 leading-none">{isEdit ? "Edit Vendor" : "New Vendor"}</h1>
+        </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => {
-            const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-            const redirectUrl = searchParams?.get("redirect");
-            if (redirectUrl) {
-              router.push(redirectUrl);
-            } else {
-              router.push("/purchases/vendors");
-            }
-          }} disabled={saving}>
+          <button
+            type="button"
+            className="h-8 px-4 border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md text-sm font-medium transition-colors cursor-pointer"
+            onClick={() => {
+              const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+              const redirectUrl = searchParams?.get("redirect");
+              if (redirectUrl) {
+                router.push(redirectUrl);
+              } else {
+                router.push("/purchases/vendors");
+              }
+            }}
+            disabled={saving}
+          >
             Cancel
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Saving…</> : "Save"}
-          </Button>
+          </button>
+          <button
+            type="button"
+            className="h-8 px-4 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md text-sm transition-colors cursor-pointer"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</span> : "Save"}
+          </button>
         </div>
       </div>
 
       {/* ── Body ── */}
-      <div className="px-6 py-4 max-w-4xl space-y-4">
+      <div className="px-6 py-5 w-full max-w-6xl mr-auto space-y-5">
 
         {/* ── GSTIN Prefill Banner ── */}
-        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-800">
           <Globe className="h-3.5 w-3.5 shrink-0" />
           <span>Prefill Vendor details from the GST portal using the Vendor&apos;s GSTIN.</span>
           <button
             type="button"
-            className="ml-1 font-semibold underline underline-offset-2 hover:text-blue-600 flex items-center gap-0.5"
+            className="ml-1 font-semibold underline underline-offset-2 hover:text-amber-950 flex items-center gap-0.5"
             onClick={openGstinDialog}
           >
             Prefill <ExternalLink className="h-3 w-3" />
@@ -881,9 +901,9 @@ export function VendorForm({ initialData }: VendorFormProps) {
                     <button
                       key={i}
                       type="button"
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors ${
-                        i === 0 ? "font-medium text-primary bg-primary/5" : "text-foreground"
-                      } ${displayName === s ? "bg-primary/10" : ""}`}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 hover:text-teal-700 transition-colors ${
+                        i === 0 ? "font-medium text-teal-700 bg-teal-50/50" : "text-foreground"
+                      } ${displayName === s ? "bg-teal-50 text-teal-700" : ""}`}
                       onMouseDown={(e) => {
                         e.preventDefault();
                       }}
@@ -1101,17 +1121,21 @@ export function VendorForm({ initialData }: VendorFormProps) {
               {/* Accounts Payable */}
               <div className="flex flex-col gap-1">
                 <Label className="text-xs text-muted-foreground">Accounts Payable</Label>
-                <LinkField
-                  value={accountsPayableId}
-                  onChange={setAccountsPayableId}
-                  staticOptions={accounts.map((a) => ({
-                    value: a._id,
-                    label: a.name,
-                  }))}
-                  placeholder="Select an account"
-                  clearable={true}
-                  triggerClassName="h-9 text-sm"
-                />
+                {loadingDropdowns ? (
+                  <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />
+                ) : (
+                  <LinkField
+                    value={accountsPayableId}
+                    onChange={setAccountsPayableId}
+                    staticOptions={accounts.map((a) => ({
+                      value: a._id,
+                      label: a.name,
+                    }))}
+                    placeholder="Select an account"
+                    clearable={true}
+                    triggerClassName="h-9 text-sm"
+                  />
+                )}
               </div>
 
               {/* Opening Balance */}
@@ -1134,28 +1158,32 @@ export function VendorForm({ initialData }: VendorFormProps) {
               {/* Payment Terms */}
               <div className="flex flex-col gap-1">
                 <Label className="text-xs text-muted-foreground">Payment Terms</Label>
-                <Select value={paymentTermsId || "__none"} onValueChange={(v) => setPaymentTermsId(v === "__none" ? "" : v)}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Select payment terms" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">Due on Receipt</SelectItem>
-                    {paymentTermsList.map((pt) => (
-                      <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
-                    ))}
-                    <div className="border-t mt-1 pt-1">
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-sm text-primary hover:bg-accent rounded-sm"
-                        onPointerDown={(e) => e.preventDefault()}
-                        onClick={() => openConfigTerms()}
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                        Configure Terms
-                      </button>
-                    </div>
-                  </SelectContent>
-                </Select>
+                {loadingDropdowns ? (
+                  <div className="h-9 w-full bg-slate-100 rounded-md animate-pulse border border-slate-200" />
+                ) : (
+                  <Select value={paymentTermsId || "__none"} onValueChange={(v) => setPaymentTermsId(v === "__none" ? "" : v)}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select payment terms" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">Due on Receipt</SelectItem>
+                      {paymentTermsList.map((pt) => (
+                        <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
+                      ))}
+                      <div className="border-t mt-1 pt-1">
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-1.5 px-2 py-1.5 text-sm text-teal-600 hover:text-teal-700 hover:bg-teal-50 rounded-sm"
+                          onPointerDown={(e) => e.preventDefault()}
+                          onClick={() => openConfigTerms()}
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                          Configure Terms
+                        </button>
+                      </div>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* TDS */}

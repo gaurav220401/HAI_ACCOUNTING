@@ -1180,6 +1180,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   const shouldAutoImportFromPurchaseOrder = searchParams.get("autoImport") === "1";
   const [saving, setSaving] = useState(false);
   const [loadingClone, setLoadingClone] = useState(false);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   
   // Basic Fields
   const [vendorId, setVendorId] = useState(initialData?.vendorId?._id || initialData?.vendorId || "");
@@ -1466,7 +1467,12 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
               const numRes = await billApi.getNextNumber();
               setBillNumber(numRes.data.billNumber);
            }
-        } catch (err) { toast.error("Failed to load form data"); setLoadingClone(false); }
+           setLoadingDropdowns(false);
+        } catch (err) { 
+           toast.error("Failed to load form data"); 
+           setLoadingClone(false); 
+           setLoadingDropdowns(false);
+        }
      };
      loadData();
   }, [mode, cloneId]);
@@ -2055,33 +2061,40 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
             <Label className="text-sm font-medium text-red-500 pt-2">Vendor Name *</Label>
             <div className="relative flex gap-2 max-w-md">
                <div className="relative flex-1">
-                  <select
-                     className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-primary"
-                     value={vendorId}
-                     onChange={(e) => {
-                        const next = e.target.value;
-                        if (next === NEW_VENDOR_OPTION) {
-                           saveDraftToLocalStorage();
-                           router.push(`/purchases/vendors/new?redirect=${encodeURIComponent(window.location.pathname)}`);
-                           return;
-                        }
-                        const selectedVendor = vendors.find((v) => v._id === next);
-                        setVendorId(next);
-                        setAccountsPayableId(selectedVendor?.accountsPayableId || "");
-                     }}
-                  >
-                     <option value="">Select a Vendor</option>
-                     <option value={NEW_VENDOR_OPTION}>+ Create New Vendor</option>
-                     {vendors.map((v) => (
-                        <option key={v._id} value={v._id}>{v.displayName || v.companyName}</option>
-                     ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  {loadingDropdowns ? (
+                     <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                        <span className="text-slate-400 text-xs">Loading vendors...</span>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                     </div>
+                  ) : (
+                     <select
+                        className="w-full h-9 px-3 pr-8 text-sm border rounded-md bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                        value={vendorId}
+                        onChange={(e) => {
+                           const next = e.target.value;
+                           if (next === NEW_VENDOR_OPTION) {
+                              saveDraftToLocalStorage();
+                              router.push(`/purchases/vendors/new?redirect=${encodeURIComponent(window.location.pathname)}`);
+                              return;
+                           }
+                           const selectedVendor = vendors.find((v) => v._id === next);
+                           setVendorId(next);
+                           setAccountsPayableId(selectedVendor?.accountsPayableId || "");
+                        }}
+                     >
+                        <option value="">Select a Vendor</option>
+                        <option value={NEW_VENDOR_OPTION}>+ Create New Vendor</option>
+                        {vendors.map((v) => (
+                           <option key={v._id} value={v._id}>{v.displayName || v.companyName}</option>
+                        ))}
+                     </select>
+                  )}
+                  {!loadingDropdowns && <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />}
                </div>
                <Button
                   type="button"
                   size="icon"
-                  className="h-9 w-9 bg-primary"
+                  className="h-9 w-9 bg-teal-600 hover:bg-teal-700 text-white"
                   onClick={() => setShowVendorSearch(true)}
                >
                   <Search className="h-4 w-4" />
@@ -2148,35 +2161,49 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
             </div>
             <div className="flex items-center gap-3">
                <Label className="text-sm font-medium w-36 shrink-0">Payment Terms</Label>
-               <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
-                  <SelectTrigger className="h-9 text-sm flex-1">
-                     <SelectValue placeholder="Due on Receipt" />
-                  </SelectTrigger>
-                  <SelectContent>
-                     {paymentTerms.map((pt) => (
-                        <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
-                     ))}
-                  </SelectContent>
-               </Select>
+               {loadingDropdowns ? (
+                  <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                     <span className="text-slate-400 text-xs">Loading terms...</span>
+                     <ChevronDown className="h-4 w-4 text-slate-400" />
+                  </div>
+               ) : (
+                  <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
+                     <SelectTrigger className="h-9 text-sm flex-1">
+                        <SelectValue placeholder="Due on Receipt" />
+                     </SelectTrigger>
+                     <SelectContent>
+                        {paymentTerms.map((pt) => (
+                           <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
+                        ))}
+                     </SelectContent>
+                  </Select>
+               )}
             </div>
             <div className="flex items-center gap-3">
                <Label className="text-sm font-medium w-36 shrink-0">Accounts Payable</Label>
-               <Select
-                  value={accountsPayableId || "__auto__"}
-                  onValueChange={(value) => setAccountsPayableId(value === "__auto__" ? "" : value)}
-               >
-                  <SelectTrigger className="h-9 text-sm flex-1">
-                     <SelectValue placeholder="Auto from Vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                     <SelectItem value="__auto__">Auto from Vendor</SelectItem>
-                     {accounts
-                        .filter((account) => account.accountType === "Accounts Payable")
-                        .map((account) => (
-                           <SelectItem key={account._id} value={account._id}>{account.name}</SelectItem>
-                        ))}
-                  </SelectContent>
-               </Select>
+               {loadingDropdowns ? (
+                  <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                     <span className="text-slate-400 text-xs">Loading accounts...</span>
+                     <ChevronDown className="h-4 w-4 text-slate-400" />
+                  </div>
+               ) : (
+                  <Select
+                     value={accountsPayableId || "__auto__"}
+                     onValueChange={(value) => setAccountsPayableId(value === "__auto__" ? "" : value)}
+                  >
+                     <SelectTrigger className="h-9 text-sm flex-1">
+                        <SelectValue placeholder="Auto from Vendor" />
+                     </SelectTrigger>
+                     <SelectContent>
+                        <SelectItem value="__auto__">Auto from Vendor</SelectItem>
+                        {accounts
+                           .filter((account) => account.accountType === "Accounts Payable")
+                           .map((account) => (
+                              <SelectItem key={account._id} value={account._id}>{account.name}</SelectItem>
+                           ))}
+                     </SelectContent>
+                  </Select>
+               )}
             </div>
          </div>
 
@@ -2187,12 +2214,12 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                   type="button"
                   className={cn(
                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
-                     discountLevel === lvl ? "bg-primary text-primary-foreground border-primary" : "border-muted-foreground/30 text-muted-foreground hover:bg-muted/40",
+                     discountLevel === lvl ? "bg-teal-600 text-white border-teal-600 hover:bg-teal-700" : "border-muted-foreground/30 text-muted-foreground hover:bg-slate-100/70",
                   )}
                   onClick={() => setDiscountLevel(lvl)}
                >
-                  <span className={cn("h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center", discountLevel === lvl ? "border-primary-foreground" : "border-muted-foreground")}>
-                     {discountLevel === lvl && <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+                  <span className={cn("h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center", discountLevel === lvl ? "border-white" : "border-muted-foreground")}>
+                     {discountLevel === lvl && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
                   </span>
                   {lvl === "transaction" ? "At Transaction Level" : "At Line Item Level"}
                </button>
@@ -2681,15 +2708,33 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          {/* Bottom buttons */}
          <div className="border-t pt-4 mt-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-               <Button variant="outline" size="sm" onClick={() => handleSubmit("Draft")} disabled={saving}>
+               <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSubmit("Draft")}
+                  disabled={saving}
+                  className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+               >
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   Save as Draft
                </Button>
-               <Button size="sm" onClick={() => handleSubmit("Open")} disabled={saving}>
+               <Button
+                  size="sm"
+                  onClick={() => handleSubmit("Open")}
+                  disabled={saving}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-4"
+               >
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   Save as Open
                </Button>
-               <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+               <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onCancel}
+                  className="border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md h-9 px-4"
+               >
+                  Cancel
+               </Button>
             </div>
             <span className="text-xs text-muted-foreground">PDF Template: &apos;Standard Template&apos;</span>
          </div>

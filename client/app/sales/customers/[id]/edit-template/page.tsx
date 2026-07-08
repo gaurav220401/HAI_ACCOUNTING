@@ -343,7 +343,7 @@ export default function EditTemplatePage() {
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -382,7 +382,7 @@ export default function EditTemplatePage() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 text-xs">
             {templateSyncStatus === "saving" && (
-              <span className="flex items-center gap-1 text-blue-600">
+              <span className="flex items-center gap-1 text-teal-600 font-medium">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Saving
               </span>
@@ -440,7 +440,7 @@ export default function EditTemplatePage() {
           <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => setPreviewKey((k) => k + 1)}>
             <RefreshCw className="h-3.5 w-3.5" />Refresh Preview
           </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={handleSave}>Save</Button>
+          <Button size="sm" className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={handleSave}>Save</Button>
           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -459,7 +459,7 @@ export default function EditTemplatePage() {
               title={tab.label.replace("\n", " ")}
               className={`flex flex-col items-center justify-center gap-1.5 py-3 px-1.5 text-center transition-colors rounded-md mx-1 ${
                 etTab === tab.id
-                  ? "bg-primary/10 text-primary"
+                  ? "bg-teal-50 text-teal-700 font-medium"
                   : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
               }`}
             >
@@ -496,7 +496,7 @@ export default function EditTemplatePage() {
                           type="radio" name="paperSize" value={size}
                           checked={config.paperSize === size}
                           onChange={() => update({ paperSize: size })}
-                          className="h-3.5 w-3.5 accent-primary"
+                          className="h-3.5 w-3.5 accent-teal-600"
                         />
                         {size}
                       </label>
@@ -513,7 +513,7 @@ export default function EditTemplatePage() {
                           type="radio" name="orientation" value={orient}
                           checked={config.orientation === orient}
                           onChange={() => update({ orientation: orient })}
-                          className="h-3.5 w-3.5 accent-primary"
+                          className="h-3.5 w-3.5 accent-teal-600"
                         />
                         {orient}
                       </label>
@@ -583,11 +583,11 @@ export default function EditTemplatePage() {
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Background Image</p>
                     <div
-                      className="border-2 border-dashed border-blue-300 rounded-lg p-5 text-center bg-blue-50/30 cursor-pointer hover:bg-blue-50/60 transition-colors"
+                      className="border-2 border-dashed border-teal-300 rounded-lg p-5 text-center bg-teal-50/20 cursor-pointer hover:bg-teal-50/40 transition-colors"
                       onClick={() => fileInputRefHeader.current?.click()}
                     >
-                      <Upload className="h-6 w-6 text-blue-400 mx-auto mb-1.5" />
-                      <p className="text-xs text-blue-600 font-medium">Drag and drop or Upload file</p>
+                      <Upload className="h-6 w-6 text-teal-500 mx-auto mb-1.5" />
+                      <p className="text-xs text-teal-700 font-medium">Drag and drop or Upload file</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">Maximum size: 1 MB</p>
                       <p className="text-[10px] text-muted-foreground">Supported Formats: GIF, PNG, JPEG, JPG, BMP</p>
                       <Button variant="outline" size="sm" className="mt-2 h-6 text-xs pointer-events-none">
@@ -658,11 +658,11 @@ export default function EditTemplatePage() {
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Background Image</p>
                     <div
-                      className="border-2 border-dashed border-blue-300 rounded-lg p-4 text-center bg-blue-50/30 cursor-pointer hover:bg-blue-50/60 transition-colors"
+                      className="border-2 border-dashed border-teal-300 rounded-lg p-4 text-center bg-teal-50/20 cursor-pointer hover:bg-teal-50/40 transition-colors"
                       onClick={() => fileInputRefFooter.current?.click()}
                     >
-                      <Upload className="h-5 w-5 text-blue-400 mx-auto mb-1" />
-                      <p className="text-xs text-blue-600 font-medium">Drag and drop or Upload file</p>
+                      <Upload className="h-5 w-5 text-teal-500 mx-auto mb-1" />
+                      <p className="text-xs text-teal-700 font-medium">Drag and drop or Upload file</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">Maximum size: 1 MB · GIF, PNG, JPEG, JPG, BMP</p>
                       <Button variant="outline" size="sm" className="mt-1.5 h-6 text-xs pointer-events-none">Choose from Gallery</Button>
                     </div>
@@ -756,7 +756,7 @@ export default function EditTemplatePage() {
                             type="range" min="30" max="120" step="5"
                             value={config.orgLogoSize}
                             onChange={(e) => update({ orgLogoSize: parseInt(e.target.value) })}
-                            className="flex-1 accent-primary"
+                            className="flex-1 accent-teal-600"
                           />
                           <span className="text-xs text-muted-foreground w-10 text-right">{config.orgLogoSize}px</span>
                         </div>
@@ -975,7 +975,7 @@ export default function EditTemplatePage() {
                       onClick={() => setTableSubTab(sub)}
                       className={`px-5 py-2 text-sm capitalize transition-colors border-b-2 -mb-px ${
                         tableSubTab === sub
-                          ? "border-primary text-primary font-medium"
+                          ? "border-teal-600 text-teal-700 font-medium"
                           : "border-transparent text-muted-foreground hover:text-foreground"
                       }`}
                     >

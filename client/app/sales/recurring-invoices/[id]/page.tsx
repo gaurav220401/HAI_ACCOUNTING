@@ -186,7 +186,7 @@ export default function RecurringInvoiceDetailPage() {
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -273,6 +273,7 @@ export default function RecurringInvoiceDetailPage() {
                 <Button
                   onClick={() => void handleAction("run")}
                   disabled={actionLoading}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 >
                   {actionLoading ?
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -456,7 +457,7 @@ export default function RecurringInvoiceDetailPage() {
                                   router.push(`/sales/invoices/${invoice._id}`)
                                 }
                               >
-                                <TableCell className="font-medium text-blue-700">
+                                <TableCell className="font-medium text-teal-700">
                                   {invoice.invoiceNumber}
                                 </TableCell>
                                 <TableCell>

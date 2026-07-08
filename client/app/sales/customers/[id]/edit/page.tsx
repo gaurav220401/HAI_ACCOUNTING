@@ -65,7 +65,7 @@ export default function EditCustomerPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -108,7 +108,7 @@ export default function EditCustomerPage() {
 
           {fetching ? (
             <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
               Loading customer details...
             </div>
           ) : initialData ? (

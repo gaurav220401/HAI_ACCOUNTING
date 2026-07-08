@@ -355,4 +355,19 @@ export const contactApi = {
       method: "POST",
       body: formData,
     }),
+
+  exportProtected: (data: {
+    fileName: string;
+    fileFormat: string;
+    password?: string;
+    headers: string[];
+    rows: any[][];
+  }) =>
+    apiFetchBlob("/contacts/export-protected", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }),
 };

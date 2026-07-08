@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Loader2, Save, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -162,7 +162,7 @@ function NewRetainerInvoicePageContent() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -177,7 +177,7 @@ function NewRetainerInvoicePageContent() {
               Sales <span className="mx-1">/</span>
               <button
                 type="button"
-                className="font-medium text-primary hover:underline"
+                className="font-medium text-teal-600 hover:text-teal-700 hover:underline"
                 onClick={() => router.push("/sales/retainer-invoices")}
               >
                 Retainer Invoices
@@ -205,18 +205,25 @@ function NewRetainerInvoicePageContent() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="customer">Customer</Label>
-                <Select value={customerId} onValueChange={setCustomerId} disabled={loadingCustomers}>
-                  <SelectTrigger id="customer">
-                    <SelectValue placeholder={loadingCustomers ? "Loading customers..." : "Select customer"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((customer) => (
-                      <SelectItem key={customer._id} value={customer._id}>
-                        {customer.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {loadingCustomers ? (
+                  <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                    <span className="text-slate-400 text-xs">Loading customers...</span>
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  </div>
+                ) : (
+                  <Select value={customerId} onValueChange={setCustomerId}>
+                    <SelectTrigger id="customer">
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customers.map((customer) => (
+                        <SelectItem key={customer._id} value={customer._id}>
+                          {customer.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -324,7 +331,7 @@ function NewRetainerInvoicePageContent() {
               <Button type="button" variant="outline" onClick={() => router.push("/sales/retainer-invoices")}> 
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" type="submit" disabled={saving}>
                 {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} 
                 Save Retainer Invoice
               </Button>

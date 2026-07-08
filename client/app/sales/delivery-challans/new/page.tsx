@@ -207,7 +207,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                   value="Goods"
                   checked={itemType === "Goods"}
                   onChange={() => setItemType("Goods")}
-                  className="accent-primary"
+                  className="accent-teal-600"
                 />
                 Goods
                   </label>
@@ -218,7 +218,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
                   value="Service"
                   checked={itemType === "Service"}
                   onChange={() => setItemType("Service")}
-                  className="accent-primary"
+                  className="accent-teal-600"
                 />
                 Service
               </label>
@@ -261,7 +261,7 @@ function NewItemModal({ open, onClose, onItemCreated }: NewItemModalProps) {
           </div>
         </div>
         <div className="flex items-center gap-3 pt-4">
-          <Button onClick={handleSave} disabled={saving}>
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             Save
           </Button>
@@ -366,7 +366,7 @@ function BulkItemsModal({
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold">
                 Selected Items{" "}
-                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-teal-600 text-white text-xs">
                   {selectedIds.size}
                 </span>
               </span>
@@ -404,7 +404,7 @@ function BulkItemsModal({
           </div>
         </div>
         <div className="flex items-center gap-3 pt-2">
-          <Button onClick={handleAdd} disabled={selectedIds.size === 0}>
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={handleAdd} disabled={selectedIds.size === 0}>
             Add Items
           </Button>
           <Button variant="ghost" onClick={onClose}>
@@ -688,7 +688,7 @@ export default function NewDeliveryChallanPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -1100,7 +1100,7 @@ export default function NewDeliveryChallanPage() {
 
               {/* Action Buttons */}
               <div className="flex items-center gap-3 pb-8">
-                <Button onClick={() => handleSave("Draft")} disabled={saving}>
+                <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => handleSave("Draft")} disabled={saving}>
                   {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
                   Save as Draft
                 </Button>

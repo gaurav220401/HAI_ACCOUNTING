@@ -39,7 +39,7 @@ import {
 
 const STATUS_STYLES: Record<RetainerInvoiceStatus, string> = {
   Draft: "bg-slate-100 text-slate-700 border-slate-200",
-  Sent: "bg-blue-50 text-blue-700 border-blue-200",
+  Sent: "bg-teal-50 text-teal-700 border-teal-200",
   "Partially Paid": "bg-amber-50 text-amber-700 border-amber-200",
   Paid: "bg-green-50 text-green-700 border-green-200",
   "Partially Applied": "bg-cyan-50 text-cyan-700 border-cyan-200",
@@ -321,7 +321,7 @@ export default function RetainerInvoiceDetailPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -336,7 +336,7 @@ export default function RetainerInvoiceDetailPage() {
               Sales <span className="mx-1">/</span>
               <button
                 type="button"
-                className="font-medium text-primary hover:underline"
+                className="font-medium text-teal-700 hover:text-teal-800 hover:underline"
                 onClick={() => router.push("/sales/retainer-invoices")}
               >
                 Retainer Invoices
@@ -355,7 +355,7 @@ export default function RetainerInvoiceDetailPage() {
                 Refresh
               </Button>
               {retainer?.status === "Draft" ? (
-                <Button size="sm" onClick={() => void handleSend()} disabled={working || fetching}>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void handleSend()} disabled={working || fetching}>
                   Mark as Sent
                 </Button>
               ) : null}
@@ -463,7 +463,7 @@ export default function RetainerInvoiceDetailPage() {
                                 <TableCell>
                                   <button
                                     type="button"
-                                    className="text-primary hover:underline"
+                                    className="text-teal-700 hover:text-teal-800 hover:underline"
                                     onClick={() => {
                                       const invoiceId = appInvoiceId(app);
                                       if (invoiceId) router.push(`/sales/invoices/${invoiceId}`);
@@ -533,7 +533,7 @@ export default function RetainerInvoiceDetailPage() {
                         />
                       </div>
 
-                      <Button type="submit" disabled={working || retainer.status === "Void" || retainer.balance_due <= 0.009}>
+                      <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" disabled={working || retainer.status === "Void" || retainer.balance_due <= 0.009}>
                         Record Payment
                       </Button>
                     </form>
@@ -575,7 +575,7 @@ export default function RetainerInvoiceDetailPage() {
                         />
                       </div>
 
-                      <Button type="submit" disabled={working || retainer.status === "Void" || retainer.amount_unapplied <= 0.009}>
+                      <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" disabled={working || retainer.status === "Void" || retainer.amount_unapplied <= 0.009}>
                         Apply
                       </Button>
                     </form>
@@ -609,7 +609,7 @@ export default function RetainerInvoiceDetailPage() {
                         </div>
                       </div>
 
-                      <Button type="submit" disabled={working || retainer.status === "Void" || retainer.amount_unapplied <= 0.009}>
+                      <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" disabled={working || retainer.status === "Void" || retainer.amount_unapplied <= 0.009}>
                         Record Refund
                       </Button>
                     </form>

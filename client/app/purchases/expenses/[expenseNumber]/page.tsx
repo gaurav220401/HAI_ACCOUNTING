@@ -637,7 +637,7 @@ export default function ExpenseDetailPage() {
                 </div>
                 {expense.receiptUrls && expense.receiptUrls.length > 0 ? (
                   <div className="p-4 space-y-2">
-                    {expense.receiptUrls.map((url, i) => (
+                    {expense.receiptUrls?.map((url, i) => (
                       <a
                         key={i}
                         href={url}

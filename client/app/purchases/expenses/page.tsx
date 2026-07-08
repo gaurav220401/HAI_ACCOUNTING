@@ -322,7 +322,7 @@ function ExpenseDetailPanel({
           </Button>
         )}
         {expense.isBillable && (
-          <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 text-primary" onClick={() => onConvertToInvoice(expense)}>
+          <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 text-teal-700 hover:text-teal-800 hover:bg-teal-50" onClick={() => onConvertToInvoice(expense)}>
             <FileText className="h-3.5 w-3.5" /> Convert to Invoice
           </Button>
         )}
@@ -415,13 +415,13 @@ function ExpenseDetailPanel({
             {customerName && (
               <div>
                 <p className="text-xs text-muted-foreground">Customer</p>
-                <p className="mt-0.5 text-primary font-medium">{customerName}</p>
+                <p className="mt-0.5 text-teal-700 font-semibold">{customerName}</p>
               </div>
             )}
             {vendorName && (
               <div>
                 <p className="text-xs text-muted-foreground">Paid To</p>
-                <p className="mt-0.5 text-primary font-medium">{vendorName}</p>
+                <p className="mt-0.5 text-teal-700 font-semibold">{vendorName}</p>
               </div>
             )}
             {expense.invoiceNumber && (
@@ -509,14 +509,15 @@ function ExpenseDetailPanel({
           </Tabs>
         </div>
 
-        {/* Receipts sidebar */}
-        <div className="w-48 shrink-0 border-l flex flex-col bg-muted/5">
+        {/* Receipt Sidebar */}
+        <div className="w-80 border-l bg-muted/10 flex flex-col shrink-0">
+          <div className="p-4 border-b font-semibold text-xs uppercase text-muted-foreground">Receipts</div>
           {expense.receiptUrls && expense.receiptUrls.length > 0 ? (
-            <div className="p-3 space-y-2 overflow-auto">
-              {expense.receiptUrls.map((url, i) => (
+            <div className="p-4 space-y-2">
+              {expense.receiptUrls?.map((url, i) => (
                 <a
                   key={i} href={url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-xs text-primary hover:underline border rounded p-2"
+                  className="flex items-center gap-2 text-xs text-teal-700 hover:text-teal-800 hover:underline border rounded p-2"
                 >
                   <Upload className="h-3 w-3 shrink-0" /> Receipt {i + 1}
                 </a>
@@ -524,12 +525,12 @@ function ExpenseDetailPanel({
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 p-4 text-center">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-1">
-                <Upload className="h-6 w-6 text-primary/40" />
+              <div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center mb-1 border border-teal-100">
+                <Upload className="h-6 w-6 text-teal-600/40" />
               </div>
               <p className="text-xs font-medium leading-snug">Drag or Drop your Receipts</p>
               <p className="text-[10px] text-muted-foreground leading-snug">Maximum file size allowed is 10MB</p>
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 mt-1 w-full">
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 mt-1 w-full border-teal-200 text-teal-700 hover:bg-teal-50">
                 <Upload className="h-3 w-3" /> Upload your Files
               </Button>
             </div>
@@ -595,7 +596,7 @@ function ExpenseDetailPanel({
                 id="neverExpiresChk"
                 checked={neverExpires}
                 onChange={(e) => { setNeverExpires(e.target.checked); if (e.target.checked) setEndsOn(""); }}
-                className="h-4 w-4 accent-primary cursor-pointer"
+                className="h-4 w-4 accent-teal-600 cursor-pointer"
               />
               <label htmlFor="neverExpiresChk" className="text-sm cursor-pointer select-none">Never Expires</label>
             </div>
@@ -990,19 +991,19 @@ export default function ExpensesPage() {
       <SidebarInset className="flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Purchases <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Expenses</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <span className="text-sm font-semibold text-slate-700">Expenses</span>
+            </div>
           }
           actions={
             !panelOpen ? (
               activeListTab === "receipts" ? (
                 <>
                   <div className="relative w-52">
-                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                     <Input
-                      className="pl-8 h-8 text-sm"
+                      className="pl-8 h-8 text-xs border-slate-200 focus-visible:ring-teal-500"
                       placeholder="Search receipts..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1013,9 +1014,9 @@ export default function ExpensesPage() {
                     size="sm"
                     onClick={fetchReceipts}
                     disabled={fetchingReceipts}
-                    className="px-2"
+                    className="h-8 w-8 px-0 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50"
                   >
-                    <RefreshCw className={cn("h-4 w-4", fetchingReceipts && "animate-spin")} />
+                    <RefreshCw className={cn("h-3.5 w-3.5", fetchingReceipts && "animate-spin")} />
                   </Button>
                   <input
                     ref={receiptInputRef}
@@ -1030,14 +1031,14 @@ export default function ExpensesPage() {
                   />
                   <Button
                     size="sm"
-                    className="gap-1.5"
+                    className="h-8 gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md text-xs px-3"
                     onClick={() => receiptInputRef.current?.click()}
                     disabled={uploadingReceipt}
                   >
                     {uploadingReceipt ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Upload className="h-4 w-4" />
+                      <Upload className="h-3.5 w-3.5" />
                     )}
                     Upload Receipt
                   </Button>
@@ -1045,21 +1046,21 @@ export default function ExpensesPage() {
               ) : (
                 <>
                   <div className="relative w-52">
-                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-                    <Input className="pl-8 h-8 text-sm" placeholder="Search expenses…"
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input className="pl-8 h-8 text-xs border-slate-200 focus-visible:ring-teal-500" placeholder="Search expenses…"
                       value={search} onChange={(e) => setSearch(e.target.value)} />
                   </div>
-                  <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={fetching} className="px-2">
-                    <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin")} />
+                  <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={fetching} className="h-8 w-8 px-0 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50">
+                    <RefreshCw className={cn("h-3.5 w-3.5", fetching && "animate-spin")} />
                   </Button>
-                  <Button size="sm" className="gap-1.5" onClick={() => router.push("/purchases/expenses/new")}>
-                    <Plus className="h-4 w-4" /> New Expense
+                  <Button size="sm" className="h-8 gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md text-xs px-3" onClick={() => router.push("/purchases/expenses/new")}>
+                    <Plus className="h-3.5 w-3.5" /> New Expense
                   </Button>
-              <Link href="/batch-import?section=purchases&type=Expenses&back=/purchases/expenses">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
-                  <FileUp className="h-3.5 w-3.5" /> Batch Import
-                </Button>
-              </Link>
+                  <Link href="/batch-import?section=purchases&type=Expenses&back=/purchases/expenses">
+                    <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 hover:text-slate-800 bg-white">
+                      <FileUp className="h-3.5 w-3.5" /> Batch Import
+                    </Button>
+                  </Link>
                 </>
               )
             ) : null
@@ -1081,15 +1082,15 @@ export default function ExpensesPage() {
             )}>
               {panelOpen ? (
                 <>
-                  <button className="flex items-center gap-1.5 text-sm font-semibold hover:text-primary transition-colors">
+                  <button className="flex items-center gap-1.5 text-sm font-semibold hover:text-teal-700 transition-colors">
                     All Expenses <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                   </button>
                   <div className="flex items-center gap-1">
-                    <Button size="icon" className="h-6 w-6"
+                    <Button size="icon" className="h-6 w-6 bg-teal-600 hover:bg-teal-700 text-white rounded"
                       onClick={() => router.push("/purchases/expenses/new")}>
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-600">
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1108,8 +1109,8 @@ export default function ExpensesPage() {
                       className={cn(
                         "text-sm pb-2 mr-5 flex items-center gap-1 border-b-2 -mb-px transition-colors",
                         activeListTab === tab
-                          ? "border-primary text-primary font-medium"
-                          : "border-transparent text-muted-foreground hover:text-foreground",
+                          ? "border-teal-600 text-teal-700 font-semibold"
+                          : "border-transparent text-slate-500 hover:text-slate-800",
                       )}
                     >
                       {tab === "receipts" ? "Receipts Inbox" : <>All Expenses <ChevronDown className="h-3 w-3" /></>}
@@ -1148,8 +1149,8 @@ export default function ExpensesPage() {
             {/* Content */}
             {activeListTab === "receipts" ? (
               fetchingReceipts ? (
-                <div className="flex items-center justify-center flex-1">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <div className="flex-1 animate-pulse space-y-4 p-4">
+                  {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-10 bg-slate-100 rounded" />)}
                 </div>
               ) : filteredReceipts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center px-6 py-16 gap-3 flex-1">
@@ -1198,7 +1199,7 @@ export default function ExpensesPage() {
                           <tr key={document._id} className="hover:bg-muted/20">
                             <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">{fmtDate(document.uploadedAt)}</td>
                             <td className="px-3 py-2.5">
-                              <a href={document.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                              <a href={document.url} target="_blank" rel="noopener noreferrer" className="text-teal-700 hover:underline font-medium">
                                 {document.fileName}
                               </a>
                             </td>
@@ -1216,7 +1217,7 @@ export default function ExpensesPage() {
                               {linkedExpense ? (
                                 <button
                                   type="button"
-                                  className="text-primary hover:underline"
+                                  className="text-teal-700 hover:underline"
                                   onClick={() => openLinkedExpense(document)}
                                 >
                                   {linkedExpense.expenseNumber}
@@ -1240,6 +1241,7 @@ export default function ExpensesPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  className="border-teal-200 text-teal-700 hover:bg-teal-50"
                                   onClick={() => handleCreateFromReceipt(document)}
                                   disabled={creatingFromDocumentId === document._id}
                                 >
@@ -1261,9 +1263,33 @@ export default function ExpensesPage() {
                 </div>
               )
             ) : fetching ? (
-              <div className="flex items-center justify-center flex-1">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
+              panelOpen ? (
+                /* Narrow sidebar list skeleton */
+                <div className="flex-1 overflow-y-auto divide-y animate-pulse bg-white">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="px-4 py-3.5 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div className="h-3.5 w-24 bg-slate-100 rounded" />
+                        <div className="h-3 w-16 bg-slate-100 rounded" />
+                      </div>
+                      <div className="h-3 w-36 bg-slate-100 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Full-width table skeleton */
+                <div className="flex-1 overflow-auto px-6 py-4 animate-pulse">
+                  <div className="border border-slate-100 rounded-xl overflow-hidden bg-white">
+                    <div className="h-10 bg-slate-50 border-b border-slate-200" />
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} className="h-12 border-b border-slate-100 flex items-center px-3 gap-4">
+                        <div className="h-4 w-4 bg-slate-100 rounded" />
+                        <div className="h-4 w-full bg-slate-50 rounded" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
             ) : filtered.length === 0 && !panelOpen ? (
               /* Empty state */
               <div className="flex flex-col items-center py-16 gap-5 flex-1 overflow-auto px-6">
@@ -1273,7 +1299,7 @@ export default function ExpensesPage() {
                     Create and manage expenses that are part of your organization&apos;s operating costs.
                   </p>
                 </div>
-                <Button onClick={() => router.push("/purchases/expenses/new")} className="px-6">
+                <Button onClick={() => router.push("/purchases/expenses/new")} className="px-6 bg-teal-600 hover:bg-teal-700">
                   <Receipt className="h-4 w-4 mr-2" /> RECORD EXPENSE
                 </Button>
                 <div className="border rounded-xl p-8 bg-muted/20 max-w-3xl w-full">
@@ -1300,7 +1326,7 @@ export default function ExpensesPage() {
                     "Convert an expense into an invoice to get it reimbursed.",
                   ].map((t) => (
                     <li key={t} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <span className="text-green-500 mt-0.5 shrink-0">✓</span> {t}
+                      <span className="text-teal-600 mt-0.5 shrink-0">✓</span> {t}
                     </li>
                   ))}
                 </ul>
@@ -1317,14 +1343,14 @@ export default function ExpensesPage() {
                       key={exp._id}
                       onClick={() => setSelected(exp)}
                       className={cn(
-                        "flex items-start gap-2 px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors",
-                        isSel && "bg-blue-50 border-l-2 border-l-primary",
+                        "flex items-start gap-2 px-4 py-3.5 cursor-pointer border-b border-slate-100 last:border-b-0 transition-all duration-150 border-l-[3px]",
+                        isSel ? "bg-teal-50/50 border-l-teal-600 pl-[13px]" : "border-l-transparent hover:bg-slate-50/50",
                       )}
                     >
-                      <input type="checkbox" className="accent-primary mt-0.5 shrink-0" onClick={(e) => e.stopPropagation()} />
+                      <input type="checkbox" className="accent-teal-600 mt-0.5 shrink-0" onClick={(e) => e.stopPropagation()} />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between gap-2 items-start">
-                          <p className={cn("text-xs font-medium truncate", isSel ? "text-primary" : "")}>
+                          <p className={cn("text-[13px] font-semibold truncate", isSel ? "text-teal-700" : "text-slate-800")}>
                             {acct}
                           </p>
                           <p className="text-xs font-semibold tabular-nums shrink-0">
@@ -1342,31 +1368,32 @@ export default function ExpensesPage() {
               </div>
             ) : (
               /* Full table */
-              <div className="flex-1 overflow-auto">
-                <table className="w-full text-sm min-w-[860px]">
-                  <thead className="sticky top-0 bg-background z-10">
-                    <tr className="border-b">
-                      <th className="w-10 px-3 py-3">
-                        <input
-                          type="checkbox"
-                          className="accent-primary"
-                          checked={isAllSelected}
-                          onChange={handleSelectAll}
-                        />
-                      </th>
-                      {[
-                        "Date", "Expense Account", "Reference #",
-                        "Vendor Name", "Paid Through", "Customer Name", "Status",
-                      ].map((h) => (
-                        <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
-                          {h}
+              <div className="flex-1 overflow-auto px-6 py-4 bg-white">
+                <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-2xs">
+                  <table className="w-full text-sm min-w-[860px]">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="w-10 px-3 py-3">
+                          <input
+                            type="checkbox"
+                            className="accent-teal-600"
+                            checked={isAllSelected}
+                            onChange={handleSelectAll}
+                          />
                         </th>
-                      ))}
-                      <th className="text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Amount</th>
-                      <th className="w-8" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
+                        {[
+                          "Date", "Expense Account", "Reference #",
+                          "Vendor Name", "Paid Through", "Customer Name", "Status",
+                        ].map((h) => (
+                          <th key={h} className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">
+                            {h}
+                          </th>
+                        ))}
+                        <th className="text-right px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Amount</th>
+                        <th className="w-8" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
                     {filtered.map((expense) => {
                       const acct       = getName(expense.expenseAccountId) || (expense.expenseType === "Mileage" ? "Mileage" : "");
                       const vendor     = getName(expense.vendorId);
@@ -1375,20 +1402,20 @@ export default function ExpensesPage() {
                       return (
                         <tr
                           key={expense._id}
-                          className="hover:bg-muted/20 cursor-pointer group"
+                          className="border-b border-slate-100 last:border-0 hover:bg-slate-100/70 cursor-pointer transition-colors"
                           onClick={() => setSelected(expense)}
                         >
                           <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
-                              className="accent-primary"
+                              className="accent-teal-600"
                               checked={selectedIds.includes(expense._id)}
                               onChange={() => toggleSelectExpense(expense._id)}
                             />
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">{fmtDate(expense.date)}</td>
-                          <td className="px-3 py-2.5 text-primary font-medium">{acct}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">{expense.invoiceNumber || ""}</td>
+                          <td className="px-3 py-2.5 text-teal-700 hover:text-teal-800 font-semibold">{acct}</td>
+                          <td className="px-3 py-2.5 text-slate-400">{expense.invoiceNumber || ""}</td>
                           <td className="px-3 py-2.5">{vendor}</td>
                           <td className="px-3 py-2.5">{paidThru}</td>
                           <td className="px-3 py-2.5">{customer}</td>
@@ -1438,6 +1465,7 @@ export default function ExpensesPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
             )}
           </div>
 

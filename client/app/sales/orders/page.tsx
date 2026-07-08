@@ -173,7 +173,7 @@ export default function SalesOrdersPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -212,13 +212,14 @@ export default function SalesOrdersPage() {
               </Button>
               <Button
                 size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 onClick={() => router.push("/sales/orders/new")}
               >
                 <Plus className="h-4 w-4 mr-1" />
                 New
               </Button>
               <Link href="/batch-import?section=sales&type=Sales Orders&back=/sales/orders">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50">
                   <FileUp className="h-3.5 w-3.5" /> Batch Import
                 </Button>
               </Link>
@@ -327,7 +328,7 @@ export default function SalesOrdersPage() {
                     <TableCell className="text-sm">
                       {formatDate(o.orderDate)}
                     </TableCell>
-                    <TableCell className="font-medium text-primary">
+                    <TableCell className="font-medium text-teal-700">
                       {o.salesOrderNumber}
                     </TableCell>
                     <TableCell className="text-sm">
@@ -352,7 +353,7 @@ export default function SalesOrdersPage() {
                           o.shipmentStatus === "Delivered" ?
                             "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
                           : o.shipmentStatus === "Shipped" ?
-                            "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"
+                            "bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.6)]"
                           : "bg-muted-foreground/30"
                         }`}
                         title={

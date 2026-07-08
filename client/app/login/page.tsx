@@ -39,12 +39,20 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right: brand panel */}
-      <div className="relative hidden flex-col items-center justify-center gap-6 overflow-hidden bg-primary p-12 lg:flex">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary via-primary to-primary/80" />
-        <div className="relative z-10 flex flex-col items-center gap-4 text-center">
-          <p className="max-w-xs text-lg font-medium text-primary-foreground/80">
-            Manage your accounts with confidence and clarity.
+      {/* Right: brand panel (Full bleed dashboard graphic) */}
+      <div className="relative hidden overflow-hidden border-l border-slate-100 lg:flex w-full h-full bg-slate-50">
+        <img
+          src="/login_accounting_graphic_full.png"
+          alt="HAI Accounting Platform"
+          className="absolute inset-0 w-full h-full object-cover object-center"
+        />
+        {/* Subtle premium dark gradient overlay for text readability and SaaS aesthetic */}
+        <div className="absolute inset-0 bg-gradient-to-t from-teal-950/80 via-slate-900/40 to-transparent" />
+        <div className="absolute bottom-12 left-12 right-12 z-10 text-white text-left">
+      
+          <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Perfect Simple Accounting Software</h2>
+          <p className="text-sm text-white/80 max-w-md leading-relaxed font-medium">
+            Manage invoices, track purchase orders, and monitor your expenses seamlessly with real-time financial tracking.
           </p>
         </div>
       </div>

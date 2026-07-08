@@ -99,15 +99,64 @@ const printStyles = `
 }
 `;
 
-const statusColor: Record<InvoiceStatus, string> = {
-  Draft: "bg-gray-100 text-gray-700 border-gray-300",
-  Sent: "bg-blue-50 text-blue-700 border-blue-300",
-  Viewed: "bg-indigo-50 text-indigo-700 border-indigo-300",
-  Overdue: "bg-red-50 text-red-700 border-red-300",
-  "Partially Paid": "bg-yellow-50 text-yellow-700 border-yellow-300",
-  Paid: "bg-green-50 text-green-700 border-green-300",
-  Void: "bg-gray-50 text-gray-400 border-gray-200",
-};
+function StatusPill({ status }: { status: InvoiceStatus }) {
+  const configMap: Record<
+    InvoiceStatus,
+    { bg: string; text: string; border: string; dot: string }
+  > = {
+    Draft: {
+      bg: "bg-slate-100",
+      text: "text-slate-500",
+      border: "border-slate-200",
+      dot: "bg-slate-400",
+    },
+    Sent: {
+      bg: "bg-amber-50",
+      text: "text-amber-700",
+      border: "border-amber-100",
+      dot: "bg-amber-500",
+    },
+    Viewed: {
+      bg: "bg-purple-50",
+      text: "text-purple-700",
+      border: "border-purple-100",
+      dot: "bg-purple-500",
+    },
+    Overdue: {
+      bg: "bg-rose-50",
+      text: "text-rose-700",
+      border: "border-rose-100",
+      dot: "bg-rose-500",
+    },
+    "Partially Paid": {
+      bg: "bg-amber-50",
+      text: "text-amber-700",
+      border: "border-amber-100",
+      dot: "bg-amber-500",
+    },
+    Paid: {
+      bg: "bg-emerald-50",
+      text: "text-emerald-700",
+      border: "border-emerald-100",
+      dot: "bg-emerald-500",
+    },
+    Void: {
+      bg: "bg-slate-100",
+      text: "text-slate-400",
+      border: "border-slate-200",
+      dot: "bg-slate-400",
+    },
+  };
+  const config = configMap[status] || configMap.Draft;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${config.bg} ${config.text} ${config.border}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
+      {status}
+    </span>
+  );
+}
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -376,70 +425,51 @@ export default function InvoiceDetailPage() {
 
   if (loading || orgLoading || !firebaseUser || fetching) {
     return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="flex min-h-svh items-center justify-center bg-white">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-600 border-t-transparent" />
       </div>
     );
   }
 
   if (!invoice)
-    return <div className="p-8 text-center">Invoice not found.</div>;
+    return <div className="p-8 text-center bg-white text-slate-500">Invoice not found.</div>;
 
-  const cName = customerName(invoice.customerId);
   const dueLabel = getDueLabel(invoice);
-  const orgName = activeOrganization?.name || "HAI";
-  const lineTaxTotal = invoice.items.reduce((sum, item) => {
-    const storedTax = Number(item.taxAmount || 0);
-    if (storedTax > 0) return sum + storedTax;
-    // Fallback: compute from taxPercent when taxAmount is 0/missing
-    const taxPct = Number(item.taxPercent || 0);
-    if (taxPct <= 0) return sum;
-    const lineTotal =
-      Number(item.quantity || 0) * Number(item.rate || 0);
-    const lineDiscount =
-      Number(item.discountAmount || 0) ||
-      (lineTotal * Number(item.discountPercent || 0)) / 100;
-    return sum + ((lineTotal - lineDiscount) * taxPct) / 100;
-  }, 0);
-  const lineTaxPercent =
-    invoice.items.find((item) => Number(item.taxPercent || 0) > 0)
-      ?.taxPercent || 0;
-  const halfLineTaxPercent = Number(lineTaxPercent || 0) / 2;
 
   return (
     <SidebarProvider>
       <style>{printStyles}</style>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-8 w-8 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-md"
                 onClick={() => router.push("/sales/invoices")}
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm text-muted-foreground">Invoices</span>
-              <span className="text-sm text-muted-foreground">/</span>
-              <span className="font-semibold text-foreground">
-                {invoice.invoiceNumber}
-              </span>
-              <Badge
-                className={`ml-2 ${statusColor[invoice.status]}`}
-                variant="outline"
-              >
-                {invoice.status}
-              </Badge>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="font-semibold text-teal-700">Invoices</span>
+                <span className="text-slate-400">/</span>
+                <span className="font-semibold text-slate-700">
+                  {invoice.invoiceNumber}
+                </span>
+              </div>
+              <div className="ml-2">
+                <StatusPill status={invoice.status} />
+              </div>
             </div>
           }
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 variant="outline"
                 size="sm"
+                className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md"
                 onClick={() => router.push(`/sales/invoices/${id}/edit`)}
               >
                 <Pencil className="h-4 w-4 mr-1.5" /> Edit
@@ -448,14 +478,15 @@ export default function InvoiceDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
+                className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md"
                 onClick={() => router.push(`/sales/invoices/${id}/edit-template`)}
               >
-                <Pencil className="h-4 w-4 mr-1.5" /> Customize
+                <Settings className="h-4 w-4 mr-1.5" /> Customize
               </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md">
                     <Send className="h-4 w-4 mr-1.5" /> Send{" "}
                     <ChevronDown className="h-3 w-3 ml-1" />
                   </Button>
@@ -466,11 +497,11 @@ export default function InvoiceDetailPage() {
                       router.push(`/sales/invoices/${id}/send-email`)
                     }
                   >
-                    <Mail className="h-4 w-4 mr-2" /> Send Email
+                    <Mail className="h-4 w-4 mr-2 text-slate-500" /> Send Email
                   </DropdownMenuItem>
                   {invoice.status === "Draft" && (
                     <DropdownMenuItem onClick={() => handleAction("send")}>
-                      <FileCheck className="h-4 w-4 mr-2" /> Mark as Sent
+                      <FileCheck className="h-4 w-4 mr-2 text-slate-500" /> Mark as Sent
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -479,6 +510,7 @@ export default function InvoiceDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
+                className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md"
                 onClick={() => {
                   navigator.clipboard.writeText(window.location.href);
                   toast.success("Invoice link copied to clipboard");
@@ -489,7 +521,7 @@ export default function InvoiceDetailPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" className="h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md">
                     <Printer className="h-4 w-4 mr-1.5" /> PDF/Print{" "}
                     <ChevronDown className="h-3 w-3 ml-1" />
                   </Button>
@@ -499,10 +531,10 @@ export default function InvoiceDetailPage() {
                     onClick={handleDownloadPdf}
                     disabled={pdfLoading}
                   >
-                    <Download className="h-4 w-4 mr-2" /> Download PDF
+                    <Download className="h-4 w-4 mr-2 text-slate-500" /> Download PDF
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => window.print()}>
-                    <Printer className="h-4 w-4 mr-2" /> Print Invoice
+                    <Printer className="h-4 w-4 mr-2 text-slate-500" /> Print Invoice
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -510,7 +542,7 @@ export default function InvoiceDetailPage() {
               {invoice.status !== "Paid" && invoice.status !== "Void" && (
                 <Button
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 shadow-sm"
+                  className="h-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-xs"
                   onClick={() =>
                     router.push(`/sales/payments-received/new?invoiceId=${id}`)
                   }
@@ -521,14 +553,13 @@ export default function InvoiceDetailPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+                  <Button variant="outline" size="icon" className="h-8 w-8 border-slate-200 text-slate-500 hover:bg-slate-100 rounded-md">
                     <MoreHorizontal className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onClick={() => handleAction("recurring")}>
-                    <RotateCcw className="h-4 w-4 mr-2 text-blue-600" /> Make
-                    Recurring
+                    <RotateCcw className="h-4 w-4 mr-2 text-teal-600" /> Make Recurring
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -536,40 +567,38 @@ export default function InvoiceDetailPage() {
                       router.push(`/sales/credit-notes/new?invoiceId=${id}`)
                     }
                   >
-                    <FilePlus className="h-4 w-4 mr-2 text-orange-600" /> Create
-                    Credit Note
+                    <FilePlus className="h-4 w-4 mr-2 text-rose-600" /> Create Credit Note
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() =>
                       router.push(`/sales/debit-notes/new?invoiceId=${id}`)
                     }
                   >
-                    <FilePlus className="h-4 w-4 mr-2 text-indigo-600" /> Create
-                    Debit Note
+                    <FilePlus className="h-4 w-4 mr-2 text-amber-600" /> Create Debit Note
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {}}>
-                    <Receipt className="h-4 w-4 mr-2" /> Add e-Way Bill Details
+                    <Receipt className="h-4 w-4 mr-2 text-slate-500" /> Add e-Way Bill Details
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleAction("clone")}>
-                    <Copy className="h-4 w-4 mr-2" /> Clone
+                    <Copy className="h-4 w-4 mr-2 text-slate-500" /> Clone
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {}}>
-                    <History className="h-4 w-4 mr-2" /> View Journal
+                    <History className="h-4 w-4 mr-2 text-slate-500" /> View Journal
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {invoice.status !== "Void" && (
                     <DropdownMenuItem
-                      className="text-orange-600"
+                      className="text-amber-600"
                       onClick={() => handleAction("void")}
                     >
                       <Ban className="h-4 w-4 mr-2" /> Void
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
-                    className="text-destructive"
+                    className="text-rose-600 hover:bg-rose-50"
                     onClick={() => handleAction("delete")}
                   >
                     <Trash2 className="h-4 w-4 mr-2" /> Delete
@@ -580,14 +609,14 @@ export default function InvoiceDetailPage() {
                       router.push(`/sales/invoices/${id}/edit-template`)
                     }
                   >
-                    <Settings className="h-4 w-4 mr-2" /> Customize Template
+                    <Settings className="h-4 w-4 mr-2 text-slate-500" /> Customize Template
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() =>
                       router.push("/settings/preferences/invoices")
                     }
                   >
-                    <Settings className="h-4 w-4 mr-2" /> Invoice Preferences
+                    <Settings className="h-4 w-4 mr-2 text-slate-500" /> Invoice Preferences
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -602,26 +631,26 @@ export default function InvoiceDetailPage() {
                 <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0 gap-8">
                   <TabsTrigger
                     value="invoice"
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 font-medium"
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:bg-transparent px-1 py-2 font-bold text-sm text-slate-500"
                   >
                     Invoice
                   </TabsTrigger>
                   <TabsTrigger
                     value="payments"
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 font-medium"
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:bg-transparent px-1 py-2 font-bold text-sm text-slate-500"
                   >
                     Payments Received ({payments.length})
                   </TabsTrigger>
                   <TabsTrigger
                     value="journal"
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 font-medium"
+                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-teal-600 data-[state=active]:text-teal-700 data-[state=active]:bg-transparent px-1 py-2 font-bold text-sm text-slate-500"
                   >
                     Journal
                   </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="invoice" className="mt-6 flex justify-center">
-                  <div className="shadow-xl">
+                  <div className="shadow-lg rounded-xl overflow-hidden border border-slate-200">
                     <InvoiceTemplateRenderer
                       invoice={invoice}
                       config={{ ...DEFAULT_CONFIG, ...(invoice.templateConfig || {}) }}
@@ -631,14 +660,15 @@ export default function InvoiceDetailPage() {
                 </TabsContent>
 
                 <TabsContent value="payments" className="mt-6">
-                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                     {payments.length === 0 ?
-                      <div className="py-20 text-center text-muted-foreground flex flex-col items-center gap-2">
+                      <div className="py-20 text-center text-slate-500 flex flex-col items-center gap-2">
                         <Receipt className="h-12 w-12 text-slate-200" />
-                        <p>No payments recorded for this invoice yet.</p>
+                        <p className="text-sm font-medium">No payments recorded for this invoice yet.</p>
                         <Button
                           variant="link"
                           size="sm"
+                          className="text-teal-700 hover:text-teal-800 font-semibold"
                           onClick={() =>
                             router.push(
                               `/sales/payments-received/new?invoiceId=${id}`,
@@ -649,31 +679,31 @@ export default function InvoiceDetailPage() {
                         </Button>
                       </div>
                     : <Table>
-                        <TableHeader className="bg-slate-50">
+                        <TableHeader className="bg-slate-50 border-b border-slate-200">
                           <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Payment #</TableHead>
-                            <TableHead>Reference #</TableHead>
-                            <TableHead>Mode</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Date</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Payment #</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Reference #</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Mode</TableHead>
+                            <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Amount</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {payments.map((p) => (
                             <TableRow
                               key={p._id}
-                              className="cursor-pointer hover:bg-slate-50"
+                              className="cursor-pointer hover:bg-slate-50/50"
                               onClick={() =>
                                 router.push(`/sales/payments-received/${p._id}`)
                               }
                             >
-                              <TableCell>{fmtDate(p.payment_date)}</TableCell>
-                              <TableCell className="font-medium text-blue-600">
+                              <TableCell className="text-sm text-slate-600">{fmtDate(p.payment_date)}</TableCell>
+                              <TableCell className="text-sm font-semibold text-teal-700 hover:underline">
                                 PR-{p.payment_number}
                               </TableCell>
-                              <TableCell>{p.reference_number || "—"}</TableCell>
-                              <TableCell>{p.payment_mode}</TableCell>
-                              <TableCell className="text-right font-bold text-slate-900">
+                              <TableCell className="text-sm text-slate-500">{p.reference_number || "—"}</TableCell>
+                              <TableCell className="text-sm text-slate-600">{p.payment_mode}</TableCell>
+                              <TableCell className="text-right font-bold text-slate-800 text-sm">
                                 {fmt(p.total_amount_received)}
                               </TableCell>
                             </TableRow>
@@ -685,38 +715,38 @@ export default function InvoiceDetailPage() {
                 </TabsContent>
 
                 <TabsContent value="journal" className="mt-6">
-                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                     {journalEntries.length === 0 ?
-                      <div className="py-20 text-center text-muted-foreground">
+                      <div className="py-20 text-center text-slate-500 text-sm font-medium">
                         No journal entries found.
                       </div>
                     : <Table>
-                        <TableHeader className="bg-slate-50">
+                        <TableHeader className="bg-slate-50 border-b border-slate-200">
                           <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Account</TableHead>
-                            <TableHead className="text-right">Debit</TableHead>
-                            <TableHead className="text-right">Credit</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Date</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Account</TableHead>
+                            <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Debit</TableHead>
+                            <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Credit</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {journalEntries.map((j, i) => (
-                            <TableRow key={i}>
+                            <TableRow key={i} className="hover:bg-slate-50/50">
                               <TableCell className="text-xs text-slate-500">
                                 {fmtDate(j.postingDate)}
                               </TableCell>
                               <TableCell>
-                                <div className="font-medium">
+                                <div className="font-semibold text-slate-800 text-sm">
                                   {j.accountId?.name || "Account"}
                                 </div>
-                                <div className="text-[10px] text-slate-400">
+                                <div className="text-[10px] text-slate-400 mt-0.5">
                                   {j.accountId?.code || ""}
                                 </div>
                               </TableCell>
-                              <TableCell className="text-right font-medium">
+                              <TableCell className="text-right font-semibold text-slate-700 text-sm">
                                 {j.debit > 0 ? fmt(j.debit) : ""}
                               </TableCell>
-                              <TableCell className="text-right font-medium">
+                              <TableCell className="text-right font-semibold text-slate-700 text-sm">
                                 {j.credit > 0 ? fmt(j.credit) : ""}
                               </TableCell>
                             </TableRow>
@@ -730,22 +760,18 @@ export default function InvoiceDetailPage() {
             </div>
 
             <div className="space-y-6">
-              <div className="bg-white rounded-lg border shadow-sm p-5 space-y-5 sticky top-6">
+              <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 space-y-5 sticky top-6">
                 <div>
-                  <h3 className="font-bold text-sm mb-4 text-slate-900 uppercase tracking-wider">
+                  <h3 className="font-bold text-xs mb-4 text-slate-900 uppercase tracking-wider">
                     Invoice Details
                   </h3>
                   <div className="space-y-4">
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-500">Status</span>
-                      <Badge
-                        className={`${statusColor[invoice.status]} font-bold`}
-                      >
-                        {invoice.status}
-                      </Badge>
+                      <span className="text-slate-500 font-medium">Status</span>
+                      <StatusPill status={invoice.status} />
                     </div>
                     {dueLabel && (
-                      <div className="bg-red-50 text-red-700 text-[10px] font-extrabold p-2 rounded border border-red-100 flex items-center justify-center gap-1.5">
+                      <div className="bg-rose-50 text-rose-700 text-[10px] font-bold p-2 rounded border border-rose-100 flex items-center justify-center gap-1.5">
                         <Bell className="h-3 w-3" /> {dueLabel}
                       </div>
                     )}
@@ -765,13 +791,13 @@ export default function InvoiceDetailPage() {
                               router.push(`/sales/orders/${so._id}`)
                             }
                           >
-                            <span className="font-medium text-blue-600 group-hover:underline">
+                            <span className="font-semibold text-teal-700 group-hover:underline">
                               {so.salesOrderNumber}
                             </span>
-                            <ExternalLink className="h-3 w-3 text-slate-300 group-hover:text-blue-400" />
+                            <ExternalLink className="h-3.5 w-3.5 text-slate-400 group-hover:text-teal-600 transition-colors" />
                           </div>
                         ))
-                      : <div className="text-sm text-slate-400 italic">
+                      : <div className="text-xs text-slate-400 italic">
                           No sales orders linked.
                         </div>
                       }
@@ -787,7 +813,7 @@ export default function InvoiceDetailPage() {
                         {fmt(invoice.total)}
                       </div>
                       <div className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <FileCheck className="h-3 w-3" /> Created on{" "}
+                        <FileCheck className="h-3.5 w-3.5" /> Created on{" "}
                         {fmtDate(invoice.createdAt)}
                       </div>
                     </div>
@@ -797,7 +823,7 @@ export default function InvoiceDetailPage() {
                 <div className="pt-2">
                   <Button
                     variant="outline"
-                    className="w-full text-xs font-bold gap-2 text-slate-600"
+                    className="w-full text-xs font-bold gap-2 text-slate-600 border-slate-200 hover:bg-slate-50 rounded-md"
                     onClick={() =>
                       router.push(`/sales/invoices/${id}/send-email`)
                     }
