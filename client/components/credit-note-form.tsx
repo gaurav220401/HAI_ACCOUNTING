@@ -132,6 +132,7 @@ export function CreditNoteForm({
   const [attachments, setAttachments] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([makeRow()]);
   const [saving, setSaving] = useState(false);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(true);
 
   const selectedCustomer = useMemo(
     () => customers.find((c) => c._id === customerId) || null,
@@ -139,6 +140,7 @@ export function CreditNoteForm({
   );
 
   useEffect(() => {
+    setLoadingDropdowns(true);
     Promise.all([
       contactApi.list({ type: "Customer", page: 1, limit: 300 }),
       itemApi.list({ page: 1, limit: 300 }),
@@ -161,6 +163,9 @@ export function CreditNoteForm({
       })
       .catch(() => {
         toast.error("Failed to load master data for credit note");
+      })
+      .finally(() => {
+        setLoadingDropdowns(false);
       });
 
     if (mode === "create") {
@@ -492,18 +497,25 @@ export function CreditNoteForm({
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
             <div>
               <Label className="text-red-500">Customer Name*</Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger className="mt-1 bg-white">
-                  <SelectValue placeholder="Select customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer._id} value={customer._id}>
-                      {customer.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading customers...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={customerId} onValueChange={setCustomerId}>
+                  <SelectTrigger className="mt-1 bg-white">
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((customer) => (
+                      <SelectItem key={customer._id} value={customer._id}>
+                        {customer.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div>
               <Label className="text-transparent">Currency</Label>
@@ -548,32 +560,39 @@ export function CreditNoteForm({
 
           <div>
             <Label>Reference Invoice</Label>
-            <Select
-              value={referenceInvoiceId || "none"}
-              onValueChange={(v) => {
-                const value = v === "none" ? "" : v;
-                setReferenceInvoiceId(value);
-                const invoice = customerInvoices.find((entry) => entry._id === value);
-                if (invoice) {
-                  if (!referenceNumber) setReferenceNumber(invoice.invoiceNumber || "");
-                  if (!subject) {
-                    setSubject(`Credit for invoice ${invoice.invoiceNumber || ""}`.trim());
+            {loadingDropdowns ? (
+              <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                <span className="text-slate-400 text-xs">Loading invoices...</span>
+                <ChevronDown className="h-4 w-4 text-slate-400" />
+              </div>
+            ) : (
+              <Select
+                value={referenceInvoiceId || "none"}
+                onValueChange={(v) => {
+                  const value = v === "none" ? "" : v;
+                  setReferenceInvoiceId(value);
+                  const invoice = customerInvoices.find((entry) => entry._id === value);
+                  if (invoice) {
+                    if (!referenceNumber) setReferenceNumber(invoice.invoiceNumber || "");
+                    if (!subject) {
+                      setSubject(`Credit for invoice ${invoice.invoiceNumber || ""}`.trim());
+                    }
                   }
-                }
-              }}
-            >
-              <SelectTrigger className="mt-1 bg-white">
-                <SelectValue placeholder="Select invoice" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {customerInvoices.map((invoice) => (
-                  <SelectItem key={invoice._id} value={invoice._id}>
-                    {invoice.invoiceNumber} (Balance: {fmt(Number(invoice.balanceDue || 0))})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                }}
+              >
+                <SelectTrigger className="mt-1 bg-white">
+                  <SelectValue placeholder="Select invoice" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {customerInvoices.map((invoice) => (
+                    <SelectItem key={invoice._id} value={invoice._id}>
+                      {invoice.invoiceNumber} (Balance: {fmt(Number(invoice.balanceDue || 0))})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
@@ -612,42 +631,56 @@ export function CreditNoteForm({
 
           <div>
             <Label>Accounts Receivable</Label>
-            <Select
-              value={accountsReceivableId || "none"}
-              onValueChange={(v) => setAccountsReceivableId(v === "none" ? "" : v)}
-            >
-              <SelectTrigger className="mt-1 bg-white">
-                <SelectValue placeholder="Select account" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {arAccounts.map((account) => (
-                  <SelectItem key={account._id} value={account._id}>
-                    {account.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {loadingDropdowns ? (
+              <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                <span className="text-slate-400 text-xs">Loading accounts...</span>
+                <ChevronDown className="h-4 w-4 text-slate-400" />
+              </div>
+            ) : (
+              <Select
+                value={accountsReceivableId || "none"}
+                onValueChange={(v) => setAccountsReceivableId(v === "none" ? "" : v)}
+              >
+                <SelectTrigger className="mt-1 bg-white">
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {arAccounts.map((account) => (
+                    <SelectItem key={account._id} value={account._id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div>
             <Label>Sales Person</Label>
-            <Select
-              value={salesPersonId || "none"}
-              onValueChange={(v) => setSalesPersonId(v === "none" ? "" : v)}
-            >
-              <SelectTrigger className="mt-1 bg-white">
-                <SelectValue placeholder="Select sales person" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {salesPersons.map((salesPerson) => (
-                  <SelectItem key={salesPerson._id} value={salesPerson._id}>
-                    {salesPerson.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {loadingDropdowns ? (
+              <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                <span className="text-slate-400 text-xs">Loading sales persons...</span>
+                <ChevronDown className="h-4 w-4 text-slate-400" />
+              </div>
+            ) : (
+              <Select
+                value={salesPersonId || "none"}
+                onValueChange={(v) => setSalesPersonId(v === "none" ? "" : v)}
+              >
+                <SelectTrigger className="mt-1 bg-white">
+                  <SelectValue placeholder="Select sales person" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {salesPersons.map((salesPerson) => (
+                    <SelectItem key={salesPerson._id} value={salesPerson._id}>
+                      {salesPerson.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="lg:col-span-2">
@@ -895,38 +928,52 @@ export function CreditNoteForm({
 
           {taxType === "TDS" && (
             <div className="flex justify-between items-center gap-3 text-sm">
-              <Select value={tdsId || "none"} onValueChange={(v) => setTdsId(v === "none" ? "" : v)}>
-                <SelectTrigger className="h-8 bg-white w-[220px]">
-                  <SelectValue placeholder="Select a TDS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Select a TDS</SelectItem>
-                  {tdsTaxes.map((tax) => (
-                    <SelectItem key={tax._id} value={tax._id}>
-                      {tax.taxName} ({tax.rate}%)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="w-[220px] h-8 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                  <span className="text-slate-400 text-xs">Loading TDS...</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={tdsId || "none"} onValueChange={(v) => setTdsId(v === "none" ? "" : v)}>
+                  <SelectTrigger className="h-8 bg-white w-[220px]">
+                    <SelectValue placeholder="Select a TDS" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select a TDS</SelectItem>
+                    {tdsTaxes.map((tax) => (
+                      <SelectItem key={tax._id} value={tax._id}>
+                        {tax.taxName} ({tax.rate}%)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <span>- {fmt(tdsAmount)}</span>
             </div>
           )}
 
           {taxType === "TCS" && (
             <div className="flex justify-between items-center gap-3 text-sm">
-              <Select value={tcsId || "none"} onValueChange={(v) => setTcsId(v === "none" ? "" : v)}>
-                <SelectTrigger className="h-8 bg-white w-[220px]">
-                  <SelectValue placeholder="Select a TCS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Select a TCS</SelectItem>
-                  {tcsTaxes.map((tax) => (
-                    <SelectItem key={tax._id} value={tax._id}>
-                      {tax.taxName} ({tax.rate}%)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingDropdowns ? (
+                <div className="w-[220px] h-8 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                  <span className="text-slate-400 text-xs">Loading TCS...</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={tcsId || "none"} onValueChange={(v) => setTcsId(v === "none" ? "" : v)}>
+                  <SelectTrigger className="h-8 bg-white w-[220px]">
+                    <SelectValue placeholder="Select a TCS" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select a TCS</SelectItem>
+                    {tcsTaxes.map((tax) => (
+                      <SelectItem key={tax._id} value={tax._id}>
+                        {tax.taxName} ({tax.rate}%)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <span>{fmt(tcsAmount)}</span>
             </div>
           )}

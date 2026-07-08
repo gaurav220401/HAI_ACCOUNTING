@@ -86,13 +86,22 @@ function groupAccounts(accounts: Account[]) {
 }
 
 function AccountSelect({
-  accounts, value, onChange, placeholder = "Select an account",
+  accounts, value, onChange, placeholder = "Select an account", loading = false,
 }: {
   accounts: Account[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+        <span className="text-slate-400 text-xs">Loading accounts...</span>
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </div>
+    );
+  }
   const grouped = groupAccounts(accounts);
   return (
     <Select value={value} onValueChange={onChange}>
@@ -116,7 +125,7 @@ function AccountSelect({
 }
 
 function ContactCombobox({
-  contacts, value, onChange, placeholder = "Select", newLabel, onNew,
+  contacts, value, onChange, placeholder = "Select", newLabel, onNew, loading = false,
 }: {
   contacts: Contact[];
   value: string;
@@ -124,9 +133,19 @@ function ContactCombobox({
   placeholder?: string;
   newLabel?: string;
   onNew?: () => void;
+  loading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  if (loading) {
+    return (
+      <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+        <span className="text-slate-400 text-xs">Loading contacts...</span>
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </div>
+    );
+  }
 
   const filtered = contacts.filter((c) => {
     const q = search.toLowerCase();
@@ -881,7 +900,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                       </Label>
                       <div>
                         <AccountSelect accounts={expenseAccounts} value={expForm.expenseAccountId}
-                          onChange={(v) => setExp("expenseAccountId", v)} />
+                          onChange={(v) => setExp("expenseAccountId", v)} loading={loadingData} />
                         <button type="button" className="text-xs text-primary mt-1.5 flex items-center gap-1 hover:underline"
                           onClick={() => setIsItemized(true)}>
                           <Plus className="h-3 w-3" /> Itemize
@@ -918,7 +937,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Paid Through <span className="text-destructive">*</span></Label>
                   <AccountSelect accounts={paidThroughAccounts} value={expForm.paidThroughAccountId}
-                    onChange={(v) => setExp("paidThroughAccountId", v)} placeholder="Select an account" />
+                    onChange={(v) => setExp("paidThroughAccountId", v)} placeholder="Select an account" loading={loadingData} />
                 </div>
 
                 {/* Vendor */}
@@ -926,7 +945,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                   <Label className="text-sm text-right">Vendor</Label>
                   <ContactCombobox contacts={vendors} value={expForm.vendorId}
                     onChange={(v) => setExp("vendorId", v)} placeholder="Select a vendor"
-                    newLabel="+ New Vendor" onNew={() => router.push("/purchases/vendors/new")} />
+                    newLabel="+ New Vendor" onNew={() => router.push("/purchases/vendors/new")} loading={loadingData} />
                 </div>
 
                 {/* Invoice # */}
@@ -950,7 +969,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                   <Label className="text-sm text-right">Customer Name</Label>
                   <ContactCombobox contacts={customers} value={expForm.customerId}
                     onChange={(v) => setExp("customerId", v)} placeholder="Select a customer"
-                    newLabel="+ New Customer" onNew={() => router.push("/sales/customers/new")} />
+                    newLabel="+ New Customer" onNew={() => router.push("/sales/customers/new")} loading={loadingData} />
                 </div>
 
                 {/* Billable */}
@@ -1099,7 +1118,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                 <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
                   <Label className="text-sm text-right">Paid Through <span className="text-destructive">*</span></Label>
                   <AccountSelect accounts={paidThroughAccounts} value={milForm.paidThroughAccountId}
-                    onChange={(v) => setMil("paidThroughAccountId", v)} />
+                    onChange={(v) => setMil("paidThroughAccountId", v)} loading={loadingData} />
                 </div>
 
                 {/* Vendor */}
@@ -1107,7 +1126,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                   <Label className="text-sm text-right">Vendor</Label>
                   <ContactCombobox contacts={vendors} value={milForm.vendorId}
                     onChange={(v) => setMil("vendorId", v)} placeholder="Select a vendor"
-                    newLabel="+ New Vendor" onNew={() => router.push("/purchases/vendors/new")} />
+                    newLabel="+ New Vendor" onNew={() => router.push("/purchases/vendors/new")} loading={loadingData} />
                 </div>
 
                 {/* Invoice # */}
@@ -1131,7 +1150,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                   <Label className="text-sm text-right">Customer Name</Label>
                   <ContactCombobox contacts={customers} value={milForm.customerId}
                     onChange={(v) => setMil("customerId", v)} placeholder="Select a customer"
-                    newLabel="+ New Customer" onNew={() => router.push("/sales/customers/new")} />
+                    newLabel="+ New Customer" onNew={() => router.push("/sales/customers/new")} loading={loadingData} />
                 </div>
 
                 {/* Billable */}

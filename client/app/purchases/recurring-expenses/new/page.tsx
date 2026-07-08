@@ -64,13 +64,22 @@ function groupAccounts(accounts: Account[]) {
 }
 
 function AccountSelect({
-  accounts, value, onChange, placeholder = "Select an account",
+  accounts, value, onChange, placeholder = "Select an account", loading = false,
 }: {
   accounts: Account[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+        <span className="text-slate-400 text-xs">Loading accounts...</span>
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </div>
+    );
+  }
   const grouped = groupAccounts(accounts);
   return (
     <Select value={value} onValueChange={onChange}>
@@ -94,15 +103,25 @@ function AccountSelect({
 }
 
 function ContactCombobox({
-  contacts, value, onChange, placeholder = "Select",
+  contacts, value, onChange, placeholder = "Select", loading = false,
 }: {
   contacts: Contact[];
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  loading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  if (loading) {
+    return (
+      <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+        <span className="text-slate-400 text-xs">Loading contacts...</span>
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </div>
+    );
+  }
   const filtered = contacts.filter((c) => {
     const q = search.toLowerCase();
     return (c.displayName || "").toLowerCase().includes(q) || (c.companyName || "").toLowerCase().includes(q);
@@ -219,6 +238,7 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
   const [form, setForm] = useState<FormData>(DEFAULT);
   const [submitting, setSubmitting] = useState(false);
   const [loadingData, setLoadingData] = useState(mode === "edit");
+  const [loadingLists, setLoadingLists] = useState(true);
 
   const [expenseAccounts, setExpenseAccounts] = useState<Account[]>([]);
   const [bankAccounts, setBankAccounts] = useState<Account[]>([]);
@@ -235,6 +255,7 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
   // Load reference data
   useEffect(() => {
     if (authLoading || !firebaseUser) return;
+    setLoadingLists(true);
     Promise.all([
       accountApi.list({ rootType: "Expense" }),
       accountApi.list({ rootType: "Asset" }),
@@ -247,7 +268,9 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
       ));
       setVendors((vendorRes as any).data ?? []);
       setCustomers((custRes as any).data ?? []);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      setLoadingLists(false);
+    });
   }, [authLoading, firebaseUser]);
 
   // Load existing record for edit mode
@@ -448,6 +471,7 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
                       }
                     }}
                     placeholder="Select a customer"
+                    loading={loadingLists}
                   />
                 </div>
 
@@ -493,6 +517,7 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
                     value={form.expenseAccountId}
                     onChange={(v) => set("expenseAccountId", v)}
                     placeholder="Select an account"
+                    loading={loadingLists}
                   />
                 </div>
 
@@ -532,6 +557,7 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
                     value={form.paidThroughAccountId}
                     onChange={(v) => set("paidThroughAccountId", v)}
                     placeholder="Select an account"
+                    loading={loadingLists}
                   />
                 </div>
 
@@ -543,6 +569,7 @@ function RecurringExpenseFormPage({ mode, existingId }: RecurringExpenseFormPage
                     value={form.vendorId}
                     onChange={(v) => set("vendorId", v)}
                     placeholder="Select a vendor"
+                    loading={loadingLists}
                   />
                 </div>
 

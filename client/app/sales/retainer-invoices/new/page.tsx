@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Loader2, Save, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -205,18 +205,25 @@ function NewRetainerInvoicePageContent() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="customer">Customer</Label>
-                <Select value={customerId} onValueChange={setCustomerId} disabled={loadingCustomers}>
-                  <SelectTrigger id="customer">
-                    <SelectValue placeholder={loadingCustomers ? "Loading customers..." : "Select customer"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((customer) => (
-                      <SelectItem key={customer._id} value={customer._id}>
-                        {customer.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {loadingCustomers ? (
+                  <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                    <span className="text-slate-400 text-xs">Loading customers...</span>
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  </div>
+                ) : (
+                  <Select value={customerId} onValueChange={setCustomerId}>
+                    <SelectTrigger id="customer">
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customers.map((customer) => (
+                        <SelectItem key={customer._id} value={customer._id}>
+                          {customer.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">

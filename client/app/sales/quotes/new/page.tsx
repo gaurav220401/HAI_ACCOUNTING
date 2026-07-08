@@ -211,10 +211,12 @@ export default function NewQuotePage() {
   const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [placeOfSupply, setPlaceOfSupply] = useState("");
+  const [loadingLists, setLoadingLists] = useState(true);
 
   // Load master data
   useEffect(() => {
     if (!firebaseUser || loading || orgLoading || !activeOrganization) return;
+    setLoadingLists(true);
     Promise.allSettled([
       contactApi.list({ type: "Customer", page: 1, limit: 500 }),
       itemApi.list({ page: 1, limit: 500 }),
@@ -231,7 +233,10 @@ export default function NewQuotePage() {
         if (nn.status === "fulfilled")
           setQuoteNumber(nn.value.data?.quoteNumber ?? "QT-000001");
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        setLoadingLists(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
@@ -584,44 +589,51 @@ export default function NewQuotePage() {
               <Label className="text-xs text-slate-600 font-semibold">
                 Customer Name<span className="text-rose-500">*</span>
               </Label>
-              <Select
-                value={customerId || undefined}
-                onValueChange={(v) => {
-                  if (v === "__add_new") {
-                    router.push(`/sales/customers/new?redirect=${encodeURIComponent(window.location.pathname)}`);
-                    return;
-                  }
-                  setCustomerId(v);
-                }}
-              >
-                <SelectTrigger className="border-slate-200 focus-visible:ring-teal-600 h-9">
-                  <SelectValue placeholder="Select or add a customer" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem value="__add_new">
-                    <span className="text-teal-600 font-semibold">
-                      + Add a customer
-                    </span>
-                  </SelectItem>
-                  {customers.length === 0 && (
-                    <SelectItem value="__empty" disabled>
-                      No customers found
+              {loadingLists ? (
+                <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading customers...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select
+                  value={customerId || undefined}
+                  onValueChange={(v) => {
+                    if (v === "__add_new") {
+                      router.push(`/sales/customers/new?redirect=${encodeURIComponent(window.location.pathname)}`);
+                      return;
+                    }
+                    setCustomerId(v);
+                  }}
+                >
+                  <SelectTrigger className="border-slate-200 focus-visible:ring-teal-600 h-9">
+                    <SelectValue placeholder="Select or add a customer" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="__add_new">
+                      <span className="text-teal-600 font-semibold">
+                        + Add a customer
+                      </span>
                     </SelectItem>
-                  )}
-                  {customers.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      <div className="flex flex-col text-left">
-                        <span className="font-semibold text-slate-700">{c.displayName}</span>
-                        {c.companyName && (
-                          <span className="text-[10px] text-slate-400">
-                            {c.companyName}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {customers.length === 0 && (
+                      <SelectItem value="__empty" disabled>
+                        No customers found
+                      </SelectItem>
+                    )}
+                    {customers.map((c) => (
+                      <SelectItem key={c._id} value={c._id}>
+                        <div className="flex flex-col text-left">
+                          <span className="font-semibold text-slate-700">{c.displayName}</span>
+                          {c.companyName && (
+                            <span className="text-[10px] text-slate-400">
+                              {c.companyName}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Empty right placeholder */}
@@ -681,19 +693,26 @@ export default function NewQuotePage() {
             {/* Salesperson */}
             <div className="space-y-1.5">
               <Label className="text-xs text-slate-600 font-semibold">Salesperson</Label>
-              <Select value={salesPersonId} onValueChange={setSalesPersonId}>
-                <SelectTrigger className="border-slate-200 focus-visible:ring-teal-600 h-9">
-                  <SelectValue placeholder="Select or Add Salesperson" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">None</SelectItem>
-                  {salesPersons.map((sp) => (
-                    <SelectItem key={sp._id} value={sp._id}>
-                      {sp.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingLists ? (
+                <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading salespersons...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select value={salesPersonId} onValueChange={setSalesPersonId}>
+                  <SelectTrigger className="border-slate-200 focus-visible:ring-teal-600 h-9">
+                    <SelectValue placeholder="Select or Add Salesperson" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">None</SelectItem>
+                    {salesPersons.map((sp) => (
+                      <SelectItem key={sp._id} value={sp._id}>
+                        {sp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="space-y-1.5 flex flex-col justify-end">
@@ -1064,30 +1083,37 @@ export default function NewQuotePage() {
                   </label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Select
-                    value={totalTaxId || "__none"}
-                    onValueChange={(value) => {
-                      if (value === "__none") {
-                        setTotalTaxId("");
-                        setTaxType("none");
-                        return;
-                      }
-                      setTotalTaxId(value);
-                      if (taxType === "none") setTaxType("TDS");
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-40 border-slate-200">
-                      <SelectValue placeholder="Select a Tax" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none">None</SelectItem>
-                      {taxes.map((t) => (
-                        <SelectItem key={t._id} value={t._id}>
-                          {t.name} ({t.rate}%)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {loadingLists ? (
+                    <div className="h-8 w-40 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                      <span className="text-slate-400 text-xs">Loading tax...</span>
+                      <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                    </div>
+                  ) : (
+                    <Select
+                      value={totalTaxId || "__none"}
+                      onValueChange={(value) => {
+                        if (value === "__none") {
+                          setTotalTaxId("");
+                          setTaxType("none");
+                          return;
+                        }
+                        setTotalTaxId(value);
+                        if (taxType === "none") setTaxType("TDS");
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-40 border-slate-200">
+                        <SelectValue placeholder="Select a Tax" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">None</SelectItem>
+                        {taxes.map((t) => (
+                          <SelectItem key={t._id} value={t._id}>
+                            {t.name} ({t.rate}%)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <span className="tabular-nums w-20 text-right font-semibold text-slate-800">
                     {taxType === "TCS" ? "+" : taxType === "TDS" ? "-" : ""}{" "}
                     {decimalToFixed(taxAmount)}

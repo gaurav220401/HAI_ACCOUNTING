@@ -400,4 +400,16 @@ Whenever fetching data from the backend, implement exact UI-matching shimmer/ske
 - **Loading Skeletons (Shimmer)**: Replace all central spinning wheel loader icons with visual table shimmers (`TableSkeleton`) and detail list shimmers (`ListSkeleton`) during data fetches.
 - **Form Layout**: Spacing rules are strictly followed (no sidebars forms center-aligned with balanced columns, inputs restricted in widths, buttons aligned at the bottom separated by a horizontal separator).
 
+---
+
+## 15. Component: Dropdowns and Select Inputs (Sales and Purchases Forms)
+
+### Rules & Guidelines:
+- **Teal Focus/Hover Themes**: All custom dropdown selection triggers (such as `SelectTrigger` or custom buttons) must use a Teal focus outline/ring (`focus:border-teal-500 focus:ring-teal-500/20` or similar).
+- **SelectItem Styling**: Dropdown selection menu option lists (such as `SelectItem`) must use Teal background highlights on hover/focus (`focus:bg-teal-50 focus:text-teal-700` and dark mode equivalents). Check indicators/active marks should use Teal (`text-teal-600`).
+- **Dynamic Shimmer Loaders**: When any form loads vendor, customer, item, account, or tax data from the backend, show a dropdown shimmer/skeleton loader.
+  - **Visual Design**: The loading dropdown should render a pulsing rounded input-sized container with a loading placeholder text (e.g. `Loading vendors...`) and a ChevronDown icon, both styled in soft gray (`text-slate-400 bg-slate-100/80 animate-pulse border border-slate-200`).
+  - **NO**: Empty dropdowns, standard loading spinning wheels, or generic text placeholders in place of fields.
+
+
 

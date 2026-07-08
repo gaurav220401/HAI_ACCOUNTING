@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronsUpDown, Calendar, Loader2, Paperclip, Search, X } from "lucide-react";
+import { Check, ChevronsUpDown, Calendar, Loader2, Paperclip, Search, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -431,22 +431,29 @@ export function PaymentReceivedEditor({
                 <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-2", customerLocked && "[&_.customer-dependent]:opacity-40")}>
                   <div className="space-y-1.5">
                     <Label>Customer Name*</Label>
-                    <Select
-                      disabled={mode === "edit"}
-                      value={form.customer_id}
-                      onValueChange={(v) => setForm((prev) => ({ ...prev, customer_id: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customers.map((c) => (
-                          <SelectItem key={c._id} value={c._id}>
-                            {c.displayName || c.companyName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {loading ? (
+                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                        <span className="text-slate-400 text-xs">Loading customers...</span>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Select
+                        disabled={mode === "edit"}
+                        value={form.customer_id}
+                        onValueChange={(v) => setForm((prev) => ({ ...prev, customer_id: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Customer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {customers.map((c) => (
+                            <SelectItem key={c._id} value={c._id}>
+                              {c.displayName || c.companyName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   <div className="customer-dependent space-y-1.5">
@@ -502,25 +509,31 @@ export function PaymentReceivedEditor({
 
                   <div className="customer-dependent space-y-1.5">
                     <Label>Deposited To*</Label>
-                    <Popover open={accountSearchOpen} onOpenChange={setAccountSearchOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={accountSearchOpen}
-                          className="w-full justify-between font-normal"
-                          disabled={customerLocked}
-                        >
-                          {form.deposited_to_account
-                            ? (() => {
-                                const acc = accounts.find((a) => a._id === form.deposited_to_account);
-                                if (!acc) return "Select account...";
-                                return acc.code ? `[ ${acc.code} ] ${acc.name}` : acc.name;
-                              })()
-                            : "Select account..."}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
+                    {loading ? (
+                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                        <span className="text-slate-400 text-xs">Loading accounts...</span>
+                        <ChevronsUpDown className="h-4 w-4 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Popover open={accountSearchOpen} onOpenChange={setAccountSearchOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={accountSearchOpen}
+                            className="w-full justify-between font-normal"
+                            disabled={customerLocked}
+                          >
+                            {form.deposited_to_account
+                              ? (() => {
+                                  const acc = accounts.find((a) => a._id === form.deposited_to_account);
+                                  if (!acc) return "Select account...";
+                                  return acc.code ? `[ ${acc.code} ] ${acc.name}` : acc.name;
+                                })()
+                              : "Select account..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
                       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                         <Command>
                           <CommandInput placeholder="Search account..." />
@@ -572,7 +585,8 @@ export function PaymentReceivedEditor({
                         </Command>
                       </PopoverContent>
                     </Popover>
-                  </div>
+                  )}
+                </div>
 
                   <div className="customer-dependent space-y-1.5">
                     <Label>Reference#</Label>

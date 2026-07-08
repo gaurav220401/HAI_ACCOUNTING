@@ -72,9 +72,19 @@ const DEFAULT: FormData = {
   paidThroughAccountId: "", vendorId: "", notes: "", customerId: "", isBillable: false, projectId: "",
 };
 
-function AccountSelect({ accounts, value, onChange, placeholder = "Select an account" }: {
-  accounts: Account[]; value: string; onChange: (v: string) => void; placeholder?: string;
+function AccountSelect({
+  accounts, value, onChange, placeholder = "Select an account", loading = false,
+}: {
+  accounts: Account[]; value: string; onChange: (v: string) => void; placeholder?: string; loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+        <span className="text-slate-400 text-xs">Loading accounts...</span>
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </div>
+    );
+  }
   const grouped = groupAccounts(accounts);
   return (
     <Select value={value} onValueChange={onChange}>
@@ -91,11 +101,23 @@ function AccountSelect({ accounts, value, onChange, placeholder = "Select an acc
   );
 }
 
-function ContactCombobox({ contacts, value, onChange, placeholder = "Select" }: {
-  contacts: Contact[]; value: string; onChange: (v: string) => void; placeholder?: string;
+function ContactCombobox({
+  contacts, value, onChange, placeholder = "Select", loading = false,
+}: {
+  contacts: Contact[]; value: string; onChange: (v: string) => void; placeholder?: string; loading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  if (loading) {
+    return (
+      <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+        <span className="text-slate-400 text-xs">Loading contacts...</span>
+        <ChevronDown className="h-4 w-4 text-slate-400" />
+      </div>
+    );
+  }
+
   const filtered = contacts.filter((c) => {
     const q = search.toLowerCase();
     return (c.displayName || "").toLowerCase().includes(q) || (c.companyName || "").toLowerCase().includes(q);
@@ -120,7 +142,9 @@ function ContactCombobox({ contacts, value, onChange, placeholder = "Select" }: 
                 {c.displayName || c.companyName}
               </button>
             ))}
-            {filtered.length === 0 && <p className="text-xs text-muted-foreground text-center py-3">No results</p>}
+            {filtered.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-3">No results found</p>
+            )}
           </div>
         </div>
       )}
@@ -136,6 +160,7 @@ export default function EditRecurringExpensePage() {
   const [form, setForm] = useState<FormData>(DEFAULT);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingLists, setLoadingLists] = useState(true);
   const [expenseAccounts, setExpenseAccounts] = useState<Account[]>([]);
   const [bankAccounts, setBankAccounts] = useState<Account[]>([]);
   const [vendors, setVendors] = useState<Contact[]>([]);
@@ -147,6 +172,7 @@ export default function EditRecurringExpensePage() {
 
   useEffect(() => {
     if (authLoading || !firebaseUser) return;
+    setLoadingLists(true);
     Promise.all([
       accountApi.list({ rootType: "Expense" }),
       accountApi.list({ rootType: "Asset" }),
@@ -159,7 +185,9 @@ export default function EditRecurringExpensePage() {
       ));
       setVendors((vendorRes as any).data ?? []);
       setCustomers((custRes as any).data ?? []);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      setLoadingLists(false);
+    });
   }, [authLoading, firebaseUser]);
 
   useEffect(() => {
@@ -330,7 +358,8 @@ export default function EditRecurringExpensePage() {
                             set("projectId", "");
                           }
                         }}
-                        placeholder="Select a customer" />
+                        placeholder="Select a customer"
+                        loading={loadingLists} />
                     </div>
 
                     {/* Billable — shown only when customer selected */}
@@ -369,7 +398,8 @@ export default function EditRecurringExpensePage() {
                         Expense Account <span className="text-destructive">*</span>
                       </Label>
                       <AccountSelect accounts={expenseAccounts} value={form.expenseAccountId}
-                        onChange={(v) => set("expenseAccountId", v)} />
+                        onChange={(v) => set("expenseAccountId", v)}
+                        loading={loadingLists} />
                     </div>
 
                     {/* Amount */}
@@ -396,14 +426,16 @@ export default function EditRecurringExpensePage() {
                     <div className="grid grid-cols-[140px_1fr] items-center gap-4">
                       <Label className="text-sm text-right">Paid Through</Label>
                       <AccountSelect accounts={bankAccounts} value={form.paidThroughAccountId}
-                        onChange={(v) => set("paidThroughAccountId", v)} />
+                        onChange={(v) => set("paidThroughAccountId", v)}
+                        loading={loadingLists} />
                     </div>
 
                     {/* Vendor */}
                     <div className="grid grid-cols-[140px_1fr] items-center gap-4">
                       <Label className="text-sm text-right">Vendor</Label>
                       <ContactCombobox contacts={vendors} value={form.vendorId}
-                        onChange={(v) => set("vendorId", v)} placeholder="Select a vendor" />
+                        onChange={(v) => set("vendorId", v)} placeholder="Select a vendor"
+                        loading={loadingLists} />
                     </div>
 
                     {/* Notes */}

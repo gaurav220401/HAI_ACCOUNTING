@@ -96,6 +96,7 @@ export default function NewSalesOrderPage() {
   const [customers, setCustomers] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms[]>([]);
+  const [loadingLists, setLoadingLists] = useState(true);
 
   const [customerId, setCustomerId] = useState("");
   const [placeOfSupply, setPlaceOfSupply] = useState("");
@@ -154,28 +155,33 @@ export default function NewSalesOrderPage() {
 
   useEffect(() => {
     if (!firebaseUser || loading || orgLoading || !activeOrganization) return;
-
-    contactApi
-      .list({ type: "Customer", page: 1, limit: 200 })
-      .then((res) => setCustomers(res.data ?? []))
-      .catch(() => setCustomers([]));
-
-    itemApi
-      .list({ page: 1, limit: 200 })
-      .then((res) => setItems(res.data ?? []))
-      .catch(() => setItems([]));
-
-    settingsApi.paymentTerms
-      .list()
-      .then((res) => setPaymentTerms(res.data ?? []))
-      .catch(() => setPaymentTerms([]));
-
-    tdsTaxApi.list().then(res => setTdsTaxes(res.data ?? []));
-    tcsTaxApi.list().then(res => setTcsTaxes(res.data ?? []));
-    settingsApi.taxes.list().then(res => setAllTaxes(res.data ?? []));
-    salesOrderApi.getNextNumber()
-      .then(res => setSalesOrderNumber(res.data?.salesOrderNumber || "SO-00001"))
-      .catch(() => setSalesOrderNumber("SO-00001"));
+    setLoadingLists(true);
+    Promise.all([
+      contactApi.list({ type: "Customer", page: 1, limit: 200 }),
+      itemApi.list({ page: 1, limit: 200 }),
+      settingsApi.paymentTerms.list(),
+      tdsTaxApi.list(),
+      tcsTaxApi.list(),
+      settingsApi.taxes.list(),
+      salesOrderApi.getNextNumber()
+    ])
+      .then(([cr, ir, ptr, tdsr, tcsr, txr, nnr]) => {
+        setCustomers(cr.data ?? []);
+        setItems(ir.data ?? []);
+        setPaymentTerms(ptr.data ?? []);
+        setTdsTaxes(tdsr.data ?? []);
+        setTcsTaxes(tcsr.data ?? []);
+        setAllTaxes(txr.data ?? []);
+        setSalesOrderNumber(nnr.data?.salesOrderNumber || "SO-00001");
+      })
+      .catch(() => {
+        setCustomers([]);
+        setItems([]);
+        setPaymentTerms([]);
+      })
+      .finally(() => {
+        setLoadingLists(false);
+      });
   }, [firebaseUser, loading, orgLoading, activeOrganization]);
 
   // Auto-fill place-of-supply from the selected customer's billing state
@@ -547,44 +553,51 @@ export default function NewSalesOrderPage() {
                   Customer Name <span className="text-red-500">*</span>
                 </Label>
                 <div className="md:col-span-8">
-                  <Select
-                    value={customerId || undefined}
-                    onValueChange={(v) => {
-                      if (v === "__add_new") {
-                        router.push("/sales/customers/new");
-                        return;
-                      }
-                      setCustomerId(v);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select or add a customer" />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectItem value="__add_new">
-                        <span className="text-teal-600 font-semibold">
-                          + Add a customer
-                        </span>
-                      </SelectItem>
-                      {customers.length === 0 && (
-                        <SelectItem value="__empty" disabled>
-                          No customers found
+                  {loadingLists ? (
+                    <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                      <span className="text-slate-400 text-xs">Loading customers...</span>
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    </div>
+                  ) : (
+                    <Select
+                      value={customerId || undefined}
+                      onValueChange={(v) => {
+                        if (v === "__add_new") {
+                          router.push("/sales/customers/new");
+                          return;
+                        }
+                        setCustomerId(v);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select or add a customer" />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        <SelectItem value="__add_new">
+                          <span className="text-teal-600 font-semibold">
+                            + Add a customer
+                          </span>
                         </SelectItem>
-                      )}
-                      {customers.map((c) => (
-                        <SelectItem key={c._id} value={c._id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{c.displayName}</span>
-                            {c.companyName && (
-                              <span className="text-xs text-muted-foreground">
-                                {c.companyName}
-                              </span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        {customers.length === 0 && (
+                          <SelectItem value="__empty" disabled>
+                            No customers found
+                          </SelectItem>
+                        )}
+                        {customers.map((c) => (
+                          <SelectItem key={c._id} value={c._id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{c.displayName}</span>
+                              {c.companyName && (
+                                <span className="text-xs text-muted-foreground">
+                                  {c.companyName}
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
 
@@ -661,21 +674,28 @@ export default function NewSalesOrderPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                 <Label className="md:col-span-4">Payment Terms</Label>
                 <div className="md:col-span-8">
-                  <Select
-                    value={paymentTermsId}
-                    onValueChange={setPaymentTermsId}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Due on Receipt" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {paymentTerms.map((t) => (
-                        <SelectItem key={t._id} value={t._id}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {loadingLists ? (
+                    <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                      <span className="text-slate-400 text-xs">Loading terms...</span>
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    </div>
+                  ) : (
+                    <Select
+                      value={paymentTermsId}
+                      onValueChange={setPaymentTermsId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Due on Receipt" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentTerms.map((t) => (
+                          <SelectItem key={t._id} value={t._id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
 
@@ -998,31 +1018,38 @@ export default function NewSalesOrderPage() {
 
                         {taxType !== "none" && (
                           <div className="w-32">
-                            <Select
-                              value={taxType === "TDS" ? tdsId : tcsId}
-                              onValueChange={
-                                taxType === "TDS" ? setTdsId : setTcsId
-                              }
-                            >
-                              <SelectTrigger className="h-7 text-[10px]">
-                                <SelectValue
-                                  placeholder={`Select ${taxType}`}
-                                />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(taxType === "TDS" ? tdsTaxes : tcsTaxes).map(
-                                  (t) => (
-                                    <SelectItem
-                                      key={t._id}
-                                      value={t._id}
-                                      className="text-xs"
-                                    >
-                                      {t.taxName} ({t.rate}%)
-                                    </SelectItem>
-                                  ),
-                                )}
-                              </SelectContent>
-                            </Select>
+                            {loadingLists ? (
+                              <div className="h-7 w-32 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2">
+                                <span className="text-slate-400 text-[10px]">Loading...</span>
+                                <ChevronDown className="h-3 w-3 text-slate-400" />
+                              </div>
+                            ) : (
+                              <Select
+                                value={taxType === "TDS" ? tdsId : tcsId}
+                                onValueChange={
+                                  taxType === "TDS" ? setTdsId : setTcsId
+                                }
+                              >
+                                <SelectTrigger className="h-7 text-[10px]">
+                                  <SelectValue
+                                    placeholder={`Select ${taxType}`}
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(taxType === "TDS" ? tdsTaxes : tcsTaxes).map(
+                                    (t) => (
+                                      <SelectItem
+                                        key={t._id}
+                                        value={t._id}
+                                        className="text-xs"
+                                      >
+                                        {t.taxName} ({t.rate}%)
+                                      </SelectItem>
+                                    ),
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            )}
                           </div>
                         )}
                       </div>

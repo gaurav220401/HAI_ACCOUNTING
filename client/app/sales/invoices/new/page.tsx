@@ -1567,52 +1567,59 @@ function NewInvoicePageContent() {
               <Label>
                 Customer Name<span className="text-red-500">*</span>
               </Label>
-              <Select
-                value={customerId || undefined}
-                onValueChange={(v) => {
-                  if (v === "__add_new") {
-                    saveInvoiceDraft();
-                    router.push(
-                      "/sales/customers/new?returnUrl=/sales/invoices/new",
-                    );
-                    return;
-                  }
-                  setCustomerId(v);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select or add a customer" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem value="__add_new">
-                    <span className="text-teal-600 font-medium">
-                      + Add a customer
-                    </span>
-                  </SelectItem>
-                  {masterLoading && customers.length === 0 && (
-                    <SelectItem value="__loading" disabled>
-                      Loading customers...
+              {masterLoading ? (
+                <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading customers...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select
+                  value={customerId || undefined}
+                  onValueChange={(v) => {
+                    if (v === "__add_new") {
+                      saveInvoiceDraft();
+                      router.push(
+                        "/sales/customers/new?returnUrl=/sales/invoices/new",
+                      );
+                      return;
+                    }
+                    setCustomerId(v);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select or add a customer" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="__add_new">
+                      <span className="text-teal-600 font-medium">
+                        + Add a customer
+                      </span>
                     </SelectItem>
-                  )}
-                  {!masterLoading && customers.length === 0 && (
-                    <SelectItem value="__empty" disabled>
-                      No customers found
-                    </SelectItem>
-                  )}
-                  {customers.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{c.displayName}</span>
-                        {c.companyName && (
-                          <span className="text-xs text-muted-foreground">
-                            {c.companyName}
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {masterLoading && customers.length === 0 && (
+                      <SelectItem value="__loading" disabled>
+                        Loading customers...
+                      </SelectItem>
+                    )}
+                    {!masterLoading && customers.length === 0 && (
+                      <SelectItem value="__empty" disabled>
+                        No customers found
+                      </SelectItem>
+                    )}
+                    {customers.map((c) => (
+                      <SelectItem key={c._id} value={c._id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{c.displayName}</span>
+                          {c.companyName && (
+                            <span className="text-xs text-muted-foreground">
+                              {c.companyName}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Empty right */}
@@ -1668,34 +1675,41 @@ function NewInvoicePageContent() {
             {/* Payment Terms */}
             <div className="space-y-1.5">
               <Label>Terms</Label>
-              <Select
-                value={paymentTermsId || undefined}
-                onValueChange={(v) => {
-                  setPaymentTermsId(v);
-                  if (v === "__receipt") {
-                    setDueDate(invoiceDate);
-                    return;
-                  }
-                  const pt = paymentTermsList.find((p) => p._id === v);
-                  if (pt) {
-                    const due = new Date(invoiceDate);
-                    due.setDate(due.getDate() + (pt.netDays ?? 0));
-                    setDueDate(due.toISOString().slice(0, 10));
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Due on Receipt" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__receipt">Due on Receipt</SelectItem>
-                  {paymentTermsList.map((pt) => (
-                    <SelectItem key={pt._id} value={pt._id}>
-                      {pt.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {masterLoading ? (
+                <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading terms...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select
+                  value={paymentTermsId || undefined}
+                  onValueChange={(v) => {
+                    setPaymentTermsId(v);
+                    if (v === "__receipt") {
+                      setDueDate(invoiceDate);
+                      return;
+                    }
+                    const pt = paymentTermsList.find((p) => p._id === v);
+                    if (pt) {
+                      const due = new Date(invoiceDate);
+                      due.setDate(due.getDate() + (pt.netDays ?? 0));
+                      setDueDate(due.toISOString().slice(0, 10));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Due on Receipt" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__receipt">Due on Receipt</SelectItem>
+                    {paymentTermsList.map((pt) => (
+                      <SelectItem key={pt._id} value={pt._id}>
+                        {pt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Due Date */}
@@ -1711,22 +1725,29 @@ function NewInvoicePageContent() {
             {/* Salesperson */}
             <div className="space-y-1.5">
               <Label>Salesperson</Label>
-              <Select
-                value={salesPersonId || undefined}
-                onValueChange={setSalesPersonId}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select or Add Salesperson" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">None</SelectItem>
-                  {salesPersons.map((sp) => (
-                    <SelectItem key={sp._id} value={sp._id}>
-                      {sp.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {masterLoading ? (
+                <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
+                  <span className="text-slate-400 text-xs">Loading salespersons...</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+              ) : (
+                <Select
+                  value={salesPersonId || undefined}
+                  onValueChange={setSalesPersonId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select or Add Salesperson" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">None</SelectItem>
+                    {salesPersons.map((sp) => (
+                      <SelectItem key={sp._id} value={sp._id}>
+                        {sp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
@@ -2185,63 +2206,77 @@ function NewInvoicePageContent() {
                 </div>
                 <div className="flex items-center gap-2">
                   {taxType === "TDS" ? (
-                    <Select
-                      value={totalTaxId || undefined}
-                      onValueChange={(value) => {
-                        if (value === "__none") {
-                          setTotalTaxId("");
-                          setTaxType("none");
-                          return;
-                        }
-                        setTotalTaxId(value);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-52">
-                        <SelectValue placeholder="Select TDS" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none">None</SelectItem>
-                        {tdsTaxes.map((t) => (
-                          <SelectItem key={t._id} value={t._id}>
-                            {t.taxName} ({t.rate}%) - {t.sectionCode}
-                          </SelectItem>
-                        ))}
-                        {tdsTaxes.length === 0 && (
-                          <SelectItem value="__empty" disabled>
-                            No TDS taxes configured
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    masterLoading ? (
+                      <div className="h-8 w-52 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                        <span className="text-slate-400 text-xs">Loading TDS...</span>
+                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Select
+                        value={totalTaxId || undefined}
+                        onValueChange={(value) => {
+                          if (value === "__none") {
+                            setTotalTaxId("");
+                            setTaxType("none");
+                            return;
+                          }
+                          setTotalTaxId(value);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-52">
+                          <SelectValue placeholder="Select TDS" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">None</SelectItem>
+                          {tdsTaxes.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.taxName} ({t.rate}%) - {t.sectionCode}
+                            </SelectItem>
+                          ))}
+                          {tdsTaxes.length === 0 && (
+                            <SelectItem value="__empty" disabled>
+                              No TDS taxes configured
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )
                   ) : taxType === "TCS" ? (
-                    <Select
-                      value={totalTaxId || undefined}
-                      onValueChange={(value) => {
-                        if (value === "__none") {
-                          setTotalTaxId("");
-                          setTaxType("none");
-                          return;
-                        }
-                        setTotalTaxId(value);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-52">
-                        <SelectValue placeholder="Select TCS" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none">None</SelectItem>
-                        {tcsTaxes.map((t) => (
-                          <SelectItem key={t._id} value={t._id}>
-                            {t.taxName} ({t.rate}%) - {t.sectionCode}
-                          </SelectItem>
-                        ))}
-                        {tcsTaxes.length === 0 && (
-                          <SelectItem value="__empty" disabled>
-                            No TCS taxes configured
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    masterLoading ? (
+                      <div className="h-8 w-52 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-2.5">
+                        <span className="text-slate-400 text-xs">Loading TCS...</span>
+                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    ) : (
+                      <Select
+                        value={totalTaxId || undefined}
+                        onValueChange={(value) => {
+                          if (value === "__none") {
+                            setTotalTaxId("");
+                            setTaxType("none");
+                            return;
+                          }
+                          setTotalTaxId(value);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-52">
+                          <SelectValue placeholder="Select TCS" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">None</SelectItem>
+                          {tcsTaxes.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.taxName} ({t.rate}%) - {t.sectionCode}
+                            </SelectItem>
+                          ))}
+                          {tcsTaxes.length === 0 && (
+                            <SelectItem value="__empty" disabled>
+                              No TCS taxes configured
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )
                   ) : (
                     <Select
                       value={totalTaxId || undefined}
