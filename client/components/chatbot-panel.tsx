@@ -34,7 +34,13 @@ function TypingIndicator() {
 
 // ─── Message Bubble ────────────────────────────────────────────────────
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+  message,
+  onSourceClick,
+}: {
+  message: ChatMessage;
+  onSourceClick?: (title: string) => void;
+}) {
   const isUser = message.role === "user";
 
   if (message.isError) {
@@ -82,13 +88,15 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pl-0.5">
             {message.sources.map((source, i) => (
-              <span
+              <button
                 key={i}
-                className="inline-flex items-center gap-1 rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700 transition-colors hover:bg-teal-100"
+                type="button"
+                onClick={() => onSourceClick?.(source.title)}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700 transition-colors hover:bg-teal-100 hover:border-teal-200 cursor-pointer"
               >
                 <ArrowUpRight className="h-2.5 w-2.5" />
                 {source.title}
-              </span>
+              </button>
             ))}
           </div>
         )}
@@ -372,7 +380,14 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
           ) : (
             <div className="py-3">
               {messages.map((msg, i) => (
-                <MessageBubble key={i} message={msg} />
+                <MessageBubble
+                  key={i}
+                  message={msg}
+                  onSourceClick={(title) => {
+                    setInput(title);
+                    inputRef.current?.focus();
+                  }}
+                />
               ))}
               {isLoading && <TypingIndicator />}
               <div ref={messagesEndRef} />
