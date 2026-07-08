@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { MessageSquare, Bell } from "lucide-react";
+import { Bot, Bell, Sparkles } from "lucide-react";
 
 import { HeaderOrgSwitcher } from "@/components/header-org-switcher";
+import { ChatbotPanel } from "@/components/chatbot-panel";
 
 interface PageHeaderProps {
   /** Breadcrumb / title area rendered on the left */
@@ -20,51 +22,64 @@ interface PageHeaderProps {
  * User name/role and avatar live in the sidebar footer.
  */
 export function PageHeader({ breadcrumb, actions }: PageHeaderProps) {
+  const [chatOpen, setChatOpen] = useState(false);
+
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white px-4">
-      {/* Left: sidebar toggle + optional breadcrumb */}
-      <div className="flex items-center gap-2 min-w-0">
-        <SidebarTrigger className="-ml-1 h-7 w-7 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" />
-        {breadcrumb && (
-          <>
-            <Separator orientation="vertical" className="h-4 bg-slate-200 shrink-0" />
-            <div className="flex items-center min-w-0 text-slate-700">
-              {breadcrumb}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Page-specific actions (search inputs, filter pills, buttons) */}
-      {actions && (
-        <div className="flex flex-1 items-center gap-2 justify-end">
-          {actions}
+    <>
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white px-4">
+        {/* Left: sidebar toggle + optional breadcrumb */}
+        <div className="flex items-center gap-2 min-w-0">
+          <SidebarTrigger className="-ml-1 h-7 w-7 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" />
+          {breadcrumb && (
+            <>
+              <Separator orientation="vertical" className="h-4 bg-slate-200 shrink-0" />
+              <div className="flex items-center min-w-0 text-slate-700">
+                {breadcrumb}
+              </div>
+            </>
+          )}
         </div>
-      )}
 
-      {/* Right: Org switcher + chat → bell */}
-      <div className={`flex items-center gap-1.5 ${actions ? "" : "ml-auto"}`}>
-        <HeaderOrgSwitcher />
+        {/* Page-specific actions (search inputs, filter pills, buttons) */}
+        {actions && (
+          <div className="flex flex-1 items-center gap-2 justify-end">
+            {actions}
+          </div>
+        )}
 
-        <Separator orientation="vertical" className="h-4 bg-slate-200 mx-1 shrink-0" />
+        {/* Right: Org switcher + chat → bell */}
+        <div className={`flex items-center gap-1.5 ${actions ? "" : "ml-auto"}`}>
+          <HeaderOrgSwitcher />
 
-        <button
-          type="button"
-          className="flex items-center justify-center h-8 w-8 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-          title="Messages"
-        >
-          <MessageSquare className="h-4 w-4" />
-        </button>
+          <Separator orientation="vertical" className="h-4 bg-slate-200 mx-1 shrink-0" />
 
-        <button
-          type="button"
-          className="relative flex items-center justify-center h-8 w-8 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-          title="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 ring-1 ring-white" />
-        </button>
-      </div>
-    </header>
+          <button
+            type="button"
+            onClick={() => setChatOpen((prev) => !prev)}
+            className={`relative flex items-center justify-center h-8 w-8 rounded-md transition-colors cursor-pointer ${
+              chatOpen
+                ? "bg-teal-50 text-teal-600"
+                : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            }`}
+            title="HAI Assistant"
+          >
+            <Bot className="h-4 w-4" />
+            <Sparkles className="absolute top-1 right-1 h-2 w-2 text-teal-600 animate-pulse" />
+          </button>
+
+          <button
+            type="button"
+            className="relative flex items-center justify-center h-8 w-8 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            title="Notifications"
+          >
+            <Bell className="h-4 w-4" />
+            <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-rose-500 ring-1 ring-white" />
+          </button>
+        </div>
+      </header>
+
+      {/* Chat panel slides out from the right */}
+      <ChatbotPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+    </>
   );
 }

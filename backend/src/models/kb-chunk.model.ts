@@ -59,9 +59,19 @@ export function getChatbotConnection(): mongoose.Connection {
     return chatbotConnection;
   }
 
-  const uri = process.env.CHATBOT_MONGODB_URI;
+  let uri = process.env.CHATBOT_MONGODB_URI;
+
+  if (!uri && process.env.MONGODB_URI) {
+    const mainUri = process.env.MONGODB_URI.replace(/'/g, "");
+    if (mainUri.includes("?")) {
+      uri = mainUri.replace(/\/\?/, "/chatbot_db?");
+    } else {
+      uri = mainUri + "/chatbot_db";
+    }
+  }
+
   if (!uri) {
-    throw new Error("CHATBOT_MONGODB_URI is missing from environment variables.");
+    throw new Error("Both CHATBOT_MONGODB_URI and MONGODB_URI are missing from environment variables.");
   }
 
   chatbotConnection = mongoose.createConnection(uri, {
@@ -72,11 +82,43 @@ export function getChatbotConnection(): mongoose.Connection {
   });
 
   chatbotConnection.on("connected", () => {
-    console.log("✅ Chatbot MongoDB cluster connected:", uri.replace(/\/\/.*@/, "//***@"));
+    console.log("✅ Chatbot MongoDB cluster connected successfully.");
   });
 
   chatbotConnection.on("error", (err) => {
     console.error("❌ Chatbot MongoDB connection error:", err.message);
+
+    // If we get an SSL error or connection failure, attempt dynamic fallback to working main cluster
+    const mainUri = process.env.MONGODB_URI?.replace(/'/g, "");
+    if (mainUri && uri !== mainUri && !uri?.includes("haldarainit_db_user")) {
+      console.warn("⚠️ Attempting dynamic fallback to main database cluster for chatbot_db...");
+      
+      let fallbackUri = "";
+      if (mainUri.includes("?")) {
+        fallbackUri = mainUri.replace(/\/\?/, "/chatbot_db?");
+      } else {
+        fallbackUri = mainUri + "/chatbot_db";
+      }
+
+      if (chatbotConnection) {
+        chatbotConnection.close().catch(() => {});
+        
+        chatbotConnection = mongoose.createConnection(fallbackUri, {
+          serverSelectionTimeoutMS: 15000,
+          maxPoolSize: 10,
+          retryWrites: true,
+          w: "majority",
+        });
+
+        chatbotConnection.on("connected", () => {
+          console.log("✅ Chatbot MongoDB connected via main cluster fallback!");
+        });
+
+        chatbotConnection.on("error", (fallbackErr) => {
+          console.error("❌ Chatbot MongoDB fallback connection error:", fallbackErr.message);
+        });
+      }
+    }
   });
 
   chatbotConnection.on("disconnected", () => {
