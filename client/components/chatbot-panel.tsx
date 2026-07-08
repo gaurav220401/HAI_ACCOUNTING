@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Send, Bot, Sparkles, ArrowUpRight, AlertCircle, MessageSquare } from "lucide-react";
+import { Bot, MessageSquare, Send, Sparkles, X, ArrowUpRight, AlertCircle, RefreshCw } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { sendChatMessage, type ChatMessage } from "@/lib/api/chatbot";
 import { cn } from "@/lib/utils";
 
@@ -77,10 +79,25 @@ function MessageBubble({
           {isUser ? (
             <p>{message.content}</p>
           ) : (
-            <div
-              className="prose-chatbot"
-              dangerouslySetInnerHTML={{ __html: formatBotMessage(message.content) }}
-            />
+            <div className="prose-chatbot prose prose-sm max-w-none">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  strong: ({node, ...props}) => <strong className="font-bold text-teal-900" {...props} />,
+                  em: ({node, ...props}) => <em className="italic text-teal-800" {...props} />,
+                  h1: ({node, ...props}) => <h3 className="text-sm font-bold text-teal-800 mt-2 mb-1" {...props} />,
+                  h2: ({node, ...props}) => <h3 className="text-sm font-bold text-teal-800 mt-2 mb-1" {...props} />,
+                  h3: ({node, ...props}) => <h3 className="text-sm font-bold text-teal-800 mt-2 mb-1" {...props} />,
+                  ul: ({node, ...props}) => <ul className="list-disc pl-4 space-y-1 my-1" {...props} />,
+                  ol: ({node, ...props}) => <ol className="list-decimal pl-4 space-y-1 my-1" {...props} />,
+                  li: ({node, ...props}) => <li className="text-slate-700 marker:text-teal-500" {...props} />,
+                  a: ({node, ...props}) => <a className="text-teal-600 underline hover:text-teal-800" {...props} />,
+                  p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </div>
           )}
         </div>
 
@@ -114,36 +131,6 @@ function MessageBubble({
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-/**
- * Simple markdown-to-HTML conversion for bot messages.
- * Handles bold, lists, code blocks, and line breaks.
- */
-function formatBotMessage(text: string): string {
-  let html = text
-    // Escape HTML
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    // Code blocks (```)
-    .replace(/```([\s\S]*?)```/g, '<pre class="mt-1.5 mb-1.5 rounded-md bg-slate-100 p-2 text-[11px] font-mono text-slate-700 overflow-x-auto">$1</pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code class="rounded bg-slate-100 px-1 py-0.5 text-[11px] font-mono text-teal-700">$1</code>')
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    // Unordered lists
-    .replace(/^[-•]\s+(.+)/gm, '<li class="ml-3 list-disc text-slate-700">$1</li>')
-    // Ordered lists
-    .replace(/^\d+\.\s+(.+)/gm, '<li class="ml-3 list-decimal text-slate-700">$1</li>')
-    // Line breaks
-    .replace(/\n\n/g, "<br/><br/>")
-    .replace(/\n/g, "<br/>");
-
-  // Wrap consecutive <li> in <ul>
-  html = html.replace(/((?:<li[^>]*>.*?<\/li>\s*(?:<br\/?>)?\s*)+)/g, '<ul class="my-1 space-y-0.5">$1</ul>');
-
-  return html;
 }
 
 // ─── Welcome / Empty State ─────────────────────────────────────────────

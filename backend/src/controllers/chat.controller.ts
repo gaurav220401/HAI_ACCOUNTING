@@ -100,10 +100,39 @@ const INTENT_KEYWORDS: Record<string, string[]> = {
     "my organization", "my company", "my business", "org details",
     "company name", "organization name", "fiscal year",
   ],
+  sales_orders: [
+    "sales order", "sales orders", "so", "order from customer"
+  ],
+  purchase_orders: [
+    "purchase order", "purchase orders", "po", "order to vendor"
+  ],
+  quotes: [
+    "quote", "estimate", "quotes", "estimates"
+  ],
+  payments_received: [
+    "payment received", "customer payment", "money received"
+  ],
+  payments_made: [
+    "payment made", "vendor payment", "bill payment", "money sent"
+  ],
+  credit_notes: [
+    "credit note", "customer credit", "refund"
+  ],
+  vendor_credits: [
+    "vendor credit", "supplier credit"
+  ],
+  journals: [
+    "journal", "manual journal", "gl entry"
+  ],
+  trialbalance: [
+    "trial balance", "trialbalance", "debit and credit total", "debit and credit sum",
+    "ledger summary", "ledger balance", "accounting summary", "debit balance", "credit balance",
+    "closing balance", "opening balance",
+  ],
   summary: [
     "summary", "overview", "dashboard", "report", "snapshot",
     "how is my business", "business health", "financial summary",
-    "tell me about my", "show me my",
+    "tell me about my", "show me my", "everything",
   ],
 };
 
@@ -129,6 +158,15 @@ function detectIntent(question: string): DataIntent {
     categories.add("accounts");
     categories.add("expenses");
     categories.add("organization");
+    categories.add("trialbalance");
+    categories.add("sales_orders");
+    categories.add("purchase_orders");
+    categories.add("quotes");
+    categories.add("payments_received");
+    categories.add("payments_made");
+    categories.add("credit_notes");
+    categories.add("vendor_credits");
+    categories.add("journals");
   }
 
   return {
@@ -199,6 +237,27 @@ async function fetchOrgBusinessContext(
         .select("displayName outstandingPayable")
         .lean();
 
+      // Query names of all active customers and vendors to assist the LLM when outstanding balance is zero
+      const allCustomers = await Contact.find({
+        organizationId,
+        contactType: { $in: ["Customer", "Both"] },
+        isDeleted: false,
+      })
+        .sort({ displayName: 1 })
+        .limit(30)
+        .select("displayName")
+        .lean();
+
+      const allVendors = await Contact.find({
+        organizationId,
+        contactType: { $in: ["Vendor", "Both"] },
+        isDeleted: false,
+      })
+        .sort({ displayName: 1 })
+        .limit(30)
+        .select("displayName")
+        .lean();
+
       let contactSection = `CONTACTS SUMMARY:\n` +
         `- Total Customers: ${customerCount}\n` +
         `- Total Vendors: ${vendorCount}`;
@@ -210,10 +269,59 @@ async function fetchOrgBusinessContext(
         }
       }
 
+      if (allCustomers.length > 0) {
+        contactSection += `\n\nActive Customer Names: ` + allCustomers.map((c) => c.displayName).join(", ");
+        if (customerCount > 30) {
+          contactSection += ` (and ${customerCount - 30} more...)`;
+        }
+      }
+
       if (topVendors.length > 0) {
         contactSection += `\n\nTop Vendors by Outstanding Payable:`;
         for (const v of topVendors) {
           contactSection += `\n  - ${v.displayName}: ₹${(v.outstandingPayable || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+      }
+
+      const topCustomersBySales = await Invoice.aggregate([
+        { $match: { organizationId: new Types.ObjectId(organizationId.toString()), isDeleted: { $ne: true } } },
+        {
+          $group: {
+            _id: "$customerId",
+            totalSales: { $sum: "$total" },
+          },
+        },
+        { $sort: { totalSales: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: "contacts",
+            localField: "_id",
+            foreignField: "_id",
+            as: "customer",
+          },
+        },
+        { $unwind: { path: "$customer", preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            displayName: "$customer.displayName",
+            totalSales: 1,
+          },
+        },
+      ]);
+
+      if (topCustomersBySales.length > 0) {
+        contactSection += `\n\nTop Customers by Total Sales Volume:`;
+        for (const c of topCustomersBySales) {
+          const name = c.displayName || "Unknown";
+          contactSection += `\n  - ${name}: ₹${(c.totalSales || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+      }
+
+      if (allVendors.length > 0) {
+        contactSection += `\n\nActive Vendor Names: ` + allVendors.map((v) => v.displayName).join(", ");
+        if (vendorCount > 30) {
+          contactSection += ` (and ${vendorCount - 30} more...)`;
         }
       }
 
@@ -404,6 +512,242 @@ async function fetchOrgBusinessContext(
         `- Number of Expense Entries: ${expData.count}`
       );
     }
+
+    // ── Trial Balance Summary ──
+    if (categories.has("trialbalance") || categories.has("summary")) {
+      const GlEntry = (await import("../models/gl-entry.model")).default;
+
+      const [accounts, movements] = await Promise.all([
+        Account.find({ organizationId, isDeleted: false, isGroup: false })
+          .select("name code rootType accountType openingBalance")
+          .lean(),
+        GlEntry.aggregate([
+          { $match: { organizationId: new Types.ObjectId(organizationId) } },
+          {
+            $group: {
+              _id: "$accountId",
+              debit: { $sum: { $ifNull: ["$debit", 0] } },
+              credit: { $sum: { $ifNull: ["$credit", 0] } },
+            },
+          },
+        ]),
+      ]);
+
+      const movementMap = new Map(movements.map((m) => [String(m._id), m]));
+      const tbRows = [];
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      for (const account of accounts) {
+        const accId = String(account._id);
+        const m = movementMap.get(accId) || { debit: 0, credit: 0 };
+        const opening = Number(account.openingBalance || 0);
+
+        const openingDebit = opening > 0 ? opening : 0;
+        const openingCredit = opening < 0 ? Math.abs(opening) : 0;
+
+        const totalDebitAcc = openingDebit + m.debit;
+        const totalCreditAcc = openingCredit + m.credit;
+
+        const closing = totalDebitAcc - totalCreditAcc;
+        if (Math.abs(closing) < 0.009) continue;
+
+        const closingDebit = closing > 0 ? closing : 0;
+        const closingCredit = closing < 0 ? Math.abs(closing) : 0;
+
+        totalDebit += closingDebit;
+        totalCredit += closingCredit;
+
+        tbRows.push({
+          name: account.name,
+          code: account.code || "",
+          rootType: account.rootType,
+          closingDebit,
+          closingCredit,
+        });
+      }
+
+      if (tbRows.length > 0) {
+        let tbSection = `TRIAL BALANCE SNAPSHOT:\n`;
+        tbRows.sort((a, b) =>
+          a.rootType === b.rootType
+            ? a.name.localeCompare(b.name)
+            : a.rootType.localeCompare(b.rootType)
+        );
+        for (const row of tbRows) {
+          const balanceStr = row.closingDebit > 0
+            ? `Debit: ₹${row.closingDebit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
+            : `Credit: ₹${row.closingCredit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+          tbSection += `- ${row.name} (${row.code || "no code"}) | Type: ${row.rootType} | ${balanceStr}\n`;
+        }
+        tbSection += `\n- Total Debits: ₹${totalDebit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}\n`;
+        tbSection += `- Total Credits: ₹${totalCredit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        sections.push(tbSection);
+      } else {
+        sections.push("TRIAL BALANCE SNAPSHOT:\n- No active balances found in Trial Balance.");
+      }
+    }
+
+    // ── Sales Orders ──
+    if (categories.has("sales_orders") || categories.has("summary")) {
+      const SalesOrder = (await import("../models/sales-order.model")).default;
+      const sos = await SalesOrder.find({ organizationId, isDeleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate("customerId", "displayName")
+        .select("salesOrderNumber status total customerId")
+        .lean();
+      
+      if (sos.length > 0) {
+        let section = `RECENT SALES ORDERS (top 10):`;
+        for (const so of sos) {
+          const customerName = (so.customerId as any)?.displayName || "Unknown";
+          section += `\n  - ${so.salesOrderNumber} | ${customerName} | Status: ${so.status} | Total: ₹${((so as any).total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
+
+    // ── Purchase Orders ──
+    if (categories.has("purchase_orders") || categories.has("summary")) {
+      const PurchaseOrder = (await import("../models/purchase-order.model")).default;
+      const pos = await PurchaseOrder.find({ organizationId, isDeleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate("vendorId", "displayName")
+        .select("purchaseOrderNumber status total vendorId")
+        .lean();
+      
+      if (pos.length > 0) {
+        let section = `RECENT PURCHASE ORDERS (top 10):`;
+        for (const po of pos) {
+          const vendorName = (po.vendorId as any)?.displayName || "Unknown";
+          section += `\n  - ${po.purchaseOrderNumber} | ${vendorName} | Status: ${po.status} | Total: ₹${((po as any).total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
+
+    // ── Quotes ──
+    if (categories.has("quotes") || categories.has("summary")) {
+      const Quote = (await import("../models/quote.model")).default;
+      const quotes = await Quote.find({ organizationId, isDeleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate("customerId", "displayName")
+        .select("quoteNumber status total customerId")
+        .lean();
+      
+      if (quotes.length > 0) {
+        let section = `RECENT QUOTES (top 10):`;
+        for (const q of quotes) {
+          const customerName = (q.customerId as any)?.displayName || "Unknown";
+          section += `\n  - ${q.quoteNumber} | ${customerName} | Status: ${q.status} | Total: ₹${((q as any).total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
+
+    // ── Payments Received ──
+    if (categories.has("payments_received") || categories.has("summary")) {
+      const PaymentReceived = (await import("../models/payment-received.model")).default;
+      const prs = await PaymentReceived.find({ organization_id: organizationId, is_deleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate("customer_id", "displayName")
+        .select("payment_number total_amount_received payment_date customer_id payment_mode")
+        .lean();
+      
+      if (prs.length > 0) {
+        let section = `RECENT PAYMENTS RECEIVED (top 10):`;
+        for (const pr of prs) {
+          const customerName = (pr.customer_id as any)?.displayName || "Unknown";
+          const date = pr.payment_date ? new Date(pr.payment_date).toLocaleDateString("en-IN") : "N/A";
+          section += `\n  - ${pr.payment_number} | ${customerName} | Date: ${date} | Mode: ${pr.payment_mode || 'N/A'} | Amount: ₹${((pr as any).total_amount_received || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
+
+    // ── Payments Made ──
+    if (categories.has("payments_made") || categories.has("summary")) {
+      const PaymentMade = (await import("../models/payment-made.model")).default;
+      const pms = await PaymentMade.find({ organization_id: organizationId, is_deleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate("vendor_id", "displayName")
+        .select("payment_number total_amount_paid payment_date vendor_id payment_mode")
+        .lean();
+      
+      if (pms.length > 0) {
+        let section = `RECENT PAYMENTS MADE (top 10):`;
+        for (const pm of pms) {
+          const vendorName = (pm.vendor_id as any)?.displayName || "Unknown";
+          const date = pm.payment_date ? new Date(pm.payment_date).toLocaleDateString("en-IN") : "N/A";
+          section += `\n  - ${pm.payment_number} | ${vendorName} | Date: ${date} | Mode: ${pm.payment_mode || 'N/A'} | Amount: ₹${((pm as any).total_amount_paid || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
+
+    // ── Credit Notes ──
+    if (categories.has("credit_notes") || categories.has("summary")) {
+      const CreditNote = (await import("../models/credit-note.model")).default;
+      const cns = await CreditNote.find({ organizationId, isDeleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate("customerId", "displayName")
+        .select("creditNoteNumber status total customerId")
+        .lean();
+      
+      if (cns.length > 0) {
+        let section = `RECENT CREDIT NOTES (top 10):`;
+        for (const cn of cns) {
+          const customerName = (cn.customerId as any)?.displayName || "Unknown";
+          section += `\n  - ${cn.creditNoteNumber} | ${customerName} | Status: ${cn.status} | Total: ₹${((cn as any).total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
+
+    // ── Vendor Credits ──
+    if (categories.has("vendor_credits") || categories.has("summary")) {
+      const VendorCredit = (await import("../models/vendor-credit.model")).default;
+      const vcs = await VendorCredit.find({ organizationId, isDeleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate("vendorId", "displayName")
+        .select("vendorCreditNumber status total vendorId")
+        .lean();
+      
+      if (vcs.length > 0) {
+        let section = `RECENT VENDOR CREDITS (top 10):`;
+        for (const vc of vcs) {
+          const vendorName = (vc.vendorId as any)?.displayName || "Unknown";
+          section += `\n  - ${vc.vendorCreditNumber} | ${vendorName} | Status: ${vc.status} | Total: ₹${((vc as any).total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
+
+    // ── Journals ──
+    if (categories.has("journals") || categories.has("summary")) {
+      const Journal = (await import("../models/journal.model")).default;
+      const journals = await Journal.find({ organizationId, isDeleted: { $ne: true } } as any)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select("journalNumber status totalDebit date")
+        .lean();
+      
+      if (journals.length > 0) {
+        let section = `RECENT MANUAL JOURNALS (top 10):`;
+        for (const j of journals) {
+          const date = j.date ? new Date(j.date).toLocaleDateString("en-IN") : "N/A";
+          section += `\n  - ${j.journalNumber} | Date: ${date} | Status: ${j.status} | Total Debit: ₹${((j as any).totalDebit || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+        }
+        sections.push(section);
+      }
+    }
   } catch (error: any) {
     console.error("Error fetching org business context:", error.message);
     sections.push("(Some business data could not be retrieved at this time.)");
@@ -419,23 +763,24 @@ async function fetchOrgBusinessContext(
 // ─── System Prompt ─────────────────────────────────────────────────────
 
 function buildSystemPrompt(orgName?: string): string {
-  return `You are HAI Assistant, a helpful AI support agent for HAI Accounting — a professional accounting and business management software for Indian businesses.${orgName ? `\n\nYou are currently assisting the user with their organization: "${orgName}".` : ""}
+  return `You are HAI Assistant, a powerful and intelligent AI assistant for HAI Accounting — a professional accounting and business management software for Indian businesses.${orgName ? `\n\nYou are currently assisting the user with their organization: "${orgName}".` : ""}
 
-RULES:
-- Answer the user's question using the context provided below. The context may include:
-  1. KNOWLEDGE BASE CONTEXT — documentation about how HAI Accounting features work.
-  2. LIVE BUSINESS DATA — real-time data from the user's active organization (customers, invoices, balances, etc.).
-- When answering questions about the user's business data (invoices, customers, balances, etc.), use the LIVE BUSINESS DATA section.
+CRITICAL RULES:
+- You have FULL ACCESS to the user's live business data. It is provided to you below under "LIVE BUSINESS DATA".
+- ALWAYS use this data to answer questions. NEVER say "I don't have access to your data" or "I don't have specific sales data" — you DO have it, it is right in your context.
+- When asked about customers, vendors, invoices, payments, balances, sales, purchases, or ANY business data — look at the LIVE BUSINESS DATA section and answer directly with real numbers and names.
+- For "greatest/best/top customer" questions, analyze the "Top Customers by Total Sales Volume" section and also cross-reference with outstanding receivables and recent invoices to give a comprehensive answer.
+- For any question about the user's business, always provide specific data points (amounts, counts, names) from the LIVE BUSINESS DATA.
 - When answering questions about how features work or how to do something, use the KNOWLEDGE BASE CONTEXT section.
-- If neither context contains relevant information, say: "I don't have specific information about that. Could you rephrase your question?"
 - Keep answers concise, accurate, and professional.
-- Use markdown formatting (bold, lists, code blocks) when it improves readability.
+- Use markdown formatting: **bold** for emphasis, bullet lists for data, and clean structure. Do NOT use raw markdown symbols like #, *, or ** in visible text — they should render as formatting.
 - When presenting monetary amounts, always use the ₹ symbol and Indian number format (e.g., ₹1,23,456.00).
 - When referencing features, be specific about navigation paths (e.g., "Go to Sales → Invoices → New Invoice").
 - Do not make up data. Only present numbers and names that appear in the context.
 - Never expose raw database IDs — use human-readable names and numbers instead.
 - Do not reveal information about other organizations or other users' data.
-- If the user greets you, respond warmly and mention you can help with both feature questions and their business data.`;
+- If the user greets you, respond warmly and mention you can help with both feature questions and their business data.
+- If asked about data that is not present in the LIVE BUSINESS DATA section, tell the user what data you CAN see and offer to help with that instead.`;
 }
 
 // ─── Helper: Build Context from Chunks ─────────────────────────────────
@@ -503,21 +848,28 @@ export const handleChat = asyncHandler(
     const organizationId = req.user?.activeOrganization;
 
     try {
-      // ── Step 1: Detect intent ──
-      const intent = detectIntent(trimmedQuestion);
-
-      // ── Step 2: Fetch org-scoped live data (if needed) ──
+      // ── Step 1: Always fetch ALL live business data ──
+      // We always fetch everything so the LLM has full context for any question.
+      // The keyword-based intent detection was too narrow and missed valid questions.
       let businessDataContext = "";
       let orgName: string | undefined;
 
-      if (intent.needsLiveData && organizationId) {
+      if (organizationId) {
         // Get org name for the system prompt
         const org = await Organization.findById(organizationId).select("name").lean();
         orgName = org?.name;
 
+        // Build a full set of all categories
+        const allCategories = new Set<string>([
+          "contacts", "invoices", "bills", "items", "accounts", "expenses",
+          "organization", "trialbalance", "sales_orders", "purchase_orders",
+          "quotes", "payments_received", "payments_made", "credit_notes",
+          "vendor_credits", "journals", "summary",
+        ]);
+
         businessDataContext = await fetchOrgBusinessContext(
           organizationId as Types.ObjectId,
-          intent.categories
+          allCategories
         );
       }
 
@@ -578,11 +930,11 @@ export const handleChat = asyncHandler(
       if (relevantChunks.length === 0 && !businessDataContext) {
         isFallback = true;
         answer =
-          "I don't have specific information about that in my knowledge base. Could you try rephrasing your question or ask about a feature of HAI Accounting? For example:\n\n" +
-          "- How do I create an invoice?\n" +
+          "I couldn't find specific information for that question right now. You can try asking me things like:\n\n" +
+          "- Who is my top customer?\n" +
           "- What are my overdue invoices?\n" +
-          "- Who are my top customers?\n" +
-          "- What is my bank balance?";
+          "- Show me my bank balance\n" +
+          "- Give me a business summary";
       } else {
         // ── Step 7: Build combined context ──
         let kbContext = "";
