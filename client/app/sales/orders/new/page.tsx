@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Plus, Trash2, Send } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2, Send, ChevronDown } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
