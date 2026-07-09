@@ -1141,6 +1141,8 @@ To ensure the AI Agent can access and operate on **every** section of HAI Accoun
 - `listOverdueInvoices(orgId)` — invoices past due date
 - `listUnpaidInvoices(orgId)` — invoices with balanceDue > 0
 - `getCustomerOutstanding(orgId, customerId)` — total receivable from one customer
+- `sendInvoiceEmail(orgId, invoiceId, to[], cc[], bcc[], subject, body)` — sends invoice PDF to customer via SMTP (uses email.service.ts)
+- `sendQuoteEmail(orgId, quoteId, to[], cc[], bcc[], subject, body)` — sends quote PDF to customer (uses email.service.ts)
 - `getSalesFormSchemas()` — returns JSON schema for each sales document type
 
 ---
@@ -1152,10 +1154,10 @@ To ensure the AI Agent can access and operate on **every** section of HAI Accoun
 - `createPurchaseOrder(orgId, data)` — create PO
 - `receivePurchaseOrder(orgId, poId, data)` — create purchase receive from PO
 - `convertPOToBill(orgId, poId)` — chain: PO → Bill
-- `createBill(orgId, data)` — create standalone bill
+- `createBill(orgId, data)` — create standalone bill with automatic duplicate check (warn if bill number + vendor + amount matches an existing bill within past 90 days)
 - `createRecurringBill(orgId, data)` — set up recurring bill profile
 - `recordPaymentMade(orgId, data)` — pay a bill
-- `createExpense(orgId, data)` — create expense record
+- `createExpense(orgId, data) ` — create expense record with automatic duplicate check (warn if amount + date + expense category matches an existing expense)
 - `createRecurringExpense(orgId, data)` — set up recurring expense profile
 - `createVendorCredit(orgId, data)` — issue vendor credit
 - `applyVendorCreditToBill(orgId, vendorCreditId, billId, amount)` — apply credit
@@ -1163,6 +1165,7 @@ To ensure the AI Agent can access and operate on **every** section of HAI Accoun
 - `listOverdueBills(orgId)` — bills past due date
 - `getVendorOutstanding(orgId, vendorId)` — total payable to one vendor
 - `listExpenseCategories(orgId)` — expense categories
+- `sendPurchaseOrderEmail(orgId, poId, to[], cc[], bcc[], subject, body)` — sends PO PDF to vendor via SMTP (uses email.service.ts)
 - `getPurchaseFormSchemas()` — returns JSON schema for each purchase document type
 
 ---
@@ -1178,6 +1181,7 @@ To ensure the AI Agent can access and operate on **every** section of HAI Accoun
 - `createContact(orgId, data)` — create customer or vendor
 - `updateContact(orgId, id, data)` — update existing contact
 - `getContactBalance(orgId, contactId)` — receivable or payable balance
+- `verifyGSTIN(gstin)` — computes GSTIN checksum and validates status/legal name (queries the GST API and parses taxpayer details, matching existing gstin.controller.ts logic)
 - `getContactFormSchema()` — JSON schema for contact creation fields
 
 ---
@@ -1272,9 +1276,9 @@ To ensure the AI Agent can access and operate on **every** section of HAI Accoun
 
 ---
 
-### Service 11: `settings.service.ts` — Organization Settings, Opening Balances, Currencies, Reminders, Customer Portal
+### Service 11: `settings.service.ts` — Organization Settings, Opening Balances, Currencies, Reminders, Customer Portal, Gateway (PayU), Email Settings
 **Models used**: `Organization`, `Currency`, `ExchangeRate`, `PaymentTerms`, `PaymentMode`, `PriceList`, `ReportingTag`, `SalesPerson`
-**Covers sidebar sections**: Settings > General, Settings > Currencies, Settings > Opening Balances, Settings > Warehouses (delegated to inventory.service.ts), Settings > Reminders, Settings > Customer Portal
+**Covers sidebar sections**: Settings > General, Settings > Currencies, Settings > Opening Balances, Settings > Warehouses (delegated to inventory.service.ts), Settings > Reminders, Settings > Customer Portal, Settings > PayU (Payment Gateway), Settings > Email
 **Capabilities**:
 - `getOrgSettings(orgId)` — full org settings (fiscal year, address, tax preferences, GST info, industry, date format, etc.)
 - `updateOrgSettings(orgId, data)` — update org settings
@@ -1293,6 +1297,10 @@ To ensure the AI Agent can access and operate on **every** section of HAI Accoun
 - `updateReminderSettings(orgId, data)` — update reminder schedules, templates, enabled/disabled state
 - `getCustomerPortalSettings(orgId)` — get customer portal configuration (branding, permissions, enabled)
 - `updateCustomerPortalSettings(orgId, data)` — update customer portal settings
+- `getGatewaySettings(orgId)` — get payment gateway config (PayU merchant key, salt, environment)
+- `updateGatewaySettings(orgId, data)` — update payment gateway settings
+- `getEmailSettings(orgId)` — SMTP server host, port, username, secure options
+- `updateEmailSettings(orgId, data)` — update SMTP server configuration
 - `listSalesPersons(orgId)` — list all sales persons
 - `listPriceLists(orgId)` — list all price lists
 - `listReportingTags(orgId)` — list all reporting tags
