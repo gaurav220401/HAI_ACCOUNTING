@@ -39,18 +39,28 @@
 - `backend/src/controllers/chat.controller.ts` [MODIFY — add session append]
 - `client/lib/api/chatbot.ts` [MODIFY — add session functions]
 
-### Phase 3 Files
+### Phase 3 Files (Backend — 19 files)
 - `backend/src/models/ai-agent-task.model.ts` [NEW]
 - `backend/src/controllers/ai-agent.controller.ts` [NEW]
 - `backend/src/routes/ai-agent.routes.ts` [NEW]
 - `backend/src/services/ai-agent/items.service.ts` [NEW]
-- `backend/src/services/ai-agent/documents.service.ts` [NEW]
+- `backend/src/services/ai-agent/sales.service.ts` [NEW]
+- `backend/src/services/ai-agent/purchases.service.ts` [NEW]
 - `backend/src/services/ai-agent/contacts.service.ts` [NEW]
+- `backend/src/services/ai-agent/accounts.service.ts` [NEW]
 - `backend/src/services/ai-agent/journals.service.ts` [NEW]
+- `backend/src/services/ai-agent/accountant.service.ts` [NEW — Bulk Update, Currency Adjustments, Transaction Locking]
+- `backend/src/services/ai-agent/fixed-assets.service.ts` [NEW — Fixed Assets & Depreciation]
+- `backend/src/services/ai-agent/taxes.service.ts` [NEW]
+- `backend/src/services/ai-agent/inventory.service.ts` [NEW]
+- `backend/src/services/ai-agent/settings.service.ts` [NEW — includes Reminders & Customer Portal]
+- `backend/src/services/ai-agent/documents.service.ts` [NEW]
+- `backend/src/services/ai-agent/reports.service.ts` [NEW]
 - `client/lib/api/ai-agent.ts` [NEW]
 - `client/lib/api/schema-registry.ts` [NEW]
+- ~~`backend/src/services/ai-agent/time-tracking.service.ts`~~ [DEFERRED — section not working yet]
 
-### Phase 4 Files
+### Phase 4 Files (Frontend — 12 files)
 - `client/contexts/ai-agent-memory-context.tsx` [NEW]
 - `client/components/ai-agent/agent-chat.tsx` [NEW]
 - `client/components/ai-agent/agent-task-panel.tsx` [NEW]

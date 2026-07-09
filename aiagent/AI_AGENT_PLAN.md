@@ -1095,17 +1095,293 @@ Instead of building completely separate AI UI pages, we should allow the AI Agen
 - When the floating AI Chatbot gathers data, it can dispatch this event with form values.
 - The hook listens and calls React Hook Form's `setValue(key, value)` for each matching field, highlight-flashing the filled fields in teal to show the user what was auto-populated.
 
-## 5. Modular Section Data Services (Backend Decoupling)
-To ensure database operations are fully modular and if one section has schema changes it does not break others:
+## 5. Modular Section Data Services (Backend Decoupling — ALL SECTIONS)
+
+To ensure the AI Agent can access and operate on **every** section of HAI Accounting, backend logic is split into **13 independent service files**. Each file maps to one domain and can be changed without breaking others. If any service has a problem, only that file needs to be fixed.
 
 ### [NEW] `backend/src/services/ai-agent/` (Directory)
-Create 4 separate domain service helper files:
-1. **`items.service.ts`**: Contains all logic for item retrieval, low-stock triggers, inventory metrics calculation, and Excel template exports.
-2. **`documents.service.ts`**: Contains all transaction logic for document pipelines (e.g. Sales Order, Invoice, Bill, Payment Received) scoped to active org.
-3. **`contacts.service.ts`**: Contains Customer/Vendor name lookups and verification queries.
-4. **`journals.service.ts`**: Contains manual journal ledger lookups, account mapping, double-entry validation, and manual journal postings.
 
-*The main `ai-agent.controller.ts` will ONLY import these service classes and orchestrate them, keeping code strictly decoupled.*
+> **RULE**: The main `ai-agent.controller.ts` ONLY imports and orchestrates these services. No direct Mongoose queries in the controller.
+
+> **NOTE**: Time Tracking (Projects/Timesheet) is NOT included — that section is not working yet. When it's ready, add `time-tracking.service.ts` as Service 14.
+
+---
+
+### Service 1: `items.service.ts` — Items & Inventory
+**Models used**: `Item`, `ItemGroup`, `Unit`, `Warehouse`
+**Covers sidebar section**: Items
+**Capabilities**:
+- `listItems(orgId)` — fetch all active items with pagination
+- `getItemById(orgId, itemId)` — single item detail
+- `createItem(orgId, data: CreateItemInput)` — validated item creation with defaults
+- `updateItem(orgId, itemId, data)` — update an existing item
+- `analyzeInventory(orgId)` — low stock, zero stock, top value, category summary
+- `searchItems(orgId, query)` — fuzzy search by name/sku
+- `getItemFormSchema()` — returns JSON schema of all item fields for AI prompting
+- `exportItemsToExcel(orgId)` — generates XLSX buffer of all items
+- `listItemGroups(orgId)` — item groups/categories
+- `listUnits(orgId)` — units of measurement
+
+---
+
+### Service 2: `sales.service.ts` — Full Sales Domain
+**Models used**: `Quote`, `SalesOrder`, `Invoice`, `RecurringInvoice`, `RetainerInvoice`, `DeliveryChallan`, `PaymentReceived`, `CreditNote`, `CreditNoteApplication`, `PaymentInvoiceMap`
+**Covers sidebar sections**: Customers, Quotes, Sales Orders, Invoices, Retainer Invoices, Recurring Invoices, Delivery Challans, Payments Received, Credit Notes
+**Capabilities**:
+- `createQuote(orgId, data)` — create estimate/quote
+- `createSalesOrder(orgId, data)` — create sales order from scratch or from quote
+- `convertSalesOrderToInvoice(orgId, salesOrderId)` — chain: SO → Invoice
+- `createInvoice(orgId, data)` — create standalone invoice
+- `recordPaymentReceived(orgId, data)` — record payment against invoice
+- `createCreditNote(orgId, data)` — issue credit note
+- `applyCreditNoteToInvoice(orgId, creditNoteId, invoiceId, amount)` — apply credit
+- `createDeliveryChallan(orgId, data)` — create delivery challan
+- `createRetainerInvoice(orgId, data)` — create retainer invoice
+- `createRecurringInvoice(orgId, data)` — set up recurring invoice profile
+- `listOverdueInvoices(orgId)` — invoices past due date
+- `listUnpaidInvoices(orgId)` — invoices with balanceDue > 0
+- `getCustomerOutstanding(orgId, customerId)` — total receivable from one customer
+- `getSalesFormSchemas()` — returns JSON schema for each sales document type
+
+---
+
+### Service 3: `purchases.service.ts` — Full Purchases Domain
+**Models used**: `PurchaseOrder`, `PurchaseReceive`, `Bill`, `RecurringBill`, `Expense`, `RecurringExpense`, `PaymentMade`, `VendorCredit`, `VendorCreditApplication`, `PaymentBillMap`, `ExpenseCategory`
+**Covers sidebar sections**: Vendors, Purchase Orders, Purchase Receives, Bills, Recurring Bills, Expenses, Recurring Expenses, Payments Made, Vendor Credits
+**Capabilities**:
+- `createPurchaseOrder(orgId, data)` — create PO
+- `receivePurchaseOrder(orgId, poId, data)` — create purchase receive from PO
+- `convertPOToBill(orgId, poId)` — chain: PO → Bill
+- `createBill(orgId, data)` — create standalone bill
+- `createRecurringBill(orgId, data)` — set up recurring bill profile
+- `recordPaymentMade(orgId, data)` — pay a bill
+- `createExpense(orgId, data)` — create expense record
+- `createRecurringExpense(orgId, data)` — set up recurring expense profile
+- `createVendorCredit(orgId, data)` — issue vendor credit
+- `applyVendorCreditToBill(orgId, vendorCreditId, billId, amount)` — apply credit
+- `listUnpaidBills(orgId)` — bills with balanceDue > 0
+- `listOverdueBills(orgId)` — bills past due date
+- `getVendorOutstanding(orgId, vendorId)` — total payable to one vendor
+- `listExpenseCategories(orgId)` — expense categories
+- `getPurchaseFormSchemas()` — returns JSON schema for each purchase document type
+
+---
+
+### Service 4: `contacts.service.ts` — Customers & Vendors
+**Models used**: `Contact`
+**Covers sidebar sections**: Customers (under Sales), Vendors (under Purchases)
+**Capabilities**:
+- `listCustomers(orgId)` — filter `contactType: "Customer"` or `"Both"`
+- `listVendors(orgId)` — filter `contactType: "Vendor"` or `"Both"`
+- `getContactById(orgId, id)` — single contact detail
+- `searchContacts(orgId, query, type?)` — fuzzy search by displayName/companyName
+- `createContact(orgId, data)` — create customer or vendor
+- `updateContact(orgId, id, data)` — update existing contact
+- `getContactBalance(orgId, contactId)` — receivable or payable balance
+- `getContactFormSchema()` — JSON schema for contact creation fields
+
+---
+
+### Service 5: `accounts.service.ts` — Chart of Accounts & GL
+**Models used**: `Account`, `GLEntry`
+**Covers sidebar section**: Accountant > Chart of Accounts
+**Capabilities**:
+- `listAccounts(orgId)` — full chart of accounts
+- `getAccountById(orgId, id)` — single account with GL summary
+- `searchAccounts(orgId, query)` — search by name/code/accountNumber
+- `getAccountBalance(orgId, accountId, startDate?, endDate?)` — computed balance from GL entries
+- `createAccount(orgId, data)` — create new account
+- `getTrialBalance(orgId, asOfDate)` — all account balances for trial balance report
+- `getAccountFormSchema()` — JSON schema for account fields
+
+---
+
+### Service 6: `journals.service.ts` — Manual Journals & Ledger
+**Models used**: `Journal`, `GLEntry`, `JournalNumberingPreference`
+**Covers sidebar section**: Accountant > Manual Journals
+**Capabilities**:
+- `createJournal(orgId, data)` — create manual journal with double-entry validation
+- `listJournals(orgId, filters?)` — list journals with pagination
+- `postJournalToGL(orgId, journalId)` — post journal entries to general ledger
+- `reverseJournal(orgId, journalId)` — reverse a posted journal (creates GL reversal entries)
+- `validateDoubleEntry(lines)` — ensure total debits === total credits, min 2 lines
+- `getJournalFormSchema()` — JSON schema for journal fields
+
+---
+
+### Service 7: `accountant.service.ts` — Bulk Update, Currency Adjustments, Transaction Locking
+**Models used**: `CurrencyAdjustment`, `Account`, `GLEntry`, `Organization`
+**Covers sidebar sections**: Accountant > Bulk Update, Accountant > Currency Adjustments, Accountant > Transaction Locking
+**Capabilities**:
+- `bulkUpdateRecords(orgId, modelType, updates[])` — batch update fields on Items, Contacts, Invoices, etc. (uses the same logic as the existing bulk-update controller)
+- `createCurrencyAdjustment(orgId, data)` — create currency adjustment entry to revalue foreign-currency balances
+- `listCurrencyAdjustments(orgId)` — list all past adjustments
+- `getTransactionLockDate(orgId)` — read the current lock date for the org
+- `isDateLocked(orgId, date)` — check if a given date is locked (AI must call this before creating any backdated document)
+- `getAccountantFormSchemas()` — JSON schemas for bulk update, currency adjustment fields
+
+---
+
+### Service 8: `fixed-assets.service.ts` — Fixed Assets & Depreciation
+**Models used**: `FixedAsset`, `FixedAssetType`, `GLEntry`
+**Covers sidebar section**: Accountant > Fixed Assets
+**Capabilities**:
+- `listFixedAssets(orgId)` — all fixed assets
+- `getFixedAssetById(orgId, id)` — single asset detail with depreciation schedule
+- `createFixedAsset(orgId, data)` — register new fixed asset
+- `updateFixedAsset(orgId, id, data)` — update asset details
+- `getDepreciationSchedule(orgId, assetId)` — computed depreciation timeline
+- `listFixedAssetTypes(orgId)` — asset type categories
+- `createFixedAssetType(orgId, data)` — create new asset type
+- `getFixedAssetFormSchema()` — JSON schema for fixed asset fields
+- **NOTE**: AI can READ depreciation schedules but CANNOT trigger auto-depreciation — that is a batch/admin job
+
+---
+
+### Service 9: `taxes.service.ts` — Tax Configuration (Tax, TDS, TCS)
+**Models used**: `Tax`, `TDSTax`, `TCSTax`
+**Covers sidebar section**: Settings > Taxes
+**Capabilities**:
+- `listTaxes(orgId)` — all regular tax codes
+- `listTDSTaxes(orgId)` — all TDS tax codes
+- `listTCSTaxes(orgId)` — all TCS tax codes
+- `getTaxById(orgId, id)` — single tax detail
+- `createTax(orgId, data)` — create new tax entry
+- `createTDSTax(orgId, data)` — create TDS tax entry
+- `createTCSTax(orgId, data)` — create TCS tax entry
+- `searchTaxes(orgId, query)` — search by name
+- `getTaxFormSchema()` — JSON schema for tax fields (regular, TDS, TCS)
+
+---
+
+### Service 10: `inventory.service.ts` — Inventory Operations & Warehouses
+**Models used**: `InventoryAdjustment`, `Package`, `MoveOrder`, `Putaway`, `Warehouse`
+**Covers sidebar sections**: Inventory > Adjustments, Inventory > Packages, Inventory > Move Orders, Inventory > Putaways, Settings > Warehouses
+**Capabilities**:
+- `createInventoryAdjustment(orgId, data)` — adjust stock quantities
+- `listAdjustments(orgId)` — list adjustments
+- `createPackage(orgId, data)` — create shipment package
+- `listPackages(orgId)` — list packages
+- `createMoveOrder(orgId, data)` — create warehouse move order
+- `listMoveOrders(orgId)` — list move orders
+- `createPutaway(orgId, data)` — create putaway record
+- `listPutaways(orgId)` — list putaways
+- `listWarehouses(orgId)` — list warehouses
+- `createWarehouse(orgId, data)` — create new warehouse
+- `getInventoryFormSchemas()` — JSON schemas for all inventory types
+
+---
+
+### Service 11: `settings.service.ts` — Organization Settings, Opening Balances, Currencies, Reminders, Customer Portal
+**Models used**: `Organization`, `Currency`, `ExchangeRate`, `PaymentTerms`, `PaymentMode`, `PriceList`, `ReportingTag`, `SalesPerson`
+**Covers sidebar sections**: Settings > General, Settings > Currencies, Settings > Opening Balances, Settings > Warehouses (delegated to inventory.service.ts), Settings > Reminders, Settings > Customer Portal
+**Capabilities**:
+- `getOrgSettings(orgId)` — full org settings (fiscal year, address, tax preferences, GST info, industry, date format, etc.)
+- `updateOrgSettings(orgId, data)` — update org settings
+- `listCurrencies(orgId)` — all currencies for the org
+- `createCurrency(orgId, data)` — add a new currency
+- `getExchangeRate(orgId, fromCurrency, toCurrency)` — latest exchange rate
+- `setExchangeRate(orgId, data)` — set/update an exchange rate
+- `listPaymentTerms(orgId)` — Net 30, Net 60, Due on Receipt, etc.
+- `createPaymentTerm(orgId, data)` — create new payment term
+- `listPaymentModes(orgId)` — Cash, Bank Transfer, Cheque, UPI, etc.
+- `createPaymentMode(orgId, data)` — create new payment mode
+- `getOpeningBalances(orgId)` — all account opening balances (used for first-time setup)
+- `setOpeningBalance(orgId, accountId, amount)` — set/update opening balance for one account
+- `bulkSetOpeningBalances(orgId, data: [{accountId, debit, credit}])` — set all opening balances at once
+- `getReminderSettings(orgId)` — get automated payment reminder configuration
+- `updateReminderSettings(orgId, data)` — update reminder schedules, templates, enabled/disabled state
+- `getCustomerPortalSettings(orgId)` — get customer portal configuration (branding, permissions, enabled)
+- `updateCustomerPortalSettings(orgId, data)` — update customer portal settings
+- `listSalesPersons(orgId)` — list all sales persons
+- `listPriceLists(orgId)` — list all price lists
+- `listReportingTags(orgId)` — list all reporting tags
+- `getSettingsFormSchemas()` — JSON schemas for all settings forms
+
+---
+
+### Service 12: `documents.service.ts` — Document Management
+**Models used**: `Document`, `DocumentFolder`, `DocumentMailbox`
+**Covers sidebar section**: Documents
+**Capabilities**:
+- `listDocuments(orgId, folderId?)` — list uploaded documents
+- `uploadDocument(orgId, file, metadata)` — store a document (receipt, contract, etc.)
+- `getDocumentById(orgId, docId)` — retrieve document details
+- `deleteDocument(orgId, docId)` — remove document
+- `listFolders(orgId)` — document folder tree
+- `createFolder(orgId, data)` — create document folder
+
+---
+
+### Service 13: `reports.service.ts` — Financial Reports
+**Models used**: Reads from `GLEntry`, `Invoice`, `Bill`, `Account`, `Contact`, `Item`
+**Covers sidebar section**: Reports
+**Capabilities**:
+- `getProfitAndLoss(orgId, startDate, endDate)` — P&L report data
+- `getBalanceSheet(orgId, asOfDate)` — balance sheet data
+- `getCashFlowStatement(orgId, startDate, endDate)` — cash flow data
+- `getAgedReceivables(orgId)` — aging buckets for customer receivables
+- `getAgedPayables(orgId)` — aging buckets for vendor payables
+- `getSalesByCustomer(orgId, startDate?, endDate?)` — top customers by revenue
+- `getPurchasesByVendor(orgId, startDate?, endDate?)` — top vendors by spend
+- `getItemSalesSummary(orgId, startDate?, endDate?)` — sales per item
+- `getTaxReport(orgId, startDate, endDate)` — tax collected vs paid
+
+*These services directly query the existing Mongoose models and compose the data. They do NOT call existing controller functions — they are independent query layers.*
+
+### Future Service (NOT implemented now):
+- **Service 14: `time-tracking.service.ts`** — Projects & Timesheets. This section is not working yet in the application. When it's ready, add this service file. Models: `Project`, `TimeLog`, `TimesheetEntry`.
+
+---
+
+## Section-to-Service Cross-Reference Table
+
+This table maps every sidebar section to its backend service file:
+
+| Sidebar Section | Service File | Status |
+|---|---|---|
+| Items | `items.service.ts` | ✅ Planned |
+| **Sales > Customers** | `contacts.service.ts` | ✅ Planned |
+| **Sales > Quotes** | `sales.service.ts` | ✅ Planned |
+| **Sales > Sales Orders** | `sales.service.ts` | ✅ Planned |
+| **Sales > Invoices** | `sales.service.ts` | ✅ Planned |
+| **Sales > Retainer Invoices** | `sales.service.ts` | ✅ Planned |
+| **Sales > Recurring Invoices** | `sales.service.ts` | ✅ Planned |
+| **Sales > Delivery Challans** | `sales.service.ts` | ✅ Planned |
+| **Sales > Payments Received** | `sales.service.ts` | ✅ Planned |
+| **Sales > Credit Notes** | `sales.service.ts` | ✅ Planned |
+| **Purchases > Vendors** | `contacts.service.ts` | ✅ Planned |
+| **Purchases > Expenses** | `purchases.service.ts` | ✅ Planned |
+| **Purchases > Recurring Expenses** | `purchases.service.ts` | ✅ Planned |
+| **Purchases > Purchase Orders** | `purchases.service.ts` | ✅ Planned |
+| **Purchases > Purchase Receives** | `purchases.service.ts` | ✅ Planned |
+| **Purchases > Bills** | `purchases.service.ts` | ✅ Planned |
+| **Purchases > Recurring Bills** | `purchases.service.ts` | ✅ Planned |
+| **Purchases > Payments Made** | `purchases.service.ts` | ✅ Planned |
+| **Purchases > Vendor Credits** | `purchases.service.ts` | ✅ Planned |
+| **Accountant > Manual Journals** | `journals.service.ts` | ✅ Planned |
+| **Accountant > Bulk Update** | `accountant.service.ts` | ✅ Planned |
+| **Accountant > Currency Adjustments** | `accountant.service.ts` | ✅ Planned |
+| **Accountant > Chart of Accounts** | `accounts.service.ts` | ✅ Planned |
+| **Accountant > Fixed Assets** | `fixed-assets.service.ts` | ✅ Planned |
+| **Accountant > Transaction Locking** | `accountant.service.ts` | ✅ Planned |
+| **Inventory > Adjustments** | `inventory.service.ts` | ✅ Planned |
+| **Inventory > Packages** | `inventory.service.ts` | ✅ Planned |
+| **Inventory > Move Orders** | `inventory.service.ts` | ✅ Planned |
+| **Inventory > Putaways** | `inventory.service.ts` | ✅ Planned |
+| **Banking** | `accounts.service.ts` (read-only) | ✅ Planned |
+| **Reports** | `reports.service.ts` | ✅ Planned |
+| **Documents** | `documents.service.ts` | ✅ Planned |
+| **Settings > General** | `settings.service.ts` | ✅ Planned |
+| **Settings > Taxes** | `taxes.service.ts` | ✅ Planned |
+| **Settings > Currencies** | `settings.service.ts` | ✅ Planned |
+| **Settings > Opening Balances** | `settings.service.ts` | ✅ Planned |
+| **Settings > Warehouses** | `inventory.service.ts` | ✅ Planned |
+| **Settings > Reminders** | `settings.service.ts` | ✅ Planned |
+| **Settings > Customer Portal** | `settings.service.ts` | ✅ Planned |
+| **Time Tracking** | *Future — not implemented* | ⏸️ Deferred |
+
+---
 
 ## 6. Phase-by-Phase Task Resumption (Replay/Retry Engine)
 To handle recovery when a multi-step workflow fails (e.g. Sales Order created, but Invoice creation fails due to validation errors):
@@ -1116,6 +1392,149 @@ To handle recovery when a multi-step workflow fails (e.g. Sales Order created, b
 - Resumes execution *from that index* using outputs from successful prior phases stored in `phases[i].result` (e.g., uses `phases[0].result.salesOrderId` to proceed with Invoice creation).
 - Avoids duplicate records by not re-running successfully completed phases.
 - Shows live resumption status in `agent-workflow-visualizer.tsx`.
+
+---
+
+## 7. File Upload in AI Chat (Image, PDF, XLSX)
+The AI Chatbot and AI Agent should support file uploads directly in the chat input.
+
+### What the user can upload:
+- **Images** (JPG, PNG, WEBP) — receipt photos, screenshots, scanned documents
+- **PDF** — invoices, bills, statements from external systems
+- **Excel/CSV** (XLSX, XLS, CSV) — data sheets, item lists, bulk records
+
+### How it works:
+
+#### Frontend: `chatbot-panel.tsx` + `agent-chat.tsx`
+- Add a paperclip/attachment icon button next to the send button in chat input
+- On click: opens file picker accepting `image/*,.pdf,.xlsx,.xls,.csv`
+- When file is selected:
+  1. Show file preview in chat (image thumbnail or filename+size badge)
+  2. User can add an optional text message alongside
+  3. On send: upload file first via `POST /ai-agent/upload-and-extract`, then send the extracted text + user question to the chat/agent endpoint
+- Show processing indicator: "📄 Reading your file..."
+
+#### Backend: New route `POST /api/ai-agent/upload-and-extract`
+- Accepts `multipart/form-data` with a single `file` field
+- Logic by file type:
+  - **Image/PDF**: Uses existing `ocrApi` / Gemini Vision API to extract text (the `ocr.service.ts` already does this via `/ocr/extract`)
+  - **Excel/CSV**: Uses `xlsx` library to parse sheets, extract headers + first 100 rows as structured JSON, convert to readable text
+- Returns: `{ success: true, data: { extractedText: string, fileType: string, metadata: { pages?, rows?, headers? } } }`
+- The extracted text is then injected into the chat/agent message as context
+
+#### New backend controller method in `ai-agent.controller.ts`:
+```
+uploadAndExtract(req, res):
+  1. Read file from multer
+  2. Detect type (image, pdf, excel, csv)
+  3. If image/pdf → call Gemini Vision with: "Extract all text, numbers, and structured data from this document"
+  4. If excel/csv → parse with xlsx library, stringify rows
+  5. Return extracted text + metadata
+```
+
+#### State in chatbot panel:
+```ts
+const [attachedFile, setAttachedFile] = useState<File | null>(null);
+const [extractedFileText, setExtractedFileText] = useState<string>("");
+const [isExtracting, setIsExtracting] = useState(false);
+```
+
+When sending a message with an attachment:
+1. Upload and extract first
+2. Then send combined message: `{question: userText, fileContext: extractedText, sessionId}`
+3. The chat handler receives `fileContext` and includes it in the Gemini prompt as additional context
+
+---
+
+## 8. Full Workflow Types (All Document Chains the AI Can Automate)
+
+The `salesToPaymentWorkflow` in Phase 3 only covered one chain. Here are ALL automation chains:
+
+### Chain 1: Sales Full Cycle
+`Quote → Sales Order → Invoice → Payment Received`
+- AI creates quote, converts to SO, converts to invoice, records payment
+- Optional branches: Delivery Challan after SO, Credit Note after Invoice
+
+### Chain 2: Purchase Full Cycle
+`Purchase Order → Purchase Receive → Bill → Payment Made`
+- AI creates PO, creates receive, converts to bill, records payment
+- Optional branches: Vendor Credit after Bill
+
+### Chain 3: Expense Quick Entry
+`Expense → Payment Made` (if not paid through petty cash)
+- AI creates expense, optionally records payment through a bank account
+
+### Chain 4: Journal Entry Workflow
+`Manual Journal → Post to GL → Verify Trial Balance`
+- AI creates journal, posts to general ledger, checks trial balance is still balanced
+
+### Chain 5: Opening Balance Setup
+`List all Accounts → Set Opening Balances → Verify Trial Balance`
+- AI helps user set up opening balances for all accounts during first-time setup
+- Ensures total debits = total credits across all opening balances
+
+### Chain 6: Inventory Adjustment
+`Analyze Stock → Create Adjustment → Update Item Stock`
+- AI identifies items with mismatched stock, creates inventory adjustments
+
+### Chain 7: Recurring Document Generation
+`Recurring Invoice → Generate Invoice` or `Recurring Bill → Generate Bill` or `Recurring Expense → Generate Expense`
+- AI triggers scheduled recurring documents manually
+
+### Backend support:
+The `salesToPaymentWorkflow` function in `ai-agent.controller.ts` should accept a `chainType` parameter:
+```ts
+chainType: "sales_full" | "purchase_full" | "expense_quick" | "journal_entry" | "opening_balance" | "inventory_adjust" | "recurring_generate"
+```
+Each chain type maps to the corresponding service functions from the 12 services above.
+
+---
+
+## 9. Agent-Accessible Data Summary (What AI Can Read Per Section)
+
+This is a complete mapping of what data the AI Agent can access for each section of the application:
+
+| Section | Read Access | Write Access | Analysis |
+|---|---|---|---|
+| **Items** | All items, groups, units, warehouses | Create/update items | Inventory analysis, low stock alerts, value summary |
+| **Sales > Customers** | All customers, balances | Create customers | Top customers, overdue receivables |
+| **Sales > Quotes** | All quotes | Create quotes | Quote-to-order conversion rate |
+| **Sales > Sales Orders** | All orders | Create orders, convert to invoice | Order fulfillment status |
+| **Sales > Invoices** | All invoices | Create invoices | Revenue analysis, overdue aging |
+| **Sales > Payments Received** | All payments | Record payments | Cash flow in |
+| **Sales > Credit Notes** | All credit notes | Create, apply credits | Credit utilization |
+| **Sales > Delivery Challans** | All challans | Create challans | Shipment tracking |
+| **Sales > Recurring Invoices** | All recurring | Create recurring | — |
+| **Sales > Retainer Invoices** | All retainers | Create retainers | Retainer utilization |
+| **Purchases > Vendors** | All vendors, balances | Create vendors | Top vendors, overdue payables |
+| **Purchases > Purchase Orders** | All POs | Create POs, convert to bill | PO fulfillment status |
+| **Purchases > Purchase Receives** | All receives | Create receives | Goods receipt analysis |
+| **Purchases > Bills** | All bills | Create bills | Payables aging |
+| **Purchases > Payments Made** | All payments | Record payments | Cash flow out |
+| **Purchases > Vendor Credits** | All credits | Create, apply credits | Credit utilization |
+| **Purchases > Expenses** | All expenses | Create expenses | Expense category breakdown |
+| **Purchases > Recurring Expenses** | All recurring | Create recurring | — |
+| **Purchases > Recurring Bills** | All recurring | Create recurring | — |
+| **Accountant > Chart of Accounts** | All accounts | Create accounts | Account tree, balance summary |
+| **Accountant > Manual Journals** | All journals | Create, post, reverse | Journal analysis |
+| **Accountant > Fixed Assets** | All assets | Create assets | Depreciation schedule |
+| **Accountant > Currency Adjustments** | All adjustments | Create adjustments | Forex impact |
+| **Accountant > Transaction Locking** | Lock status | — (read only for AI) | — |
+| **Inventory > Overview** | Stock levels per warehouse | — | Stock valuation |
+| **Inventory > Adjustments** | All adjustments | Create adjustments | Adjustment history |
+| **Inventory > Packages** | All packages | Create packages | Package tracking |
+| **Inventory > Move Orders** | All move orders | Create move orders | Warehouse transfer analysis |
+| **Inventory > Putaways** | All putaways | Create putaways | — |
+| **Banking** | All bank accounts | — (read only for AI) | Bank reconciliation status |
+| **Time Tracking > Projects** | All projects | Create projects | Project profitability |
+| **Time Tracking > Timesheet** | All time entries | Log time | Hours analysis |
+| **Reports** | All report types | Generate reports | Full financial analysis |
+| **Documents** | All documents, folders | Upload documents | — |
+| **Settings > General** | Org settings | Update settings | — |
+| **Settings > Opening Balances** | All opening balances | Set/update balances | Trial balance verification |
+| **Settings > Taxes** | All tax codes (Tax, TDS, TCS) | Create taxes | Tax compliance summary |
+| **Settings > Currencies** | All currencies, rates | — | Multi-currency analysis |
+| **Settings > Warehouses** | All warehouses | Create warehouses | — |
 
 ---
 
@@ -1141,3 +1560,12 @@ To handle recovery when a multi-step workflow fails (e.g. Sales Order created, b
 
 10. **Existing `handleChat` in chat.controller.ts**: This file is 1031 lines with complex RAG logic. When modifying for session persistence, only add code AFTER the `res.json()` call (or just before it) — do NOT touch vector search, embedding, or Gemini call sections.
 
+11. **File uploads in chat**: Use `multer` middleware (already used in OCR routes) to handle `multipart/form-data`. Max file size: 10MB. Accepted types: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `text/csv`.
+
+12. **Opening Balances**: The opening balance system writes to `GLEntry` model with `type: "opening"`. When the AI sets opening balances, it must first check if an opening entry already exists for that account — if yes, update it (don't create duplicates).
+
+13. **Fixed Assets**: Fixed asset depreciation is calculated. The AI Agent should be able to read asset data and depreciation schedules but NOT auto-depreciate — that's a batch job.
+
+14. **Transaction Locking**: The AI Agent must check the transaction lock date before creating any backdated documents. If a date is locked, the AI must tell the user: "This date is locked. Please unlock it in Accountant > Transaction Locking or use a later date."
+
+15. **Existing OCR service**: The backend already has `ocr.service.ts` at `backend/src/services/ocr.service.ts` which uses Gemini Vision for image/PDF extraction. The new `/ai-agent/upload-and-extract` route should reuse this service, NOT duplicate it. For Excel files, use the `xlsx` library which is already a project dependency.
