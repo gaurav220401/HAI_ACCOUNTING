@@ -1036,6 +1036,67 @@ Update `aiagent/PHASE_STATUS.md`:
 
 ---
 
+# Additional Extensions for Complete Accounting Coverage
+
+To ensure the AI Agent can interact with **all** sections of the HAI Accounting system (Invoices, Bills, Expenses, Payments, Credits, Journals, etc.), the following global infrastructure must be implemented.
+
+## 1. Schema & Form Field Registry (For All Sections)
+To prevent hardcoding form schemas, we will implement a centralized schema registry file that translates Mongoose validation rules and React UI fields into JSON Schemas that Gemini can consume.
+
+### [NEW] `client/lib/api/schema-registry.ts`
+- Exports structured field definitions for:
+  - **Item**: `name`, `sku`, `sellingPrice`, `costPrice`, `itemType`, `inventoryTracked`, etc.
+  - **Invoice / Sales Order**: `customerId`, `invoiceDate`, `dueDate`, `items: [{ itemId, quantity, rate, discount }]`, `notes`
+  - **Bill / Purchase Order**: `vendorId`, `billDate`, `dueDate`, `items: [{ itemId, quantity, rate }]`, `notes`
+  - **Expense**: `expenseAccountId`, `paidThroughAccountId`, `amount`, `date`, `vendorId`, `reference`
+  - **Manual Journal**: `date`, `reference`, `notes`, `journalLines: [{ accountId, debit, credit, narration }]`
+- Provides validation flags (e.g. `required`, `type`, `description`, `options`) for each property.
+- When the AI Agent runs, it queries this registry dynamically to construct its prompting instructions and UI validation lists.
+
+## 2. Global Memory Store (`AIAgentMemoryProvider`)
+To satisfy the requirement of reading the "Item section" and caching it globally for cross-section work (like autofilling Sales Orders or Invoices without spamming queries):
+
+### [NEW] `client/contexts/ai-agent-memory-context.tsx`
+- React Context wrapping the root layout of the `/ai-agent` page.
+- State properties:
+  - `cachedItems: Item[]` (fetched once on mount or when refreshed)
+  - `cachedContacts: Contact[]` (separated into Customers and Vendors)
+  - `cachedAccounts: Account[]` (chart of accounts list)
+  - `cachedTaxes: Tax[]` (tax codes list)
+- Methods:
+  - `refreshCache(section: 'items' | 'contacts' | 'accounts' | 'taxes' | 'all')`
+  - `getItemById(id: string)`, `getContactById(id: string)`
+  - `searchItemsLocal(query: string)` — fuzzy search within pre-cached item details
+- **AI Access**: When starting an agentic task (like "Create Sales Order"), the UI passes this cached inventory and contact list directly to the agent context as reference data.
+
+## 3. AI-Assisted Import/Export Mapper Engine
+To allow importing and exporting data across *all* accounting sections:
+
+### [NEW] `client/components/ai-agent/agent-import-mapper.tsx`
+- UI step-by-step import wizard managed by the AI agent:
+  - **Step 1: Upload file** (CSV, XLS, XLSX)
+  - **Step 2: Choose target model** (Items, Customers, Vendors, Bills, Invoices, Journals)
+  - **Step 3: AI-generated Auto-Mapping**: Send sheet headers and the selected target model schema to Gemini. Gemini returns a key-value mapping (e.g., `"Item Title" -> "name"`, `"Selling Cost" -> "sellingPrice"`).
+  - **Step 4: Resolve Errors**: AI highlights rows with invalid field types (e.g., text in price column) and suggests fixes.
+  - **Step 5: Import Confirmation**: Sends payload to a new backend `/api/ai-agent/import-mapped` endpoint.
+
+### [NEW] Backend controller method: `importMappedRecords`
+- Scoped to `/api/ai-agent/import-mapped`
+- Body: `{ modelType: string, records: any[] }`
+- Resolves relationships: maps contact names to Contact IDs, account names to Account IDs.
+- Performs bulk insert inside a database transaction to prevent partial state errors.
+
+## 4. Form Auto-Fill Injection Hook (`useAgentFormFiller`)
+Instead of building completely separate AI UI pages, we should allow the AI Agent to fill out the *existing* client forms directly:
+
+### [NEW] `client/hooks/use-agent-form-filler.ts`
+- A React hook that any existing form page (e.g., `credit-note-form.tsx`, `bill-form.tsx`, `invoice-form.tsx`) can import.
+- Subscribes to a broadcast channel or context event: `window.addEventListener('ai-agent:fill-form', (e) => { ... })`
+- When the floating AI Chatbot gathers data, it can dispatch this event with form values.
+- The hook listens and calls React Hook Form's `setValue(key, value)` for each matching field, highlight-flashing the filled fields in teal to show the user what was auto-populated.
+
+---
+
 # Known Constraints & Gotchas
 
 1. **Next.js App Router**: Pages in `app/` are Server Components by default. Add `"use client"` at top for any component using useState, useEffect, browser APIs.
@@ -1052,8 +1113,9 @@ Update `aiagent/PHASE_STATUS.md`:
 
 7. **Tailwind dark classes**: The AI Agent page uses dark-mode-style classes. Since the app doesn't have a dark mode toggle, use explicit dark color classes (e.g., `bg-slate-900` not `dark:bg-slate-900`).
 
-8. **Rate limiting**: The existing `/chat` rate limit is 20 req/min. New `/ai-agent/ask` should have its own rate limit: 10 req/min (agent tasks are more expensive).
+8. **Rate limiting**: The existing `/chat` rate limit is 20 req/min. New `/api/ai-agent/ask` should have its own rate limit: 10 req/min (agent tasks are more expensive).
 
 9. **Item creation**: `Item` model in backend is at `../models/item.model`. It requires `organizationId` which must match `req.user.activeOrganization._id`.
 
 10. **Existing `handleChat` in chat.controller.ts**: This file is 1031 lines with complex RAG logic. When modifying for session persistence, only add code AFTER the `res.json()` call (or just before it) — do NOT touch vector search, embedding, or Gemini call sections.
+
