@@ -43,15 +43,23 @@
 - `backend/src/models/ai-agent-task.model.ts` [NEW]
 - `backend/src/controllers/ai-agent.controller.ts` [NEW]
 - `backend/src/routes/ai-agent.routes.ts` [NEW]
+- `backend/src/services/ai-agent/items.service.ts` [NEW]
+- `backend/src/services/ai-agent/documents.service.ts` [NEW]
+- `backend/src/services/ai-agent/contacts.service.ts` [NEW]
+- `backend/src/services/ai-agent/journals.service.ts` [NEW]
 - `client/lib/api/ai-agent.ts` [NEW]
+- `client/lib/api/schema-registry.ts` [NEW]
 
 ### Phase 4 Files
+- `client/contexts/ai-agent-memory-context.tsx` [NEW]
 - `client/components/ai-agent/agent-chat.tsx` [NEW]
 - `client/components/ai-agent/agent-task-panel.tsx` [NEW]
 - `client/components/ai-agent/agent-workflow-visualizer.tsx` [NEW]
 - `client/components/ai-agent/agent-item-creator.tsx` [NEW]
 - `client/components/ai-agent/agent-history.tsx` [NEW]
 - `client/components/ai-agent/agent-item-analysis.tsx` [NEW]
+- `client/components/ai-agent/agent-import-mapper.tsx` [NEW]
+- `client/hooks/use-agent-form-filler.ts` [NEW]
 - `client/app/ai-agent/page.tsx` [NEW]
 
 ### Phase 5 Files

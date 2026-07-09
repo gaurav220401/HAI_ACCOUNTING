@@ -1095,6 +1095,28 @@ Instead of building completely separate AI UI pages, we should allow the AI Agen
 - When the floating AI Chatbot gathers data, it can dispatch this event with form values.
 - The hook listens and calls React Hook Form's `setValue(key, value)` for each matching field, highlight-flashing the filled fields in teal to show the user what was auto-populated.
 
+## 5. Modular Section Data Services (Backend Decoupling)
+To ensure database operations are fully modular and if one section has schema changes it does not break others:
+
+### [NEW] `backend/src/services/ai-agent/` (Directory)
+Create 4 separate domain service helper files:
+1. **`items.service.ts`**: Contains all logic for item retrieval, low-stock triggers, inventory metrics calculation, and Excel template exports.
+2. **`documents.service.ts`**: Contains all transaction logic for document pipelines (e.g. Sales Order, Invoice, Bill, Payment Received) scoped to active org.
+3. **`contacts.service.ts`**: Contains Customer/Vendor name lookups and verification queries.
+4. **`journals.service.ts`**: Contains manual journal ledger lookups, account mapping, double-entry validation, and manual journal postings.
+
+*The main `ai-agent.controller.ts` will ONLY import these service classes and orchestrate them, keeping code strictly decoupled.*
+
+## 6. Phase-by-Phase Task Resumption (Replay/Retry Engine)
+To handle recovery when a multi-step workflow fails (e.g. Sales Order created, but Invoice creation fails due to validation errors):
+
+### [NEW] Route: `POST /ai-agent/tasks/:id/retry`
+- Reads the existing `AIAgentTask` document by ID.
+- Identifies the first phase index where `status === "failed"`.
+- Resumes execution *from that index* using outputs from successful prior phases stored in `phases[i].result` (e.g., uses `phases[0].result.salesOrderId` to proceed with Invoice creation).
+- Avoids duplicate records by not re-running successfully completed phases.
+- Shows live resumption status in `agent-workflow-visualizer.tsx`.
+
 ---
 
 # Known Constraints & Gotchas
