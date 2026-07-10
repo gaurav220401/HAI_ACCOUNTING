@@ -79,40 +79,42 @@ export default function ReminderSettingsPage() {
       title="Reminders"
       subtitle="Configure automated follow-ups for due invoices and payment cycles."
       actions={(
-        <Button onClick={handleSave} disabled={saving || fetching || !activeOrganization?._id}>
+        <Button onClick={handleSave} disabled={saving || fetching || !activeOrganization?._id} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-2">Save</span>
+          <span>Save</span>
         </Button>
       )}
     >
-      <div className="space-y-4 rounded-lg border p-4 max-w-3xl">
-        <div className="flex items-start justify-between gap-4 border rounded-md p-3">
+      <div className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-6 max-w-3xl">
+        <div className="flex items-start justify-between gap-4 border border-slate-150 bg-slate-50/30 rounded-lg p-4">
           <div>
-            <h3 className="font-medium">Enable Reminder Engine</h3>
-            <p className="text-sm text-muted-foreground">Turn this on to send scheduled reminder notifications.</p>
+            <h3 className="font-semibold text-slate-800 text-sm">Enable Reminder Engine</h3>
+            <p className="text-xs text-slate-500 leading-relaxed mt-0.5">Turn this on to send scheduled reminder notifications.</p>
           </div>
           <Switch
             checked={form.enabled}
             onCheckedChange={(checked) => setForm((p: ReminderSettings) => ({ ...p, enabled: checked }))}
+            className="data-[state=checked]:bg-teal-600"
           />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-3 border rounded-md p-3">
+          <div className="space-y-4 border border-slate-150 bg-slate-50/30 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="font-medium">Invoice Due Reminder</h4>
-                <p className="text-xs text-muted-foreground">Alert before due date.</p>
+                <h4 className="font-semibold text-slate-800 text-xs">Invoice Due Reminder</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">Alert before due date.</p>
               </div>
               <Switch
                 checked={form.sendInvoiceDueReminder}
                 onCheckedChange={(checked) => setForm((p: ReminderSettings) => ({ ...p, sendInvoiceDueReminder: checked }))}
                 disabled={!form.enabled}
+                className="data-[state=checked]:bg-teal-600"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Days Before Due Date</Label>
+              <Label className="text-xs">Days Before Due Date</Label>
               <Input
                 type="number"
                 min="0"
@@ -120,25 +122,27 @@ export default function ReminderSettingsPage() {
                 value={form.invoiceDueDaysBefore}
                 onChange={(e) => setForm((p: ReminderSettings) => ({ ...p, invoiceDueDaysBefore: Number(e.target.value) || 0 }))}
                 disabled={!form.enabled || !form.sendInvoiceDueReminder}
+                className="h-9 text-xs"
               />
             </div>
           </div>
 
-          <div className="space-y-3 border rounded-md p-3">
+          <div className="space-y-4 border border-slate-150 bg-slate-50/30 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="font-medium">Payment Due Reminder</h4>
-                <p className="text-xs text-muted-foreground">Recurring reminder for unpaid balances.</p>
+                <h4 className="font-semibold text-slate-800 text-xs">Payment Due Reminder</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">Recurring reminder for unpaid balances.</p>
               </div>
               <Switch
                 checked={form.sendPaymentDueReminder}
                 onCheckedChange={(checked) => setForm((p: ReminderSettings) => ({ ...p, sendPaymentDueReminder: checked }))}
                 disabled={!form.enabled}
+                className="data-[state=checked]:bg-teal-600"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Frequency (days)</Label>
+              <Label className="text-xs">Frequency (days)</Label>
               <Input
                 type="number"
                 min="1"
@@ -146,6 +150,7 @@ export default function ReminderSettingsPage() {
                 value={form.paymentDueFrequencyDays}
                 onChange={(e) => setForm((p: ReminderSettings) => ({ ...p, paymentDueFrequencyDays: Number(e.target.value) || 1 }))}
                 disabled={!form.enabled || !form.sendPaymentDueReminder}
+                className="h-9 text-xs"
               />
             </div>
           </div>

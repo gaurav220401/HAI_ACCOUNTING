@@ -5,20 +5,11 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save, Mail, Send, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
-import { AppSidebar } from "@/components/app-sidebar";
-import { PageHeader } from "@/components/page-header";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import SetupConfigShell from "@/components/settings/setup-config-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { smtpApi, type SmtpSettings } from "@/lib/api/smtp";
 import { toast } from "sonner";
 
@@ -169,213 +160,188 @@ export default function EmailSettingsPage() {
   }
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <PageHeader
-          breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Settings <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Email / SMTP</span>
-            </span>
-          }
-        />
-
-        <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
-          {/* Header */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-              <Mail className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold">Email Settings</h1>
-              <p className="text-sm text-muted-foreground">
-                Configure your SMTP server so invoices are actually sent to
-                customers.
-              </p>
-            </div>
+    <SetupConfigShell
+      title="Email / SMTP Settings"
+      subtitle="Configure your SMTP server so invoices are actually sent to customers."
+      actions={(
+        <Button onClick={handleSave} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          <span>Save Settings</span>
+        </Button>
+      )}
+    >
+      <div className="space-y-6 max-w-3xl">
+        {/* Quick presets */}
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-1.5">Quick Presets</h2>
+          <p className="text-xs text-slate-500 mb-4">Click a provider to autofill the server settings.</p>
+          <div className="flex flex-wrap gap-2">
+            {PRESETS.map((p) => (
+              <Button
+                key={p.label}
+                variant="outline"
+                size="sm"
+                onClick={() => applyPreset(p)}
+                className="border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-900 rounded-md font-medium text-xs py-1 px-3 h-8"
+              >
+                {p.label}
+              </Button>
+            ))}
           </div>
+        </section>
 
-          {/* Quick presets */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Quick Presets</CardTitle>
-              <CardDescription>
-                Click a provider to autofill the server settings.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {PRESETS.map((p) => (
-                <Button
-                  key={p.label}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => applyPreset(p)}
+        {/* SMTP config */}
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-4">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-2">SMTP Configuration</h2>
+          
+          {/* Gmail warning */}
+          {settings.host.includes("gmail.com") && (
+            <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4 text-xs leading-relaxed text-amber-800">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+              <span>
+                <strong>Gmail requires an App Password.</strong> Your
+                regular Google password will be rejected. Go to{" "}
+                <a
+                  href="https://myaccount.google.com/apppasswords"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline font-semibold text-amber-900"
                 >
-                  {p.label}
-                </Button>
-              ))}
-            </CardContent>
-          </Card>
+                  myaccount.google.com/apppasswords
+                </a>
+                , generate an App Password for &quot;Mail&quot;, and paste
+                it in the password field below. (2-Step Verification must be
+                enabled on your Google account first.)
+              </span>
+            </div>
+          )}
 
-          {/* SMTP config */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">SMTP Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Gmail warning */}
-              {settings.host.includes("gmail.com") && (
-                <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
-                  <span>
-                    <strong>Gmail requires an App Password.</strong> Your
-                    regular Google password will be rejected. Go to{" "}
-                    <a
-                      href="https://myaccount.google.com/apppasswords"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline font-medium"
-                    >
-                      myaccount.google.com/apppasswords
-                    </a>
-                    , generate an App Password for &quot;Mail&quot;, and paste
-                    it in the password field below. (2-Step Verification must be
-                    enabled on your Google account first.)
-                  </span>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 space-y-1.5">
-                  <Label>SMTP Host</Label>
-                  <Input
-                    placeholder="smtp.gmail.com"
-                    value={settings.host}
-                    onChange={(e) => update("host", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Port</Label>
-                  <Input
-                    type="number"
-                    placeholder="587"
-                    value={settings.port}
-                    onChange={(e) =>
-                      update("port", parseInt(e.target.value) || 587)
-                    }
-                  />
-                </div>
-                <div className="flex items-center gap-3 pt-6">
-                  <Switch
-                    checked={settings.secure}
-                    onCheckedChange={(v) => update("secure", v)}
-                  />
-                  <Label className="cursor-pointer">
-                    Use SSL / TLS (port 465)
-                  </Label>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>SMTP Username</Label>
-                <Input
-                  type="email"
-                  placeholder="your@email.com"
-                  value={settings.user}
-                  onChange={(e) => update("user", e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>SMTP Password / App Password</Label>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  value={settings.pass}
-                  onChange={(e) => update("pass", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  <strong>Gmail users:</strong> You <em>must</em> use an{" "}
-                  <a
-                    href="https://myaccount.google.com/apppasswords"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 underline"
-                  >
-                    App Password
-                  </a>{" "}
-                  — your regular Google password will always be rejected. Enable
-                  2-Step Verification on your Google account first, then
-                  generate the App Password for &quot;Mail&quot;.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Sender identity */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Sender Identity</CardTitle>
-              <CardDescription>
-                The name and email address customers will see in their inbox.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>From Name</Label>
-                <Input
-                  placeholder="Haldar Accounting"
-                  value={settings.fromName}
-                  onChange={(e) => update("fromName", e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>From Email</Label>
-                <Input
-                  type="email"
-                  placeholder="accounts@yourcompany.com"
-                  value={settings.fromEmail}
-                  onChange={(e) => update("fromEmail", e.target.value)}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Save */}
-          <div className="flex items-center gap-3">
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              <Save className="h-4 w-4 mr-1" />
-              Save Settings
-            </Button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="col-span-1 md:col-span-2 space-y-1.5">
+              <Label className="text-xs">SMTP Host</Label>
+              <Input
+                placeholder="smtp.gmail.com"
+                value={settings.host}
+                onChange={(e) => update("host", e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Port</Label>
+              <Input
+                type="number"
+                placeholder="587"
+                value={settings.port}
+                onChange={(e) =>
+                  update("port", parseInt(e.target.value) || 587)
+                }
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-3 pt-6">
+              <Switch
+                checked={settings.secure}
+                onCheckedChange={(v) => update("secure", v)}
+                className="data-[state=checked]:bg-teal-600"
+              />
+              <Label className="cursor-pointer text-xs font-normal text-slate-650">
+                Use SSL / TLS (port 465)
+              </Label>
+            </div>
           </div>
 
-          {/* Test email */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Test Your Settings</CardTitle>
-              <CardDescription>
-                Send a test email to confirm everything is configured correctly.
-                Save settings before testing.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex gap-3">
+          <div className="space-y-1.5 text-xs">
+            <Label className="text-xs">SMTP Username</Label>
+            <Input
+              type="email"
+              placeholder="your@email.com"
+              value={settings.user}
+              onChange={(e) => update("user", e.target.value)}
+              className="h-9 text-xs"
+            />
+          </div>
+
+          <div className="space-y-1.5 text-xs">
+            <Label className="text-xs">SMTP Password / App Password</Label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={settings.pass}
+              onChange={(e) => update("pass", e.target.value)}
+              className="h-9 text-xs"
+            />
+            <p className="text-[11px] text-slate-400">
+              <strong>Gmail users:</strong> You <em>must</em> use an{" "}
+              <a
+                href="https://myaccount.google.com/apppasswords"
+                target="_blank"
+                rel="noreferrer"
+                className="text-teal-700 hover:text-teal-850 font-semibold underline"
+              >
+                App Password
+              </a>{" "}
+              — your regular Google password will always be rejected. Enable
+              2-Step Verification on your Google account first, then
+              generate the App Password for &quot;Mail&quot;.
+            </p>
+          </div>
+        </section>
+
+        {/* Sender identity */}
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-4">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-1.5">Sender Identity</h2>
+          <p className="text-xs text-slate-500 mb-4">
+            The name and email address customers will see in their inbox.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="space-y-1.5">
+              <Label className="text-xs">From Name</Label>
+              <Input
+                placeholder="Haldar Accounting"
+                value={settings.fromName}
+                onChange={(e) => update("fromName", e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">From Email</Label>
               <Input
                 type="email"
-                placeholder="test@example.com"
-                value={testEmail}
-                onChange={(e) => setTestEmail(e.target.value)}
-                className="max-w-xs"
+                placeholder="accounts@yourcompany.com"
+                value={settings.fromEmail}
+                onChange={(e) => update("fromEmail", e.target.value)}
+                className="h-9 text-xs"
               />
-              <Button onClick={handleTest} disabled={testing} variant="outline">
-                {testing ?
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                : <Send className="h-4 w-4 mr-1" />}
-                Send Test Email
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+            </div>
+          </div>
+        </section>
+
+        {/* Test email */}
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-1.5">Test Your Settings</h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Send a test email to confirm everything is configured correctly.
+            Save settings before testing.
+          </p>
+          <div className="flex gap-3 text-xs">
+            <Input
+              type="email"
+              placeholder="test@example.com"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              className="max-w-xs h-9 text-xs"
+            />
+            <Button onClick={handleTest} disabled={testing} variant="outline" className="border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-900 rounded-md font-semibold text-xs py-1 px-3 h-9 gap-1.5">
+              {testing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              <span>Send Test Email</span>
+            </Button>
+          </div>
+        </section>
+      </div>
+    </SetupConfigShell>
   );
 }

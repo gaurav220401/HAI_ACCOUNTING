@@ -198,15 +198,15 @@ export default function GeneralSettingsPage() {
       title="General"
       subtitle="Manage your organization basics, locale, and accounting preferences."
       actions={(
-        <Button onClick={handleSave} disabled={!canSave || saving || fetchingOrg}>
+        <Button onClick={handleSave} disabled={!canSave || saving || fetchingOrg} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-2">Save</span>
+          <span>Save</span>
         </Button>
       )}
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-4 rounded-lg border p-4">
-          <h2 className="font-medium">Organization Details</h2>
+        <div className="space-y-4 border border-slate-200 bg-white shadow-sm p-6 rounded-xl">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2">Organization Details</h2>
 
           <div className="space-y-1.5">
             <Label>Organization Name</Label>
@@ -289,8 +289,8 @@ export default function GeneralSettingsPage() {
           </div>
         </div>
 
-        <div className="space-y-4 rounded-lg border p-4">
-          <h2 className="font-medium">Locale & Accounting</h2>
+        <div className="space-y-4 border border-slate-200 bg-white shadow-sm p-6 rounded-xl">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2">Locale & Accounting</h2>
 
           <div className="space-y-1.5">
             <Label>Country</Label>
@@ -374,12 +374,12 @@ export default function GeneralSettingsPage() {
       </div>
 
       {/* Danger Zone */}
-      <div className="mt-12 rounded-lg border border-red-200 bg-red-50 p-6">
-        <div className="flex items-center gap-3 text-red-700">
-          <AlertTriangle className="h-5 w-5" />
-          <h2 className="text-lg font-semibold">Danger Zone</h2>
+      <div className="mt-12 rounded-xl border border-rose-200 bg-rose-50/50 p-6">
+        <div className="flex items-center gap-3 text-rose-700">
+          <AlertTriangle className="h-5 w-5 text-rose-600" />
+          <h2 className="text-lg font-bold">Danger Zone</h2>
         </div>
-        <p className="mt-2 text-sm text-red-600">
+        <p className="mt-2 text-sm text-rose-650 leading-relaxed">
           Resetting your organization will permanently delete all transactions (Invoices, Bills, Sales Orders, etc.), 
           contacts, items, and reset all account balances. This action cannot be undone.
         </p>
@@ -387,26 +387,27 @@ export default function GeneralSettingsPage() {
         {!showResetConfirm ? (
           <Button 
             variant="destructive" 
-            className="mt-4"
+            className="mt-4 bg-rose-650 hover:bg-rose-700 text-white font-semibold rounded-md shadow-sm"
             onClick={() => setShowResetConfirm(true)}
           >
             <Trash2 className="mr-2 h-4 w-4" />
             Reset Organization Data
           </Button>
         ) : (
-          <div className="mt-4 space-y-4 rounded-md border border-red-300 bg-white p-4">
-            <p className="text-sm font-medium text-gray-900">
-              To confirm, type <span className="font-bold text-red-600">RESET_ALL_DATA</span> below:
+          <div className="mt-4 space-y-4 rounded-lg border border-rose-350 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">
+              To confirm, type <span className="font-bold text-rose-600">RESET_ALL_DATA</span> below:
             </p>
             <Input 
               value={resetConfirmText}
               onChange={(e) => setResetConfirmText(e.target.value)}
               placeholder="Type RESET_ALL_DATA"
-              className="max-w-xs"
+              className="max-w-xs border-slate-300"
             />
             <div className="flex gap-2">
               <Button 
                 variant="destructive" 
+                className="bg-rose-650 hover:bg-rose-700 text-white font-semibold rounded-md shadow-sm"
                 onClick={handleReset}
                 disabled={resetting || resetConfirmText !== "RESET_ALL_DATA"}
               >
@@ -415,6 +416,7 @@ export default function GeneralSettingsPage() {
               </Button>
               <Button 
                 variant="outline" 
+                className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                 onClick={() => { setShowResetConfirm(false); setResetConfirmText(""); }}
                 disabled={resetting}
               >

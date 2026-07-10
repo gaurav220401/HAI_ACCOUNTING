@@ -917,21 +917,26 @@ function ReportsPageContent() {
     return (
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="bg-white">
           <PageHeader
-            breadcrumb={<span className="text-sm font-medium text-foreground">Reports Center</span>}
+            breadcrumb={
+              <span className="flex flex-col text-left">
+                <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Reports</span>
+                <span className="text-sm font-semibold text-slate-700 mt-0.5">Reports Center</span>
+              </span>
+            }
           />
 
           <div className="flex h-[calc(100vh-61px)]">
-            <div className="w-60 shrink-0 border-r bg-muted/20 overflow-y-auto">
-              <div className="p-3">
+            <div className="w-60 shrink-0 border-r border-slate-200 bg-slate-50/50 overflow-y-auto">
+              <div className="p-4">
                 <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   <Input
                     placeholder="Search reports..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 text-xs"
+                    className="pl-8 h-8 text-xs border-slate-200"
                   />
                 </div>
               </div>
@@ -945,25 +950,26 @@ function ReportsPageContent() {
 
                   if (count === 0 && cat.id !== "all") return null;
 
+                  const isActive = activeCategory === cat.id;
+
                   return (
                     <button
                       key={cat.id}
                       onClick={() => { setActiveCategory(cat.id); setSearchQuery(""); }}
                       className={cn(
-                        "flex items-center gap-2 w-full px-3 py-2 rounded-md text-xs font-medium transition-colors",
-                        "hover:bg-accent hover:text-accent-foreground",
-                        activeCategory === cat.id
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground",
+                        "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs font-medium transition-colors my-[2px]",
+                        isActive
+                          ? "bg-teal-50 text-teal-700 font-semibold"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70",
                       )}
                     >
                       <Icon className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{cat.label}</span>
                       <span className={cn(
                         "ml-auto text-[10px] rounded-full px-1.5 py-0.5 shrink-0",
-                        activeCategory === cat.id
-                          ? "bg-primary/20 text-primary"
-                          : "bg-muted text-muted-foreground",
+                        isActive
+                          ? "bg-teal-100 text-teal-700 font-semibold"
+                          : "bg-slate-100 text-slate-500",
                       )}>{count}</span>
                     </button>
                   );
@@ -971,44 +977,44 @@ function ReportsPageContent() {
               </nav>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-foreground">
+            <div className="flex-1 overflow-y-auto bg-white">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-800">
                   {REPORT_CATEGORIES.find((c) => c.id === activeCategory)?.label || "All Reports"}
-                  <span className="ml-2 text-xs text-muted-foreground font-normal bg-muted rounded-full px-2 py-0.5">
+                  <span className="ml-2 text-xs text-slate-500 font-normal bg-slate-50 border border-slate-100 rounded-full px-2 py-0.5">
                     {filteredReports.length}
                   </span>
                 </h2>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30">
-                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Report Name</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Category</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-left">Report Name</th>
+                      <th className="px-6 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-left">Category</th>
+                      <th className="px-6 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-left">Type</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100">
                     {filteredReports.map((report) => (
                       <tr
                         key={report.id}
-                        className="border-b hover:bg-accent/50 cursor-pointer transition-colors"
+                        className="border-b border-slate-100 hover:bg-teal-50/20 cursor-pointer transition-colors"
                         onClick={() => openReport(report.id)}
                       >
-                        <td className="px-4 py-3">
-                          <span className="text-primary font-medium hover:underline">{report.name}</span>
+                        <td className="px-6 py-3">
+                          <span className="text-teal-700 font-semibold hover:underline">{report.name}</span>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">
+                        <td className="px-6 py-3 text-slate-550">
                           {REPORT_CATEGORIES.find((c) => c.id === report.category)?.label || report.category}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">System Generated</td>
+                        <td className="px-6 py-3 text-slate-400">System Generated</td>
                       </tr>
                     ))}
                     {filteredReports.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="px-4 py-12 text-center text-muted-foreground text-sm">
+                        <td colSpan={3} className="px-6 py-12 text-center text-slate-400">
                           No reports found matching your criteria
                         </td>
                       </tr>
@@ -1026,24 +1032,24 @@ function ReportsPageContent() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <div className="border-b bg-background px-4 py-2.5 flex items-center gap-3 sticky top-0 z-10">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goBack}>
+      <SidebarInset className="bg-white">
+        <div className="border-b border-slate-200/70 bg-white px-4 py-2.5 flex items-center gap-3 sticky top-0 z-10">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md" onClick={goBack}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-muted-foreground">
+            <div className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">
               {REPORT_CATEGORIES.find((c) => c.id === activeReport?.category)?.label}
             </div>
-            <h1 className="text-sm font-semibold truncate">
+            <h1 className="text-sm font-semibold text-slate-700 mt-0.5 truncate">
               {activeReport?.name}
               {activeReport?.useDateRange && (
-                <span className="text-muted-foreground font-normal ml-2">
+                <span className="text-slate-400 font-normal ml-2">
                   • From {fmtDate(from)} To {fmtDate(to)}
                 </span>
               )}
               {(activeReport?.useAsOf || activeReport?.useAgingBuckets) && (
-                <span className="text-muted-foreground font-normal ml-2">
+                <span className="text-slate-400 font-normal ml-2">
                   • As of {fmtDate(asOf)}
                 </span>
               )}
@@ -1052,29 +1058,29 @@ function ReportsPageContent() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHistoryOpen(true)}>
+                <Button variant="outline" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-105 rounded-md border border-slate-200" onClick={() => setHistoryOpen(true)}>
                   <Clock3 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent sideOffset={8}>Show History</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => void loadReport({ source: "auto" })} disabled={fetching}>
+          <Button variant="outline" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-105 rounded-md border border-slate-200" onClick={() => void loadReport({ source: "auto" })} disabled={fetching}>
             <RefreshCw className={cn("h-3.5 w-3.5", fetching && "animate-spin")} />
           </Button>
         </div>
 
-        <div className="border-b bg-muted/20 px-4 py-2 flex items-center gap-2 flex-wrap">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-xs font-medium text-muted-foreground shrink-0">Filters :</span>
+        <div className="border-b border-slate-150 bg-slate-50/30 px-4 py-2 flex items-center gap-2 flex-wrap">
+          <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <span className="text-xs font-semibold text-slate-500 shrink-0">Filters :</span>
 
           {(activeReport?.useDateRange || activeReport?.useAsOf || activeReport?.useAgingBuckets) && (
-            <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5">
-              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-xs text-slate-500">
                 {activeReport?.useAsOf || activeReport?.useAgingBuckets ? "As of Date" : "Date Range"}
               </span>
-              <span className="text-xs text-muted-foreground">:</span>
+              <span className="text-xs text-slate-400">:</span>
               <Select value={datePreset} onValueChange={setDatePreset}>
                 <SelectTrigger className="h-7 w-[170px] border-0 px-1.5 text-xs shadow-none focus:ring-0">
                   <SelectValue />
@@ -1090,22 +1096,22 @@ function ReportsPageContent() {
 
           {datePreset === "custom" && activeReport?.useDateRange && (
             <>
-              <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-7 w-36 text-xs" />
-              <span className="text-xs text-muted-foreground">to</span>
-              <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-7 w-36 text-xs" />
+              <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-7 w-36 text-xs border-slate-200" />
+              <span className="text-xs text-slate-400">to</span>
+              <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-7 w-36 text-xs border-slate-200" />
             </>
           )}
 
           {(activeReport?.useAsOf || activeReport?.useAgingBuckets) && (
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground">As of:</span>
-              <Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className="h-7 w-36 text-xs" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-500">As of:</span>
+              <Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className="h-7 w-36 text-xs border-slate-200" />
             </div>
           )}
 
-          <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5">
-            <span className="text-xs text-muted-foreground">Report Basis</span>
-            <span className="text-xs text-muted-foreground">:</span>
+          <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1">
+            <span className="text-xs text-slate-500">Report Basis</span>
+            <span className="text-xs text-slate-400">:</span>
             <Select value={reportBasis} onValueChange={(value) => setReportBasis(value as ReportBasis)}>
               <SelectTrigger className="h-7 w-[120px] border-0 px-1.5 text-xs shadow-none focus:ring-0">
                 <SelectValue />
@@ -1119,22 +1125,22 @@ function ReportsPageContent() {
 
           <Popover open={moreFiltersOpen} onOpenChange={setMoreFiltersOpen}>
             <PopoverTrigger asChild>
-              <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
-                <PlusCircle className="h-3.5 w-3.5" />
+              <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 text-xs border-slate-200 text-slate-655 hover:bg-slate-50 hover:text-slate-900 rounded-md">
+                <PlusCircle className="h-3.5 w-3.5 text-slate-400" />
                 More Filters
                 {moreFiltersCount > 0 && (
-                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{moreFiltersCount}</span>
+                  <span className="rounded-full bg-teal-50 text-teal-700 border border-teal-100 px-1.5 py-0.5 text-[10px] font-semibold">{moreFiltersCount}</span>
                 )}
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-[320px] space-y-3">
-              <div className="text-sm font-medium">Additional Filters</div>
+              <div className="text-sm font-semibold text-slate-800 border-b pb-1.5">Additional Filters</div>
 
               {activeReport?.statusOptions && (
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Status</div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-slate-500">Status</div>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="h-8">
+                    <SelectTrigger className="h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1147,10 +1153,10 @@ function ReportsPageContent() {
               )}
 
               {activeReport?.partyFilter === "vendor" && (
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Vendor</div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-slate-500">Vendor</div>
                   <Select value={vendorFilter} onValueChange={setVendorFilter}>
-                    <SelectTrigger className="h-8">
+                    <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder={partyLoading ? "Loading vendors..." : "All Vendors"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -1166,10 +1172,10 @@ function ReportsPageContent() {
               )}
 
               {activeReport?.partyFilter === "customer" && (
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Customer</div>
+                <div className="space-y-1.5">
+                  <div className="text-xs text-slate-500">Customer</div>
                   <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                    <SelectTrigger className="h-8">
+                    <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder={partyLoading ? "Loading customers..." : "All Customers"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -1184,12 +1190,12 @@ function ReportsPageContent() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-8 text-xs"
+                  className="h-8 text-xs border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md"
                   onClick={() => {
                     setStatusFilter("All");
                     setVendorFilter("All");
@@ -1198,7 +1204,7 @@ function ReportsPageContent() {
                 >
                   Clear
                 </Button>
-                <Button type="button" size="sm" className="h-8 text-xs" onClick={() => setMoreFiltersOpen(false)}>
+                <Button type="button" size="sm" className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded-md font-semibold" onClick={() => setMoreFiltersOpen(false)}>
                   Done
                 </Button>
               </div>
@@ -1208,10 +1214,10 @@ function ReportsPageContent() {
           <div className="ml-auto flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                  <Download className="h-3.5 w-3.5" />
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs border-slate-200 text-slate-655 hover:bg-slate-50 hover:text-slate-900 rounded-md">
+                  <Download className="h-3.5 w-3.5 text-slate-400" />
                   Export
-                  <ChevronDown className="h-3 w-3" />
+                  <ChevronDown className="h-3 w-3 text-slate-400" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-72">
@@ -1250,14 +1256,14 @@ function ReportsPageContent() {
             </DropdownMenu>
 
             <div className="inline-flex">
-              <Button size="sm" className="h-8 rounded-r-none px-3 text-xs gap-1" onClick={() => void loadReport({ source: "manual" })} disabled={fetching}>
-                {fetching ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              <Button size="sm" className="h-8 rounded-l-md rounded-r-none px-3 text-xs gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void loadReport({ source: "manual" })} disabled={fetching}>
+                {fetching ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1 text-white" /> : null}
                 Run Report
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm" className="h-8 rounded-l-none border-l border-primary-foreground/30 px-2" disabled={fetching}>
-                    <ChevronDown className="h-3.5 w-3.5" />
+                  <Button size="sm" className="h-8 rounded-r-md rounded-l-none border-l border-teal-500/40 bg-teal-600 hover:bg-teal-700 text-white px-2" disabled={fetching}>
+                    <ChevronDown className="h-3.5 w-3.5 text-white" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -1290,10 +1296,10 @@ function ReportsPageContent() {
           </div>
         </div>
 
-        <div className="p-4 overflow-auto flex-1">
+        <div className="p-6 overflow-auto flex-1 bg-white">
           {fetching && (
             <div className="flex items-center justify-center py-20">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Loader2 className="h-6 w-6 animate-spin text-teal-650" />
             </div>
           )}
 
@@ -1323,55 +1329,55 @@ function ReportsPageContent() {
           )}
 
           {!fetching && !reportData && !trialBalance && !profitLoss && !balanceSheet && !controlRec && (
-            <div className="text-center py-20 text-muted-foreground text-sm">
-              Click <span className="font-medium text-primary">&quot;Run Report&quot;</span> to generate this report
+            <div className="text-center py-20 text-slate-400 text-sm">
+              Click <span className="font-semibold text-teal-700">&quot;Run Report&quot;</span> to generate this report
             </div>
           )}
         </div>
 
         <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
           <SheetContent side="right" className="w-full sm:max-w-md p-0">
-            <div className="flex h-full flex-col">
+            <div className="flex h-full flex-col bg-white">
               <SheetHeader className="border-b px-4 py-4">
-                <SheetTitle>Report History</SheetTitle>
-                <SheetDescription>
+                <SheetTitle className="text-slate-800">Report History</SheetTitle>
+                <SheetDescription className="text-xs text-slate-400">
                   Recent run and export activity for reports.
                 </SheetDescription>
               </SheetHeader>
 
-              <div className="flex items-center justify-between px-4 py-2 border-b">
-                <div className="text-xs text-muted-foreground">{reportHistory.length} entries</div>
-                <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={clearHistory}>
+              <div className="flex items-center justify-between px-4 py-2 border-b bg-slate-50/50">
+                <div className="text-xs text-slate-500 font-medium">{reportHistory.length} entries</div>
+                <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-slate-200 text-slate-650 hover:bg-slate-100 rounded-md" onClick={clearHistory}>
                   Clear History
                 </Button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
                 {reportHistory.length === 0 && (
-                  <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400">
                     No history yet. Run or export a report to see entries here.
                   </div>
                 )}
 
                 {reportHistory.map((entry) => (
-                  <div key={entry.id} className="rounded-lg border p-3 space-y-2">
+                  <div key={entry.id} className="rounded-xl border border-slate-150 p-4 space-y-2.5 bg-slate-50/10">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="text-sm font-medium">{entry.reportName}</div>
-                        <div className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                        <div className="text-xs font-semibold text-slate-800">{entry.reportName}</div>
+                        <div className="text-[10px] text-teal-705 uppercase tracking-wide font-semibold mt-0.5">
                           {entry.action}{entry.format ? ` - ${entry.format}` : ""}
                         </div>
                       </div>
-                      <div className="text-[11px] text-muted-foreground text-right">
-                        {new Date(entry.createdAt).toLocaleString("en-IN")}
+                      <div className="text-[10px] text-slate-400 text-right">
+                        {new Date(entry.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                       </div>
                     </div>
 
-                    <div className="text-xs text-muted-foreground">{entry.filtersText || "Default filters"}</div>
+                    <div className="text-xs text-slate-500 leading-relaxed bg-slate-50 border border-slate-100 p-2 rounded-md font-mono text-[10px]">{entry.filtersText || "Default filters"}</div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-xs text-muted-foreground">Rows: {entry.rows}</span>
-                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => applyHistoryEntry(entry)}>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 mt-2">
+                      <span className="text-[10px] text-slate-405 font-medium">Rows: {entry.rows}</span>
+                      <Button type="button" size="sm" variant="outline" className="border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-900 rounded-md font-semibold text-xs py-1 px-2.5 h-7" onClick={() => applyHistoryEntry(entry)}>
                         Load This
                       </Button>
                     </div>

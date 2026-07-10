@@ -2,14 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, CreditCard, Shield, Eye, EyeOff } from "lucide-react";
+import { Settings, CreditCard, Shield, Eye, EyeOff, Loader2, Save } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
+import SetupConfigShell from "@/components/settings/setup-config-shell";
 
-import { AppSidebar } from "@/components/app-sidebar";
-import { PageHeader } from "@/components/page-header";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,8 +83,8 @@ export default function PayUSettingsPage() {
     }
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave(e?: React.FormEvent) {
+    if (e) e.preventDefault();
     setSaving(true);
 
     try {
@@ -115,226 +113,191 @@ export default function PayUSettingsPage() {
   if (loading || orgLoading || configLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
       </div>
     );
   }
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <PageHeader
-          breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Settings <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">PayU Payment Gateway</span>
-            </span>
-          }
-          actions={
-            <Button variant="outline" size="sm" onClick={handleTestConnection}>
-              <Shield className="h-4 w-4 mr-1" />
-              Test Connection
-            </Button>
-          }
-        />
-
-        <div className="p-6 max-w-4xl">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <CreditCard className="h-6 w-6" />
-              PayU Payment Gateway
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Configure PayU to accept online payments for your invoices
-            </p>
-          </div>
-
-          <form onSubmit={handleSave} className="space-y-6">
-            {/* Basic Configuration */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Basic Configuration</CardTitle>
-                <CardDescription>
-                  Enter your PayU merchant credentials. You can get these from your PayU dashboard.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="merchantKey">Merchant Key</Label>
-                    <Input
-                      id="merchantKey"
-                      value={formData.merchantKey}
-                      onChange={(e) => setFormData(prev => ({ ...prev, merchantKey: e.target.value }))}
-                      placeholder="Enter your PayU merchant key"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="merchantSecret">Merchant Secret</Label>
-                    <div className="relative">
-                      <Input
-                        id="merchantSecret"
-                        type={showSecret ? "text" : "password"}
-                        value={formData.merchantSecret}
-                        onChange={(e) => setFormData(prev => ({ ...prev, merchantSecret: e.target.value }))}
-                        placeholder={config ? "Enter new secret to update" : "Enter your PayU merchant secret"}
-                        className="pr-10"
-                        required={!config}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowSecret(!showSecret)}
-                      >
-                        {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    {config && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Leave as "***" to keep existing secret unchanged
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="environment">Environment</Label>
-                  <Select
-                    value={formData.environment}
-                    onValueChange={(value: "test" | "production") => 
-                      setFormData(prev => ({ ...prev, environment: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select environment" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="test">Test (Sandbox)</SelectItem>
-                      <SelectItem value="production">Production (Live)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Callback URLs */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Callback URLs</CardTitle>
-                <CardDescription>
-                  URLs where PayU will redirect customers after payment completion
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="successUrl">Success URL</Label>
-                  <Input
-                    id="successUrl"
-                    value={formData.successUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, successUrl: e.target.value }))}
-                    placeholder="https://yourdomain.com/payment/success"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="failureUrl">Failure URL</Label>
-                  <Input
-                    id="failureUrl"
-                    value={formData.failureUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, failureUrl: e.target.value }))}
-                    placeholder="https://yourdomain.com/payment/failure"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cancelUrl">Cancel URL (Optional)</Label>
-                  <Input
-                    id="cancelUrl"
-                    value={formData.cancelUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, cancelUrl: e.target.value }))}
-                    placeholder="https://yourdomain.com/payment/cancel"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Status</CardTitle>
-                <CardDescription>
-                  Enable or disable PayU payments for your organization
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="isActive"
-                    checked={formData.isActive}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isActive: checked }))}
-                  />
-                  <Label htmlFor="isActive">Enable PayU Payments</Label>
-                </div>
-                <p className="text-sm text-muted-foreground mt-2">
-                  When enabled, customers will see a "Pay with PayU" button on unpaid invoices
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Actions */}
-            <div className="flex items-center gap-4">
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving..." : "Save Configuration"}
-              </Button>
-              <Button type="button" variant="outline" onClick={fetchConfig}>
-                Reset
-              </Button>
-            </div>
-          </form>
-
-          {/* Help Section */}
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Getting Started with PayU</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <h4 className="font-semibold mb-2">1. Get PayU Account</h4>
-                  <p className="text-muted-foreground">
-                    Sign up for a PayU merchant account at{" "}
-                    <a href="https://payu.in" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                      payu.in
-                    </a>
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">2. Get Credentials</h4>
-                  <p className="text-muted-foreground">
-                    Get your Merchant Key and Secret from the PayU dashboard
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">3. Configure Here</h4>
-                  <p className="text-muted-foreground">
-                    Enter your credentials and callback URLs above
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">4. Test & Go Live</h4>
-                  <p className="text-muted-foreground">
-                    Test with the sandbox environment, then switch to production
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+    <SetupConfigShell
+      title="PayU Integration"
+      subtitle="Configure PayU to accept online payments for your invoices."
+      actions={(
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={handleTestConnection} className="border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-900 rounded-md font-medium text-xs py-1 px-3 h-8 gap-1.5">
+            <Shield className="h-3.5 w-3.5" />
+            <span>Test Connection</span>
+          </Button>
+          <Button onClick={() => void handleSave()} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5 h-8 text-xs py-1 px-3">
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            <span>Save Configuration</span>
+          </Button>
         </div>
-      </SidebarInset>
-    </SidebarProvider>
+      )}
+    >
+      <div className="space-y-6 max-w-3xl">
+        <form onSubmit={handleSave} className="space-y-6">
+          {/* Basic Configuration */}
+          <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-4">
+            <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-2">Basic Configuration</h2>
+            <p className="text-xs text-slate-500 mb-4">
+              Enter your PayU merchant credentials. You can get these from your PayU dashboard.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Merchant Key</Label>
+                <Input
+                  id="merchantKey"
+                  value={formData.merchantKey}
+                  onChange={(e) => setFormData(prev => ({ ...prev, merchantKey: e.target.value }))}
+                  placeholder="Enter your PayU merchant key"
+                  required
+                  className="h-9 text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Merchant Secret</Label>
+                <div className="relative">
+                  <Input
+                    id="merchantSecret"
+                    type={showSecret ? "text" : "password"}
+                    value={formData.merchantSecret}
+                    onChange={(e) => setFormData(prev => ({ ...prev, merchantSecret: e.target.value }))}
+                    placeholder={config ? "Enter new secret to update" : "Enter your PayU merchant secret"}
+                    className="pr-10 h-9 text-xs"
+                    required={!config}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-slate-400 hover:text-slate-650"
+                    onClick={() => setShowSecret(!showSecret)}
+                  >
+                    {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {config && (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Leave as "***" to keep existing secret unchanged
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <Label className="text-xs">Environment</Label>
+              <Select
+                value={formData.environment}
+                onValueChange={(value: "test" | "production") => 
+                  setFormData(prev => ({ ...prev, environment: value }))
+                }
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select environment" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="test">Test (Sandbox)</SelectItem>
+                  <SelectItem value="production">Production (Live)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </section>
+
+          {/* Callback URLs */}
+          <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-4">
+            <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-2">Callback URLs</h2>
+            <p className="text-xs text-slate-500 mb-4">
+              URLs where PayU will redirect customers after payment completion
+            </p>
+            <div className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Success URL</Label>
+                <Input
+                  id="successUrl"
+                  value={formData.successUrl}
+                  onChange={(e) => setFormData(prev => ({ ...prev, successUrl: e.target.value }))}
+                  placeholder="https://yourdomain.com/payment/success"
+                  required
+                  className="h-9 text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Failure URL</Label>
+                <Input
+                  id="failureUrl"
+                  value={formData.failureUrl}
+                  onChange={(e) => setFormData(prev => ({ ...prev, failureUrl: e.target.value }))}
+                  placeholder="https://yourdomain.com/payment/failure"
+                  required
+                  className="h-9 text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Cancel URL (Optional)</Label>
+                <Input
+                  id="cancelUrl"
+                  value={formData.cancelUrl}
+                  onChange={(e) => setFormData(prev => ({ ...prev, cancelUrl: e.target.value }))}
+                  placeholder="https://yourdomain.com/payment/cancel"
+                  className="h-9 text-xs"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Status */}
+          <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-4">
+            <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-2">Status</h2>
+            <div className="flex items-center space-x-3 pt-1">
+              <Switch
+                id="isActive"
+                checked={formData.isActive}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isActive: checked }))}
+                className="data-[state=checked]:bg-teal-600"
+              />
+              <Label htmlFor="isActive" className="text-xs font-semibold text-slate-800 cursor-pointer">Enable PayU Payments</Label>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-lg mt-2">
+              When enabled, customers will see a "Pay with PayU" button on unpaid invoices.
+            </p>
+          </section>
+        </form>
+
+        {/* Help Section */}
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-4">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-2">Getting Started with PayU</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-650 leading-relaxed">
+            <div className="border border-slate-100 p-4 rounded-lg bg-slate-50/50">
+              <h4 className="font-semibold text-slate-800 mb-1">1. Get PayU Account</h4>
+              <p>
+                Sign up for a PayU merchant account at{" "}
+                <a href="https://payu.in" target="_blank" rel="noopener noreferrer" className="text-teal-700 hover:text-teal-900 font-semibold underline">
+                  payu.in
+                </a>
+              </p>
+            </div>
+            <div className="border border-slate-100 p-4 rounded-lg bg-slate-50/50">
+              <h4 className="font-semibold text-slate-800 mb-1">2. Get Credentials</h4>
+              <p>
+                Get your Merchant Key and Secret from the PayU dashboard integration settings.
+              </p>
+            </div>
+            <div className="border border-slate-100 p-4 rounded-lg bg-slate-50/50">
+              <h4 className="font-semibold text-slate-800 mb-1">3. Configure Here</h4>
+              <p>
+                Enter your credentials and callback URLs above, then click Save Configuration.
+              </p>
+            </div>
+            <div className="border border-slate-100 p-4 rounded-lg bg-slate-50/50">
+              <h4 className="font-semibold text-slate-800 mb-1">4. Test & Go Live</h4>
+              <p>
+                Test with the sandbox environment, then switch the environment toggle to Production (Live) to start collecting payments.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </SetupConfigShell>
   );
 }
