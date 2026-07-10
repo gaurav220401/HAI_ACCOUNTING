@@ -18,12 +18,13 @@ import { Info, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { journalApi } from "@/lib/api/journals";
 import { accountApi } from "@/lib/api/accounts";
+import { contactApi } from "@/lib/api/contacts";
 import * as XLSX from "xlsx";
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialModule?: "journals" | "accounts";
+  initialModule?: "journals" | "accounts" | "customers" | "vendors";
 }
 
 function formatDecimal(val: number, format: string): string {
@@ -66,7 +67,7 @@ function validatePassword(pw: string): boolean {
 }
 
 export function ExportDialog({ open, onOpenChange, initialModule = "journals" }: ExportDialogProps) {
-  const [module, setModule] = useState<"journals" | "accounts">(initialModule);
+  const [module, setModule] = useState<"journals" | "accounts" | "customers" | "vendors">(initialModule);
   const [period, setPeriod] = useState<"all" | "specific">("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -118,10 +119,15 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
           blob = template === "blank"
             ? await journalApi.downloadBlankTemplate(format)
             : await journalApi.downloadSampleTemplate(format);
-        } else {
+        } else if (module === "accounts") {
           blob = template === "blank"
             ? await accountApi.downloadBlankTemplate(format)
             : await accountApi.downloadSampleTemplate(format);
+        } else {
+          const type = module === "customers" ? "customer" : "vendor";
+          blob = template === "blank"
+            ? await contactApi.downloadBlankTemplate(format, type)
+            : await contactApi.downloadSampleTemplate(format, type);
         }
         const ext = format === "excel" ? "xlsx" : "csv";
         const filename = `${template}_${module}_template.${ext}`;
@@ -141,12 +147,25 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
         }
         const res = await journalApi.list(params);
         dataToExport = res.data || [];
-      } else {
+      } else if (module === "accounts") {
         const res = await accountApi.list();
         let list = res.data || [];
         if (period === "specific") {
           list = list.filter((a: any) => {
             const createdDate = a.createdAt ? a.createdAt.split("T")[0] : "";
+            if (startDate && createdDate < startDate) return false;
+            if (endDate && createdDate > endDate) return false;
+            return true;
+          });
+        }
+        dataToExport = list;
+      } else {
+        const contactType = module === "customers" ? "Customer" : "Vendor";
+        const res = await contactApi.list({ type: contactType, limit: 25000, page: 1 });
+        let list = res.data || [];
+        if (period === "specific") {
+          list = list.filter((c: any) => {
+            const createdDate = c.createdAt ? c.createdAt.split("T")[0] : "";
             if (startDate && createdDate < startDate) return false;
             if (endDate && createdDate > endDate) return false;
             return true;
@@ -281,7 +300,7 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
             }
           });
         }
-      } else {
+      } else if (module === "accounts") {
         // Accounts
         const accountMap = new Map(dataToExport.map(a => [a._id, a]));
         if (template === "standard") {
@@ -380,6 +399,149 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
             };
           });
         }
+      } else {
+        const isCustomer = module === "customers";
+        if (template === "standard") {
+          headers = [
+            "Contact ID",
+            "Display Name",
+            "Company Name",
+            "Email",
+            "Phone",
+            "Mobile",
+            "GST Treatment",
+            "GSTIN",
+            "PAN",
+            "Currency",
+            "Opening Balance",
+            "Outstanding Balance",
+            "Status",
+            "Created At",
+            "Updated At"
+          ];
+          rows = dataToExport.map((c: any) => {
+            const outstanding = isCustomer ? Number(c.outstandingReceivable || 0) : Number(c.outstandingPayable || 0);
+            const openingBalFormatted = formatDecimal(Number(c.openingBalance || 0), decimalFormat);
+            const outstandingFormatted = formatDecimal(outstanding, decimalFormat);
+            const emailVal = c.email || "";
+            const phoneVal = c.phone || "";
+            const mobileVal = c.mobile || "";
+            const panVal = c.pan || "";
+            const gstinVal = c.gstin || "";
+            
+            const maskedEmail = includePii ? emailVal : (emailVal ? "[MASKED]" : "");
+            const maskedPhone = includePii ? phoneVal : (phoneVal ? "[MASKED]" : "");
+            const maskedMobile = includePii ? mobileVal : (mobileVal ? "[MASKED]" : "");
+            const maskedPan = includePii ? panVal : (panVal ? "[MASKED]" : "");
+            const maskedGstin = includePii ? gstinVal : (gstinVal ? "[MASKED]" : "");
+
+            return {
+              "Contact ID": c._id || "",
+              "Display Name": c.displayName || "",
+              "Company Name": c.companyName || "",
+              "Email": maskedEmail,
+              "Phone": maskedPhone,
+              "Mobile": maskedMobile,
+              "GST Treatment": c.taxTreatment || "",
+              "GSTIN": maskedGstin,
+              "PAN": maskedPan,
+              "Currency": c.currency || "INR",
+              "Opening Balance": openingBalFormatted,
+              "Outstanding Balance": outstandingFormatted,
+              "Status": c.isActive !== false ? "Active" : "Inactive",
+              "Created At": c.createdAt || "",
+              "Updated At": c.updatedAt || ""
+            };
+          });
+        } else {
+          headers = [
+            "Contact ID",
+            "Display Name",
+            "Company Name",
+            "Email",
+            "Phone",
+            "Mobile",
+            "GST Treatment",
+            "GSTIN",
+            "PAN",
+            "Currency",
+            "Opening Balance",
+            "Outstanding Balance",
+            "Status",
+            "Created At",
+            "Updated At",
+            "Billing Attention",
+            "Billing Street",
+            "Billing Street 2",
+            "Billing City",
+            "Billing State",
+            "Billing Zip",
+            "Billing Country",
+            "Billing Phone",
+            "Billing Fax",
+            "Shipping Attention",
+            "Shipping Street",
+            "Shipping Street 2",
+            "Shipping City",
+            "Shipping State",
+            "Shipping Zip",
+            "Shipping Country",
+            "Shipping Phone",
+            "Shipping Fax"
+          ];
+          rows = dataToExport.map((c: any) => {
+            const outstanding = isCustomer ? Number(c.outstandingReceivable || 0) : Number(c.outstandingPayable || 0);
+            const openingBalFormatted = formatDecimal(Number(c.openingBalance || 0), decimalFormat);
+            const outstandingFormatted = formatDecimal(outstanding, decimalFormat);
+            const emailVal = c.email || "";
+            const phoneVal = c.phone || "";
+            const mobileVal = c.mobile || "";
+            const panVal = c.pan || "";
+            const gstinVal = c.gstin || "";
+            
+            const maskedEmail = includePii ? emailVal : (emailVal ? "[MASKED]" : "");
+            const maskedPhone = includePii ? phoneVal : (phoneVal ? "[MASKED]" : "");
+            const maskedMobile = includePii ? mobileVal : (mobileVal ? "[MASKED]" : "");
+            const maskedPan = includePii ? panVal : (panVal ? "[MASKED]" : "");
+            const maskedGstin = includePii ? gstinVal : (gstinVal ? "[MASKED]" : "");
+
+            return {
+              "Contact ID": c._id || "",
+              "Display Name": c.displayName || "",
+              "Company Name": c.companyName || "",
+              "Email": maskedEmail,
+              "Phone": maskedPhone,
+              "Mobile": maskedMobile,
+              "GST Treatment": c.taxTreatment || "",
+              "GSTIN": maskedGstin,
+              "PAN": maskedPan,
+              "Currency": c.currency || "INR",
+              "Opening Balance": openingBalFormatted,
+              "Outstanding Balance": outstandingFormatted,
+              "Status": c.isActive !== false ? "Active" : "Inactive",
+              "Created At": c.createdAt || "",
+              "Updated At": c.updatedAt || "",
+              "Billing Attention": c.billingAddress?.attention || "",
+              "Billing Street": c.billingAddress?.street || "",
+              "Billing Street 2": c.billingAddress?.street2 || "",
+              "Billing City": c.billingAddress?.city || "",
+              "Billing State": c.billingAddress?.state || "",
+              "Billing Zip": c.billingAddress?.zip || "",
+              "Billing Country": c.billingAddress?.country || "",
+              "Billing Phone": c.billingAddress?.phone || "",
+              "Billing Fax": c.billingAddress?.fax || "",
+              "Shipping Attention": c.shippingAddress?.attention || "",
+              "Shipping Street": c.shippingAddress?.street || "",
+              "Shipping Street 2": c.shippingAddress?.street2 || "",
+              "Shipping City": c.shippingAddress?.city || "",
+              "Shipping State": c.shippingAddress?.state || "",
+              "Shipping Zip": c.shippingAddress?.zip || "",
+              "Shipping Country": c.shippingAddress?.country || "",
+              "Shipping Phone": c.shippingAddress?.phone || "",
+              "Shipping Fax": c.shippingAddress?.fax || ""
+            };
+          });
+        }
       }
 
       // 4. File generation and download
@@ -401,7 +563,17 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
       } else {
         const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, module === "journals" ? "Journals" : "Accounts");
+        XLSX.utils.book_append_sheet(
+          workbook,
+          worksheet,
+          module === "journals"
+            ? "Journals"
+            : module === "accounts"
+            ? "Accounts"
+            : module === "customers"
+            ? "Customers"
+            : "Vendors"
+        );
 
         if (password) {
           worksheet["!protect"] = {
@@ -433,14 +605,16 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-100 flex flex-col gap-5">
         <DialogHeader className="border-b pb-4 flex items-center justify-between">
-          <DialogTitle className="text-xl font-bold text-slate-800">Export Items</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-slate-800">
+            Export {module === "journals" ? "Journal Entries" : module === "accounts" ? "Chart of Accounts" : module === "customers" ? "Customers" : "Vendors"}
+          </DialogTitle>
         </DialogHeader>
 
         {/* Info Banner */}
         <div className="flex gap-3 bg-blue-50/70 border border-blue-100 p-4 rounded-lg text-sm text-slate-700 leading-relaxed shadow-inner">
           <Info className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
           <p>
-            You can export your data from Zoho Accountant in <span className="font-semibold text-blue-900">CSV, XLS or XLSX</span> format.
+            You can export your data in <span className="font-semibold text-blue-900">CSV, XLS or XLSX</span> format.
           </p>
         </div>
 
@@ -456,6 +630,8 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
               <SelectContent className="bg-white border border-slate-200 shadow-lg">
                 <SelectItem value="journals">Journal Entries</SelectItem>
                 <SelectItem value="accounts">Chart of Accounts</SelectItem>
+                <SelectItem value="customers">Customers</SelectItem>
+                <SelectItem value="vendors">Vendors</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -466,7 +642,7 @@ export function ExportDialog({ open, onOpenChange, initialModule = "journals" }:
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="all" id="all-period" className="text-blue-600 border-slate-300 focus:ring-blue-500" />
                 <Label htmlFor="all-period" className="text-sm font-medium text-slate-700 cursor-pointer">
-                  All {module === "journals" ? "Journals" : "Accounts"}
+                  All {module === "journals" ? "Journals" : module === "accounts" ? "Accounts" : module === "customers" ? "Customers" : "Vendors"}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
