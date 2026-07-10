@@ -139,6 +139,7 @@ const navItems: NavItem[] = [
       { title: "Vendor Credits", url: "/purchases/vendor-credits", icon: Undo2 },
     ],
   },
+  /*
   {
     title: "Time Tracking",
     url: "/time-tracking",
@@ -148,6 +149,7 @@ const navItems: NavItem[] = [
       { title: "Timesheet", url: "/time-tracking/timesheet", icon: Calendar },
     ],
   },
+  */
   {
     title: "Banking",
     url: "/banking",
