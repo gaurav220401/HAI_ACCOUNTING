@@ -785,15 +785,18 @@ function NewFixedAssetPageContent() {
     return (
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="bg-white">
           <PageHeader
             breadcrumb={
-              <span className="font-medium">Accountant / Fixed Assets</span>
+              <span className="flex flex-col text-left">
+                <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+                <span className="text-sm font-semibold text-slate-700 mt-0.5">Fixed Assets</span>
+              </span>
             }
           />
           <main className="p-6">
-            <div className="h-[60vh] flex items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading form...
+            <div className="h-[60vh] flex items-center justify-center text-sm text-slate-500 bg-white">
+              <Loader2 className="h-5 w-5 animate-spin mr-2 text-teal-600" /> Loading form...
             </div>
           </main>
         </SidebarInset>
@@ -806,20 +809,19 @@ function NewFixedAssetPageContent() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-white">
         <PageHeader
           breadcrumb={
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex flex-col text-left">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant / Fixed Assets</span>
               <button
                 type="button"
                 onClick={() => router.push("/accountant/fixed-assets")}
-                className="text-primary hover:underline inline-flex items-center"
+                className="text-sm font-bold text-slate-800 leading-none mt-0.5 hover:text-teal-700 flex items-center"
               >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Fixed Assets
+                <ChevronLeft className="h-4 w-4 mr-0.5 -ml-1 text-slate-500" />
+                {formTitle}
               </button>
-              <span className="text-muted-foreground">/</span>
-              <span className="font-medium">{formTitle}</span>
             </div>
           }
         />
@@ -1329,7 +1331,7 @@ function NewFixedAssetPageContent() {
               <button
                 type="button"
                 onClick={handlePreview}
-                className="text-sm text-primary hover:underline font-semibold"
+                className="text-sm text-teal-700 hover:text-teal-800 hover:underline font-semibold"
               >
                 Preview Depreciation Entries
               </button>
@@ -1337,12 +1339,13 @@ function NewFixedAssetPageContent() {
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
+                  className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                   onClick={() => router.push("/accountant/fixed-assets")}
                   disabled={saving}
                 >
                   Cancel
                 </Button>
-                <Button onClick={handleSaveDraft} disabled={saving}>
+                <Button onClick={handleSaveDraft} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm">
                   {saving ?
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   : null}
@@ -1357,7 +1360,7 @@ function NewFixedAssetPageContent() {
           <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-xl font-semibold flex items-center gap-2">
-                <span className="p-1.5 rounded-md bg-primary/10 text-primary">
+                <span className="p-1.5 rounded-md bg-teal-50 text-teal-700">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calendar-range"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>
                 </span>
                 Depreciation Schedule Preview
@@ -1429,7 +1432,7 @@ function NewFixedAssetPageContent() {
             )}
 
             <div className="flex justify-end gap-2 border-t pt-4">
-              <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+              <Button variant="outline" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={() => setPreviewOpen(false)}>
                 Close Preview
               </Button>
             </div>

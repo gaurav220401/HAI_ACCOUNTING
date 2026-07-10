@@ -153,11 +153,11 @@ export default function InventoryAdjustmentsPage() {
       title="Inventory Adjustments"
       actions={(
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={loadData} disabled={fetching}>
-          <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
-        </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md" onClick={loadData} disabled={fetching}>
+            <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+          </Button>
           <Link href="/batch-import?section=inventory&type=Inventory Adjustments&back=/inventory/adjustments">
-            <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+            <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
               <FileUp className="h-3.5 w-3.5" /> Batch Import
             </Button>
           </Link>
@@ -300,7 +300,7 @@ export default function InventoryAdjustmentsPage() {
             </div>
 
             <div className="mt-4 flex justify-end">
-              <Button onClick={handleSubmit} disabled={saving || fetching}>
+              <Button onClick={handleSubmit} disabled={saving || fetching} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 <span className="ml-2">Post Adjustment</span>
               </Button>
@@ -321,47 +321,47 @@ export default function InventoryAdjustmentsPage() {
             ) : (
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-3 py-2">Date</th>
-                      <th className="px-3 py-2">Item</th>
-                      <th className="px-3 py-2">Reason</th>
-                      <th className="px-3 py-2 text-right">Qty Delta</th>
-                      <th className="px-3 py-2 text-right">Value Delta</th>
-                      <th className="px-3 py-2 text-right">Result Stock</th>
-                      <th className="px-3 py-2">Warehouse</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left">Date</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left">Item</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left">Reason</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Qty Delta</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Value Delta</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Result Stock</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left">Warehouse</th>
                     </tr>
                   </thead>
                   <tbody>
                     {adjustments.length === 0 && (
                       <tr>
-                        <td className="px-3 py-4 text-muted-foreground" colSpan={7}>
+                        <td className="px-4 py-4 text-muted-foreground" colSpan={7}>
                           No inventory adjustments yet.
                         </td>
                       </tr>
                     )}
                     {adjustments.map((row) => (
-                      <tr key={row._id} className="border-t">
-                        <td className="px-3 py-2">{new Date(row.adjustedAt).toLocaleDateString("en-IN")}</td>
-                        <td className="px-3 py-2 font-medium">{itemName(row)}</td>
-                        <td className="px-3 py-2">{row.reason}</td>
+                      <tr key={row._id} className="border-t border-slate-100 hover:bg-teal-50/30 transition-colors">
+                        <td className="px-4 py-2">{new Date(row.adjustedAt).toLocaleDateString("en-IN")}</td>
+                        <td className="px-4 py-2 font-medium text-slate-700">{itemName(row)}</td>
+                        <td className="px-4 py-2 text-slate-600">{row.reason}</td>
                         <td
-                          className={`px-3 py-2 text-right tabular-nums ${
+                          className={`px-4 py-2 text-right tabular-nums font-semibold ${
                             row.quantityDelta >= 0 ? "text-emerald-700" : "text-rose-700"
                           }`}
                         >
                           {row.quantityDelta >= 0 ? "+" : ""}
                           {Number(row.quantityDelta || 0).toLocaleString("en-IN")}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
+                        <td className="px-4 py-2 text-right tabular-nums text-slate-600">
                           {Number(row.valueDelta || 0).toLocaleString("en-IN", {
                             minimumFractionDigits: 2,
                           })}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
+                        <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-700">
                           {Number(row.resultingStockOnHand || 0).toLocaleString("en-IN")}
                         </td>
-                        <td className="px-3 py-2">{warehouseName(row)}</td>
+                        <td className="px-4 py-2 text-slate-600">{warehouseName(row)}</td>
                       </tr>
                     ))}
                   </tbody>

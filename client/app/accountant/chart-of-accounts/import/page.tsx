@@ -407,11 +407,11 @@ export default function ChartOfAccountsImportPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-white flex flex-col font-sans">
       {/* Top Header */}
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <FileSpreadsheet className="h-5 w-5 text-blue-600" />
+          <FileSpreadsheet className="h-5 w-5 text-teal-600" />
           <h1 className="text-lg font-semibold text-slate-800">
             {step === 1 ? "Chart of Accounts - Select File" : step === 2 ? "Chart of Accounts - Map Fields" : "Chart of Accounts - Preview"}
           </h1>
@@ -428,24 +428,24 @@ export default function ChartOfAccountsImportPage() {
       <div className="bg-white border-b px-6 py-3 flex justify-center">
         <div className="flex items-center gap-12 max-w-2xl w-full justify-between">
           <div className="flex items-center gap-2">
-            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 1 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 1 ? "bg-teal-600 text-white" : "bg-slate-200 text-slate-600"}`}>
               {step > 1 ? <Check className="h-3.5 w-3.5" /> : "1"}
             </div>
-            <span className={`text-sm font-medium ${step >= 1 ? "text-slate-900" : "text-slate-500"}`}>Configure</span>
+            <span className={`text-sm font-semibold ${step >= 1 ? "text-slate-900" : "text-slate-500"}`}>Configure</span>
           </div>
           <div className="h-px bg-slate-200 flex-1" />
           <div className="flex items-center gap-2">
-            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 2 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step >= 2 ? "bg-teal-600 text-white" : "bg-slate-200 text-slate-600"}`}>
               {step > 2 ? <Check className="h-3.5 w-3.5" /> : "2"}
             </div>
-            <span className={`text-sm font-medium ${step >= 2 ? "text-slate-900" : "text-slate-500"}`}>Map Fields</span>
+            <span className={`text-sm font-semibold ${step >= 2 ? "text-slate-900" : "text-slate-500"}`}>Map Fields</span>
           </div>
           <div className="h-px bg-slate-200 flex-1" />
           <div className="flex items-center gap-2">
-            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step === 3 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${step === 3 ? "bg-teal-600 text-white" : "bg-slate-200 text-slate-600"}`}>
               3
             </div>
-            <span className={`text-sm font-medium ${step === 3 ? "text-slate-900" : "text-slate-500"}`}>Preview</span>
+            <span className={`text-sm font-semibold ${step === 3 ? "text-slate-900" : "text-slate-500"}`}>Preview</span>
           </div>
         </div>
       </div>
@@ -461,8 +461,8 @@ export default function ChartOfAccountsImportPage() {
               onDragLeave={handleDrag}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all ${
-                isDragActive ? "border-blue-500 bg-blue-50/50" : "border-slate-300 bg-white hover:border-slate-400"
+              className={`border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all bg-white ${
+                isDragActive ? "border-teal-500 bg-teal-50/50" : "border-slate-200 bg-white hover:border-slate-350"
               }`}
             >
               <input
@@ -472,18 +472,18 @@ export default function ChartOfAccountsImportPage() {
                 accept=".csv,.xls,.xlsx"
                 onChange={handleFileChange}
               />
-              <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+              <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-500">
                 <Upload className="h-6 w-6" />
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-slate-800">
+                <p className="text-sm font-semibold text-slate-800">
                   {selectedFile ? selectedFile.name : "Drag and drop file to import"}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-slate-400 mt-1">
                   Maximum File Size: 25 MB • File Format: CSV or Excel
                 </p>
               </div>
-              <Button type="button" variant="outline" size="sm" className="bg-white border-slate-300 text-slate-700 hover:text-slate-900">
+              <Button type="button" variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                 Choose File
               </Button>
             </div>
@@ -491,19 +491,19 @@ export default function ChartOfAccountsImportPage() {
             {/* Templates download links */}
             <p className="text-xs text-slate-500">
               Download a sample file ({" "}
-              <button onClick={() => handleDownloadSample("csv")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadSample("csv")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 CSV
               </button>{" "}
               •{" "}
-              <button onClick={() => handleDownloadSample("excel")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadSample("excel")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 Excel
               </button>{" "}
               ) or a blank template ({" "}
-              <button onClick={() => handleDownloadBlank("csv")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadBlank("csv")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 CSV
               </button>{" "}
               •{" "}
-              <button onClick={() => handleDownloadBlank("excel")} className="text-blue-600 hover:underline font-semibold">
+              <button onClick={() => handleDownloadBlank("excel")} className="text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                 Excel
               </button>{" "}
               ) to verify columns format.
@@ -542,13 +542,13 @@ export default function ChartOfAccountsImportPage() {
 
             {/* Bottom Actions */}
             <div className="flex items-center gap-3 pt-4 border-t">
-              <Button onClick={handleNextFromStep1} disabled={!selectedFile} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Button onClick={handleNextFromStep1} disabled={!selectedFile} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm">
                 Next
               </Button>
               <Button
                 variant="outline"
                 onClick={() => router.push("/accountant/chart-of-accounts")}
-                className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white"
+                className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
               >
                 Cancel
               </Button>
@@ -645,7 +645,7 @@ export default function ChartOfAccountsImportPage() {
                   id="save-mapping"
                   checked={saveMapping}
                   onChange={(e) => setSaveMapping(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                 />
                 <Label htmlFor="save-mapping" className="text-xs text-slate-600 cursor-pointer">
                   Save these selections for use during future imports
@@ -658,7 +658,7 @@ export default function ChartOfAccountsImportPage() {
               <Button
                 onClick={handleNextFromStep2}
                 disabled={isImporting}
-                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5"
               >
                 {isImporting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Next
@@ -667,7 +667,7 @@ export default function ChartOfAccountsImportPage() {
                 variant="outline"
                 onClick={() => setStep(1)}
                 disabled={isImporting}
-                className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white"
+                className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
               >
                 Back
               </Button>
@@ -736,7 +736,7 @@ export default function ChartOfAccountsImportPage() {
                     {readyItems.length > 0 && (
                       <button
                         onClick={() => setShowReadyDetails(!showReadyDetails)}
-                        className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                        className="text-xs text-teal-700 font-semibold hover:text-teal-805 hover:underline flex items-center gap-1"
                       >
                         {showReadyDetails ? "Hide Details" : "View Details"}
                       </button>
@@ -765,7 +765,7 @@ export default function ChartOfAccountsImportPage() {
                               <TableCell className="text-xs py-2 text-right tabular-nums">{fmtCurrency(item.openingBalance || 0)}</TableCell>
                               <TableCell className="text-xs py-2">
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                  item.status === "Ready" ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"
+                                  item.status === "Ready" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-teal-50 text-teal-700 border border-teal-100"
                                 }`}>
                                   {item.status}
                                 </span>
@@ -777,7 +777,7 @@ export default function ChartOfAccountsImportPage() {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleUndoOverrideRow(item.rowNumber)}
-                                    className="h-7 px-2 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    className="h-7 px-2 text-[10px] text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-md"
                                   >
                                     Undo
                                   </Button>
@@ -802,7 +802,7 @@ export default function ChartOfAccountsImportPage() {
                       {skippedItems.length > 0 && (
                         <button
                           onClick={downloadSkippedRows}
-                          className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                          className="text-xs text-teal-700 font-semibold hover:text-teal-800 hover:underline flex items-center gap-1"
                         >
                           Download skipped rows
                         </button>
@@ -810,7 +810,7 @@ export default function ChartOfAccountsImportPage() {
                       {skippedItems.length > 0 && (
                         <button
                           onClick={() => setShowSkippedDetails(!showSkippedDetails)}
-                          className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                          className="text-xs text-teal-700 font-semibold hover:text-teal-805 hover:underline flex items-center gap-1"
                         >
                           {showSkippedDetails ? "Hide Details" : "View Details"}
                         </button>
@@ -844,7 +844,7 @@ export default function ChartOfAccountsImportPage() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => handleOverrideRow(item.rowNumber)}
-                                    className="h-7 px-2 text-[10px] bg-white border-blue-200 text-blue-600 hover:bg-blue-50"
+                                    className="h-7 px-2 text-[10px] bg-white border-teal-200 text-teal-700 hover:bg-teal-50 hover:text-teal-805 rounded-md font-semibold"
                                   >
                                     Overwrite
                                   </Button>
@@ -868,7 +868,7 @@ export default function ChartOfAccountsImportPage() {
                     {unmappedHeaders.length > 0 && (
                       <button
                         onClick={() => setShowUnmappedDetails(!showUnmappedDetails)}
-                        className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1"
+                        className="text-xs text-teal-700 font-semibold hover:text-teal-805 hover:underline flex items-center gap-1"
                       >
                         {showUnmappedDetails ? "Hide Details" : "View Details"}
                       </button>
@@ -886,7 +886,7 @@ export default function ChartOfAccountsImportPage() {
                         ))}
                       </ul>
                       
-                      <div className="bg-blue-50/50 border border-blue-100 rounded-md p-3 text-xs text-blue-800 mt-4">
+                      <div className="bg-teal-50/50 border border-teal-100 rounded-md p-3 text-xs text-teal-800 mt-4">
                         Click the Previous button if you want to match the above column header(s) or click the Import button to continue with the import.
                       </div>
                     </div>
@@ -900,7 +900,7 @@ export default function ChartOfAccountsImportPage() {
                       <span>{importProgress}%</span>
                     </div>
                     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div className="bg-blue-600 h-full transition-all duration-150" style={{ width: `${importProgress}%` }} />
+                      <div className="bg-teal-600 h-full transition-all duration-150" style={{ width: `${importProgress}%` }} />
                     </div>
                   </div>
                 )}
@@ -911,7 +911,7 @@ export default function ChartOfAccountsImportPage() {
                 <Button
                   onClick={handleConfirmImport}
                   disabled={isImporting || readyItems.length === 0}
-                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5"
                 >
                   {isImporting && <Loader2 className="h-4 w-4 animate-spin" />}
                   <span>Import Accounts ({readyItems.length})</span>
@@ -920,7 +920,7 @@ export default function ChartOfAccountsImportPage() {
                   variant="outline"
                   onClick={() => setStep(2)}
                   disabled={isImporting}
-                  className="border-slate-300 text-slate-700 hover:text-slate-900 bg-white"
+                  className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                 >
                   Back
                 </Button>

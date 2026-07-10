@@ -75,12 +75,48 @@ export default function MoveOrderDetailsPage() {
 
   const getStatusBadge = (status: MoveOrderStatus) => {
     switch (status) {
-      case "Draft": return <Badge variant="secondary" className="px-3 py-1">{status}</Badge>;
-      case "Sent": return <Badge variant="outline" className="px-3 py-1 border-blue-500 text-blue-600">{status}</Badge>;
-      case "In Transit": return <Badge variant="outline" className="px-3 py-1 border-orange-500 text-orange-600">{status}</Badge>;
-      case "Received": return <Badge variant="success" className="px-3 py-1">{status}</Badge>;
-      case "Cancelled": return <Badge variant="destructive" className="px-3 py-1">{status}</Badge>;
-      default: return <Badge className="px-3 py-1">{status}</Badge>;
+      case "Draft": 
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+            <span className="h-1 w-1 rounded-full bg-slate-400" />
+            {status}
+          </span>
+        );
+      case "Sent": 
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+            <span className="h-1 w-1 rounded-full bg-amber-500" />
+            Pending
+          </span>
+        );
+      case "In Transit": 
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
+            <span className="h-1 w-1 rounded-full bg-purple-500" />
+            In Transit
+          </span>
+        );
+      case "Received": 
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+            <span className="h-1 w-1 rounded-full bg-emerald-500" />
+            Received
+          </span>
+        );
+      case "Cancelled": 
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
+            <span className="h-1 w-1 rounded-full bg-rose-500" />
+            Cancelled
+          </span>
+        );
+      default: 
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+            <span className="h-1 w-1 rounded-full bg-slate-400" />
+            {status}
+          </span>
+        );
     }
   };
 
@@ -117,10 +153,10 @@ export default function MoveOrderDetailsPage() {
       title={order.orderNumber}
       actions={(
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push("/inventory/move-orders")}>
+          <Button variant="outline" size="sm" className="h-8 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={() => router.push("/inventory/move-orders")}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
-          <Button variant="outline" size="sm" onClick={fetchOrder} disabled={updating}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md" onClick={fetchOrder} disabled={updating}>
             <RefreshCw className={`h-4 w-4 ${updating ? "animate-spin" : ""}`} />
           </Button>
         </div>
@@ -139,30 +175,30 @@ export default function MoveOrderDetailsPage() {
             </div>
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground uppercase font-semibold">Source</div>
-              <div className="font-medium text-blue-600">{getWarehouseName(order.fromWarehouseId)}</div>
+              <div className="font-medium text-teal-700">{getWarehouseName(order.fromWarehouseId)}</div>
             </div>
             <div className="space-y-1 text-center">
                 <ArrowRightLeft className="h-4 w-4 text-muted-foreground mt-4" />
             </div>
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground uppercase font-semibold">Destination</div>
-              <div className="font-medium text-emerald-600">{getWarehouseName(order.toWarehouseId)}</div>
+              <div className="font-medium text-emerald-700">{getWarehouseName(order.toWarehouseId)}</div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {order.status === "Draft" && (
-              <Button size="sm" onClick={() => handleStatusUpdate("Sent")} disabled={updating}>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleStatusUpdate("Sent")} disabled={updating}>
                 <Truck className="h-4 w-4 mr-2" /> Mark as Sent
               </Button>
             )}
             {order.status === "Sent" && (
-              <Button size="sm" onClick={() => handleStatusUpdate("In Transit")} disabled={updating}>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleStatusUpdate("In Transit")} disabled={updating}>
                 <Truck className="h-4 w-4 mr-2" /> Mark In Transit
               </Button>
             )}
             {(order.status === "Sent" || order.status === "In Transit") && (
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => handleStatusUpdate("Received")} disabled={updating}>
+              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleStatusUpdate("Received")} disabled={updating}>
                 <PackageCheck className="h-4 w-4 mr-2" /> Mark Received
               </Button>
             )}
@@ -188,29 +224,29 @@ export default function MoveOrderDetailsPage() {
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-lg flex items-center">
-                <PackageCheck className="h-5 w-5 mr-2 text-primary" />
+                <PackageCheck className="h-5 w-5 mr-2 text-teal-600" />
                 Items being Transferred
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 font-semibold">Item Details</th>
-                      <th className="text-right py-3 font-semibold">Quantity</th>
+                  <thead className="bg-slate-50 border-b border-slate-200 text-left">
+                    <tr>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Item Details</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Quantity</th>
                     </tr>
                   </thead>
                   <tbody>
                     {order.items.map((li, idx) => (
-                      <tr key={idx} className="border-b last:border-0 hover:bg-muted/20">
-                        <td className="py-4">
-                          <div className="font-medium">{typeof li.itemId === 'object' ? li.itemId.name : 'Unknown Item'}</div>
+                      <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-teal-50/30 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-700">{typeof li.itemId === 'object' ? li.itemId.name : 'Unknown Item'}</div>
                           {typeof li.itemId === 'object' && li.itemId.sku && (
-                            <div className="text-xs text-muted-foreground">SKU: {li.itemId.sku}</div>
+                            <div className="text-xs text-slate-400">SKU: {li.itemId.sku}</div>
                           )}
                         </td>
-                        <td className="py-4 text-right tabular-nums font-medium">
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-700">
                           {Number(li.quantity).toLocaleString("en-IN")}
                         </td>
                       </tr>
@@ -225,7 +261,7 @@ export default function MoveOrderDetailsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center">
-                  <Clock className="h-5 w-5 mr-2 text-primary" />
+                  <Clock className="h-5 w-5 mr-2 text-teal-600" />
                   Timeline
                 </CardTitle>
               </CardHeader>
@@ -261,8 +297,8 @@ export default function MoveOrderDetailsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center">
-                   <FileText className="h-5 w-5 mr-2 text-primary" />
-                   Additional Details
+                  <FileText className="h-5 w-5 mr-2 text-teal-600" />
+                  Additional Details
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-4">

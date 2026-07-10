@@ -471,12 +471,12 @@ export default function NewInventoryPackagePage() {
 
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left text-muted-foreground">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-left">
                     <tr>
-                      <th className="px-3 py-2">ITEMS & DESCRIPTION</th>
-                      <th className="px-3 py-2 text-right">ORDERED</th>
-                      <th className="px-3 py-2 text-right">PACKED</th>
-                      <th className="px-3 py-2 text-right">QUANTITY TO PACK</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">ITEMS & DESCRIPTION</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">ORDERED</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">PACKED</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">QUANTITY TO PACK</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -494,21 +494,21 @@ export default function NewInventoryPackagePage() {
                     : items.map((item, idx) => (
                         <tr
                           key={item.itemId || String(idx)}
-                          className="border-t"
+                          className="border-t border-slate-100"
                         >
-                          <td className="px-3 py-2 font-medium">{item.name}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">
+                          <td className="px-4 py-2 font-medium text-slate-700">{item.name}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-slate-600">
                             {item.ordered}
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums">
+                          <td className="px-4 py-2 text-right tabular-nums text-slate-600">
                             {item.packed}
                           </td>
-                          <td className="px-3 py-2 text-right">
+                          <td className="px-4 py-2 text-right">
                             <Input
                               type="number"
                               min={0}
                               max={Math.max(0, item.ordered - item.packed)}
-                              className="ml-auto h-8 w-28 text-right"
+                              className="ml-auto h-8 w-28 text-right bg-white border-slate-200"
                               value={item.quantityToPack}
                               disabled={!hasSelectedOrder}
                               onChange={(e) => {
@@ -528,7 +528,7 @@ export default function NewInventoryPackagePage() {
                                 setItems(next);
                               }}
                             />
-                            <div className="mt-1 text-[11px] text-muted-foreground">
+                            <div className="mt-1 text-[11px] text-slate-400">
                               Stock on hand: {item.stockOnHand}
                             </div>
                           </td>
@@ -558,6 +558,7 @@ export default function NewInventoryPackagePage() {
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
+                    className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                     onClick={() => router.push("/inventory/packages")}
                     disabled={saving}
                   >
@@ -566,6 +567,7 @@ export default function NewInventoryPackagePage() {
                   <Button
                     onClick={handleSave}
                     disabled={!hasSelectedOrder || saving}
+                    className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
                   >
                     {saving ?
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -91,13 +91,13 @@ function fmtAmount(n: number) {
 
 function LandingView({ onStart }: { onStart: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 px-6 py-20 text-center">
+    <div className="flex flex-col items-center justify-center flex-1 px-6 py-20 text-center bg-white">
       {/* Illustration */}
       <div className="relative w-24 h-24 mb-6">
-        <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-violet-500 via-purple-500 to-orange-400 flex items-center justify-center shadow-lg">
+        <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-teal-500 via-teal-600 to-emerald-400 flex items-center justify-center shadow-lg">
           <BookOpen className="h-12 w-12 text-white" />
         </div>
-        <div className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-orange-400 flex items-center justify-center border-2 border-background">
+        <div className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-teal-600 flex items-center justify-center border-2 border-background">
           <SlidersHorizontal className="h-4 w-4 text-white" />
         </div>
       </div>
@@ -105,14 +105,14 @@ function LandingView({ onStart }: { onStart: () => void }) {
       <h2 className="text-xl font-bold text-foreground mb-1">
         Bulk Update Accounts in Transactions
       </h2>
-      <p className="text-sm text-muted-foreground max-w-lg mb-6 leading-relaxed">
+      <p className="text-sm text-slate-500 max-w-lg mb-6 leading-relaxed">
         Filter transactions{" "}
-        <span className="text-primary font-medium">
+        <span className="text-teal-700 font-semibold">
           (Invoices, Credit Notes, Purchase Orders, Expenses, Bills, Vendor
           Credits)
         </span>{" "}
         and{" "}
-        <span className="text-primary font-medium">bulk-update</span> its
+        <span className="text-teal-700 font-semibold">bulk-update</span> its
         accounts with a new account
       </p>
 
@@ -128,7 +128,7 @@ function LandingView({ onStart }: { onStart: () => void }) {
 
       <Button
         onClick={onStart}
-        className="gap-2 px-8 bg-primary hover:bg-primary/90"
+        className="gap-2 px-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
       >
         <Filter className="h-4 w-4" />
         Filter and Bulk Update
@@ -214,15 +214,15 @@ function FilterView({
               value={accountId || "__all__"}
               onValueChange={(v) => setAccountId(v === "__all__" ? "" : v)}
             >
-              <SelectTrigger className="h-9 w-full max-w-xs">
+              <SelectTrigger className="h-9 w-full max-w-xs focus:ring-teal-600/20 focus:border-teal-500">
                 <SelectValue placeholder="All Accounts" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All Accounts</SelectItem>
                 {accounts.length === 0 ? (
-                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  <div className="px-3 py-4 text-center text-xs text-slate-500">
                     No accounts found.{" "}
-                    <a href="/accountant/chart-of-accounts" className="text-primary underline underline-offset-2">
+                    <a href="/accountant/chart-of-accounts" className="text-teal-700 hover:text-teal-800 underline underline-offset-2 font-semibold">
                       Set up Chart of Accounts
                     </a>
                   </div>
@@ -247,14 +247,14 @@ function FilterView({
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-600/20 focus-visible:border-teal-500"
               />
               <span className="text-muted-foreground text-xs shrink-0">to</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-600/20 focus-visible:border-teal-500"
               />
             </div>
           </div>
@@ -284,9 +284,9 @@ function FilterView({
               Search
             </label>
             <div className="relative max-w-xs">
-              <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
               <Input
-                className="pl-8 h-9 text-sm"
+                className="pl-8 h-9 text-sm focus-visible:ring-teal-600/20 focus-visible:border-teal-500"
                 placeholder="Reference, number…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -300,7 +300,7 @@ function FilterView({
           <Button
             onClick={handleSearch}
             disabled={searching}
-            className="gap-2"
+            className="gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
             size="sm"
           >
             {searching ? (
@@ -347,7 +347,7 @@ function ResultsView({
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="text-xs text-primary hover:underline underline-offset-2 flex items-center gap-1"
+            className="text-xs text-teal-700 hover:text-teal-800 hover:underline underline-offset-2 flex items-center gap-1 font-semibold"
           >
             ← Back to Filters
           </button>
@@ -356,7 +356,7 @@ function ResultsView({
             {transactions.length} transaction{transactions.length !== 1 ? "s" : ""} found
           </span>
           {selected.size > 0 && (
-            <span className="text-xs text-primary font-medium">
+            <span className="text-xs text-teal-700 font-semibold">
               · {selected.size} selected
             </span>
           )}
@@ -365,7 +365,7 @@ function ResultsView({
           size="sm"
           onClick={onUpdate}
           disabled={selected.size === 0}
-          className="gap-1.5"
+          className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
         >
           Update Selected
           <ChevronRight className="h-4 w-4" />
@@ -382,11 +382,11 @@ function ResultsView({
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-background z-10">
-              <tr className="border-b">
+              <tr className="border-b bg-slate-50 border-slate-200">
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
-                    className="accent-primary"
+                    className="accent-teal-600"
                     checked={allChecked}
                     ref={(el) => {
                       if (el) el.indeterminate = !allChecked && someChecked;
@@ -405,7 +405,7 @@ function ResultsView({
                   <th
                     key={key}
                     className={cn(
-                      "px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap",
+                      "text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 whitespace-nowrap",
                       right ? "text-right" : "text-left"
                     )}
                   >
@@ -414,11 +414,11 @@ function ResultsView({
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {transactions.map((t) => (
                 <tr
                   key={t._id}
-                  className="hover:bg-muted/20 cursor-pointer group"
+                  className="border-b border-slate-100 last:border-0 hover:bg-teal-50/30 transition-colors cursor-pointer group"
                   onClick={() => onToggle(t._id)}
                 >
                   <td
@@ -427,40 +427,47 @@ function ResultsView({
                   >
                     <input
                       type="checkbox"
-                      className="accent-primary"
+                      className="accent-teal-600"
                       checked={selected.has(t._id)}
                       onChange={() => onToggle(t._id)}
                     />
                   </td>
-                  <td className="px-3 py-2.5 font-medium text-primary">
+                  <td className="px-4 py-2 text-teal-700 font-semibold hover:text-teal-800 hover:underline">
                     {t.number}
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                  <td className="px-4 py-2 text-slate-500 whitespace-nowrap">
                     {fmtDate(t.date)}
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground">
+                  <td className="px-4 py-2 text-slate-600">
                     {t.contact}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <span
-                      className={cn(
-                        "text-[11px] font-semibold tracking-wide uppercase",
-                        t.status === "Paid" || t.status === "Completed"
-                          ? "text-emerald-600"
-                          : t.status === "Overdue" || t.status === "Rejected"
-                          ? "text-destructive"
-                          : t.status === "Draft"
-                          ? "text-muted-foreground"
-                          : "text-amber-600"
-                      )}
-                    >
-                      {t.status}
-                    </span>
+                  <td className="px-4 py-2">
+                    {t.status === "Paid" || t.status === "Completed" ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                        <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                        {t.status}
+                      </span>
+                    ) : t.status === "Overdue" || t.status === "Rejected" ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
+                        <span className="h-1 w-1 rounded-full bg-rose-500" />
+                        {t.status}
+                      </span>
+                    ) : t.status === "Draft" ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                        <span className="h-1 w-1 rounded-full bg-slate-400" />
+                        Draft
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                        <span className="h-1 w-1 rounded-full bg-amber-500" />
+                        {t.status}
+                      </span>
+                    )}
                   </td>
-                  <td className="px-3 py-2.5 text-sm text-muted-foreground max-w-[180px] truncate">
-                    {t.accountNames || <span className="text-muted-foreground/40">—</span>}
+                  <td className="px-4 py-2 text-sm text-slate-500 max-w-[180px] truncate">
+                    {t.accountNames || <span className="text-slate-300">—</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
+                  <td className="px-4 py-2 text-right font-semibold text-slate-700 tabular-nums whitespace-nowrap">
                     {fmtAmount(t.total)}
                   </td>
                 </tr>
@@ -539,9 +546,9 @@ function ReplaceDialog({
               </SelectTrigger>
               <SelectContent>
                 {accounts.length === 0 ? (
-                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  <div className="px-3 py-4 text-center text-xs text-slate-500">
                     No accounts found.{" "}
-                    <a href="/accountant/chart-of-accounts" className="text-primary underline underline-offset-2">
+                    <a href="/accountant/chart-of-accounts" className="text-teal-700 hover:text-teal-800 underline underline-offset-2 font-semibold">
                       Set up Chart of Accounts first
                     </a>
                   </div>
@@ -563,7 +570,7 @@ function ReplaceDialog({
         <div className="flex items-center gap-2.5 bg-background px-5 py-3.5">
           <Button
             size="sm"
-            className="gap-1.5"
+            className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
             disabled={!newAccountId}
             onClick={() =>
               onConfirm(newAccountId, selectedAccount?.name || "")
@@ -572,7 +579,7 @@ function ReplaceDialog({
             <ArrowRight className="h-3.5 w-3.5" />
             Replace
           </Button>
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={onClose}>
             Cancel
           </Button>
         </div>
@@ -596,8 +603,8 @@ function HistoryView({ jobs }: { jobs: BulkUpdateJob[] }) {
   return (
     <div className="flex-1 overflow-auto">
       <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-background z-10">
-          <tr className="border-b">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
             {[
               "Date",
               "Module",
@@ -608,44 +615,49 @@ function HistoryView({ jobs }: { jobs: BulkUpdateJob[] }) {
             ].map((h) => (
               <th
                 key={h}
-                className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap"
+                className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 whitespace-nowrap text-left"
               >
                 {h}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y">
+        <tbody className="divide-y divide-slate-100 bg-white">
           {jobs.map((job) => (
-            <tr key={job.id} className="hover:bg-muted/20">
-              <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
+            <tr key={job.id} className="border-b border-slate-100 last:border-0 hover:bg-teal-50/30 transition-colors">
+              <td className="px-4 py-2 text-slate-500 whitespace-nowrap">
                 {fmtDate(job.performedAt)}
               </td>
-              <td className="px-4 py-2.5 font-medium">{job.moduleType}</td>
-              <td className="px-4 py-2.5 text-muted-foreground">
+              <td className="px-4 py-2 text-slate-700 font-semibold">{job.moduleType}</td>
+              <td className="px-4 py-2 text-slate-500">
                 {job.oldAccountName}
               </td>
-              <td className="px-4 py-2.5 text-primary font-medium">
+              <td className="px-4 py-2 text-teal-700 font-semibold">
                 {job.newAccountName}
               </td>
-              <td className="px-4 py-2.5 tabular-nums text-center">
+              <td className="px-4 py-2 tabular-nums text-slate-600 text-center font-medium">
                 {job.updatedCount}
               </td>
-              <td className="px-4 py-2.5">
+              <td className="px-4 py-2">
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded",
+                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold",
                     job.status === "Completed"
-                      ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
-                      : "text-destructive bg-destructive/10 border border-destructive/20"
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                      : "bg-rose-50 text-rose-600 border border-rose-100"
                   )}
                 >
                   {job.status === "Completed" ? (
-                    <CheckCircle2 className="h-3 w-3" />
+                    <>
+                      <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                      Completed
+                    </>
                   ) : (
-                    <X className="h-3 w-3" />
+                    <>
+                      <span className="h-1 w-1 rounded-full bg-rose-500" />
+                      Failed
+                    </>
                   )}
-                  {job.status}
                 </span>
               </td>
             </tr>
@@ -726,7 +738,7 @@ export default function BulkUpdatePage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -817,18 +829,18 @@ export default function BulkUpdatePage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col overflow-hidden h-svh">
+      <SidebarInset className="flex flex-col overflow-hidden h-svh bg-white">
         {/* ── Header ── */}
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Accountant <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Bulk Update</span>
+            <span className="flex flex-col text-left">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+              <span className="text-sm font-semibold text-slate-700 mt-0.5">Bulk Update</span>
             </span>
           }
           actions={
             <Link href="/batch-import?section=accountant&type=Invoices&back=/accountant/bulk-update">
-              <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+              <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                 <FileUp className="h-3.5 w-3.5" /> Batch Import
               </Button>
             </Link>
@@ -853,8 +865,8 @@ export default function BulkUpdatePage() {
               className={cn(
                 "text-sm pb-2 mr-6 border-b-2 -mb-px transition-colors capitalize flex items-center gap-1.5 pt-2",
                 activeTab === tab
-                  ? "border-primary text-primary font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "border-teal-600 text-teal-700 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-600"
               )}
             >
               {tab === "update" ? (
@@ -921,7 +933,7 @@ export default function BulkUpdatePage() {
         {executing && (
           <div className="fixed inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="flex flex-col items-center gap-3">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
               <p className="text-sm font-medium">Updating transactions…</p>
             </div>
           </div>

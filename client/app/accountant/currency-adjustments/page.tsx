@@ -283,16 +283,16 @@ function AdjustmentDetailPanel({
         <div className="flex items-center gap-2">
           <button
             onClick={onClose}
-            className="flex items-center gap-1 text-primary hover:text-primary/80 text-sm font-medium transition-colors"
+            className="flex items-center gap-1 text-teal-700 hover:text-teal-800 text-sm font-semibold transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
             {adj.currency} – Currency Adjustment
           </button>
         </div>
-        <button className="flex items-center gap-1.5 text-xs text-primary hover:underline underline-offset-2">
-          <RefreshCw className="h-3.5 w-3.5" />
+        <button className="flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-850 hover:underline underline-offset-2 font-semibold">
+          <RefreshCw className="h-3.5 w-3.5 text-teal-600" />
           Reevaluate
-          <Info className="h-3 w-3 text-muted-foreground" />
+          <Info className="h-3 w-3 text-slate-400" />
         </button>
       </div>
 
@@ -319,56 +319,56 @@ function AdjustmentDetailPanel({
       {/* ── Lines table ── */}
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-background z-10">
-            <tr className="border-b bg-muted/20">
-              <th className="text-left px-6 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="text-left px-6 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                 Account
               </th>
-              <th className="text-right px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
                 Balance ({adj.currency})
               </th>
-              <th className="text-right px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
                 Balance (INR)
               </th>
-              <th className="text-right px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+              <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
                 Revalued Balance (INR)
               </th>
-              <th className="text-right px-6 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+              <th className="text-right px-6 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
                 Gain or Loss (INR)
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-slate-100 bg-white">
             {adj.lines.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-16 text-muted-foreground text-sm">
+                <td colSpan={5} className="text-center py-16 text-slate-400 text-sm">
                   <div className="flex flex-col items-center gap-2">
-                    <SlidersHorizontal className="h-7 w-7 text-muted-foreground/30" />
+                    <SlidersHorizontal className="h-7 w-7 text-slate-200" />
                     <p>No account lines yet.</p>
                   </div>
                 </td>
               </tr>
             ) : (
               adj.lines.map((line, i) => (
-                <tr key={i} className="hover:bg-muted/20 group">
-                  <td className="px-6 py-2.5">
+                <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-teal-50/20 transition-colors group">
+                  <td className="px-6 py-2">
                     <div className="flex items-center gap-1.5">
-                      {/* Blue dot like the image */}
-                      <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
-                      <span className="text-primary font-medium text-sm">{line.account}</span>
+                      {/* Teal dot */}
+                      <span className="h-2 w-2 rounded-full bg-teal-600 shrink-0" />
+                      <span className="text-teal-700 font-semibold text-sm hover:text-teal-850 hover:underline">{line.account}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-sm">
+                  <td className="px-4 py-2 text-right tabular-nums text-sm text-slate-600">
                     {fmtNumber(line.balanceForeign)}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-sm">
+                  <td className="px-4 py-2 text-right tabular-nums text-sm text-slate-600">
                     {fmtNumber(line.balanceBase)}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-sm">
+                  <td className="px-4 py-2 text-right tabular-nums text-sm text-slate-600">
                     {fmtNumber(line.revaluedBalance)}
                   </td>
-                  <td className="px-6 py-2.5 text-right tabular-nums text-sm">
-                    <span className={cn("font-medium", line.gainOrLoss < 0 ? "text-destructive" : "text-emerald-600")}>
+                  <td className="px-6 py-2 text-right tabular-nums text-sm">
+                    <span className={cn("font-bold", line.gainOrLoss < 0 ? "text-rose-600" : "text-emerald-700")}>
                       {fmtNumber(line.gainOrLoss)}
                     </span>
                   </td>
@@ -397,17 +397,18 @@ function AdjustmentDetailPanel({
 
       {/* ── Status badge footer ── */}
       <div className="px-6 py-3 border-t bg-background shrink-0 flex items-center justify-between">
-        <span
-          className={cn(
-            "text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded",
-            adj.status === "Open"
-              ? "text-blue-600 bg-blue-50 border border-blue-200"
-              : "text-emerald-600 bg-emerald-50 border border-emerald-200"
-          )}
-        >
-          {adj.status}
-        </span>
-        <p className="text-xs text-muted-foreground">#{adj.adjustmentNumber}</p>
+        {adj.status === "Open" ? (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+            <span className="h-1 w-1 rounded-full bg-amber-500" />
+            Open
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+            <span className="h-1 w-1 rounded-full bg-emerald-500" />
+            Reconciled
+          </span>
+        )}
+        <p className="text-xs text-slate-400">#{adj.adjustmentNumber}</p>
       </div>
     </div>
   );
@@ -451,7 +452,7 @@ export default function CurrencyAdjustmentsPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -473,24 +474,24 @@ export default function CurrencyAdjustmentsPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col overflow-hidden h-svh">
+      <SidebarInset className="flex flex-col overflow-hidden h-svh bg-white">
 
         {/* ── Header ── */}
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Accountant <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Base Currency Adjustments</span>
+            <span className="flex flex-col text-left">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+              <span className="text-sm font-semibold text-slate-700 mt-0.5">Base Currency Adjustments</span>
             </span>
           }
           actions={
             !panelOpen ? (
               <div className="flex items-center gap-2">
-                <button className="flex items-center gap-1.5 text-xs text-primary hover:underline underline-offset-2">
+                <button className="flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-800 hover:underline underline-offset-2 font-semibold">
                   <UserSearch className="h-3.5 w-3.5" />
                   Find Accountants
                 </button>
-                <Button size="sm" className="gap-1.5" onClick={() => setModalOpen(true)}>
+                <Button size="sm" className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm" onClick={() => setModalOpen(true)}>
                   <Plus className="h-4 w-4" />
                   Make an Adjustment
                 </Button>
@@ -515,32 +516,32 @@ export default function CurrencyAdjustmentsPage() {
             )}>
               {panelOpen ? (
                 <>
-                  <span className="text-sm font-semibold">Adjustments</span>
-                  <Button size="icon" className="h-6 w-6" onClick={() => setModalOpen(true)}>
+                  <span className="text-sm font-semibold text-slate-700">Adjustments</span>
+                  <Button size="icon" className="h-6 w-6 text-teal-750 bg-teal-50 hover:bg-teal-100" onClick={() => setModalOpen(true)}>
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 </>
               ) : (
                 <>
-                  <span className="text-xs text-muted-foreground font-medium">Filter By :</span>
+                  <span className="text-xs text-slate-500 font-semibold">Filter By :</span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2.5">
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2.5 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                         {statusFilter}<ChevronDown className="h-3 w-3" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-36">
+                    <DropdownMenuContent align="start" className="w-36 bg-white">
                       {(["All", "Open", "Reconciled"] as StatusFilter[]).map((f) => (
                         <DropdownMenuItem key={f} onClick={() => setStatusFilter(f)}
-                          className={cn("text-sm", statusFilter === f && "font-medium text-primary bg-primary/5")}>
+                          className={cn("text-sm cursor-pointer", statusFilter === f && "font-semibold text-teal-700 bg-teal-50/50")}>
                           {f}
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {fetching && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-1" />}
+                  {fetching && <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-600 ml-1" />}
                   {selected.size > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">{selected.size} selected</span>
+                    <span className="ml-auto text-xs text-teal-700 font-semibold">{selected.size} selected</span>
                   )}
                 </>
               )}
@@ -556,23 +557,27 @@ export default function CurrencyAdjustmentsPage() {
                     return (
                       <div key={adj._id} onClick={() => setSelectedAdj(adj)}
                         className={cn(
-                          "flex items-start gap-2 px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors",
-                          isSel && "bg-blue-50 border-l-2 border-l-primary"
+                          "flex items-start gap-2 px-3 py-3 cursor-pointer hover:bg-teal-50/20 transition-colors",
+                          isSel && "bg-teal-50/50 border-l-[3px] border-l-teal-600"
                         )}>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start gap-2">
-                            <p className={cn("text-xs font-medium truncate", isSel && "text-primary")}>
+                            <p className={cn("text-xs font-semibold truncate text-slate-700", isSel && "text-teal-700 font-bold")}>
                               {fmtDate(adj.date)}
                             </p>
-                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 shrink-0">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-150 shrink-0">
                               {adj.currency}
                             </span>
                           </div>
-                          <div className="flex gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
-                            <span className="text-primary font-medium">{adj.adjustmentNumber}</span>
+                          <div className="flex gap-1.5 mt-0.5 text-[10px] text-slate-400">
+                            <span className="text-teal-700 font-semibold">{adj.adjustmentNumber}</span>
                             <span>·</span>
-                            <span className={adj.status === "Open" ? "text-blue-600 font-semibold" : "text-emerald-600 font-semibold"}>
-                              {adj.status.toUpperCase()}
+                            <span>
+                              {adj.status === "Open" ? (
+                                <span className="text-amber-700 font-semibold">OPEN</span>
+                              ) : (
+                                <span className="text-emerald-700 font-semibold">RECONCILED</span>
+                              )}
                             </span>
                           </div>
                         </div>
@@ -583,10 +588,10 @@ export default function CurrencyAdjustmentsPage() {
               ) : (
                 /* Full table */
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-background z-10">
-                    <tr className="border-b">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
                       <th className="w-10 px-4 py-3">
-                        <input type="checkbox" className="accent-primary" checked={allChecked}
+                        <input type="checkbox" className="accent-teal-600" checked={allChecked}
                           ref={(el) => { if (el) el.indeterminate = !allChecked && someChecked; }}
                           onChange={toggleAll} />
                       </th>
@@ -598,29 +603,29 @@ export default function CurrencyAdjustmentsPage() {
                         { label: "Notes", cls: "text-center" },
                       ].map(({ label, cls }) => (
                         <th key={label} className={cn(
-                          "px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap",
+                          "text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 whitespace-nowrap",
                           cls
                         )}>{label}</th>
                       ))}
-                      <th className="w-16" />
+                      <th className="w-24 text-right px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-slate-100 bg-white">
                     {fetching && filtered.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="text-center py-20">
                           <div className="flex justify-center">
-                            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                            <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
                           </div>
                         </td>
                       </tr>
                     ) : filtered.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-20 text-muted-foreground text-sm">
+                        <td colSpan={7} className="text-center py-20 text-slate-500 bg-white">
                           <div className="flex flex-col items-center gap-2">
-                            <SlidersHorizontal className="h-8 w-8 text-muted-foreground/30" />
+                            <SlidersHorizontal className="h-8 w-8 text-slate-300" />
                             <p>No currency adjustments found.</p>
-                            <Button variant="outline" size="sm" className="mt-1 gap-1.5"
+                            <Button variant="outline" size="sm" className="mt-1 gap-1.5 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                               onClick={() => setModalOpen(true)}>
                               <Plus className="h-4 w-4" />Make an Adjustment
                             </Button>
@@ -633,37 +638,42 @@ export default function CurrencyAdjustmentsPage() {
                         return (
                           <tr key={adj._id}
                             onClick={() => setSelectedAdj(adj)}
-                            className="hover:bg-muted/20 cursor-pointer group">
-                            <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                              <input type="checkbox" className="accent-primary"
+                            className="border-b border-slate-100 last:border-0 hover:bg-teal-50/30 transition-colors cursor-pointer group bg-white">
+                            <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                              <input type="checkbox" className="accent-teal-600"
                                 checked={selected.has(adj._id)} onChange={() => toggleOne(adj._id)} />
                             </td>
-                            <td className="px-3 py-2.5 font-medium whitespace-nowrap">{fmtDate(adj.date)}</td>
-                            <td className="px-3 py-2.5">
-                              <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 tracking-wide">
+                            <td className="px-4 py-2 font-semibold text-teal-700 hover:text-teal-800 hover:underline whitespace-nowrap">{fmtDate(adj.date)}</td>
+                            <td className="px-4 py-2">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-150 tracking-wide">
                                 {adj.currency}
                               </span>
                             </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums font-medium">
+                            <td className="px-4 py-2 text-right tabular-nums text-slate-600 font-medium">
                               {fmtNumber(adj.exchangeRate)}
                             </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums">
+                            <td className="px-4 py-2 text-right tabular-nums">
                               {adj.lines.length > 0 ? (
-                                <span className={cn("font-semibold", totalGL < 0 ? "text-destructive" : "text-emerald-600")}>
+                                <span className={cn("font-bold", totalGL < 0 ? "text-rose-600" : "text-emerald-700")}>
                                   {fmtNumber(totalGL)}
                                 </span>
                               ) : (
-                                <span className="text-muted-foreground/40">—</span>
+                                <span className="text-slate-300">—</span>
                               )}
                             </td>
-                            <td className="px-3 py-2.5"><NotesCell notes={adj.notes} /></td>
-                            <td className="px-3 py-2.5">
-                              <span className={cn(
-                                "text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded",
-                                adj.status === "Open"
-                                  ? "text-blue-600 bg-blue-50 border border-blue-200"
-                                  : "text-emerald-600 bg-emerald-50 border border-emerald-200"
-                              )}>{adj.status}</span>
+                            <td className="px-4 py-2 text-center"><NotesCell notes={adj.notes} /></td>
+                            <td className="px-4 py-2 text-right">
+                              {adj.status === "Open" ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                                  <span className="h-1 w-1 rounded-full bg-amber-500" />
+                                  Open
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                  <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                                  Reconciled
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );
