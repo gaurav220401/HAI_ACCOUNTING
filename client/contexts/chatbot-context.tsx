@@ -1,16 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { sendChatMessage, type ChatMessage } from "@/lib/api/chatbot";
-
-export interface ChatSession {
-  _id: string;
-  title: string;
-  lastActivity: number;
-  updatedAt?: number;
-  createdAt: number;
-}
+import { createContext, useContext, useState, useCallback } from "react";
+import { 
+  sendChatMessage, 
+  getSessions, 
+  getSession, 
+  createSession, 
+  deleteSession,
+  type ChatMessage,
+  type ChatSession 
+} from "@/lib/api/chatbot";
 
 interface ChatbotContextType {
   messages: ChatMessage[];
@@ -41,23 +41,17 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
     try {
-      const res = await fetch("/api/chat-sessions");
-      if (res.ok) {
-        const body = await res.json();
-        if (body.success && body.data) {
-          setSessions(body.data);
-          return;
-        }
+      const res = await getSessions();
+      if (res.success && res.data) {
+        setSessions(res.data);
+        return;
       }
+      // Graceful fallback to localStorage in case of error or setup
       const localSess = localStorage.getItem("hai_chat_sessions");
-      if (localSess) {
-        setSessions(JSON.parse(localSess));
-      }
+      if (localSess) setSessions(JSON.parse(localSess));
     } catch (e) {
       const localSess = localStorage.getItem("hai_chat_sessions");
-      if (localSess) {
-        setSessions(JSON.parse(localSess));
-      }
+      if (localSess) setSessions(JSON.parse(localSess));
     } finally {
       setSessionsLoading(false);
     }
@@ -66,15 +60,13 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
   const handleLoadSession = async (id: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/chat-sessions/${id}`);
-      if (res.ok) {
-        const body = await res.json();
-        if (body.success && body.data) {
-          setSessionId(body.data._id);
-          setMessages(body.data.messages || []);
-          return;
-        }
+      const res = await getSession(id);
+      if (res.success && res.data) {
+        setSessionId(res.data._id);
+        setMessages(res.data.messages || []);
+        return;
       }
+      // Fallback to local storage session
       const localSess = localStorage.getItem("hai_chat_sessions");
       if (localSess) {
         const list: any[] = JSON.parse(localSess);
@@ -99,9 +91,22 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleNewChat = () => {
+  const handleNewChat = async () => {
     setMessages([]);
-    setSessionId(undefined);
+    setIsLoading(true);
+    try {
+      const res = await createSession();
+      if (res.success && res.data) {
+        setSessionId(res.data._id);
+        fetchSessions();
+      } else {
+        setSessionId(undefined);
+      }
+    } catch (e) {
+      setSessionId(undefined);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const sendMessage = useCallback(
@@ -114,19 +119,29 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         content: question,
         timestamp: Date.now(),
       };
+      
+      // Keep track of messages history before appending the new one
+      const historyContext = [...messages];
+      
       setMessages((prev) => [...prev, userMessage]);
       setInput("");
       setIsLoading(true);
 
       try {
-        const response = await sendChatMessage(question, sessionId);
+        let activeSessionId = sessionId;
+        if (!activeSessionId) {
+          const createRes = await createSession(question.substring(0, 50));
+          if (createRes.success && createRes.data) {
+            activeSessionId = createRes.data._id;
+            setSessionId(activeSessionId);
+          }
+        }
+
+        const response = await sendChatMessage(question, activeSessionId, historyContext);
 
         if (response.success && response.data) {
-          const sId = response.data.sessionId || sessionId || `local_${Date.now()}`;
           if (response.data.sessionId) {
             setSessionId(response.data.sessionId);
-          } else if (!sessionId) {
-            setSessionId(sId);
           }
 
           const botMessage: ChatMessage = {
@@ -136,30 +151,7 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
             timestamp: Date.now(),
           };
           setMessages((prev) => [...prev, botMessage]);
-
-          try {
-            const localSess = localStorage.getItem("hai_chat_sessions") || "[]";
-            const list: any[] = JSON.parse(localSess);
-            let existingIdx = list.findIndex((s) => s._id === sId);
-            if (existingIdx > -1) {
-              list[existingIdx].messages = [...list[existingIdx].messages, userMessage, botMessage];
-              list[existingIdx].lastActivity = Date.now();
-              list[existingIdx].updatedAt = Date.now();
-            } else {
-              list.push({
-                _id: sId,
-                title: question.substring(0, 50),
-                messages: [userMessage, botMessage],
-                lastActivity: Date.now(),
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-              });
-            }
-            localStorage.setItem("hai_chat_sessions", JSON.stringify(list));
-            fetchSessions();
-          } catch (e) {
-            console.error("Local storage save failed:", e);
-          }
+          fetchSessions();
         } else {
           const errorMessage: ChatMessage = {
             role: "assistant",
@@ -181,7 +173,7 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     },
-    [input, isLoading, sessionId, fetchSessions]
+    [input, isLoading, sessionId, messages, fetchSessions]
   );
 
   return (

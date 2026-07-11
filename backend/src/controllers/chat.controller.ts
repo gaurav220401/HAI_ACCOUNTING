@@ -23,6 +23,7 @@ import { Types } from "mongoose";
 import { getKBChunkModel, getChatbotConnection } from "../models/kb-chunk.model";
 import { getEmbedding } from "../chatbot/gemini-embeddings";
 import ChatLog from "../models/chat-log.model";
+import ChatSession from "../models/chat-session.model";
 import asyncHandler from "../utils/asyncHandler";
 import { AuthenticatedRequest } from "../types";
 
@@ -821,7 +822,7 @@ function buildKBContext(chunks: any[]): { context: string; sources: Array<{ titl
 export const handleChat = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const startTime = Date.now();
-    const { question, sessionId: clientSessionId } = req.body;
+    const { question, sessionId: clientSessionId, history } = req.body;
 
     // ── Input Validation ──
     if (!question || typeof question !== "string") {
@@ -953,11 +954,22 @@ export const handleChat = asyncHandler(
           fullContext += businessDataContext;
         }
 
-        // ── Step 8: Call Gemini LLM ──
         const client = getGenAIClient();
         const llmModel = process.env.CHATBOT_LLM_MODEL || "gemini-2.5-flash";
 
-        const userPrompt = `${fullContext}\n\nUSER QUESTION: ${trimmedQuestion}`;
+        // Compile conversation history context
+        let historyPrompt = "";
+        if (history && Array.isArray(history) && history.length > 0) {
+          historyPrompt = "\n\nCONVERSATION HISTORY:\n";
+          // Limit to last 10 messages to keep context concise
+          const recentHistory = history.slice(-10);
+          for (const msg of recentHistory) {
+            const roleName = msg.role === "user" ? "User" : "AI Assistant";
+            historyPrompt += `${roleName}: ${msg.content}\n`;
+          }
+        }
+
+        const userPrompt = `${fullContext}${historyPrompt}\n\nUSER QUESTION: ${trimmedQuestion}`;
 
         const response = await client.models.generateContent({
           model: llmModel,
@@ -990,6 +1002,38 @@ export const handleChat = asyncHandler(
         });
       } catch (logError) {
         console.error("Failed to log chat interaction:", logError);
+      }
+
+      // ── Step 9.5: Append to ChatSession ──
+      if (clientSessionId && organizationId) {
+        try {
+          const userMsg = { role: "user" as const, content: trimmedQuestion, timestamp: new Date() };
+          const botMsg = {
+            role: "assistant" as const,
+            content: answer,
+            sources: sources.map((s) => ({ title: s.title, url: s.url })),
+            timestamp: new Date(),
+          };
+
+          const session = await ChatSession.findOne({
+            _id: clientSessionId,
+            organizationId,
+            userId,
+          });
+
+          if (session) {
+            session.messages.push(userMsg);
+            session.messages.push(botMsg);
+            session.lastActivity = new Date();
+            // Auto-rename session on first message
+            if (session.title === "New Chat") {
+              session.title = trimmedQuestion.substring(0, 50);
+            }
+            await session.save();
+          }
+        } catch (sessionError) {
+          console.error("Failed to append messages to ChatSession DB model:", sessionError);
+        }
       }
 
       // ── Step 10: Return response ──

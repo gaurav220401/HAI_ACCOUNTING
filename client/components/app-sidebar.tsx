@@ -310,14 +310,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         "transition-all duration-150 font-medium my-[1px] h-9 px-3 rounded-lg",
                         isActive
                           ? isAIAssistant
-                            ? "text-purple-700 font-semibold bg-gradient-to-r from-teal-50 to-purple-50 hover:from-teal-50 hover:to-purple-50 hover:text-purple-700 [&>svg]:text-purple-600"
+                            ? "animate-ai-gradient-bg border border-teal-500/15 text-slate-800 font-semibold shadow-2xs"
                             : "text-teal-700 font-semibold bg-teal-50 hover:bg-teal-50 hover:text-teal-700 [&>svg]:text-teal-600"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 [&>svg]:text-slate-400"
                       )}
                     >
                       <Link href={item.url}>
-                        <item.icon className="h-4 w-4 shrink-0" />
-                        <span className="text-[13px]">{item.title}</span>
+                        <item.icon className={cn("h-4 w-4 shrink-0", isAIAssistant && "text-teal-600")} />
+                        <span className={cn("text-[13px] inline-block", isAIAssistant ? "animate-ai-gradient-text font-bold" : "")}>
+                          {item.title}
+                        </span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
