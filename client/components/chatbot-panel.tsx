@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, MessageSquare, Send, Sparkles, X, ArrowUpRight, AlertCircle, RefreshCw } from "lucide-react";
+import { Bot, MessageSquare, Send, Sparkles, X, ArrowUpRight, AlertCircle, RefreshCw, Clock, ChevronDown } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendChatMessage, type ChatMessage } from "@/lib/api/chatbot";
@@ -135,13 +135,23 @@ function formatTime(ts: number): string {
 
 // ─── Welcome / Empty State ─────────────────────────────────────────────
 
+interface ChatSession {
+  _id: string;
+  title: string;
+  lastActivity: number;
+  updatedAt?: number;
+  createdAt: number;
+}
+
 function WelcomeState({ onQuestionClick }: { onQuestionClick: (q: string) => void }) {
+  const [isOpen, setIsOpen] = useState(true);
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-10">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 shadow-lg shadow-teal-500/20">
         <Sparkles className="h-7 w-7 text-white" />
       </div>
-      <h3 className="mb-1 text-base font-bold text-slate-900">Nemo</h3>
+      <h3 className="mb-1 text-base font-bold text-slate-900">HAI Assistant</h3>
       <p className="mb-6 text-center text-xs leading-relaxed text-slate-500">
         Ask me anything about HAI Accounting.
         <br />
@@ -149,20 +159,37 @@ function WelcomeState({ onQuestionClick }: { onQuestionClick: (q: string) => voi
       </p>
 
       <div className="w-full space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          Try asking
-        </p>
-        {STARTER_QUESTIONS.map((q) => (
-          <button
-            key={q}
-            type="button"
-            onClick={() => onQuestionClick(q)}
-            className="flex w-full items-center gap-2 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left text-xs text-slate-600 shadow-2xs transition-all hover:border-teal-200 hover:bg-teal-50/30 hover:text-teal-700 cursor-pointer"
-          >
-            <MessageSquare className="h-3.5 w-3.5 shrink-0 text-teal-500" />
-            {q}
-          </button>
-        ))}
+        <button
+          type="button"
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="flex w-full items-center justify-between py-1 text-left cursor-pointer focus:outline-none"
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Suggested Topics
+          </p>
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 text-slate-400 transition-transform duration-200",
+              !isOpen && "rotate-180"
+            )}
+          />
+        </button>
+
+        {isOpen && (
+          <div className="space-y-2">
+            {STARTER_QUESTIONS.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => onQuestionClick(q)}
+                className="flex w-full items-center gap-2 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left text-xs text-slate-600 shadow-2xs transition-all hover:border-teal-200 hover:bg-teal-50/30 hover:text-teal-700 cursor-pointer"
+              >
+                <MessageSquare className="h-3.5 w-3.5 shrink-0 text-teal-500" />
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -217,8 +244,45 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
 
+  const [showHistory, setShowHistory] = useState(false);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch past sessions
+  const fetchSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    try {
+      const res = await fetch("/api/chat-sessions");
+      if (res.ok) {
+        const body = await res.json();
+        if (body.success && body.data) {
+          setSessions(body.data);
+          return;
+        }
+      }
+      // Graceful fallback to local storage
+      const localSess = localStorage.getItem("hai_chat_sessions");
+      if (localSess) {
+        setSessions(JSON.parse(localSess));
+      }
+    } catch (e) {
+      const localSess = localStorage.getItem("hai_chat_sessions");
+      if (localSess) {
+        setSessions(JSON.parse(localSess));
+      }
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && showHistory) {
+      fetchSessions();
+    }
+  }, [isOpen, showHistory, fetchSessions]);
 
   // Simulate initialization complete
   useEffect(() => {
@@ -240,6 +304,50 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
     }
   }, [isOpen, isInitializing]);
 
+  const handleLoadSession = async (id: string) => {
+    setIsLoading(true);
+    setShowHistory(false);
+    try {
+      const res = await fetch(`/api/chat-sessions/${id}`);
+      if (res.ok) {
+        const body = await res.json();
+        if (body.success && body.data) {
+          setSessionId(body.data._id);
+          setMessages(body.data.messages || []);
+          return;
+        }
+      }
+      // Graceful fallback
+      const localSess = localStorage.getItem("hai_chat_sessions");
+      if (localSess) {
+        const list: any[] = JSON.parse(localSess);
+        const found = list.find((s) => s._id === id);
+        if (found) {
+          setSessionId(found._id);
+          setMessages(found.messages || []);
+        }
+      }
+    } catch (e) {
+      const localSess = localStorage.getItem("hai_chat_sessions");
+      if (localSess) {
+        const list: any[] = JSON.parse(localSess);
+        const found = list.find((s) => s._id === id);
+        if (found) {
+          setSessionId(found._id);
+          setMessages(found.messages || []);
+        }
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    setMessages([]);
+    setSessionId(undefined);
+    setShowHistory(false);
+  };
+
   const sendMessage = useCallback(
     async (questionText?: string) => {
       const question = (questionText || input).trim();
@@ -260,8 +368,11 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
 
         if (response.success && response.data) {
           // Update session ID
+          const sId = response.data.sessionId || sessionId || `local_${Date.now()}`;
           if (response.data.sessionId) {
             setSessionId(response.data.sessionId);
+          } else if (!sessionId) {
+            setSessionId(sId);
           }
 
           const botMessage: ChatMessage = {
@@ -271,6 +382,30 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
             timestamp: Date.now(),
           };
           setMessages((prev) => [...prev, botMessage]);
+
+          // Save to local storage for persistent history fallback in Phase 1
+          try {
+            const localSess = localStorage.getItem("hai_chat_sessions") || "[]";
+            const list: any[] = JSON.parse(localSess);
+            let existingIdx = list.findIndex((s) => s._id === sId);
+            if (existingIdx > -1) {
+              list[existingIdx].messages = [...list[existingIdx].messages, userMessage, botMessage];
+              list[existingIdx].lastActivity = Date.now();
+              list[existingIdx].updatedAt = Date.now();
+            } else {
+              list.push({
+                _id: sId,
+                title: question.substring(0, 50),
+                messages: [userMessage, botMessage],
+                lastActivity: Date.now(),
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              });
+            }
+            localStorage.setItem("hai_chat_sessions", JSON.stringify(list));
+          } catch (e) {
+            console.error("Local storage save failed:", e);
+          }
         } else {
           // API returned an error
           const errorMessage: ChatMessage = {
@@ -341,22 +476,89 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
               <Bot className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Nemo</h2>
+              <h2 className="text-sm font-semibold text-white">HAI Assistant</h2>
               <div className="flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
                 <span className="text-[10px] text-teal-100">Online</span>
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
-            title="Close chat"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowHistory((prev) => !prev)}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white cursor-pointer",
+                showHistory && "bg-white/10 text-white"
+              )}
+              title="Chat history"
+            >
+              <Clock className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNewChat}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
+              title="New conversation"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
+              title="Close chat"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
+
+        {/* ── Session History slide-down drawer ── */}
+        {showHistory && (
+          <div className="absolute top-14 left-0 right-0 z-20 border-b border-slate-200 bg-white shadow-lg max-h-64 overflow-y-auto">
+            <div className="p-2.5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Recent Conversations</span>
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                className="text-[10px] text-teal-600 hover:text-teal-700 font-bold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+            {sessionsLoading ? (
+              <div className="p-4 space-y-2 animate-pulse">
+                <div className="h-3.5 bg-slate-100 rounded w-2/3" />
+                <div className="h-3 bg-slate-100 rounded w-1/2" />
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-400">
+                No recent conversations found.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                {sessions.map((sess) => (
+                  <button
+                    key={sess._id}
+                    onClick={() => handleLoadSession(sess._id)}
+                    className={cn(
+                      "w-full text-left p-3 hover:bg-slate-50 transition-colors flex flex-col gap-0.5 border-l-2 border-transparent",
+                      sessionId === sess._id && "bg-teal-50/40 border-l-teal-600"
+                    )}
+                  >
+                    <span className="text-xs font-semibold text-slate-700 truncate">
+                      {sess.title || "Untitled Conversation"}
+                    </span>
+                    <span className="text-[9px] text-slate-400">
+                      {new Date(sess.updatedAt || sess.lastActivity || sess.createdAt).toLocaleDateString()} at {new Date(sess.updatedAt || sess.lastActivity || sess.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Messages Area ── */}
         <div className="flex-1 overflow-y-auto scroll-smooth">

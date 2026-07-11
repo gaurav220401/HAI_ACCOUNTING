@@ -22,6 +22,9 @@ import {
   Settings,
   ShoppingCart,
   Truck,
+  Bot,
+  MessageSquare,
+  Sparkles,
   // Sub-menu icons
   Users,
   FileText,
@@ -174,6 +177,16 @@ const navItems: NavItem[] = [
     icon: BarChart3,
   },
   {
+    title: "AI Assistant",
+    url: "/ai-agent",
+    icon: Bot,
+    items: [
+      { title: "Chat", url: "/ai-agent?tab=chat", icon: MessageSquare },
+      { title: "Agentic Tasks", url: "/ai-agent?tab=tasks", icon: Sparkles },
+      { title: "Agent History", url: "/ai-agent?tab=history", icon: Clock },
+    ],
+  },
+  {
     title: "Documents",
     url: "/documents",
     icon: FolderOpen,
@@ -288,6 +301,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 pathname === item.url ||
                 (item.url !== "/dashboard" &&
                   pathname.startsWith(item.url + "/"));
+              const isAIAssistant = item.title === "AI Assistant";
 
               // Flat item (no sub-menu)
               if (!item.items || item.items.length === 0) {
@@ -300,7 +314,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       className={cn(
                         "transition-all duration-150 font-medium my-[1px] h-9 px-3 rounded-lg",
                         isActive
-                          ? "text-teal-700 font-semibold bg-teal-50 hover:bg-teal-50 hover:text-teal-700 [&>svg]:text-teal-600"
+                          ? isAIAssistant
+                            ? "text-purple-700 font-semibold bg-gradient-to-r from-teal-50 to-purple-50 hover:from-teal-50 hover:to-purple-50 hover:text-purple-700 [&>svg]:text-purple-600"
+                            : "text-teal-700 font-semibold bg-teal-50 hover:bg-teal-50 hover:text-teal-700 [&>svg]:text-teal-600"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 [&>svg]:text-slate-400"
                       )}
                     >
@@ -335,7 +351,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         className={cn(
                           "transition-all duration-150 font-medium my-[1px] h-9 px-3 rounded-lg",
                           isActive || hasActiveChild
-                            ? "text-teal-700 font-semibold bg-teal-50 hover:bg-teal-50 hover:text-teal-700 [&>svg]:text-teal-600"
+                            ? isAIAssistant
+                              ? "text-purple-700 font-semibold bg-gradient-to-r from-teal-50 to-purple-50 hover:from-teal-50 hover:to-purple-50 hover:text-purple-700 [&>svg]:text-purple-600"
+                              : "text-teal-700 font-semibold bg-teal-50 hover:bg-teal-50 hover:text-teal-700 [&>svg]:text-teal-600"
                             : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 [&>svg]:text-slate-400"
                         )}
                       >
@@ -358,7 +376,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                 className={cn(
                                   "transition-all duration-150 h-8 rounded-md px-2 flex items-center gap-2",
                                   subActive
-                                    ? "text-teal-700 font-semibold bg-teal-50/60 hover:bg-teal-50"
+                                    ? isAIAssistant
+                                      ? "text-purple-700 font-semibold bg-purple-50/60 hover:bg-purple-100/60"
+                                      : "text-teal-700 font-semibold bg-teal-50/60 hover:bg-teal-50"
                                     : "text-slate-500 hover:text-slate-900 hover:bg-slate-100/50"
                                 )}
                               >

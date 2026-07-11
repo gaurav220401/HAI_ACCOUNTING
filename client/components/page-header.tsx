@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Bell } from "lucide-react";
@@ -16,16 +17,23 @@ interface PageHeaderProps {
 
 /**
  * Shared top header bar used by every page.
- * Layout: [SidebarTrigger] [breadcrumb?]  →  [actions?]  →  [OrgSwitcher] | [chat][bell]
+ * Layout: [SidebarTrigger] [logo] [breadcrumb?]  →  [actions?]  →  [OrgSwitcher] | [bell]
  * User name/role and avatar live in the sidebar footer.
  */
 export function PageHeader({ breadcrumb, actions }: PageHeaderProps) {
   return (
     <>
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white px-4">
-        {/* Left: sidebar toggle + optional breadcrumb */}
-        <div className="flex items-center gap-2 min-w-0">
+        {/* Left: sidebar toggle + logo + optional breadcrumb */}
+        <div className="flex items-center gap-2.5 min-w-0">
           <SidebarTrigger className="-ml-1 h-7 w-7 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" />
+          <Image
+            src="/hailogo.png"
+            alt="HAI Logo"
+            width={26}
+            height={26}
+            className="h-6 w-6 rounded-md object-contain shrink-0"
+          />
           {breadcrumb && (
             <>
               <Separator orientation="vertical" className="h-4 bg-slate-200 shrink-0" />

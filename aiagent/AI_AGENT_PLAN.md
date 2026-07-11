@@ -135,9 +135,9 @@ HAI_Accounting/
 
 # PHASE 1 — Header & Floating Chatbot UI
 
-**Status**: PENDING
+**Status**: COMPLETED
 **Depends on**: Nothing (start here)
-**Files to modify**: 3 files
+**Files to modify**: 4 files
 **Files to create**: 1 file
 
 ---

@@ -2,7 +2,7 @@
 
 | Phase | Status | Completed By | Notes |
 |---|---|---|---|
-| Phase 1 — Header & Floating UI | PENDING | — | — |
+| Phase 1 — Header & Floating UI | COMPLETED | Antigravity | Reverted Nemo bot to HAI Assistant |
 | Phase 2 — Chat Memory | PENDING | — | — |
 | Phase 3 — Agent Backend | PENDING | — | — |
 | Phase 4 — Agent UI | PENDING | — | — |
