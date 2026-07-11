@@ -28,28 +28,33 @@ export function FloatingAIButton({
   return (
     <div
       className={cn(
-        "fixed bottom-6 right-6 z-50 transition-all duration-500 ease-out transform",
+        "fixed bottom-6 right-6 z-[999] flex flex-col items-center transition-all duration-500 ease-out transform",
         mounted ? "scale-100 opacity-100 translate-y-0" : "scale-50 opacity-0 translate-y-4"
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Tooltip / Label */}
-      <div
-        className={cn(
-          "absolute bottom-full right-0 mb-3 px-3 py-1.5 rounded-xl border border-slate-100 bg-white shadow-xl shadow-slate-200/50 transition-all duration-300 transform origin-bottom-right whitespace-nowrap pointer-events-none select-none",
-          isHovered && !isOpen
-            ? "scale-100 opacity-100 translate-y-0"
-            : "scale-95 opacity-0 translate-y-2"
-        )}
-      >
-        {/* Little triangle arrow */}
-        <div className="absolute -bottom-1.5 right-6 h-3 w-3 rotate-45 border-r border-b border-slate-100 bg-white" />
-        <div className="flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-teal-600 animate-pulse" />
-          <span className="text-[11px] font-bold text-slate-700">HAI AI Assistant</span>
+      {/* ── Hover Greeting Bubble (Speech Bubble) ── */}
+      {!isOpen && (
+        <div
+          className={cn(
+            "absolute bottom-24 right-0 w-64 rounded-2xl border border-slate-100 bg-white p-4 shadow-xl shadow-slate-200/50 transition-all duration-300 transform origin-bottom-right pointer-events-none select-none",
+            isHovered ? "scale-100 opacity-100 translate-y-0 visible" : "scale-95 opacity-0 translate-y-2 invisible"
+          )}
+        >
+          {/* Speech Bubble Arrow */}
+          <div className="absolute -bottom-2 right-6 h-4 w-4 rotate-45 border-r border-b border-slate-100 bg-white" />
+
+          <div className="relative">
+            <p className="text-[13px] font-bold text-teal-700 flex items-center gap-1.5">
+              <span>👋</span> Hi, I'm Nemo
+            </p>
+            <p className="mt-1 text-[11px] font-medium leading-relaxed text-slate-500 whitespace-normal">
+              Click to ask anything with AI. I can help with invoices, reports, and more!
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Button wrapper for spinning ring when processing */}
       <div className="relative flex items-center justify-center">
@@ -66,7 +71,7 @@ export function FloatingAIButton({
               ? "from-slate-700 to-slate-800 shadow-slate-800/25 hover:shadow-xl hover:shadow-slate-800/35 hover:scale-105 active:scale-95"
               : "from-teal-600 to-teal-700 shadow-teal-600/25 hover:shadow-xl hover:shadow-teal-600/35 hover:scale-105 active:scale-95"
           )}
-          title={isOpen ? "Close AI Assistant" : "Open AI Assistant"}
+          title={isOpen ? "Close Nemo Chatbot" : "Nemo Chatbot"}
         >
           {/* Inner ring */}
           <div className="absolute inset-0 rounded-full border border-white/10 group-hover:scale-105 transition-transform duration-300" />
@@ -86,6 +91,16 @@ export function FloatingAIButton({
           )}
         </button>
       </div>
+
+      {/* ── Label Pill Below Button ── */}
+      {!isOpen && (
+        <div className="mt-2 rounded-full border border-slate-200/80 bg-white px-3 py-1 shadow-2xs transition-all duration-300">
+          <span className="text-[10px] font-bold text-slate-700 tracking-wide uppercase whitespace-nowrap">
+            Ask Nemo
+          </span>
+        </div>
+      )}
     </div>
   );
 }
+

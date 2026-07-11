@@ -220,4 +220,33 @@
     opacity: 1;
     transform: translateY(0);
   }
-}
+}
+
+/* ── AI Assistant Sidebar Animation ──────────────────────────── */
+@keyframes ai-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-ai-gradient-text {
+  background: linear-gradient(to right, #10b981, #3b82f6, #ef4444, #10b981);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ai-gradient 5s linear infinite;
+}
+
+.animate-ai-gradient-bg {
+  background: linear-gradient(-45deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.08), rgba(239, 68, 68, 0.08));
+  background-size: 300% 300%;
+  animation: ai-gradient 6s ease infinite;
+}
+
