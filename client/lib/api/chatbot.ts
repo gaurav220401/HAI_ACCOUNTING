@@ -34,11 +34,12 @@ export interface ChatSession {
 export async function sendChatMessage(
   question: string,
   sessionId?: string,
-  history?: ChatMessage[]
+  history?: ChatMessage[],
+  attachments?: Array<{ url: string; originalName: string; publicId: string }>
 ): Promise<ChatResponse> {
   const res = await apiFetch("/chat", {
     method: "POST",
-    body: JSON.stringify({ question, sessionId, history }),
+    body: JSON.stringify({ question, sessionId, history, attachments }),
   });
 
   const data = await res.json();

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useChatbot } from "@/contexts/chatbot-context";
 import { cn } from "@/lib/utils";
-import { Bot, Send, MessageSquare, RefreshCw } from "lucide-react";
+import { Bot, Send, MessageSquare, RefreshCw, Paperclip, Loader2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -32,10 +32,15 @@ export function AgentChat() {
     handleNewChat,
     fetchSessions,
     handleLoadSession,
+    pendingFiles,
+    uploadingFiles,
+    handleUploadFiles,
+    handleRemovePendingFile,
   } = useChatbot();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,7 +53,9 @@ export function AgentChat() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (input.trim() || pendingFiles.length > 0) {
+        sendMessage();
+      }
     }
   };
 
@@ -143,7 +150,7 @@ export function AgentChat() {
                         )}
                       >
                         {isUser ? (
-                          <p>{msg.content}</p>
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
                         ) : (
                           <div className="prose prose-sm max-w-none text-slate-800">
                             <ReactMarkdown
@@ -189,29 +196,81 @@ export function AgentChat() {
 
         {/* Input Form */}
         <div className="p-4 border-t border-slate-200 bg-slate-50/20">
-          <div className="max-w-3xl mx-auto flex gap-3 items-end bg-white border border-slate-200 rounded-2xl p-2 focus-within:border-teal-500 transition-colors shadow-2xs">
-            <textarea
-              ref={inputRef}
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type a message to Nemo..."
-              disabled={isLoading}
-              className="flex-1 bg-transparent border-0 resize-none py-1.5 px-3 text-sm focus:outline-none placeholder-slate-400 text-slate-800 disabled:opacity-50 max-h-24 overflow-y-auto"
-            />
-            <button
-              onClick={() => sendMessage()}
-              disabled={!input.trim() || isLoading}
-              className={cn(
-                "h-8 w-8 rounded-xl flex items-center justify-center cursor-pointer transition-all shrink-0",
-                input.trim() && !isLoading
-                  ? "bg-teal-600 hover:bg-teal-700 text-white"
-                  : "bg-slate-100 text-slate-400"
-              )}
-            >
-              <Send className="h-3.5 w-3.5" />
-            </button>
+          <div className="max-w-3xl mx-auto space-y-2.5">
+            {/* Pending attachments strip */}
+            {pendingFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-1 max-h-24 overflow-y-auto">
+                {pendingFiles.map((file) => (
+                  <div
+                    key={file.publicId}
+                    className="flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-xl pl-3 pr-2 py-1 text-xs text-slate-700 font-semibold shadow-3xs"
+                  >
+                    <span className="truncate max-w-[150px]">{file.originalName}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePendingFile(file.publicId)}
+                      className="text-slate-450 hover:text-slate-750 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 items-end bg-white border border-slate-205 rounded-2xl p-2.5 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/10 transition-all shadow-2xs">
+              {/* Attachment selector */}
+              <button
+                type="button"
+                disabled={isLoading || uploadingFiles}
+                onClick={() => fileInputRef.current?.click()}
+                className="h-8.5 w-8.5 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer transition-colors shrink-0"
+                title="Attach documents or images"
+              >
+                {uploadingFiles ? (
+                  <Loader2 className="h-4.5 w-4.5 animate-spin text-teal-600" />
+                ) : (
+                  <Paperclip className="h-4.5 w-4.5" />
+                )}
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleUploadFiles(e.target.files);
+                  }
+                }}
+              />
+
+              <textarea
+                ref={inputRef}
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask Nemo or attach invoices, receipts, and files..."
+                disabled={isLoading}
+                className="flex-1 bg-transparent border-0 resize-none py-1.5 px-3 text-sm focus:outline-none placeholder-slate-400 text-slate-800 disabled:opacity-50 max-h-24 overflow-y-auto"
+              />
+
+              <button
+                onClick={() => sendMessage()}
+                disabled={(!input.trim() && pendingFiles.length === 0) || isLoading}
+                className={cn(
+                  "h-8.5 w-8.5 rounded-xl flex items-center justify-center cursor-pointer transition-all shrink-0",
+                  (input.trim() || pendingFiles.length > 0) && !isLoading
+                    ? "bg-teal-600 hover:bg-teal-700 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-400"
+                )}
+                title="Send message"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

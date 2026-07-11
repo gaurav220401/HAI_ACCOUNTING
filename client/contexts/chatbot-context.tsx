@@ -11,6 +11,8 @@ import {
   type ChatMessage,
   type ChatSession 
 } from "@/lib/api/chatbot";
+import { uploadApi } from "@/lib/api/upload";
+import { toast } from "sonner";
 
 interface ChatbotContextType {
   messages: ChatMessage[];
@@ -26,6 +28,13 @@ interface ChatbotContextType {
   handleNewChat: () => void;
   fetchSessions: () => Promise<void>;
   handleLoadSession: (id: string) => Promise<void>;
+  
+  // Multimodal file upload features
+  pendingFiles: Array<{ url: string; originalName: string; publicId: string }>;
+  setPendingFiles: React.Dispatch<React.SetStateAction<Array<{ url: string; originalName: string; publicId: string }>>>;
+  uploadingFiles: boolean;
+  handleUploadFiles: (files: FileList) => Promise<void>;
+  handleRemovePendingFile: (publicId: string) => Promise<void>;
 }
 
 const ChatbotContext = createContext<ChatbotContextType | undefined>(undefined);
@@ -38,6 +47,10 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
+  // File upload state variables
+  const [pendingFiles, setPendingFiles] = useState<Array<{ url: string; originalName: string; publicId: string }>>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
     try {
@@ -46,7 +59,6 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         setSessions(res.data);
         return;
       }
-      // Graceful fallback to localStorage in case of error or setup
       const localSess = localStorage.getItem("hai_chat_sessions");
       if (localSess) setSessions(JSON.parse(localSess));
     } catch (e) {
@@ -66,7 +78,6 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         setMessages(res.data.messages || []);
         return;
       }
-      // Fallback to local storage session
       const localSess = localStorage.getItem("hai_chat_sessions");
       if (localSess) {
         const list: any[] = JSON.parse(localSess);
@@ -94,6 +105,7 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
   const handleNewChat = async () => {
     setMessages([]);
     setIsLoading(true);
+    setPendingFiles([]);
     try {
       const res = await createSession();
       if (res.success && res.data) {
@@ -109,22 +121,67 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Upload selected files
+  const handleUploadFiles = async (files: FileList) => {
+    setUploadingFiles(true);
+    const uploadedList = [...pendingFiles];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const res = await uploadApi.upload(file, "chat-attachments");
+        uploadedList.push({
+          url: res.url,
+          originalName: res.originalName || file.name,
+          publicId: res.publicId,
+        });
+      }
+      setPendingFiles(uploadedList);
+      toast.success(`${files.length} file(s) uploaded successfully.`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload file(s).");
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  // Remove a pending file
+  const handleRemovePendingFile = async (publicId: string) => {
+    try {
+      await uploadApi.remove(publicId);
+      setPendingFiles((prev) => prev.filter((f) => f.publicId !== publicId));
+      toast.success("Attachment removed.");
+    } catch (err) {
+      // Clean up locally even if API fails
+      setPendingFiles((prev) => prev.filter((f) => f.publicId !== publicId));
+    }
+  };
+
   const sendMessage = useCallback(
     async (questionText?: string) => {
       const question = (questionText || input).trim();
       if (!question || isLoading) return;
 
+      // Append attachment links to user message for UI display
+      let displayContent = question;
+      if (pendingFiles.length > 0) {
+        const fileLinks = pendingFiles
+          .map((f) => `📎 [${f.originalName}](${f.url})`)
+          .join("\n");
+        displayContent += `\n\nAttachments:\n${fileLinks}`;
+      }
+
       const userMessage: ChatMessage = {
         role: "user",
-        content: question,
+        content: displayContent,
         timestamp: Date.now(),
       };
       
-      // Keep track of messages history before appending the new one
       const historyContext = [...messages];
+      const filesToSend = [...pendingFiles];
       
       setMessages((prev) => [...prev, userMessage]);
       setInput("");
+      setPendingFiles([]); // Clear pending files list
       setIsLoading(true);
 
       try {
@@ -137,7 +194,7 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        const response = await sendChatMessage(question, activeSessionId, historyContext);
+        const response = await sendChatMessage(question, activeSessionId, historyContext, filesToSend);
 
         if (response.success && response.data) {
           if (response.data.sessionId) {
@@ -173,7 +230,7 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     },
-    [input, isLoading, sessionId, messages, fetchSessions]
+    [input, isLoading, sessionId, messages, fetchSessions, pendingFiles]
   );
 
   return (
@@ -192,6 +249,13 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         handleNewChat,
         fetchSessions,
         handleLoadSession,
+        
+        // Expose file upload states
+        pendingFiles,
+        setPendingFiles,
+        uploadingFiles,
+        handleUploadFiles,
+        handleRemovePendingFile,
       }}
     >
       {children}

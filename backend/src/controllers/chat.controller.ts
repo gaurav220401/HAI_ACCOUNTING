@@ -819,10 +819,26 @@ function buildKBContext(chunks: any[]): { context: string; sources: Array<{ titl
 
 // ─── Main Chat Handler ────────────────────────────────────────────────
 
+function getMimeType(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const mimeMap: Record<string, string> = {
+    pdf: "application/pdf",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+    gif: "image/gif",
+    txt: "text/plain",
+    csv: "text/csv",
+    json: "application/json",
+  };
+  return mimeMap[ext || ""] || "application/octet-stream";
+}
+
 export const handleChat = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const startTime = Date.now();
-    const { question, sessionId: clientSessionId, history } = req.body;
+    const { question, sessionId: clientSessionId, history, attachments } = req.body;
 
     // ── Input Validation ──
     if (!question || typeof question !== "string") {
@@ -831,6 +847,12 @@ export const handleChat = asyncHandler(
     }
 
     const trimmedQuestion = question.trim();
+    let fullQuestionText = trimmedQuestion;
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      const attachmentLinks = attachments.map((a: any) => `[Attachment: ${a.originalName}](${a.url})`).join("\n");
+      fullQuestionText += `\n\nAttachments:\n${attachmentLinks}`;
+    }
+
     if (trimmedQuestion.length === 0) {
       res.status(400).json({ success: false, message: "Question cannot be empty." });
       return;
@@ -969,11 +991,41 @@ export const handleChat = asyncHandler(
           }
         }
 
-        const userPrompt = `${fullContext}${historyPrompt}\n\nUSER QUESTION: ${trimmedQuestion}`;
+        const userPrompt = `${fullContext}${historyPrompt}\n\nUSER QUESTION: ${fullQuestionText}`;
+
+        const parts: any[] = [{ text: userPrompt }];
+
+        // Download and attach each file to Gemini inlineData
+        if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+          for (const att of attachments) {
+            try {
+              if (att.url) {
+                const fileRes = await fetch(att.url);
+                if (fileRes.ok) {
+                  const buffer = await fileRes.arrayBuffer();
+                  const base64Data = Buffer.from(buffer).toString("base64");
+                  const mimeType = getMimeType(att.originalName || "file.dat");
+                  
+                  parts.push({
+                    inlineData: {
+                      data: base64Data,
+                      mimeType
+                    }
+                  });
+                }
+              }
+            } catch (err) {
+              console.error(`Failed to download chat attachment ${att.url}:`, err);
+            }
+          }
+        }
 
         const response = await client.models.generateContent({
           model: llmModel,
-          contents: userPrompt,
+          contents: {
+            role: "user",
+            parts
+          },
           config: {
             systemInstruction: buildSystemPrompt(orgName),
             temperature: 0.3,
@@ -992,7 +1044,7 @@ export const handleChat = asyncHandler(
         await ChatLog.create({
           userId,
           sessionId,
-          question: trimmedQuestion,
+          question: fullQuestionText,
           answer,
           sources,
           chunksRetrieved: relevantChunks.length,
@@ -1007,7 +1059,7 @@ export const handleChat = asyncHandler(
       // ── Step 9.5: Append to ChatSession ──
       if (clientSessionId && organizationId) {
         try {
-          const userMsg = { role: "user" as const, content: trimmedQuestion, timestamp: new Date() };
+          const userMsg = { role: "user" as const, content: fullQuestionText, timestamp: new Date() };
           const botMsg = {
             role: "assistant" as const,
             content: answer,

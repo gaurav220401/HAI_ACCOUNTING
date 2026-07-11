@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, MessageSquare, Send, Sparkles, X, ArrowUpRight, AlertCircle, RefreshCw, Clock, ChevronDown } from "lucide-react";
+import { Bot, MessageSquare, Send, Sparkles, X, ArrowUpRight, AlertCircle, RefreshCw, Clock, ChevronDown, Paperclip, Loader2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendChatMessage, type ChatMessage } from "@/lib/api/chatbot";
@@ -251,6 +251,10 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
     handleNewChat,
     fetchSessions,
     handleLoadSession,
+    pendingFiles,
+    uploadingFiles,
+    handleUploadFiles,
+    handleRemovePendingFile,
   } = useChatbot();
 
   const [isInitializing, setIsInitializing] = useState(true);
@@ -258,6 +262,7 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen && showHistory) {
@@ -298,7 +303,9 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (input.trim() || pendingFiles.length > 0) {
+        sendMessage();
+      }
     }
   };
 
@@ -449,25 +456,74 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
 
         {/* ── Input Area ── */}
         <div className="shrink-0 border-t border-slate-100 bg-white px-3 py-3">
+          {/* Pending files strip */}
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2.5 px-1 max-h-20 overflow-y-auto">
+              {pendingFiles.map((file) => (
+                <div
+                  key={file.publicId}
+                  className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded-lg pl-2 pr-1 py-0.5 text-[10px] text-slate-650 font-medium"
+                >
+                  <span className="truncate max-w-[120px]">{file.originalName}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePendingFile(file.publicId)}
+                    className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-1.5 transition-colors focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/20">
+            {/* Attachment Button */}
+            <button
+              type="button"
+              disabled={isLoading || uploadingFiles}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+              title="Attach documents or images"
+            >
+              {uploadingFiles ? (
+                <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
+              ) : (
+                <Paperclip className="h-4 w-4" />
+              )}
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleUploadFiles(e.target.files);
+                }
+              }}
+            />
+
             <input
               ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask a question..."
+              placeholder="Ask a question or upload documents..."
               disabled={isLoading}
               className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none disabled:opacity-50"
               autoComplete="off"
             />
+            
             <button
               type="button"
               onClick={() => sendMessage()}
-              disabled={!input.trim() || isLoading}
+              disabled={(!input.trim() && pendingFiles.length === 0) || isLoading}
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all cursor-pointer",
-                input.trim() && !isLoading
+                (input.trim() || pendingFiles.length > 0) && !isLoading
                   ? "bg-teal-600 text-white shadow-sm hover:bg-teal-700"
                   : "bg-slate-200 text-slate-400"
               )}
@@ -477,7 +533,7 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
             </button>
           </div>
           <p className="mt-1.5 text-center text-[9px] text-slate-400">
-            Powered by HAI Knowledge Base · Answers may not be perfect
+            Powered by HAI Knowledge Base · Supports Multimodal Documents & Images
           </p>
         </div>
       </div>
