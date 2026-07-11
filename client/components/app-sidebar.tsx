@@ -90,11 +90,6 @@ const navItems: NavItem[] = [
     title: "AI Assistant",
     url: "/ai-agent",
     icon: Bot,
-    items: [
-      { title: "Chat", url: "/ai-agent?tab=chat", icon: MessageSquare },
-      { title: "Agentic Tasks", url: "/ai-agent?tab=tasks", icon: Sparkles },
-      { title: "Agent History", url: "/ai-agent?tab=history", icon: Clock },
-    ],
   },
   {
     title: "Home",
