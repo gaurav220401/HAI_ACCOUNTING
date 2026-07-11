@@ -5,7 +5,7 @@
 | Phase 1 — Header & Floating UI | COMPLETED | Antigravity | Reverted Nemo bot to HAI Assistant |
 | Phase 2 — Chat Memory | COMPLETED | Antigravity | Integrated Mongoose sessions and multi-turn Gemini context |
 | Phase 3 — Agent Backend | COMPLETED | Antigravity | Added AIAgentTask model, workflow controllers, and api routes |
-| Phase 4 — Agent UI | PENDING | — | — |
+| Phase 4 — Agent UI | COMPLETED | Antigravity | Added AgentChat, AgentTaskPanel, AgentWorkflowVisualizer, AgentItemCreator, AgentHistory, and AgentItemAnalysis components |
 | Phase 5 — Docs | IN PROGRESS | — | — |
 
 ---
