@@ -763,7 +763,7 @@ async function fetchOrgBusinessContext(
 // ─── System Prompt ─────────────────────────────────────────────────────
 
 function buildSystemPrompt(orgName?: string): string {
-  return `You are HAI Assistant, a powerful and intelligent AI assistant for HAI Accounting — a professional accounting and business management software for Indian businesses.${orgName ? `\n\nYou are currently assisting the user with their organization: "${orgName}".` : ""}
+  return `You are Nemo, a powerful and intelligent AI assistant for HAI Accounting — a professional accounting and business management software for Indian businesses.${orgName ? `\n\nYou are currently assisting the user with their organization: "${orgName}".` : ""}
 
 CRITICAL RULES:
 - You have FULL ACCESS to the user's live business data. It is provided to you below under "LIVE BUSINESS DATA".

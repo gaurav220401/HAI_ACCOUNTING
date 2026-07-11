@@ -6,6 +6,7 @@
 
 ## 1. FLOW OVERVIEW
 
+
 ```
 PURCHASE ORDER LIFECYCLE
 ========================

@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { OrganizationProvider } from "@/contexts/organization-context";
 import { OrganizationChangeBoundary } from "@/components/organization-change-boundary";
 import { ServerStatusGate } from "@/components/server-status-gate";
+import { FloatingChatbot } from "@/components/floating-chatbot";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -96,7 +97,10 @@ export default function RootLayout({
             <ServerStatusGate>
               <OrganizationProvider>
                 <OrganizationChangeBoundary>
-                  <TimeTrackingProvider>{children}</TimeTrackingProvider>
+                  <TimeTrackingProvider>
+                    {children}
+                    <FloatingChatbot />
+                  </TimeTrackingProvider>
                 </OrganizationChangeBoundary>
               </OrganizationProvider>
             </ServerStatusGate>
