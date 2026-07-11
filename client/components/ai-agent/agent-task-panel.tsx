@@ -84,7 +84,7 @@ export function AgentTaskPanel() {
         </div>
         <div className="flex-1 flex items-center justify-center p-6 text-center bg-slate-50/20">
           <div className="max-w-md space-y-3">
-            <span className="text-3xl select-none block">📤</span>
+            <Download className="h-10 w-10 text-slate-400 mx-auto" />
             <h3 className="text-sm font-bold text-slate-800">Export / Import Mapper Assistant</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
               AI-assisted spreadsheet importer. Clean column values, map layout tables, and bulk import records under transaction safety bounds. This utility is scheduled for complete release in the next update.
@@ -109,7 +109,7 @@ export function AgentTaskPanel() {
         </div>
         <div className="flex-1 flex items-center justify-center p-6 text-center bg-slate-50/20">
           <div className="max-w-md space-y-3">
-            <span className="text-3xl select-none block">📜</span>
+            <FileText className="h-10 w-10 text-slate-400 mx-auto" />
             <h3 className="text-sm font-bold text-slate-800">AI Financial Report Generator</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
               Instantly draft comparative balance sheets, cashflow reports, and operational dashboards from live ledger postings. This tool is scheduled for release in the next update.
@@ -133,7 +133,7 @@ export function AgentTaskPanel() {
               id: "create_item" as const,
               title: "Create Item with AI",
               desc: "AI will ask you questions and automatically fill in the accounting item form.",
-              emoji: "📦",
+              icon: Package,
               color: "text-teal-600 bg-teal-50 border-teal-100",
               btnText: "Start",
             },
@@ -141,7 +141,7 @@ export function AgentTaskPanel() {
               id: "document_workflow" as const,
               title: "Document Automation",
               desc: "Automatically chain Sales Order → Invoice → Payment with AI.",
-              emoji: "🔄",
+              icon: GitBranch,
               color: "text-purple-600 bg-purple-50 border-purple-100",
               btnText: "Start",
             },
@@ -149,7 +149,7 @@ export function AgentTaskPanel() {
               id: "item_analysis" as const,
               title: "Analyze Items",
               desc: "AI reads your inventory and provides actionable business insights.",
-              emoji: "📊",
+              icon: BarChart3,
               color: "text-emerald-600 bg-emerald-50 border-emerald-100",
               btnText: "Analyze",
             },
@@ -157,7 +157,7 @@ export function AgentTaskPanel() {
               id: "data_export" as const,
               title: "Export with AI",
               desc: "AI helps you map sheets, export the right records, and format excel data.",
-              emoji: "📤",
+              icon: Download,
               color: "text-amber-600 bg-amber-50 border-amber-100",
               btnText: "Start",
             },
@@ -165,32 +165,35 @@ export function AgentTaskPanel() {
               id: "report_generation" as const,
               title: "Generate Report",
               desc: "Ask AI to compile and generate custom financial statements from live logs.",
-              emoji: "📜",
+              icon: FileText,
               color: "text-blue-600 bg-blue-50 border-blue-100",
               btnText: "Generate",
             },
-          ].map((card) => (
-            <div
-              key={card.id}
-              className="rounded-2xl border border-slate-250 bg-white p-5 flex flex-col justify-between hover:border-slate-350 hover:shadow-xs transition-all duration-200"
-            >
-              <div>
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl border text-lg mb-4 select-none ${card.color}`}>
-                  {card.emoji}
+          ].map((card) => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={card.id}
+                className="rounded-2xl border border-slate-250 bg-white p-5 flex flex-col justify-between hover:border-slate-350 hover:shadow-xs transition-all duration-200"
+              >
+                <div>
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl border mb-4 ${card.color}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-800">{card.title}</h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{card.desc}</p>
                 </div>
-                <h3 className="text-sm font-semibold text-slate-800">{card.title}</h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{card.desc}</p>
+                <div className="mt-6 flex items-center justify-end border-t border-slate-100 pt-3">
+                  <button
+                    onClick={() => setActiveWorkflow(card.id)}
+                    className="rounded-lg bg-teal-600 px-4.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-teal-700 transition-colors cursor-pointer"
+                  >
+                    {card.btnText}
+                  </button>
+                </div>
               </div>
-              <div className="mt-6 flex items-center justify-end border-t border-slate-100 pt-3">
-                <button
-                  onClick={() => setActiveWorkflow(card.id)}
-                  className="rounded-lg bg-teal-600 px-4.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-teal-700 transition-colors cursor-pointer"
-                >
-                  {card.btnText}
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

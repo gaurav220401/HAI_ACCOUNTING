@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getItemsAnalysis } from "@/lib/api/ai-agent";
 import { cn } from "@/lib/utils";
-import { BarChart3, RefreshCw, Box, AlertTriangle, Layers } from "lucide-react";
+import { BarChart3, RefreshCw, Box, AlertTriangle, Layers, DollarSign, Ban, Package, Sparkles } from "lucide-react";
 
 export function AgentItemAnalysis() {
   const [analysisData, setAnalysisData] = useState<any>(null);
@@ -70,8 +70,8 @@ export function AgentItemAnalysis() {
           {/* Summary Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-4.5 shadow-3xs flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl bg-teal-50 border border-teal-150 text-teal-600 flex items-center justify-center text-lg select-none">
-                📦
+              <div className="h-10 w-10 rounded-xl bg-teal-50 border border-teal-150 text-teal-600 flex items-center justify-center">
+                <Package className="h-5 w-5" />
               </div>
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Items</span>
@@ -80,8 +80,8 @@ export function AgentItemAnalysis() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4.5 shadow-3xs flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-150 text-purple-600 flex items-center justify-center text-lg select-none">
-                🪙
+              <div className="h-10 w-10 rounded-xl bg-purple-50 border border-purple-150 text-purple-600 flex items-center justify-center">
+                <DollarSign className="h-5 w-5" />
               </div>
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Asset Value</span>
@@ -92,8 +92,8 @@ export function AgentItemAnalysis() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4.5 shadow-3xs flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl bg-rose-50 border border-rose-150 text-rose-600 flex items-center justify-center text-lg select-none">
-                ⚠️
+              <div className="h-10 w-10 rounded-xl bg-rose-50 border border-rose-150 text-rose-600 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Low Stock</span>
@@ -102,8 +102,8 @@ export function AgentItemAnalysis() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4.5 shadow-3xs flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl bg-amber-50 border border-amber-150 text-amber-600 flex items-center justify-center text-lg select-none">
-                🚫
+              <div className="h-10 w-10 rounded-xl bg-amber-50 border border-amber-150 text-amber-600 flex items-center justify-center">
+                <Ban className="h-5 w-5" />
               </div>
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Zero Stock</span>
@@ -115,7 +115,8 @@ export function AgentItemAnalysis() {
           {/* AI Narrative insight */}
           <div className="rounded-2xl border border-teal-500/25 bg-teal-500/3 p-5 shadow-3xs space-y-2">
             <h4 className="text-xs font-bold uppercase tracking-wider text-teal-700 flex items-center gap-1.5">
-              <span>🤖 AI Insights & Recommendations</span>
+              <Sparkles className="h-4 w-4 text-teal-600" />
+              <span>AI Insights & Recommendations</span>
             </h4>
             <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{aiSummary}</p>
           </div>

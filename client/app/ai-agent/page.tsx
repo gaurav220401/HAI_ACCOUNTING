@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, MessageSquare, ListTodo, Shuffle, BarChart3, History } from "lucide-react";
 
 // Import modular Phase 4 components
 import { AgentChat } from "@/components/ai-agent/agent-chat";
@@ -67,25 +67,29 @@ export default function AIAgentPage() {
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200/80 bg-white px-6 py-2">
             <div className="flex items-center gap-2 overflow-x-auto">
               {[
-                { id: "chat", label: "🤖 Chat" },
-                { id: "tasks", label: "⚡ Tasks" },
-                { id: "automation", label: "🔄 Automation" },
-                { id: "analysis", label: "📊 Item Analysis" },
-                { id: "history", label: "📋 History" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={cn(
-                    "rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
-                    activeTab === tab.id
-                      ? "bg-teal-600 text-white shadow-sm"
-                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
+                { id: "chat", label: "Chat", icon: MessageSquare },
+                { id: "tasks", label: "Tasks", icon: ListTodo },
+                { id: "automation", label: "Automation", icon: Shuffle },
+                { id: "analysis", label: "Item Analysis", icon: BarChart3 },
+                { id: "history", label: "History", icon: History },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={cn(
+                      "rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-2",
+                      activeTab === tab.id
+                        ? "bg-teal-600 text-white shadow-sm"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
