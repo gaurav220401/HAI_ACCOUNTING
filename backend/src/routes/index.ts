@@ -43,6 +43,7 @@ import warehouseRoutes from "./warehouse.routes";
 import ocrRoutes from "./ocr.routes";
 import chatRoutes from "./chat.routes";
 import chatSessionRoutes from "./chat-session.routes";
+import aiAgentRoutes from "./ai-agent.routes";
 
 const router = Router();
 
@@ -90,5 +91,6 @@ router.use("/warehouses", warehouseRoutes);
 router.use("/ocr", ocrRoutes);
 router.use("/chat", chatRoutes);
 router.use("/chat-sessions", chatSessionRoutes);
+router.use("/ai-agent", aiAgentRoutes);
 
 export default router;
