@@ -528,9 +528,71 @@ export const askAgentQuestion = asyncHandler(async (req: AuthenticatedRequest, r
     const client = getGenAIClient();
     const llmModel = process.env.CHATBOT_LLM_MODEL || "gemini-2.5-flash";
 
-    const systemPrompt = `You are HAI Accounting's AI Assistant Agent (Nemo).
+    let systemPrompt = `You are HAI Accounting's AI Assistant Agent (Nemo).
 You guide users through completing tasks inside the HAI Accounting platform.
 Be concise, structured, and helpful. Focus on answering direct workflow questions step by step.`;
+
+    if (taskType === "create_item") {
+      systemPrompt = `You are HAI Accounting's AI Assistant Agent (Nemo).
+Your goal is to collect details for a new inventory item.
+The fields are:
+1. 'name' (required string, name of product/service)
+2. 'itemType' (enum: 'Goods' or 'Service', defaults to 'Goods')
+3. 'sku' (string SKU code)
+4. 'sellingPrice' (number, price charged to customers)
+5. 'costPrice' (number, cost paid to vendors)
+6. 'unit' (string measurement unit, e.g. pcs, box, kg)
+7. 'description' (string short description)
+
+Current collected fields context:
+${context || "{}"}
+
+Analyze the user's message and:
+1. Extract any values matching the fields list from their message.
+2. Update the fields list accordingly (merging with existing values in context).
+3. Draft a conversational response asking for missing details or confirming success.
+
+Return a JSON object ONLY in the following format (no other text, do not prefix with markdown tags like \`\`\`json):
+{
+  "message": "AI message replying to user",
+  "fields": {
+    "name": "string",
+    "itemType": "Goods" | "Service",
+    "sku": "string",
+    "sellingPrice": number,
+    "costPrice": number,
+    "unit": "string",
+    "description": "string"
+  }
+}`;
+    } else if (taskType === "document_workflow") {
+      systemPrompt = `You are HAI Accounting's AI Assistant Agent (Nemo).
+Your goal is to collect inputs to execute a sales document workflow chain (Sales Order -> Invoice -> Payment received).
+The fields are:
+1. 'customerName' (string, name of the customer)
+2. 'itemName' (string, name of the inventory item they are buying)
+3. 'quantity' (number, quantity purchased, defaults to 1)
+4. 'rate' (number, rate/price per unit)
+
+Current collected fields context:
+${context || "{}"}
+
+Analyze the user's message and:
+1. Extract any values matching the fields list from their message.
+2. Update the fields list accordingly (merging with existing values in context).
+3. Draft a conversational response asking for missing details, confirming, or prompting them to click 'Run Document Chain'.
+
+Return a JSON object ONLY in the following format (no other text, do not prefix with markdown tags like \`\`\`json):
+{
+  "message": "AI message replying to user",
+  "fields": {
+    "customerName": "string",
+    "itemName": "string",
+    "quantity": number,
+    "rate": number
+  }
+}`;
+    }
 
     const userPrompt = `CONTEXT:
 ${context || "No workspace context provided."}
@@ -551,12 +613,35 @@ ${question.trim()}`;
       },
     });
 
-    const answer = result.text || "I'm sorry, I couldn't process that question right now.";
+    let text = result.text || "";
+    // Clean up markdown code blocks if AI outputs them
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+
+    if (taskType === "create_item" || taskType === "document_workflow") {
+      try {
+        const jsonOutput = JSON.parse(text);
+        res.json({
+          success: true,
+          data: jsonOutput,
+        });
+        return;
+      } catch (err) {
+        // Fallback for malformed JSON
+        res.json({
+          success: true,
+          data: {
+            message: text,
+            fields: JSON.parse(context || "{}"),
+          },
+        });
+        return;
+      }
+    }
 
     res.json({
       success: true,
       data: {
-        answer,
+        answer: text,
         suggestedAction: taskType ? `${taskType} guided task` : undefined,
       },
     });
