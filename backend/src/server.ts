@@ -2,6 +2,7 @@ import "dotenv/config";
 import http from "http";
 import app from "./app";
 import { connectDB, syncIndexes } from "./config/db";
+// Reload for bound user activeOrganization binding
 import { seedDefaultRoles } from "./models/role.model";
 import { startRecurringBillScheduler } from "./services/recurring-bill.scheduler";
 import {

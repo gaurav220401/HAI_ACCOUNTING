@@ -9,6 +9,7 @@ import type { Request } from "express";
 import "./config/firebase";
 import { ensureDBConnection } from "./config/db";
 
+// Registered API Routes (Includes RAG Chat & AI Agent)
 import routes from "./routes";
 import notFound from "./middlewares/notFound";
 import errorHandler from "./middlewares/errorHandler";
