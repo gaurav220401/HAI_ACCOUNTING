@@ -11,6 +11,7 @@ const chatRateLimit = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
   keyGenerator: (req: any) => {
     // Rate limit per authenticated user, falling back to IP
     return req.user?._id?.toString() || req.firebaseUser?.uid || req.ip || "unknown";

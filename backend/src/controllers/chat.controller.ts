@@ -955,7 +955,7 @@ export const handleChat = asyncHandler(
 
         // ── Step 8: Call Gemini LLM ──
         const client = getGenAIClient();
-        const llmModel = process.env.CHATBOT_LLM_MODEL || "gemini-2.5-flash";
+        const llmModel = process.env.CHATBOT_LLM_MODEL || "gemini-3.5-flash";
 
         const userPrompt = `${fullContext}\n\nUSER QUESTION: ${trimmedQuestion}`;
 
