@@ -117,7 +117,7 @@ const roleSchema = new Schema<IRole>(
 const Role: Model<IRole> = model<IRole>("Role", roleSchema);
 
 /**
- * Seed default Zoho Books-style system roles.
+ * Seed default HAI Accounting-style system roles.
  * Admin, Accountant, Staff, Time Tracker
  */
 export async function seedDefaultRoles(): Promise<void> {
@@ -227,7 +227,7 @@ export async function seedDefaultRoles(): Promise<void> {
     );
   }
 
-  console.log("Default Zoho Books roles seeded: Admin, Accountant, Staff, Time Tracker");
+  console.log("Default HAI Accounting roles seeded: Admin, Accountant, Staff");
 }
 
 export default Role;

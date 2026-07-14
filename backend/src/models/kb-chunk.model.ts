@@ -22,6 +22,8 @@ export interface IKBChunk {
   tokenEstimate: number;    // Approximate token count for LLM context budgeting
   contentHash: string;      // MD5 hash
   keywords: string[];       // Extracted keywords for hybrid search fallback
+  summary?: string;         // AI-generated chunk summary
+  questions?: string[];     // AI-generated hypothetical questions
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +43,8 @@ export const kbChunkSchema = new Schema<IKBChunk>(
     tokenEstimate: { type: Number, default: 0 },
     contentHash: { type: String, required: true },
     keywords: { type: [String], default: [] },
+    summary: { type: String },
+    questions: { type: [String], default: [] },
   },
   { timestamps: true }
 );

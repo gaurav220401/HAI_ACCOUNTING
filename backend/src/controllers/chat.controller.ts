@@ -26,6 +26,7 @@ import ChatLog from "../models/chat-log.model";
 import ChatSession from "../models/chat-session.model";
 import asyncHandler from "../utils/asyncHandler";
 import { AuthenticatedRequest } from "../types";
+import { runIngestion } from "../chatbot/ingest";
 
 // ─── Models for live data queries ──────────────────────────────────────
 import Contact from "../models/contact.model";
@@ -835,6 +836,84 @@ function getMimeType(filename: string): string {
   return mimeMap[ext || ""] || "application/octet-stream";
 }
 
+async function classifyQuery(question: string): Promise<{ categories: Set<string>; needsKB: boolean; isGeneralChat: boolean }> {
+  try {
+    const client = getGenAIClient();
+    const model = process.env.CHATBOT_LLM_MODEL || "gemini-2.5-flash";
+
+    const prompt = `Analyze this user query for an accounting system and identify:
+1. Which live business data categories (if any) are required to answer it.
+2. Whether the query is asking "how to" do something or requesting feature/documentation details (needsKB).
+3. Whether the query is a simple greeting, thank you, or general conversational chit-chat requiring no specific data or documentation details (isGeneralChat).
+
+Available live data categories:
+- "organization" (company name, currency settings, GSTIN)
+- "contacts" (customers, vendors, suppliers, payables, receivables, who owes what)
+- "invoices" (sales invoices, customer invoices, overdue invoices, balances due from sales)
+- "bills" (vendor bills, supplier bills, payables, overdue bills)
+- "items" (stock, inventory, products, low stock alerts)
+- "accounts" (bank balance, cash balance, bank accounts, ledgers)
+- "expenses" (spending, monthly expenses, costs)
+- "trialbalance" (trial balance, closing balance, debit and credit summaries)
+- "sales_orders" (sales orders)
+- "purchase_orders" (purchase orders)
+- "quotes" (estimates, quotes)
+- "payments_received" (payments received, customer receipts)
+- "payments_made" (payments made, vendor disbursements)
+- "credit_notes" (customer credit notes, refunds)
+- "vendor_credits" (vendor credits)
+- "journals" (manual journals, general ledger entries)
+- "summary" (general business summary, overview of company health, dashboard reports)
+
+Return a JSON object ONLY with this exact shape:
+{
+  "categories": string[],
+  "needsKB": boolean,
+  "isGeneralChat": boolean
+}
+
+Example outputs:
+Query: "who is my top customer?" -> {"categories": ["contacts"], "needsKB": false, "isGeneralChat": false}
+Query: "how do I add a tax rate?" -> {"categories": [], "needsKB": true, "isGeneralChat": false}
+Query: "hi Nemo!" -> {"categories": [], "needsKB": false, "isGeneralChat": true}
+Query: "give me a business overview" -> {"categories": ["summary"], "needsKB": false, "isGeneralChat": false}
+
+Query: "${question}"`;
+
+    const response = await client.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.1,
+        maxOutputTokens: 150,
+      },
+    });
+
+    const responseText = response.text?.trim() || "{}";
+    const cleanedJson = responseText.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(cleanedJson);
+
+    const categories = new Set<string>();
+    if (Array.isArray(parsed.categories)) {
+      parsed.categories.forEach((c: string) => categories.add(c));
+    }
+
+    return {
+      categories,
+      needsKB: parsed.needsKB ?? true,
+      isGeneralChat: parsed.isGeneralChat ?? false,
+    };
+  } catch (error) {
+    console.warn("⚠️ [classifyQuery] Classification failed, using defaults:", error);
+    return {
+      categories: new Set<string>(),
+      needsKB: true,
+      isGeneralChat: false,
+    };
+  }
+}
+
 export const handleChat = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const startTime = Date.now();
@@ -871,86 +950,134 @@ export const handleChat = asyncHandler(
     const organizationId = req.user?.activeOrganization;
 
     try {
-      // ── Step 1: Always fetch ALL live business data ──
-      // We always fetch everything so the LLM has full context for any question.
-      // The keyword-based intent detection was too narrow and missed valid questions.
+      // ── Step 1: Perform smart, token-efficient query classification ──
       let businessDataContext = "";
       let orgName: string | undefined;
+      let needsKBSearch = true;
+      let isGeneral = false;
 
       if (organizationId) {
         // Get org name for the system prompt
         const org = await Organization.findById(organizationId).select("name").lean();
         orgName = org?.name;
 
-        // Build a full set of all categories
-        const allCategories = new Set<string>([
-          "contacts", "invoices", "bills", "items", "accounts", "expenses",
-          "organization", "trialbalance", "sales_orders", "purchase_orders",
-          "quotes", "payments_received", "payments_made", "credit_notes",
-          "vendor_credits", "journals", "summary",
+        console.log(`[RAG Smart Pipeline] Analyzing query: "${trimmedQuestion}"`);
+        const analysis = await classifyQuery(trimmedQuestion);
+
+        needsKBSearch = analysis.needsKB;
+        isGeneral = analysis.isGeneralChat;
+        const categories = analysis.categories;
+
+        // Keyword-based reinforcement to guarantee critical contexts are never missed
+        const lower = trimmedQuestion.toLowerCase();
+        if (lower.includes("invoice")) { categories.add("invoices"); needsKBSearch = false; }
+        if (lower.includes("bill")) { categories.add("bills"); needsKBSearch = false; }
+        if (lower.includes("customer") || lower.includes("vendor") || lower.includes("supplier") || lower.includes("contact")) {
+          categories.add("contacts");
+          needsKBSearch = false;
+        }
+        if (lower.includes("balance") || lower.includes("bank") || lower.includes("cash")) { categories.add("accounts"); needsKBSearch = false; }
+        if (lower.includes("item") || lower.includes("stock") || lower.includes("inventory")) { categories.add("items"); needsKBSearch = false; }
+        if (lower.includes("expense") || lower.includes("spending") || lower.includes("cost")) { categories.add("expenses"); needsKBSearch = false; }
+        if (lower.includes("trial balance") || lower.includes("trialbalance")) { categories.add("trialbalance"); needsKBSearch = false; }
+        if (lower.includes("sales order")) { categories.add("sales_orders"); needsKBSearch = false; }
+        if (lower.includes("purchase order")) { categories.add("purchase_orders"); needsKBSearch = false; }
+        if (lower.includes("estimate") || lower.includes("quote")) { categories.add("quotes"); needsKBSearch = false; }
+        if (lower.includes("summary") || lower.includes("overview") || lower.includes("dashboard") || lower.includes("health")) {
+          categories.add("summary");
+          needsKBSearch = false;
+        }
+
+        // Help-oriented phrases should search KB
+        if (lower.includes("how to") || lower.includes("how do i") || lower.includes("help") || lower.includes("guide") || lower.includes("steps")) {
+          needsKBSearch = true;
+        }
+
+        // Expand summary to all categories to fulfill general overview requests
+        if (categories.has("summary")) {
+          const allCategories = [
+            "contacts", "invoices", "bills", "items", "accounts", "expenses",
+            "organization", "trialbalance", "sales_orders", "purchase_orders",
+            "quotes", "payments_received", "payments_made", "credit_notes",
+            "vendor_credits", "journals", "summary",
+          ];
+          allCategories.forEach((c) => categories.add(c));
+        }
+
+        if (categories.size > 0) {
+          console.log(`[RAG Smart Pipeline] Query requires live data. Categories: [${Array.from(categories).join(", ")}]`);
+          businessDataContext = await fetchOrgBusinessContext(
+            organizationId as Types.ObjectId,
+            categories
+          );
+        } else {
+          console.log("[RAG Smart Pipeline] Query requires NO live database context. Skipping DB fetch to save tokens.");
+        }
+      }
+
+      let relevantChunks: any[] = [];
+      let sources: Array<{ title: string; url: string; score: number }> = [];
+
+      if (needsKBSearch && !isGeneral) {
+        // ── Step 3: Ensure chatbot DB connection ──
+        const conn = getChatbotConnection();
+        if (conn.readyState !== 1) {
+          await new Promise<void>((resolve, reject) => {
+            if (conn.readyState === 1) { resolve(); return; }
+            conn.once("connected", resolve);
+            conn.once("error", reject);
+            setTimeout(() => reject(new Error("Chatbot DB connection timeout")), 10000);
+          });
+        }
+
+        const KBChunk = getKBChunkModel();
+
+        // ── Step 4: Embed the question ──
+        console.log("[RAG Smart Pipeline] Generating query embedding for KB search...");
+        const queryVector = await getEmbedding(trimmedQuestion, "RETRIEVAL_QUERY");
+
+        // ── Step 5: Vector Search ──
+        const searchResults = await KBChunk.aggregate([
+          {
+            $vectorSearch: {
+              index: "vector_index",
+              path: "embedding",
+              queryVector,
+              numCandidates: NUM_CANDIDATES,
+              limit: TOP_K,
+            },
+          },
+          {
+            $project: {
+              text: 1,
+              rawText: 1,
+              sourceFile: 1,
+              sourceUrl: 1,
+              title: 1,
+              headings: 1,
+              chunkIndex: 1,
+              totalChunks: 1,
+              tokenEstimate: 1,
+              keywords: 1,
+              score: { $meta: "vectorSearchScore" },
+            },
+          },
         ]);
 
-        businessDataContext = await fetchOrgBusinessContext(
-          organizationId as Types.ObjectId,
-          allCategories
+        // ── Step 6: Relevance Filtering ──
+        relevantChunks = searchResults.filter(
+          (chunk: any) => chunk.score >= RELEVANCE_THRESHOLD
         );
+        console.log(`[RAG Smart Pipeline] Retrieved ${relevantChunks.length} relevant KB chunks.`);
+      } else {
+        console.log("[RAG Smart Pipeline] Skipping KB search and embedding generation to save tokens.");
       }
-
-      // ── Step 3: Ensure chatbot DB connection ──
-      const conn = getChatbotConnection();
-      if (conn.readyState !== 1) {
-        await new Promise<void>((resolve, reject) => {
-          if (conn.readyState === 1) { resolve(); return; }
-          conn.once("connected", resolve);
-          conn.once("error", reject);
-          setTimeout(() => reject(new Error("Chatbot DB connection timeout")), 10000);
-        });
-      }
-
-      const KBChunk = getKBChunkModel();
-
-      // ── Step 4: Embed the question ──
-      const queryVector = await getEmbedding(trimmedQuestion, "RETRIEVAL_QUERY");
-
-      // ── Step 5: Vector Search ──
-      const searchResults = await KBChunk.aggregate([
-        {
-          $vectorSearch: {
-            index: "vector_index",
-            path: "embedding",
-            queryVector,
-            numCandidates: NUM_CANDIDATES,
-            limit: TOP_K,
-          },
-        },
-        {
-          $project: {
-            text: 1,
-            rawText: 1,
-            sourceFile: 1,
-            sourceUrl: 1,
-            title: 1,
-            headings: 1,
-            chunkIndex: 1,
-            totalChunks: 1,
-            tokenEstimate: 1,
-            keywords: 1,
-            score: { $meta: "vectorSearchScore" },
-          },
-        },
-      ]);
-
-      // ── Step 6: Relevance Filtering ──
-      const relevantChunks = searchResults.filter(
-        (chunk: any) => chunk.score >= RELEVANCE_THRESHOLD
-      );
 
       let answer: string;
-      let sources: Array<{ title: string; url: string; score: number }> = [];
       let isFallback = false;
 
-      // If we have neither KB chunks nor live data, return fallback
-      if (relevantChunks.length === 0 && !businessDataContext) {
+      // If we have neither KB chunks nor live data, and it's not a general conversation, return fallback
+      if (relevantChunks.length === 0 && !businessDataContext && !isGeneral) {
         isFallback = true;
         answer =
           "I couldn't find specific information for that question right now. You can try asking me things like:\n\n" +
@@ -1120,6 +1247,38 @@ export const handleChat = asyncHandler(
       res.status(500).json({
         success: false,
         message: "An error occurred while processing your question. Please try again.",
+      });
+    }
+  }
+);
+
+export const handleIngest = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const force = req.body?.force === true;
+    console.log(`[Ingest Endpoint] Triggered manual ingestion. Force: ${force}`);
+
+    try {
+      const stats = await runIngestion({ force, closeConnection: false });
+
+      res.json({
+        success: true,
+        message: "Knowledge base ingestion completed successfully.",
+        data: {
+          totalFiles: stats.totalFiles,
+          totalChunks: stats.totalChunks,
+          chunksSkipped: stats.chunksSkipped,
+          chunksUpserted: stats.chunksUpserted,
+          chunksOrphaned: stats.chunksOrphaned,
+          totalTokens: stats.totalTokens,
+          errors: stats.errors,
+        },
+      });
+    } catch (err: any) {
+      console.error("[Ingest Endpoint] Ingestion failed:", err);
+      res.status(500).json({
+        success: false,
+        message: "Failed to perform knowledge base ingestion.",
+        error: err.message,
       });
     }
   }

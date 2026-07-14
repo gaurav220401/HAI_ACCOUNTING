@@ -14,6 +14,7 @@ import {
   startDocumentScanRecoveryCron,
 } from "./services/document-processing.service";
 import { startDocumentEmailIngestionWorker } from "./services/document-email-ingest.service";
+import { runIngestion } from "./chatbot/ingest";
 
 const DEFAULT_PORT = Number(process.env.PORT || 5000);
 
@@ -52,6 +53,15 @@ const startServer = async (): Promise<void> => {
 
     // Sync indexes (drops stale non-sparse indexes, etc.)
     await syncIndexes();
+
+    // Trigger asynchronous chatbot knowledge base ingestion on startup (AI-enriched RAG)
+    runIngestion({ force: false, closeConnection: false })
+      .then((stats) => {
+        console.log(`[Startup Ingest] Knowledge base sync complete. (Files: ${stats.totalFiles}, Chunks Upserted: ${stats.chunksUpserted}, Skipped: ${stats.chunksSkipped})`);
+      })
+      .catch((err) => {
+        console.error("[Startup Ingest] Knowledge base sync failed on startup:", err);
+      });
 
     // Seed default roles on startup
     await seedDefaultRoles();
