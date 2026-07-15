@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Wand2,
   Sparkles,
@@ -20,11 +21,13 @@ import {
   PackagePlus,
   Receipt,
   DollarSign,
+  Eye,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { sendAgentInstruction, type AgentMessage, type AgentToolStep } from "@/lib/api/agent";
 import { dispatchAgentAutofill } from "@/hooks/use-agent-autofill";
+import { VisualAgentDriverController } from "@/hooks/visual-agent-driver";
 import { cn } from "@/lib/utils";
 
 // ─── Starter Agent Tasks ────────────────────────────────────────────────
@@ -223,10 +226,15 @@ interface AIAgentPanelProps {
 }
 
 export function AIAgentPanel({ isOpen, onClose }: AIAgentPanelProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isAgentDriving, setIsAgentDriving] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [executionMode, setExecutionMode] = useState<"api" | "visual_ui">("visual_ui");
+  const [autoSubmit, setAutoSubmit] = useState(false);
+  const driverRef = useRef<VisualAgentDriverController | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -240,6 +248,23 @@ export function AIAgentPanel({ isOpen, onClose }: AIAgentPanelProps) {
       setTimeout(() => inputRef.current?.focus(), 150);
     }
   }, [isOpen]);
+
+  // Listen for driver pause/resume/cancel control events from the overlay
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleControl = (e: Event) => {
+      const { action } = (e as CustomEvent).detail || {};
+      if (!driverRef.current) return;
+      if (action === "pause") driverRef.current.pause();
+      if (action === "resume") driverRef.current.resume();
+      if (action === "cancel") {
+        driverRef.current.cancel();
+        setIsAgentDriving(false);
+      }
+    };
+    window.addEventListener("hai:visual-driver-control", handleControl);
+    return () => window.removeEventListener("hai:visual-driver-control", handleControl);
+  }, []);
 
   const executeTask = useCallback(
     async (taskText?: string) => {
@@ -258,7 +283,7 @@ export function AIAgentPanel({ isOpen, onClose }: AIAgentPanelProps) {
       setIsExecuting(true);
 
       try {
-        const res = await sendAgentInstruction(instruction, sessionId);
+        const res = await sendAgentInstruction(instruction, sessionId, executionMode);
 
         if (res.success && res.data) {
           if (res.data.sessionId) setSessionId(res.data.sessionId);
@@ -269,14 +294,72 @@ export function AIAgentPanel({ isOpen, onClose }: AIAgentPanelProps) {
             content: res.data.answer,
             toolSteps: res.data.toolSteps,
             formAutofill: res.data.formAutofill,
+            executionPlan: res.data.executionPlan,
             timestamp: Date.now(),
           };
 
           setMessages((prev) => [...prev, assistantMsg]);
 
-          // Auto-dispatch form pre-fill event if returned
-          if (res.data.formAutofill) {
-            dispatchAgentAutofill(res.data.formAutofill);
+          // ── Visual UI Mode: Launch the step-by-step visual driver ──
+          if (
+            executionMode === "visual_ui" &&
+            res.data.executionPlan &&
+            res.data.executionPlan.length > 0
+          ) {
+            setIsAgentDriving(true);
+
+            // Also store formAutofill in sessionStorage for the target page hook
+            if (res.data.formAutofill) {
+              try {
+                sessionStorage.setItem(
+                  "hai_pending_autofill",
+                  JSON.stringify({
+                    ...res.data.formAutofill,
+                    executionMode,
+                    autoSubmit,
+                  })
+                );
+              } catch (e) {}
+            }
+
+            const driver = new VisualAgentDriverController({
+              steps: res.data.executionPlan,
+              formType: res.data.formAutofill?.formType,
+              navigationUrl: res.data.formAutofill?.navigationUrl,
+              formData: res.data.formAutofill?.data,
+              onNavigate: (url) => {
+                router.push(url);
+              },
+              onFillField: (fieldKey, value) => {
+                // Fallback: dispatch autofill for React state-based filling
+                if (res.data?.formAutofill) {
+                  dispatchAgentAutofill({
+                    ...res.data.formAutofill,
+                    executionMode,
+                    autoSubmit,
+                  });
+                }
+              },
+              onComplete: () => {
+                setIsAgentDriving(false);
+                driverRef.current = null;
+              },
+              onCancel: () => {
+                setIsAgentDriving(false);
+                driverRef.current = null;
+              },
+            });
+
+            driverRef.current = driver;
+            driver.run(); // runs async, non-blocking
+          }
+          // ── Direct API Mode: dispatch autofill immediately ──
+          else if (res.data.formAutofill) {
+            dispatchAgentAutofill({
+              ...res.data.formAutofill,
+              executionMode,
+              autoSubmit,
+            });
           }
         } else {
           setMessages((prev) => [
@@ -305,7 +388,7 @@ export function AIAgentPanel({ isOpen, onClose }: AIAgentPanelProps) {
         setIsExecuting(false);
       }
     },
-    [input, isExecuting, sessionId]
+    [input, isExecuting, sessionId, executionMode, autoSubmit, router]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -374,6 +457,48 @@ export function AIAgentPanel({ isOpen, onClose }: AIAgentPanelProps) {
               <X className="h-5 w-5" />
             </button>
           </div>
+        </div>
+
+        {/* ── Mode Selection Header ── */}
+        <div className="flex items-center justify-between border-b border-purple-100 bg-purple-50/70 px-4 py-2 text-xs">
+          <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-purple-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setExecutionMode("visual_ui")}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold text-[11px] transition-all cursor-pointer",
+                executionMode === "visual_ui"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-purple-700"
+              )}
+            >
+              <Eye className="h-3.5 w-3.5" /> Live UI Mode
+            </button>
+            <button
+              type="button"
+              onClick={() => setExecutionMode("api")}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold text-[11px] transition-all cursor-pointer",
+                executionMode === "api"
+                  ? "bg-purple-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-purple-700"
+              )}
+            >
+              <Zap className="h-3.5 w-3.5" /> Direct API Mode
+            </button>
+          </div>
+
+          {executionMode === "visual_ui" && (
+            <label className="flex items-center gap-1.5 text-[11px] font-medium text-purple-900 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoSubmit}
+                onChange={(e) => setAutoSubmit(e.target.checked)}
+                className="h-3.5 w-3.5 rounded text-purple-600 focus:ring-purple-500 border-purple-300"
+              />
+              Auto-Submit Form
+            </label>
+          )}
         </div>
 
         {/* ── Body ── */}

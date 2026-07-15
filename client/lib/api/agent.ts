@@ -1,5 +1,17 @@
 import { apiFetch } from "../api";
 
+// ─── Execution Plan Step (mirrors backend AgentExecutionStep) ──────────
+
+export interface AgentExecutionStep {
+  id: string;
+  type: "think" | "navigate" | "fill_field" | "scroll_to" | "click" | "wait" | "complete";
+  label: string;
+  target?: string;
+  value?: string;
+  delay?: number;
+  fieldKey?: string;
+}
+
 export interface AgentToolStep {
   toolName: string;
   args: Record<string, any>;
@@ -18,6 +30,7 @@ export interface AgentMessage {
     data: Record<string, any>;
     navigationUrl?: string;
   };
+  executionPlan?: AgentExecutionStep[];
   timestamp: number;
   isError?: boolean;
 }
@@ -32,6 +45,7 @@ export interface AgentResponse {
       data: Record<string, any>;
       navigationUrl?: string;
     };
+    executionPlan?: AgentExecutionStep[];
     sessionId: string;
     responseTimeMs: number;
   };
@@ -43,12 +57,13 @@ export interface AgentResponse {
  */
 export async function sendAgentInstruction(
   instruction: string,
-  sessionId?: string
+  sessionId?: string,
+  executionMode?: "api" | "visual_ui"
 ): Promise<AgentResponse> {
   try {
     const res = await apiFetch("/agent/chat", {
       method: "POST",
-      body: JSON.stringify({ instruction, sessionId }),
+      body: JSON.stringify({ instruction, sessionId, executionMode }),
     });
 
     const data = await res.json();

@@ -11,7 +11,7 @@ export async function handleAgentChat(req: Request, res: Response) {
   const startTime = Date.now();
 
   try {
-    const { instruction, sessionId: providedSessionId } = req.body;
+    const { instruction, sessionId: providedSessionId, executionMode } = req.body;
 
     if (!instruction || typeof instruction !== "string" || !instruction.trim()) {
       return res.status(400).json({
@@ -65,10 +65,10 @@ export async function handleAgentChat(req: Request, res: Response) {
     const userId = (req as any).user?._id?.toString() || "system_user";
     const sessionId = providedSessionId || `agent_session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    console.log(`🤖 [AI Agent Instruction]: "${trimmedInstruction}" | Org: ${organizationId}`);
+    console.log(`🤖 [AI Agent Instruction]: "${trimmedInstruction}" | Mode: ${executionMode || 'api'} | Org: ${organizationId}`);
 
     // 2. Run Multi-turn Agent Workflow
-    const agentResult = await runAgentWorkflow(trimmedInstruction, organizationId);
+    const agentResult = await runAgentWorkflow(trimmedInstruction, organizationId, executionMode);
 
     const responseTimeMs = Date.now() - startTime;
 
@@ -94,6 +94,7 @@ export async function handleAgentChat(req: Request, res: Response) {
         answer: agentResult.answer,
         toolSteps: agentResult.toolSteps,
         formAutofill: agentResult.formAutofill,
+        executionPlan: agentResult.executionPlan,
         sessionId,
         responseTimeMs,
       },
