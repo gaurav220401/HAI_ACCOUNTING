@@ -54,14 +54,26 @@ const startServer = async (): Promise<void> => {
     // Sync indexes (drops stale non-sparse indexes, etc.)
     await syncIndexes();
 
-    // Trigger asynchronous chatbot knowledge base ingestion on startup (AI-enriched RAG)
-    runIngestion({ force: false, closeConnection: false })
-      .then((stats) => {
-        console.log(`[Startup Ingest] Knowledge base sync complete. (Files: ${stats.totalFiles}, Chunks Upserted: ${stats.chunksUpserted}, Skipped: ${stats.chunksSkipped})`);
-      })
-      .catch((err) => {
-        console.error("[Startup Ingest] Knowledge base sync failed on startup:", err);
-      });
+    // Trigger asynchronous chatbot knowledge base ingestion on startup ONLY if database is empty to avoid development rate-limiting
+    try {
+      const { getKBChunkModel } = await import("./models/kb-chunk.model");
+      const KBChunk = getKBChunkModel();
+      const chunkCount = await KBChunk.countDocuments();
+      if (chunkCount === 0) {
+        console.log("[Startup Ingest] Knowledge base is empty. Triggering sync...");
+        runIngestion({ force: false, closeConnection: false })
+          .then((stats) => {
+            console.log(`[Startup Ingest] Knowledge base sync complete. (Files: ${stats.totalFiles}, Chunks Upserted: ${stats.chunksUpserted})`);
+          })
+          .catch((err) => {
+            console.error("[Startup Ingest] Knowledge base sync failed:", err);
+          });
+      } else {
+        console.log(`[Startup Ingest] Knowledge base already has ${chunkCount} chunks. Skipping startup auto-sync to avoid Gemini rate-limits. (To sync manually, run: npm run chatbot:ingest)`);
+      }
+    } catch (ingestErr) {
+      console.warn("[Startup Ingest] Could not check knowledge base chunk count:", ingestErr);
+    }
 
     // Seed default roles on startup
     await seedDefaultRoles();

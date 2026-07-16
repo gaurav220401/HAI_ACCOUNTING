@@ -6,10 +6,11 @@ import { useAuth } from "@/contexts/auth-context";
 import { ChatbotPanel } from "@/components/chatbot-panel";
 import { FloatingAIButton } from "@/components/floating-ai-button";
 import { usePathname } from "next/navigation";
+import { useChatbot } from "@/contexts/chatbot-context";
 
 export function FloatingChatbot() {
   const { firebaseUser, loading } = useAuth();
-  const [chatOpen, setChatOpen] = useState(false);
+  const { chatOpen, setChatOpen } = useChatbot();
   const pathname = usePathname();
 
   // Hide floating chatbot on the AI Agent dashboard page
@@ -24,10 +25,12 @@ export function FloatingChatbot() {
 
   return (
     <>
-      <FloatingAIButton
-        isOpen={chatOpen}
-        onToggle={() => setChatOpen((prev) => !prev)}
-      />
+      {!chatOpen && (
+        <FloatingAIButton
+          isOpen={chatOpen}
+          onToggle={() => setChatOpen((prev) => !prev)}
+        />
+      )}
       <ChatbotPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useChatbot } from "@/contexts/chatbot-context";
 import { 
   Package, GitBranch, BarChart3, Download, FileText, ArrowLeft 
 } from "lucide-react";
@@ -9,6 +11,8 @@ import { AgentWorkflowVisualizer } from "./agent-workflow-visualizer";
 import { AgentItemAnalysis } from "./agent-item-analysis";
 
 export function AgentTaskPanel() {
+  const router = useRouter();
+  const { setChatOpen, setMessages } = useChatbot();
   const [activeWorkflow, setActiveWorkflow] = useState<
     "create_item" | "document_workflow" | "item_analysis" | "data_export" | "report_generation" | null
   >(null);
@@ -185,7 +189,22 @@ export function AgentTaskPanel() {
                 </div>
                 <div className="mt-6 flex items-center justify-end border-t border-slate-100 pt-3">
                   <button
-                    onClick={() => setActiveWorkflow(card.id)}
+                    onClick={() => {
+                      if (card.id === "create_item") {
+                        setChatOpen(true);
+                        router.push("/items/new");
+                        setMessages((prev) => [
+                          ...prev,
+                          {
+                            role: "assistant",
+                            content: "👋 I'm ready to help you create a new item! Please describe what you want to create (e.g. *'Create a goods item named Organic Matcha Green Tea with SKU MATCHA-101 and selling price 850'*) and I will type it directly into your form below.",
+                            timestamp: Date.now(),
+                          },
+                        ]);
+                      } else {
+                        setActiveWorkflow(card.id);
+                      }
+                    }}
                     className="rounded-lg bg-teal-600 px-4.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-teal-700 transition-colors cursor-pointer"
                   >
                     {card.btnText}

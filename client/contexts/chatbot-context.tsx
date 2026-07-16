@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/chatbot";
 import { uploadApi } from "@/lib/api/upload";
 import { toast } from "sonner";
+import { useFormAgent } from "@/hooks/use-form-agent";
 
 interface ChatbotContextType {
   messages: ChatMessage[];
@@ -35,6 +36,18 @@ interface ChatbotContextType {
   uploadingFiles: boolean;
   handleUploadFiles: (files: FileList) => Promise<void>;
   handleRemovePendingFile: (publicId: string) => Promise<void>;
+
+  // AI Agent form automation status
+  agentActive: boolean;
+  agentStatus: "idle" | "navigating" | "typing" | "completed" | "failed";
+  agentProgressMsg: string;
+
+  // Programmatic Chat Drawer Control
+  chatOpen: boolean;
+  setChatOpen: React.Dispatch<React.SetStateAction<boolean>>;
+
+  // Session Deletion
+  handleDeleteSession: (id: string) => Promise<void>;
 }
 
 const ChatbotContext = createContext<ChatbotContextType | undefined>(undefined);
@@ -50,6 +63,16 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
   // File upload state variables
   const [pendingFiles, setPendingFiles] = useState<Array<{ url: string; originalName: string; publicId: string }>>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  // Chat panel open state
+  const [chatOpen, setChatOpen] = useState(false);
+
+  // AI Agent form automation states
+  const [agentActive, setAgentActive] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<"idle" | "navigating" | "typing" | "completed" | "failed">("idle");
+  const [agentProgressMsg, setAgentProgressMsg] = useState("");
+
+  const { executeFormFilling } = useFormAgent();
 
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -68,6 +91,10 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
       setSessionsLoading(false);
     }
   }, []);
+
+  React.useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
 
   const handleLoadSession = async (id: string) => {
     setIsLoading(true);
@@ -156,6 +183,66 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+// Helper to scan DOM for form inputs and their labels
+function getActiveFormContext(): string {
+  if (typeof window === "undefined") return "";
+
+  const inputs = Array.from(
+    document.querySelectorAll("input, textarea, button[role='combobox'], [role='checkbox']")
+  ) as HTMLElement[];
+
+  // Filter out chatbot-panel inputs and hidden elements
+  const visibleFormInputs = inputs.filter((input) => {
+    if (input.closest(".fixed.right-0") || input.closest("#chatbot-panel")) {
+      return false;
+    }
+    return input.offsetParent !== null;
+  });
+
+  if (visibleFormInputs.length < 2) return "";
+
+  const fields: string[] = [];
+  visibleFormInputs.forEach((input) => {
+    const id = input.getAttribute("id");
+    const name = input.getAttribute("name");
+    const placeholder = input.getAttribute("placeholder");
+    let labelText = "";
+
+    if (id) {
+      const label = document.querySelector(`label[for="${id}"]`);
+      if (label) labelText = label.textContent?.trim() || "";
+    }
+    if (!labelText) {
+      const parentLabel = input.closest("label");
+      if (parentLabel) labelText = parentLabel.textContent?.trim() || "";
+    }
+    if (!labelText) {
+      const parent = input.parentElement;
+      if (parent) {
+        const label = parent.querySelector("label");
+        if (label) labelText = label.textContent?.trim() || "";
+      }
+    }
+
+    const labelStr = labelText ? labelText.replace(/[*:]/g, "").trim() : "";
+    const nameStr = name || "";
+    const placeholderStr = placeholder || "";
+
+    const descriptor = labelStr || placeholderStr || nameStr;
+    if (descriptor && !fields.includes(descriptor)) {
+      fields.push(descriptor);
+    }
+  });
+
+  if (fields.length > 0) {
+    return `ACTIVE_FORM_CONTEXT:
+Current Route: ${window.location.pathname}
+Visible form fields that can be populated: ${JSON.stringify(fields)}
+Please use this schema context to accurately map the user's details and trigger the correct NAVIGATE_AND_FILL route and properties.`;
+  }
+  return "";
+}
+
   const sendMessage = useCallback(
     async (questionText?: string) => {
       const question = (questionText || input).trim();
@@ -194,21 +281,65 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        const response = await sendChatMessage(question, activeSessionId, historyContext, filesToSend);
+        const formContext = getActiveFormContext();
+        const apiQuestion = formContext
+          ? `${formContext}\n\nUSER_REQUEST: ${question}`
+          : question;
+
+        const response = await sendChatMessage(apiQuestion, activeSessionId, historyContext, filesToSend);
 
         if (response.success && response.data) {
           if (response.data.sessionId) {
             setSessionId(response.data.sessionId);
           }
 
+          let cleanAnswer = response.data.answer;
+          let actionData: any = null;
+
+          // Parse action triggers wrapped in <action_trigger> tags
+          const actionRegex = /<action_trigger>([\s\S]*?)<\/action_trigger>/;
+          const match = cleanAnswer.match(actionRegex);
+          if (match) {
+            try {
+              actionData = JSON.parse(match[1].trim());
+              cleanAnswer = cleanAnswer.replace(actionRegex, "").trim();
+            } catch (e) {
+              console.error("Failed to parse agent action trigger:", e);
+            }
+          }
+
           const botMessage: ChatMessage = {
             role: "assistant",
-            content: response.data.answer,
+            content: cleanAnswer,
             sources: response.data.sources,
             timestamp: Date.now(),
           };
           setMessages((prev) => [...prev, botMessage]);
           fetchSessions();
+
+          // If action is received, trigger form automation
+          if (actionData && actionData.action === "NAVIGATE_AND_FILL" && actionData.route) {
+            setChatOpen(true);
+            setAgentActive(true);
+            setAgentStatus("navigating");
+            setAgentProgressMsg("Preparing form automation...");
+
+            setTimeout(() => {
+              executeFormFilling(
+                actionData.route,
+                actionData.data || {},
+                (progressMsg) => {
+                  setAgentStatus("typing");
+                  setAgentProgressMsg(progressMsg);
+                },
+                () => {
+                  setAgentActive(false);
+                  setAgentStatus("idle");
+                  setAgentProgressMsg("");
+                }
+              );
+            }, 500);
+          }
         } else {
           const errorMessage: ChatMessage = {
             role: "assistant",
@@ -230,8 +361,25 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     },
-    [input, isLoading, sessionId, messages, fetchSessions, pendingFiles]
+    [input, isLoading, sessionId, messages, fetchSessions, pendingFiles, executeFormFilling]
   );
+
+  const handleDeleteSession = useCallback(async (id: string) => {
+    try {
+      const res = await deleteSession(id);
+      if (res.success) {
+        toast.success("Conversation deleted.");
+        fetchSessions();
+        if (sessionId === id) {
+          handleNewChat();
+        }
+      } else {
+        toast.error(res.message || "Failed to delete conversation.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete conversation.");
+    }
+  }, [sessionId, fetchSessions, handleNewChat]);
 
   return (
     <ChatbotContext.Provider
@@ -256,6 +404,18 @@ export function ChatbotProvider({ children }: { children: React.ReactNode }) {
         uploadingFiles,
         handleUploadFiles,
         handleRemovePendingFile,
+
+        // Expose AI Agent states
+        agentActive,
+        agentStatus,
+        agentProgressMsg,
+
+        // Expose Chat open states
+        chatOpen,
+        setChatOpen,
+
+        // Expose session deletion
+        handleDeleteSession,
       }}
     >
       {children}

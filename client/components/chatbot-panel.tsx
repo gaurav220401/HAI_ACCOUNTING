@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, MessageSquare, Send, Sparkles, X, ArrowUpRight, AlertCircle, RefreshCw, Clock, ChevronDown, Paperclip, Loader2 } from "lucide-react";
+import { Bot, MessageSquare, Send, Sparkles, X, ArrowUpRight, AlertCircle, RefreshCw, Clock, ChevronDown, Paperclip, Loader2, Plus, Trash2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendChatMessage, type ChatMessage } from "@/lib/api/chatbot";
@@ -255,6 +255,9 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
     uploadingFiles,
     handleUploadFiles,
     handleRemovePendingFile,
+    agentActive,
+    agentProgressMsg,
+    handleDeleteSession,
   } = useChatbot();
 
   const [isInitializing, setIsInitializing] = useState(true);
@@ -265,10 +268,10 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen && showHistory) {
+    if (isOpen) {
       fetchSessions();
     }
-  }, [isOpen, showHistory, fetchSessions]);
+  }, [isOpen, fetchSessions]);
 
   // Simulate initialization complete
   useEffect(() => {
@@ -371,7 +374,7 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
               className="flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
               title="New conversation"
             >
-              <RefreshCw className="h-4 w-4" />
+              <Plus className="h-4 w-4" />
             </button>
             <button
               type="button"
@@ -409,21 +412,36 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
             ) : (
               <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
                 {sessions.map((sess) => (
-                  <button
+                  <div
                     key={sess._id}
-                    onClick={() => loadSession(sess._id)}
                     className={cn(
-                      "w-full text-left p-3 hover:bg-slate-50 transition-colors flex flex-col gap-0.5 border-l-2 border-transparent",
+                      "w-full flex items-center justify-between p-3 hover:bg-slate-50 transition-colors border-l-2 border-transparent group",
                       sessionId === sess._id && "bg-teal-50/40 border-l-teal-600"
                     )}
                   >
-                    <span className="text-xs font-semibold text-slate-700 truncate">
-                      {sess.title || "Untitled Conversation"}
-                    </span>
-                    <span className="text-[9px] text-slate-400">
-                      {new Date(sess.updatedAt || sess.lastActivity || sess.createdAt).toLocaleDateString()} at {new Date(sess.updatedAt || sess.lastActivity || sess.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </button>
+                    <button
+                      onClick={() => loadSession(sess._id)}
+                      className="flex-1 text-left flex flex-col gap-0.5 min-w-0 mr-2 cursor-pointer"
+                    >
+                      <span className="text-xs font-semibold text-slate-700 truncate block">
+                        {sess.title || "Untitled Conversation"}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block">
+                        {new Date(sess.updatedAt || sess.lastActivity || sess.createdAt).toLocaleDateString()} at {new Date(sess.updatedAt || sess.lastActivity || sess.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSession(sess._id);
+                      }}
+                      className="h-6 w-6 rounded-md flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer shrink-0"
+                      title="Delete conversation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -449,6 +467,17 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
                 />
               ))}
               {isLoading && <TypingIndicator />}
+              {agentActive && (
+                <div className="mx-4 my-2.5 flex items-center gap-2.5 rounded-xl border border-teal-200 bg-teal-50/85 p-3 shadow-xs backdrop-blur-xs animate-pulse">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
+                    <Sparkles className="h-3.5 w-3.5 animate-spin" />
+                  </div>
+                  <div className="flex-1 space-y-0.5 min-w-0">
+                    <p className="text-[10px] font-bold text-teal-800 uppercase tracking-wider">Nemo Copilot Active</p>
+                    <p className="text-xs text-teal-700 truncate">{agentProgressMsg}</p>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}

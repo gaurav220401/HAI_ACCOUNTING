@@ -782,7 +782,43 @@ CRITICAL RULES:
 - Never expose raw database IDs — use human-readable names and numbers instead.
 - Do not reveal information about other organizations or other users' data.
 - If the user greets you, respond warmly and mention you can help with both feature questions and their business data.
-- If asked about data that is not present in the LIVE BUSINESS DATA section, tell the user what data you CAN see and offer to help with that instead.`;
+- If asked about data that is not present in the LIVE BUSINESS DATA section, tell the user what data you CAN see and offer to help with that instead.
+
+- ACTION TRIGGER COPILET AUTOFILL CAPABILITIES:
+- If the user explicitly asks to create, add, record, or make something, or expresses a clear intent to open/fill out a form (e.g., "create a new item...", "add a customer...", "create invoice for...", "record a vendor bill...", "create estimate/quote..."), you must output an action trigger JSON block.
+- This JSON block MUST be appended at the very end of your response, wrapped inside '<action_trigger>' and '</action_trigger>' XML tags.
+- Inside the tag, provide a JSON object with this exact schema:
+  {
+    "action": "NAVIGATE_AND_FILL",
+    "route": string, // One of: "/items/new", "/sales/invoices/new", "/sales/customers/new", "/purchases/vendors/new", "/purchases/bills/new", "/sales/orders/new", "/purchases/orders/new", "/sales/quotes/new", "/purchases/expenses/new"
+    "data": Record<string, any> // Extracted fields based on user request
+  }
+
+- SENSE-MAKING & DEFAULTS RULE: When constructing the autofill JSON, you MUST intelligently infer missing information and supply standard defaults so the form is complete and valid:
+  * **For Items ('/items/new')**: Always infer and provide "itemType" as either "Goods" or "Service" (look at the item name. E.g., "App Development", "Consulting", "Taxes", "Rent" are "Service". "Coffee", "Laptop", "Bag" are "Goods").
+  * **Default Units**: Always supply a "unit" value: default to "pcs" for Goods, or "hrs" for Services.
+  * **Default SKUs**: Generate a unique "sku" if not provided (e.g., if name is "App Development", generate "APP-DEV-101").
+  * **Default Prices**: Set "sellingPrice" (default to 0 if not provided) and "costPrice" (default to 0).
+  * **For Invoices & Bills**: Intelligently infer date, due date, invoice numbers, or payment terms if missing.
+
+- Example output when asked to create an item:
+  "Sure, I will help you create that item. I am navigating to the new item form and typing the details in for you.
+  <action_trigger>
+  {
+    "action": "NAVIGATE_AND_FILL",
+    "route": "/items/new",
+    "data": {
+      "name": "Matcha Tea",
+      "sku": "MATCHA-100",
+      "sellingPrice": "850",
+      "costPrice": "500",
+      "itemType": "Goods",
+      "unit": "pcs",
+      "description": "Premium quality green tea"
+    }
+  }
+  </action_trigger>"
+- Make sure the JSON is valid, well-formed, and strictly inside the tags. Do not put any conversational text inside the tags, only the JSON.`;
 }
 
 // ─── Helper: Build Context from Chunks ─────────────────────────────────
