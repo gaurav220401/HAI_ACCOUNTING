@@ -277,7 +277,7 @@ export default function InventoryShipmentsPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md"
             onClick={loadShipments}
             disabled={loading}
           >
@@ -285,7 +285,7 @@ export default function InventoryShipmentsPage() {
           </Button>
           <Button
             size="sm"
-            className="h-8"
+            className="h-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
             onClick={() => router.push("/inventory/shipments/new")}
           >
             <Plus className="mr-1 h-4 w-4" />
@@ -317,7 +317,7 @@ export default function InventoryShipmentsPage() {
                 <Button
                   type="button"
                   size="sm"
-                  className="mt-3"
+                  className="mt-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
                   onClick={() => router.push("/inventory/shipments/new")}
                 >
                   <Plus className="mr-1 h-4 w-4" />
@@ -349,19 +349,19 @@ export default function InventoryShipmentsPage() {
 
                 <div className="overflow-x-auto rounded-md border">
                   <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-left">
                       <tr>
-                        <th className="px-3 py-2">Ship Date</th>
-                        <th className="px-3 py-2">Shipment Order#</th>
-                        <th className="px-3 py-2">Package#</th>
-                        <th className="px-3 py-2">Sales Order#</th>
-                        <th className="px-3 py-2">Customer</th>
-                        <th className="px-3 py-2">Carrier</th>
-                        <th className="px-3 py-2">Tracking#</th>
-                        <th className="px-3 py-2 text-right">
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Ship Date</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Shipment Order#</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Package#</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Sales Order#</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Customer</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Carrier</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Tracking#</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">
                           Shipping Charges
                         </th>
-                        <th className="px-3 py-2">Status</th>
+                        <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -375,25 +375,25 @@ export default function InventoryShipmentsPage() {
                           </td>
                         </tr>
                       : filteredShipments.map((row) => (
-                          <tr key={row.id} className="border-t">
-                            <td className="px-3 py-2">
+                          <tr key={row.id} className="border-t border-slate-100 hover:bg-teal-50/30 transition-colors">
+                            <td className="px-4 py-2 text-slate-500">
                               {formatDate(row.shipDate)}
                             </td>
-                            <td className="px-3 py-2 font-medium">
+                            <td className="px-4 py-2 font-medium text-teal-700 hover:text-teal-800 hover:underline cursor-pointer" onClick={() => router.push(`/sales/orders/${row.salesOrderId}`)}>
                               {row.shipmentOrderNumber}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-2 text-slate-700">
                               {row.packageSlipNumber}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-2 text-slate-700 font-medium hover:text-teal-700 hover:underline cursor-pointer" onClick={() => router.push(`/sales/orders/${row.salesOrderId}`)}>
                               {row.salesOrderNumber}
                             </td>
-                            <td className="px-3 py-2">{row.customerName}</td>
-                            <td className="px-3 py-2">{row.carrier || "-"}</td>
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-2 text-slate-700">{row.customerName}</td>
+                            <td className="px-4 py-2 text-slate-600">{row.carrier || "-"}</td>
+                            <td className="px-4 py-2 text-slate-600">
                               {row.trackingNumber || "-"}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
+                            <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-700">
                               {Number(row.shippingCharges || 0).toLocaleString(
                                 "en-IN",
                                 {
@@ -401,12 +401,25 @@ export default function InventoryShipmentsPage() {
                                 },
                               )}
                             </td>
-                            <td className="px-3 py-2">
-                              <span
-                                className={`rounded px-2 py-0.5 text-xs font-semibold ${statusPillTone(row.shipmentStatus)}`}
-                              >
-                                {row.shipmentStatus}
-                              </span>
+                            <td className="px-4 py-2">
+                              {row.shipmentStatus === "Delivered" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                  <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                                  Delivered
+                                </span>
+                              )}
+                              {row.shipmentStatus === "Shipped" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
+                                  <span className="h-1 w-1 rounded-full bg-purple-500" />
+                                  Shipped
+                                </span>
+                              )}
+                              {row.shipmentStatus === "Pending" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                                  <span className="h-1 w-1 rounded-full bg-amber-500" />
+                                  Pending
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))

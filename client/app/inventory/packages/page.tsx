@@ -38,9 +38,9 @@ const BOARD_COLUMNS: Array<{
   label: string;
   tone: string;
 }> = [
-  { key: "NOT SHIPPED", label: "Packages, Not Shipped", tone: "bg-cyan-100" },
-  { key: "SHIPPED", label: "Shipped Packages", tone: "bg-amber-100" },
-  { key: "DELIVERED", label: "Delivered Packages", tone: "bg-lime-100" },
+  { key: "NOT SHIPPED", label: "Packages, Not Shipped", tone: "bg-slate-50 border-b border-slate-200" },
+  { key: "SHIPPED", label: "Shipped Packages", tone: "bg-slate-50 border-b border-slate-200" },
+  { key: "DELIVERED", label: "Delivered Packages", tone: "bg-slate-50 border-b border-slate-200" },
 ];
 
 function formatDate(value?: string | null): string {
@@ -197,7 +197,7 @@ export default function InventoryPackagesPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md"
             onClick={loadPackages}
             disabled={loading}
           >
@@ -205,7 +205,7 @@ export default function InventoryPackagesPage() {
           </Button>
           <Button
             size="sm"
-            className="h-8"
+            className="h-8 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
             onClick={() => router.push("/inventory/packages/new")}
           >
             <Plus className="mr-1 h-4 w-4" />
@@ -259,14 +259,11 @@ export default function InventoryPackagesPage() {
               const columnRows = rowsByStatus[column.key];
               return (
                 <Card key={column.key} className="overflow-hidden">
-                  <CardHeader className={`${column.tone} border-b py-4`}>
-                    <CardTitle className="text-base font-semibold">
-                      {column.label}
+                  <CardHeader className={`${column.tone} py-3`}>
+                    <CardTitle className="text-xs uppercase font-bold tracking-wider text-slate-500 flex items-center justify-between">
+                      <span>{column.label}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200/60 text-slate-600 font-semibold">{columnRows.length}</span>
                     </CardTitle>
-                    <CardDescription className="text-foreground/70">
-                      {columnRows.length} package
-                      {columnRows.length === 1 ? "" : "s"}
-                    </CardDescription>
                   </CardHeader>
                   <CardContent className="min-h-52 space-y-3 p-4">
                     {columnRows.length === 0 ?
@@ -283,11 +280,11 @@ export default function InventoryPackagesPage() {
                           }
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <div className="space-y-0.5">
-                              <p className="font-medium text-primary">
+                             <div className="space-y-0.5">
+                              <p className="font-semibold text-teal-700 hover:text-teal-800 hover:underline">
                                 {row.packageNumber}
                               </p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-slate-400">
                                 {row.salesOrderNumber}
                               </p>
                             </div>
@@ -313,48 +310,44 @@ export default function InventoryPackagesPage() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b bg-muted/50 text-left text-muted-foreground">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-left">
                     <tr>
-                      <th className="w-10 px-3 py-2">
+                      <th className="w-10 px-4 py-2.5">
                         <Checkbox
                           checked={allSelected}
                           onCheckedChange={(value) => toggleAll(Boolean(value))}
                           aria-label="Select all packages"
                         />
                       </th>
-                      <th className="px-3 py-2">PACKAGE DATE</th>
-                      <th className="px-3 py-2">PACKAGE#</th>
-                      <th className="px-3 py-2">CARRIER</th>
-                      <th className="px-3 py-2">TRACKING#</th>
-                      <th className="px-3 py-2">SALES ORDER#</th>
-                      <th className="px-3 py-2">STATUS</th>
-                      <th className="px-3 py-2">SHIPMENT DATE</th>
-                      <th className="px-3 py-2">CUSTOMER NAME</th>
-                      <th className="px-3 py-2 text-right">QUANTITY</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">PACKAGE DATE</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">PACKAGE#</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">CARRIER</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">TRACKING#</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">SALES ORDER#</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">STATUS</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">SHIPMENT DATE</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">CUSTOMER NAME</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">QUANTITY</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.length === 0 ?
+                    {rows.length === 0 ? (
                       <tr>
                         <td
                           colSpan={10}
-                          className="px-3 py-12 text-center text-muted-foreground"
+                          className="px-4 py-12 text-center text-muted-foreground"
                         >
                           No packages found.
                         </td>
                       </tr>
-                    : rows.map((row) => {
-                        const statusClass =
-                          row.status === "DELIVERED" ? "text-emerald-700"
-                          : row.status === "SHIPPED" ? "text-amber-700"
-                          : "text-rose-600";
-
+                    ) : (
+                      rows.map((row) => {
                         return (
                           <tr
                             key={row.id}
-                            className="border-b last:border-0 hover:bg-muted/20"
+                            className="border-b border-slate-100 last:border-0 hover:bg-teal-50/30 transition-colors"
                           >
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-2">
                               <Checkbox
                                 checked={Boolean(selectedRows[row.id])}
                                 onCheckedChange={(value) =>
@@ -363,18 +356,18 @@ export default function InventoryPackagesPage() {
                                 aria-label={`Select package ${row.packageNumber}`}
                               />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-2 text-slate-600">
                               {formatDate(row.packageDate)}
                             </td>
-                            <td className="px-3 py-2 font-medium text-primary">
+                            <td className="px-4 py-2 font-medium text-teal-700 hover:text-teal-800 hover:underline cursor-pointer" onClick={() => router.push(`/sales/orders/${row.salesOrderId}`)}>
                               {row.packageNumber}
                             </td>
-                            <td className="px-3 py-2">-</td>
-                            <td className="px-3 py-2">-</td>
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-2 text-slate-500">-</td>
+                            <td className="px-4 py-2 text-slate-500">-</td>
+                            <td className="px-4 py-2">
                               <button
                                 type="button"
-                                className="text-primary hover:underline"
+                                className="text-teal-700 hover:text-teal-800 hover:underline font-medium"
                                 onClick={() =>
                                   router.push(
                                     `/sales/orders/${row.salesOrderId}`,
@@ -384,22 +377,37 @@ export default function InventoryPackagesPage() {
                                 {row.salesOrderNumber}
                               </button>
                             </td>
-                            <td
-                              className={`px-3 py-2 font-medium ${statusClass}`}
-                            >
-                              {row.status}
+                            <td className="px-4 py-2">
+                              {row.status === "DELIVERED" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                  <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                                  Delivered
+                                </span>
+                              )}
+                              {row.status === "SHIPPED" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
+                                  <span className="h-1 w-1 rounded-full bg-purple-500" />
+                                  Shipped
+                                </span>
+                              )}
+                              {row.status === "NOT SHIPPED" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
+                                  <span className="h-1 w-1 rounded-full bg-rose-500" />
+                                  Not Shipped
+                                </span>
+                              )}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-4 py-2 text-slate-600">
                               {formatDate(row.shipmentDate)}
                             </td>
-                            <td className="px-3 py-2">{row.customerName}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">
+                            <td className="px-4 py-2 text-slate-700">{row.customerName}</td>
+                            <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-700">
                               {row.quantity.toLocaleString("en-IN")}
                             </td>
                           </tr>
                         );
                       })
-                    }
+                    )}
                   </tbody>
                 </table>
               </div>

@@ -169,12 +169,48 @@ export default function InventoryMoveOrdersPage() {
 
   const getStatusBadge = (status: MoveOrderStatus) => {
     switch (status) {
-      case "Draft": return <Badge variant="secondary">{status}</Badge>;
-      case "Sent": return <Badge variant="outline" className="border-blue-500 text-blue-600">{status}</Badge>;
-      case "In Transit": return <Badge variant="outline" className="border-orange-500 text-orange-600">{status}</Badge>;
-      case "Received": return <Badge variant="default" className="bg-green-600 hover:bg-green-700">{status}</Badge>;
-      case "Cancelled": return <Badge variant="destructive">{status}</Badge>;
-      default: return <Badge>{status}</Badge>;
+      case "Draft": 
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+            <span className="h-1 w-1 rounded-full bg-slate-400" />
+            {status}
+          </span>
+        );
+      case "Sent": 
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+            <span className="h-1 w-1 rounded-full bg-amber-500" />
+            Pending
+          </span>
+        );
+      case "In Transit": 
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
+            <span className="h-1 w-1 rounded-full bg-purple-500" />
+            In Transit
+          </span>
+        );
+      case "Received": 
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+            <span className="h-1 w-1 rounded-full bg-emerald-500" />
+            Received
+          </span>
+        );
+      case "Cancelled": 
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
+            <span className="h-1 w-1 rounded-full bg-rose-500" />
+            Cancelled
+          </span>
+        );
+      default: 
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+            <span className="h-1 w-1 rounded-full bg-slate-400" />
+            {status}
+          </span>
+        );
     }
   };
 
@@ -194,7 +230,7 @@ export default function InventoryMoveOrdersPage() {
     <InventoryShell
       title="Move Orders"
       actions={(
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={loadData} disabled={fetching}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md" onClick={loadData} disabled={fetching}>
           <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
         </Button>
       )}
@@ -271,7 +307,7 @@ export default function InventoryMoveOrdersPage() {
                   </Button>
                 </div>
               ))}
-              <Button variant="outline" size="sm" onClick={addItemRow} className="mt-2">
+              <Button variant="outline" size="sm" onClick={addItemRow} className="mt-2 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                 <Plus className="h-4 w-4 mr-1" /> Add Item
               </Button>
             </div>
@@ -297,7 +333,7 @@ export default function InventoryMoveOrdersPage() {
             </div>
 
             <div className="mt-6 flex justify-end">
-              <Button onClick={handleSubmit} disabled={saving || fetching}>
+              <Button onClick={handleSubmit} disabled={saving || fetching} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4 mr-2" />}
                 Initiate Transfer
               </Button>
@@ -318,15 +354,15 @@ export default function InventoryMoveOrdersPage() {
             ) : (
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-muted/50">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-left">
                     <tr>
-                      <th className="px-4 py-3">Order #</th>
-                      <th className="px-4 py-3">Date</th>
-                      <th className="px-4 py-3">From</th>
-                      <th className="px-4 py-3">To</th>
-                      <th className="px-4 py-3">Items</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Order #</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Date</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">From</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">To</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Items</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Status</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -338,19 +374,19 @@ export default function InventoryMoveOrdersPage() {
                       </tr>
                     )}
                     {moveOrders.map((order) => (
-                      <tr key={order._id} className="border-t hover:bg-muted/30">
-                        <td className="px-4 py-3 font-medium text-blue-600">{order.orderNumber}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{new Date(order.date).toLocaleDateString("en-IN")}</td>
-                        <td className="px-4 py-3">{getWarehouseName(order.fromWarehouseId)}</td>
-                        <td className="px-4 py-3">{getWarehouseName(order.toWarehouseId)}</td>
-                        <td className="px-4 py-3">
+                      <tr key={order._id} className="border-t border-slate-100 hover:bg-teal-50/30 transition-colors">
+                        <td className="px-4 py-2 font-medium text-teal-700 hover:text-teal-800 hover:underline cursor-pointer" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>{order.orderNumber}</td>
+                        <td className="px-4 py-2 text-slate-500">{new Date(order.date).toLocaleDateString("en-IN")}</td>
+                        <td className="px-4 py-2 text-slate-700">{getWarehouseName(order.fromWarehouseId)}</td>
+                        <td className="px-4 py-2 text-slate-700">{getWarehouseName(order.toWarehouseId)}</td>
+                        <td className="px-4 py-2 text-slate-600">
                            <div className="max-w-xs truncate">
                               {order.items.map(i => `${getItemName(i.itemId)} (${i.quantity})`).join(", ")}
                            </div>
                         </td>
-                        <td className="px-4 py-3">{getStatusBadge(order.status)}</td>
-                        <td className="px-4 py-3 text-right">
-                           <Button variant="ghost" size="sm" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>View</Button>
+                        <td className="px-4 py-2">{getStatusBadge(order.status)}</td>
+                        <td className="px-4 py-2 text-right">
+                           <Button variant="ghost" size="sm" className="h-8 text-xs text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-md" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>View</Button>
                         </td>
                       </tr>
                     ))}

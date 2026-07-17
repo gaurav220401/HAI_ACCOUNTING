@@ -571,7 +571,7 @@ export default function JournalEntriesPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -592,24 +592,22 @@ export default function JournalEntriesPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col overflow-hidden h-svh">
+      <SidebarInset className="flex flex-col overflow-hidden h-svh bg-white">
         {/* ── Header ── */}
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Accountant <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">
-                Journal Entries
-              </span>
+            <span className="flex flex-col text-left">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+              <span className="text-sm font-semibold text-slate-700 mt-0.5">Journal Entries</span>
             </span>
           }
           actions={
             !panelOpen ?
               <>
                 <div className="relative w-52">
-                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
                   <Input
-                    className="pl-8 h-8 text-sm"
+                    className="pl-8 h-8 text-sm focus-visible:ring-teal-600/20 focus-visible:border-teal-500"
                     placeholder="Search journals…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -618,7 +616,7 @@ export default function JournalEntriesPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="px-2"
+                  className="px-2 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                   onClick={() => void refreshJournals()}
                   disabled={loadingJournals}
                 >
@@ -626,14 +624,14 @@ export default function JournalEntriesPage() {
                 </Button>
                 <Button
                   size="sm"
-                  className="gap-1.5"
+                  className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
                   onClick={() => router.push("/accountant/journal-entries/new")}
                 >
                   <Plus className="h-4 w-4" /> New Journal
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-8 w-8 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                    <Button variant="outline" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md">
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -683,7 +681,7 @@ export default function JournalEntriesPage() {
           }
         />
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden bg-white">
           {/* ── LEFT: list ── */}
           <div
             className={cn(
@@ -729,10 +727,10 @@ export default function JournalEntriesPage() {
                       key={tab}
                       onClick={() => setStatusFilter(tab)}
                       className={cn(
-                        "text-sm pb-2 mr-5 border-b-2 -mb-px transition-colors",
+                         "text-sm pb-2 mr-5 border-b-2 -mb-px transition-colors font-medium",
                         statusFilter === tab ?
-                          "border-primary text-primary font-medium"
-                        : "border-transparent text-muted-foreground hover:text-foreground",
+                          "border-teal-600 text-teal-750 font-semibold"
+                        : "border-transparent text-slate-400 hover:text-slate-600",
                       )}
                     >
                       {tab}
@@ -768,26 +766,26 @@ export default function JournalEntriesPage() {
                       key={j.id}
                       onClick={() => setSelected(j)}
                       className={cn(
-                        "flex items-start gap-2 px-3 py-3 cursor-pointer hover:bg-muted/20 transition-colors",
-                        isSel && "bg-blue-50 border-l-2 border-l-primary",
+                        "flex items-start gap-2 px-3 py-3 cursor-pointer hover:bg-teal-50/20 transition-colors",
+                        isSel && "bg-teal-50/50 border-l-2 border-l-teal-600",
                       )}
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between gap-2 items-start">
                           <p
                             className={cn(
-                              "text-xs font-medium truncate",
-                              isSel ? "text-primary" : "",
+                              "text-xs font-semibold truncate",
+                              isSel ? "text-teal-700 font-bold" : "text-slate-700",
                             )}
                           >
                             {j.displayDate}
                           </p>
-                          <p className="text-xs font-semibold tabular-nums shrink-0">
+                          <p className="text-xs font-semibold tabular-nums shrink-0 text-slate-700">
                             {fmtCurrency(j.amount, j.currency)}
                           </p>
                         </div>
-                        <div className="flex gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
-                          <span className="text-primary font-medium">
+                        <div className="flex gap-1.5 mt-0.5 text-[10px] text-slate-400">
+                          <span className="text-teal-700 font-semibold">
                             {j.journalNumber}
                           </span>
                           <span>·</span>
@@ -811,10 +809,10 @@ export default function JournalEntriesPage() {
             : /* Full table when no detail open */
               <div className="flex-1 overflow-auto">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-background z-10">
-                    <tr className="border-b">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
                       <th className="w-10 px-4 py-3">
-                        <input type="checkbox" className="accent-primary" />
+                        <input type="checkbox" className="accent-teal-600" />
                       </th>
                       {[
                         "Date",
@@ -825,12 +823,12 @@ export default function JournalEntriesPage() {
                       ].map((h) => (
                         <th
                           key={h}
-                          className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap"
+                          className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left whitespace-nowrap"
                         >
                           {h}
                         </th>
                       ))}
-                      <th className="text-right px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">
                         Amount
                       </th>
                       <th className="w-8" />
@@ -859,36 +857,44 @@ export default function JournalEntriesPage() {
                         <tr
                           key={j.id}
                           onClick={() => setSelected(j)}
-                          className="hover:bg-muted/20 cursor-pointer group"
+                          className="border-b border-slate-100 last:border-0 hover:bg-teal-50/30 transition-colors cursor-pointer group"
                         >
                           <td
-                            className="px-4 py-2.5"
+                            className="px-4 py-2"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <input type="checkbox" className="accent-primary" />
+                            <input type="checkbox" className="accent-teal-600" />
                           </td>
-                          <td className="px-3 py-2.5 font-medium whitespace-nowrap">
+                          <td className="px-4 py-2 font-medium whitespace-nowrap text-slate-700">
                             {j.displayDate}
                           </td>
-                          <td className="px-3 py-2.5 text-primary font-medium">
+                          <td className="px-4 py-2 text-teal-700 hover:text-teal-800 hover:underline font-semibold">
                             {j.journalNumber}
                           </td>
-                          <td className="px-3 py-2.5 text-muted-foreground">
+                          <td className="px-4 py-2 text-slate-500">
                             {j.reference}
                           </td>
-                          <td className="px-3 py-2.5">
-                            <span
-                              className={cn(
-                                "text-[11px] font-semibold tracking-wide uppercase",
-                                j.status === "Published" ? "text-emerald-600"
-                                : j.status === "Draft" ? "text-amber-500"
-                                : "text-slate-500",
+                          <td className="px-4 py-2">
+                              {j.status === "Published" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                  <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                                  Published
+                                </span>
                               )}
-                            >
-                              {j.status}
-                            </span>
+                              {j.status === "Draft" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                                  <span className="h-1 w-1 rounded-full bg-amber-500" />
+                                  Draft
+                                </span>
+                              )}
+                              {j.status === "Voided" && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                                  <span className="h-1 w-1 rounded-full bg-slate-400" />
+                                  Voided
+                                </span>
+                              )}
                           </td>
-                          <td className="max-w-50 truncate px-3 py-2.5 text-sm text-muted-foreground">
+                          <td className="max-w-50 truncate px-4 py-2 text-sm text-slate-500">
                             {j.notes}
                           </td>
                           <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">

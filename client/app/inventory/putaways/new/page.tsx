@@ -156,7 +156,7 @@ function NewPutawayContent() {
   if (fetching) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
       </div>
     );
   }
@@ -183,12 +183,12 @@ function NewPutawayContent() {
               <Input 
                 value={putawayNumber}
                 onChange={(e) => setPutawayNumber(e.target.value)}
-                className="pr-10 bg-blue-50/30 border-blue-200 focus-visible:ring-blue-500" 
+                className="pr-10 bg-teal-50/30 border-teal-250 focus-visible:ring-teal-600/20 focus-visible:border-teal-500 focus-visible:ring-1" 
               />
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="absolute right-1 top-1 h-7 w-7 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                className="absolute right-1 top-1 h-7 w-7 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
               >
                 <Settings className="h-4 w-4" />
               </Button>
@@ -198,7 +198,7 @@ function NewPutawayContent() {
           {receiveData && (
             <div className="grid grid-cols-[160px_1fr] items-center gap-4 text-sm">
               <Label className="font-medium text-slate-700">Source Receive</Label>
-              <div className="font-medium text-blue-600">{receiveData.purchaseReceiveNumber} (PO: {receiveData.purchaseOrderNumber})</div>
+              <div className="font-medium text-teal-700">{receiveData.purchaseReceiveNumber} (PO: {receiveData.purchaseOrderNumber})</div>
             </div>
           )}
 
@@ -230,7 +230,7 @@ function NewPutawayContent() {
 
               <Dialog open={isCreateWarehouseOpen} onOpenChange={setIsCreateWarehouseOpen}>
                 <DialogTrigger asChild>
-                  <Button type="button" variant="outline" className="shrink-0">
+                  <Button type="button" variant="outline" className="shrink-0 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                     <Plus className="h-4 w-4 mr-2" />
                     New
                   </Button>
@@ -255,10 +255,10 @@ function NewPutawayContent() {
                   </div>
 
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsCreateWarehouseOpen(false)}>
+                    <Button variant="outline" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={() => setIsCreateWarehouseOpen(false)}>
                       Cancel
                     </Button>
-                    <Button onClick={handleCreateWarehouse} disabled={creatingWarehouse}>
+                    <Button onClick={handleCreateWarehouse} disabled={creatingWarehouse} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">
                       {creatingWarehouse ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                       Create and Select
                     </Button>
@@ -284,14 +284,14 @@ function NewPutawayContent() {
         <div className="space-y-4 pt-4 border-t border-slate-100">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Item Details</h3>
-            <Button variant="ghost" className="text-blue-500 hover:text-blue-600 hover:bg-blue-50">
+            <Button variant="ghost" className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 rounded-md">
               <ScanLine className="h-4 w-4 mr-2" />
               Scan Item
             </Button>
           </div>
           
           <div className="border rounded-md overflow-hidden bg-slate-50/50">
-            <div className="grid grid-cols-[1fr_150px_150px] gap-4 p-3 bg-slate-50 border-b text-xs font-semibold text-slate-500 uppercase">
+            <div className="grid grid-cols-[1fr_150px_150px] gap-4 p-3 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
               <div>Item Details</div>
               <div className="text-right">Qty Received</div>
               <div className="text-right">Qty to Store</div>
@@ -327,14 +327,14 @@ function NewPutawayContent() {
       {/* Footer Actions */}
       <div className="sticky bottom-0 bg-slate-50 border-t p-4 flex gap-3 px-6 mt-auto">
         <Button 
-          className="bg-blue-500 hover:bg-blue-600 text-white min-w-[140px]" 
+          className="bg-teal-600 hover:bg-teal-700 text-white min-w-[140px] font-semibold rounded-md shadow-sm" 
           onClick={handleGenerate}
           disabled={loading || items.length === 0}
         >
           {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
           Complete Putaway
         </Button>
-        <Button variant="outline" asChild>
+        <Button variant="outline" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" asChild>
           <Link href="/inventory/putaways">Cancel</Link>
         </Button>
       </div>
@@ -346,7 +346,7 @@ export default function NewPutawayPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
       </div>
     }>
       <NewPutawayContent />

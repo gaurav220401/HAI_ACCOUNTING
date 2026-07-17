@@ -66,14 +66,14 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
       {/* Top Summary Row */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-none shadow-sm bg-white overflow-hidden">
-          <div className="h-1 bg-blue-500 w-full" />
+          <div className="h-1 bg-teal-600 w-full" />
           <CardContent className="p-5 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Valuation</p>
               <h3 className="text-xl font-bold text-slate-800 mt-1">{fmtCurrency(data.summary.totalValue)}</h3>
               <p className="text-[10px] text-slate-500 mt-1">Across {data.summary.trackedItems} items</p>
             </div>
-            <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+            <div className="h-10 w-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-750">
               <Box className="h-5 w-5" />
             </div>
           </CardContent>
@@ -163,8 +163,8 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                   <AreaChart data={data.salesOrderSummary}>
                     <defs>
                       <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#0f766e" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#0f766e" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -187,7 +187,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                     <Area 
                       type="monotone" 
                       dataKey={summaryView === "quantity" ? "quantity" : "value"} 
-                      stroke="#3b82f6" 
+                      stroke="#0f766e" 
                       fillOpacity={1} 
                       fill="url(#colorVal)" 
                       strokeWidth={2}
@@ -208,7 +208,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                 <div className="space-y-4">
                   {data.topSellingItems.map((item, i) => (
                     <div key={i} className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
+                      <div className="h-8 w-8 rounded bg-teal-50 text-teal-700 flex items-center justify-center font-bold text-xs">
                         #{i+1}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -238,7 +238,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                       </div>
                       <Progress 
                         value={(cat.value / (data.categoryDistribution[0]?.value || 1)) * 100} 
-                        className="h-1.5 bg-slate-50 [&>div]:bg-blue-400" 
+                        className="h-1.5 bg-slate-50 [&>div]:bg-teal-600" 
                       />
                     </div>
                   ))}
@@ -259,7 +259,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                   {data.salesByChannel.map((ch, i) => (
                     <div key={i} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${i === 0 ? "bg-blue-500" : "bg-slate-300"}`} />
+                        <div className={`h-2 w-2 rounded-full ${i === 0 ? "bg-teal-600" : "bg-slate-300"}`} />
                         <span className="text-xs text-slate-600">{ch.channel}</span>
                       </div>
                       <span className="text-xs font-bold text-slate-800">{fmtCurrency(ch.amount)}</span>
@@ -301,7 +301,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
           <Card className="border-none shadow-sm overflow-hidden">
             <CardHeader className="bg-slate-50/50 border-b pb-3">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-500" />
+                <Clock className="h-4 w-4 text-teal-600" />
                 Pipeline Status
               </CardTitle>
             </CardHeader>
@@ -311,7 +311,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sales & Shipping</p>
                   {[
                     { label: "To Be Packed", count: data.pendingActions.sales.toPack, color: "bg-orange-500" },
-                    { label: "To Be Shipped", count: data.pendingActions.sales.toShip, color: "bg-blue-500" },
+                    { label: "To Be Shipped", count: data.pendingActions.sales.toShip, color: "bg-teal-600" },
                     { label: "To Be Delivered", count: data.pendingActions.sales.toDeliver, color: "bg-green-500" },
                     { label: "To Be Invoiced", count: data.pendingActions.sales.toInvoice, color: "bg-purple-500" },
                   ].map((item, i) => (
@@ -328,7 +328,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
                 <div className="p-4 space-y-3">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Purchasing</p>
                   {[
-                    { label: "To Be Received", count: data.pendingActions.purchases.toBeReceived, color: "bg-blue-600" },
+                    { label: "To Be Received", count: data.pendingActions.purchases.toBeReceived, color: "bg-teal-600" },
                     { label: "In Progress", count: data.pendingActions.purchases.receiveInProgress, color: "bg-orange-600" },
                     { 
                       label: "Pending Putaways", 
@@ -386,7 +386,7 @@ export function DashboardOverview({ data, period, onPeriodChange, onNewAdjustmen
           </div>
 
           <Button 
-            className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-200"
+            className="w-full h-12 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm shadow-md"
             onClick={onNewAdjustment}
           >
             <Plus className="h-4 w-4 mr-2" />

@@ -379,7 +379,7 @@ export default function NewInventoryShipmentPage() {
         {loading ?
           <Card>
             <CardContent className="flex items-center justify-center py-14">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
             </CardContent>
           </Card>
         : null}
@@ -617,6 +617,7 @@ export default function NewInventoryShipmentPage() {
               <Button
                 type="button"
                 variant="outline"
+                className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
                 onClick={() => router.push("/inventory/shipments")}
                 disabled={saving}
               >
@@ -624,6 +625,7 @@ export default function NewInventoryShipmentPage() {
               </Button>
               <Button
                 type="button"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
                 onClick={handleSaveShipment}
                 disabled={saving || loading}
               >

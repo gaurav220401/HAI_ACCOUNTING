@@ -84,41 +84,43 @@ export default function CustomerPortalSettingsPage() {
       title="Customer Portal"
       subtitle="Let customers view statements and track status through your portal."
       actions={(
-        <Button onClick={handleSave} disabled={saving || fetching || !activeOrganization?._id}>
+        <Button onClick={handleSave} disabled={saving || fetching || !activeOrganization?._id} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-2">Save</span>
+          <span>Save</span>
         </Button>
       )}
     >
-      <div className="space-y-4 rounded-lg border p-4 max-w-3xl">
-        <div className="flex items-start justify-between gap-4 border rounded-md p-3">
+      <div className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-6 max-w-3xl">
+        <div className="flex items-start justify-between gap-4 border border-slate-150 bg-slate-50/30 rounded-lg p-4">
           <div>
-            <h3 className="font-medium">Enable Customer Portal</h3>
-            <p className="text-sm text-muted-foreground">Allow contacts to access a secure self-service view.</p>
+            <h3 className="font-semibold text-slate-800 text-sm">Enable Customer Portal</h3>
+            <p className="text-xs text-slate-500 leading-relaxed mt-0.5">Allow contacts to access a secure self-service view.</p>
           </div>
           <Switch
             checked={form.enabled}
             onCheckedChange={(checked) => setForm((p: PortalSettings) => ({ ...p, enabled: checked }))}
+            className="data-[state=checked]:bg-teal-600"
           />
         </div>
 
         <div className="space-y-1.5">
-          <Label>Portal Subdomain</Label>
+          <Label className="text-xs">Portal Subdomain</Label>
           <Input
             value={form.subdomain || ""}
             onChange={(e) => setForm((p: PortalSettings) => ({ ...p, subdomain: e.target.value }))}
             placeholder="your-company"
             disabled={!form.enabled}
+            className="h-9 text-xs"
           />
-          <p className="text-xs text-muted-foreground">Only lowercase letters, numbers, and hyphens are allowed.</p>
+          <p className="text-[11px] text-slate-400">Only lowercase letters, numbers, and hyphens are allowed.</p>
         </div>
 
         {portalPreviewUrl && (
-          <div className="rounded-md border bg-muted/40 p-3 text-sm flex items-center justify-between gap-2">
+          <div className="rounded-lg border border-teal-150 bg-teal-50/40 p-4 text-xs font-medium text-teal-800 flex items-center justify-between gap-2">
             <span className="truncate">Portal URL: {portalPreviewUrl}</span>
-            <Button type="button" variant="ghost" size="sm" disabled>
-              <ExternalLink className="h-4 w-4" />
-              <span className="ml-2">Open</span>
+            <Button type="button" variant="ghost" size="sm" disabled className="border-slate-200 text-slate-400 bg-slate-50 rounded-md font-semibold text-xs py-1 px-3 h-8 cursor-not-allowed">
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span className="ml-1.5">Open</span>
             </Button>
           </div>
         )}
