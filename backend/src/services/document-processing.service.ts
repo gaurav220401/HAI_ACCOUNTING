@@ -323,11 +323,11 @@ async function extractWithGemini(
   const model =
     mode === "advanced"
       ? process.env.DOCUMENTS_GEMINI_MODEL_ADVANCED ||
-        process.env.DOCUMENTS_GEMINI_MODEL ||
-        "gemini-3-flash-preview"
+      process.env.DOCUMENTS_GEMINI_MODEL ||
+      "gemini-3-flash-preview"
       : process.env.DOCUMENTS_GEMINI_MODEL_BASIC ||
-        process.env.DOCUMENTS_GEMINI_MODEL ||
-        "gemini-3-flash-preview";
+      process.env.DOCUMENTS_GEMINI_MODEL ||
+      "gemini-3-flash-preview";
 
   const prompt = [
     "Extract accounting document metadata and OCR text as strict JSON only.",
@@ -468,14 +468,14 @@ async function processDocument(document: IDocument, pdfPassword?: string): Promi
   const txnsFromGemini =
     document.documentType === "bank_statement"
       ? (gemini?.transactions || []).map((t) => ({
-          txnDate: t.date ? new Date(t.date) : undefined,
-          description: t.description || "",
-          debit: Number(t.debit || 0),
-          credit: Number(t.credit || 0),
-          balance: t.balance == null ? undefined : Number(t.balance),
-          confidence: gemini?.confidence ?? 0.7,
-          addedToBank: false,
-        }))
+        txnDate: t.date ? new Date(t.date) : undefined,
+        description: t.description || "",
+        debit: Number(t.debit || 0),
+        credit: Number(t.credit || 0),
+        balance: t.balance == null ? undefined : Number(t.balance),
+        confidence: gemini?.confidence ?? 0.7,
+        addedToBank: false,
+      }))
       : [];
 
   const bankTransactions = txnsFromGemini.length > 0 ? txnsFromGemini : txnsFromRaw;
