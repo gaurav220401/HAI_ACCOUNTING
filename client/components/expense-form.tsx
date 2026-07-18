@@ -7,7 +7,7 @@
  * submit button says "Update". All 3 tabs visible in both modes.
  */
 
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Upload, X, ChevronDown, Search, MoreVertical, Tag, ArrowLeft, Settings2,
@@ -137,6 +137,20 @@ function ContactCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
 
   if (loading) {
     return (
@@ -155,7 +169,7 @@ function ContactCombobox({
   const selected = contacts.find((c) => c._id === value);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         className="w-full h-9 border rounded-md text-sm px-3 flex items-center justify-between bg-background hover:bg-muted/30 transition-colors"
@@ -164,53 +178,66 @@ function ContactCombobox({
         <span className={selected ? "text-foreground" : "text-muted-foreground text-sm"}>
           {selected ? (selected.displayName || selected.companyName) : placeholder}
         </span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md">
-          <div className="p-2 border-b">
-            <div className="flex items-center gap-1.5">
-              <Search className="h-3.5 w-3.5 text-muted-foreground" />
+        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg overflow-hidden">
+          {/* Search bar */}
+          <div className="p-2 border-b bg-muted/20">
+            <div className="flex items-center gap-1.5 bg-background border rounded px-2 py-1">
+              <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <input
                 autoFocus
-                className="text-xs outline-none bg-transparent w-full"
+                className="text-xs outline-none bg-transparent w-full placeholder:text-muted-foreground"
                 placeholder="Search…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
           </div>
-          <div className="max-h-48 overflow-y-auto">
+
+          {/* Options list */}
+          <div className="max-h-44 overflow-y-auto">
             <button
               type="button"
-              className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40"
+              className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:bg-muted/40 transition-colors"
               onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
             >
               — None —
             </button>
             {filtered.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-3">No results found</p>
+              <p className="text-xs text-muted-foreground text-center py-4">No results found</p>
             ) : (
               filtered.map((c) => (
                 <button
                   key={c._id}
                   type="button"
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-muted/40 transition-colors"
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/40 transition-colors flex items-center justify-between gap-2 ${value === c._id ? "bg-teal-50 text-teal-700 font-medium" : ""}`}
                   onClick={() => { onChange(c._id); setOpen(false); setSearch(""); }}
                 >
-                  {c.displayName || c.companyName}
+                  <span className="truncate">{c.displayName || c.companyName}</span>
+                  {value === c._id && (
+                    <svg className="h-3.5 w-3.5 text-teal-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </button>
               ))
             )}
           </div>
+
+          {/* Prominent "Add New" CTA */}
           {newLabel && onNew && (
-            <div className="border-t">
+            <div className="border-t bg-gradient-to-b from-muted/10 to-muted/30 p-2">
               <button
                 type="button"
-                className="w-full text-left px-3 py-2 text-xs text-primary font-medium flex items-center gap-1.5 hover:bg-muted/40"
-                onClick={() => { onNew(); setOpen(false); }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 hover:border-teal-300 active:scale-[0.98] transition-all duration-150 shadow-sm"
+                onClick={() => { onNew(); setOpen(false); setSearch(""); }}
               >
-                <Plus className="h-3 w-3" /> {newLabel}
+                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-teal-600 text-white shrink-0">
+                  <Plus className="h-2.5 w-2.5" />
+                </span>
+                {newLabel}
               </button>
             </div>
           )}
