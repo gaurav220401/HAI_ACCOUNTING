@@ -150,11 +150,13 @@ const navItems: NavItem[] = [
     ],
   },
   */
+  /*
   {
     title: "Banking",
     url: "/banking",
     icon: CreditCard,
   },
+  */
   {
     title: "Accountant",
     url: "/accountant",
