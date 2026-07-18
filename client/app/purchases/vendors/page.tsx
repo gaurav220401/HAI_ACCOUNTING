@@ -412,7 +412,7 @@ export default function VendorsPage() {
                           </span>
                         )}
                         <span className="text-[10px] tabular-nums text-slate-500 font-medium">
-                          {fmt(c.openingBalance ?? 0, c.currency ?? "INR")}
+                          {fmt(c.outstandingPayable ?? 0, c.currency ?? "INR")}
                         </span>
                       </div>
                     </div>
@@ -497,10 +497,10 @@ export default function VendorsPage() {
                               ) : "—"}
                             </td>
                             <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-700">
-                              {fmt(c.openingBalance ?? 0, c.currency ?? "INR")}
+                              {fmt(c.outstandingPayable ?? 0, c.currency ?? "INR")}
                             </td>
                             <td className="px-4 py-3 text-right tabular-nums text-slate-500">
-                              {fmt(0, c.currency ?? "INR")}
+                              {fmt(c.unusedCredits ?? 0, c.currency ?? "INR")}
                             </td>
                           </tr>
                         );

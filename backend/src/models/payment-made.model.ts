@@ -24,6 +24,7 @@ export interface IPaymentMade extends Document {
   reference_number?: string;
   notes?: string;
   status: PaymentMadeStatus;
+  payment_type?: "bill-payment" | "vendor-advance" | "vendor-payable";
 
   total_amount_paid: number;
   amount_used_for_bills: number;
@@ -66,6 +67,7 @@ const paymentMadeSchema = new Schema<IPaymentMade>(
     reference_number: { type: String, default: "" },
     notes: { type: String, default: "" },
     status: { type: String, enum: ["DRAFT", "PAID", "VOID"], default: "PAID", index: true },
+    payment_type: { type: String, enum: ["bill-payment", "vendor-advance", "vendor-payable"], default: "bill-payment" },
 
     total_amount_paid: { type: Number, required: true, default: 0 },
     amount_used_for_bills: { type: Number, default: 0 },

@@ -155,6 +155,7 @@ const contactSchema = new Schema<IContact>(
     // Calculated
     outstandingPayable: { type: Number, default: 0 },
     outstandingReceivable: { type: Number, default: 0 },
+    unusedCredits: { type: Number, default: 0 },
     linkedContactId: { type: Schema.Types.ObjectId, ref: "Contact", default: null },
     legalComplianceLocked: { type: Boolean, default: false },
     statementTemplate: { type: Schema.Types.Mixed, default: {} },

@@ -28,6 +28,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { expenseApi, type Expense } from "@/lib/api/expenses";
+import { uploadApi } from "@/lib/api/upload";
 import { invoiceApi } from "@/lib/api/invoices";
 import { recurringExpenseApi } from "@/lib/api/recurring-expenses";
 import { accountApi, type Account } from "@/lib/api/accounts";
@@ -215,6 +216,34 @@ function ExpenseDetailPanel({
   onStatusChange?: (updated: Expense) => void;
 }) {
   const router = useRouter();
+  const detailReceiptInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingDetailReceipt, setUploadingDetailReceipt] = useState(false);
+
+  async function handleDetailReceiptUpload(file: File) {
+    setUploadingDetailReceipt(true);
+    try {
+      const uploadResult = await uploadApi.upload(file, "expenses");
+      const currentUrls = expense.receiptUrls || [];
+      const updatedUrls = [...currentUrls, uploadResult.url];
+      
+      const res = await expenseApi.update(expense._id, {
+        receiptUrls: updatedUrls,
+      });
+      
+      toast.success("Receipt uploaded and attached to expense");
+      if (onStatusChange) {
+        onStatusChange(res.data);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload receipt");
+    } finally {
+      setUploadingDetailReceipt(false);
+      if (detailReceiptInputRef.current) {
+        detailReceiptInputRef.current.value = "";
+      }
+    }
+  }
+
   const [showRecurring, setShowRecurring] = useState(false);
   const [profName,      setProfName]      = useState("");
   const [frequency,     setFrequency]     = useState<"Daily"|"Weekly"|"Monthly"|"Yearly">("Weekly");
@@ -511,9 +540,33 @@ function ExpenseDetailPanel({
 
         {/* Receipt Sidebar */}
         <div className="w-80 border-l bg-muted/10 flex flex-col shrink-0">
-          <div className="p-4 border-b font-semibold text-xs uppercase text-muted-foreground">Receipts</div>
+          <div className="p-4 border-b font-semibold text-xs uppercase text-muted-foreground flex items-center justify-between">
+            <span>Receipts</span>
+            {expense.receiptUrls && expense.receiptUrls.length > 0 && (
+              <button
+                onClick={() => detailReceiptInputRef.current?.click()}
+                disabled={uploadingDetailReceipt}
+                className="text-[11px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" /> Upload
+              </button>
+            )}
+          </div>
+          
+          <input
+            ref={detailReceiptInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.csv,.xlsx,.xls"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              handleDetailReceiptUpload(file);
+            }}
+          />
+
           {expense.receiptUrls && expense.receiptUrls.length > 0 ? (
-            <div className="p-4 space-y-2">
+            <div className="p-4 space-y-2 overflow-y-auto flex-1 bg-white">
               {expense.receiptUrls?.map((url, i) => (
                 <a
                   key={i} href={url} target="_blank" rel="noopener noreferrer"
@@ -526,12 +579,27 @@ function ExpenseDetailPanel({
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 p-4 text-center">
               <div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center mb-1 border border-teal-100">
-                <Upload className="h-6 w-6 text-teal-600/40" />
+                {uploadingDetailReceipt ? (
+                  <Loader2 className="h-6 w-6 text-teal-600/40 animate-spin" />
+                ) : (
+                  <Upload className="h-6 w-6 text-teal-600/40" />
+                )}
               </div>
               <p className="text-xs font-medium leading-snug">Drag or Drop your Receipts</p>
               <p className="text-[10px] text-muted-foreground leading-snug">Maximum file size allowed is 10MB</p>
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7 mt-1 w-full border-teal-200 text-teal-700 hover:bg-teal-50">
-                <Upload className="h-3 w-3" /> Upload your Files
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs h-7 mt-1 w-full border-teal-200 text-teal-700 hover:bg-teal-50"
+                onClick={() => detailReceiptInputRef.current?.click()}
+                disabled={uploadingDetailReceipt}
+              >
+                {uploadingDetailReceipt ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Upload className="h-3 w-3" />
+                )}
+                Upload your Files
               </Button>
             </div>
           )}

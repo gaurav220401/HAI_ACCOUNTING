@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { accountApi, type Account } from "@/lib/api/accounts";
+import { contactApi, type Contact } from "@/lib/api/contacts";
 import { journalApi } from "@/lib/api/journals";
 
 const toInputDate = (d: Date) => d.toISOString().split("T")[0];
@@ -85,6 +86,7 @@ export default function EditJournalPage() {
     useState<ReportingMethod>("accrual_and_cash");
   const [currency, setCurrency] = useState("INR");
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [rows, setRows] = useState<JournalRow[]>([makeRow(), makeRow()]);
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
@@ -103,12 +105,14 @@ export default function EditJournalPage() {
 
     const loadData = async () => {
       try {
-        const [accountsRes, journalRes] = await Promise.all([
+        const [accountsRes, journalRes, contactsRes] = await Promise.all([
           accountApi.list({ excludeGroups: true }),
           journalApi.getOne(journalId),
+          contactApi.list({ limit: 1000 }),
         ]);
 
         setAccounts((accountsRes.data || []).filter((acc) => acc.isActive));
+        setContacts(contactsRes.data || []);
 
         const journal = journalRes.data;
         setDate(toInputDate(new Date(journal.date)));
@@ -123,7 +127,10 @@ export default function EditJournalPage() {
               line.accountId
             : line.accountId?._id || "",
           description: line.narration || "",
-          contactId: "",
+          contactId:
+            typeof line.contactId === "string" ?
+              line.contactId
+            : line.contactId?._id || "",
           debits: Number(line.debit || 0) || "",
           credits: Number(line.credit || 0) || "",
         }));
@@ -204,6 +211,7 @@ export default function EditJournalPage() {
         debit: Number(r.debits) || 0,
         credit: Number(r.credits) || 0,
         narration: r.description || undefined,
+        contactId: (r.contactId && r.contactId !== "none_contact") ? r.contactId : undefined,
       }));
 
     if (payloadLines.length < 2) {
@@ -482,8 +490,12 @@ export default function EditJournalPage() {
                             <SelectValue placeholder="Select Contact" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="c1">John Doe</SelectItem>
-                            <SelectItem value="c2">Acme Corp</SelectItem>
+                            <SelectItem value="none_contact">None</SelectItem>
+                            {contacts.map((c) => (
+                              <SelectItem key={c._id} value={c._id}>
+                                {c.displayName || c.companyName || "Unnamed Contact"}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </TableCell>

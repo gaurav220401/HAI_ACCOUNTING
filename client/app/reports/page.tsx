@@ -757,10 +757,12 @@ function ReportsPageContent() {
 
       drawRow(exportPayload.columns.map((col) => col.label), true);
       for (const row of exportPayload.rows) {
-        drawRow(
-          exportPayload.columns.map((col) => formatDisplayValue(row[col.key], col.format)),
-          false,
+        // jsPDF built-in fonts (Helvetica) don't support the ₹ Unicode character;
+        // replace it with "Rs." to ensure proper rendering in the PDF.
+        const pdfCells = exportPayload.columns.map((col) =>
+          formatDisplayValue(row[col.key], col.format).replace(/₹/g, "Rs."),
         );
+        drawRow(pdfCells, false);
       }
 
       doc.save(`${fileNameStem}.pdf`);
@@ -822,7 +824,7 @@ function ReportsPageContent() {
       })
       .join("");
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+    const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       toast.error("Unable to open print window");
       return;
@@ -832,10 +834,13 @@ function ReportsPageContent() {
       <!doctype html>
       <html>
         <head>
+          <meta charset="UTF-8" />
           <title>${htmlEscape(activeReport.name)}</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
           <style>
             @page { size: A4 ${printOrientation}; margin: 10mm; }
-            body { font-family: Arial, sans-serif; color: #222; margin: 0; }
+            body { font-family: 'Noto Sans', Arial, sans-serif; color: #222; margin: 0; }
             h1 { font-size: 18px; margin: 0 0 6px; }
             p { margin: 0 0 12px; color: #666; font-size: 12px; }
             table { width: 100%; border-collapse: collapse; font-size: 11px; }

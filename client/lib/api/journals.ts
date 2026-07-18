@@ -8,6 +8,8 @@ export interface JournalLine {
   debit: number;
   credit: number;
   narration?: string;
+  contactId?: string | { _id: string; displayName?: string; companyName?: string } | null;
+  contactType?: string | null;
 }
 
 export interface Journal {
@@ -49,6 +51,7 @@ export interface CreateJournalInput {
     debit: number;
     credit: number;
     narration?: string;
+    contactId?: string;
   }>;
   notes?: string;
   status?: JournalStatus;

@@ -18,6 +18,8 @@ import {
   Cloud,
   RefreshCw,
   Image as ImageIcon,
+  ChevronsUpDown,
+  CreditCard as PaymentIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -34,6 +36,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Table,
   TableBody,
@@ -73,6 +88,10 @@ import {
   sumMoney,
 } from "@/lib/money";
 import { invoiceApi, type CreateInvoiceInput } from "@/lib/api/invoices";
+import {
+  paymentReceivedApi,
+  type PaymentReceived,
+} from "@/lib/api/payments-received";
 import {
   settingsApi,
   type SalesPerson,
@@ -910,6 +929,7 @@ function NewInvoicePageContent() {
 
   // Items table
   const [lines, setLines] = useState<LineItem[]>([newLine()]);
+  const [openItemPopoverKey, setOpenItemPopoverKey] = useState<number | null>(null);
 
   // Totals section
   const [discountType, setDiscountType] = useState<"percent" | "amount">(
@@ -924,6 +944,11 @@ function NewInvoicePageContent() {
     "Thanks for your business.",
   );
   const [termsAndConditions, setTermsAndConditions] = useState("");
+
+  // States for applying customer advances (excess payments)
+  const [availableCredits, setAvailableCredits] = useState(0);
+  const [unusedPayments, setUnusedPayments] = useState<PaymentReceived[]>([]);
+  const [applyCreditsAutomatically, setApplyCreditsAutomatically] = useState(true);
 
   // Extra sections
   const [paymentReceived, setPaymentReceived] = useState(false);
@@ -1345,6 +1370,28 @@ function NewInvoicePageContent() {
     taxes,
   ]);
 
+  useEffect(() => {
+    if (customerId) {
+      paymentReceivedApi
+        .list({ customer_id: customerId, status: "PAID", limit: 300 })
+        .then((res) => {
+          const unused = res.data.filter(
+            (p) =>
+              p.amount_in_excess > 0 && p.receipt_type !== "previous-payment",
+          );
+          setUnusedPayments(unused);
+          const totalExcess = unused.reduce(
+            (sum, p) => sum + p.amount_in_excess,
+            0,
+          );
+          setAvailableCredits(totalExcess);
+        });
+    } else {
+      setUnusedPayments([]);
+      setAvailableCredits(0);
+    }
+  }, [customerId]);
+
   // ─── Calculations ────────────────────────────────────────────────
 
   const lineTotals = lines.map(calcLineAmount);
@@ -1376,10 +1423,12 @@ function NewInvoicePageContent() {
     : taxType === "TDS" ? -taxAmount
     : 0;
   const total = sumMoney([lineItemsTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
+  // Auto-compute credit to apply — full available amount capped to invoice total
+  const creditsToApply = applyCreditsAutomatically ? Math.min(availableCredits, total) : 0;
 
   // ─── Submit ──────────────────────────────────────────────────────
 
-  async function handleSave(status: "Draft" | "Sent") {
+  async function handleSave(status: "Draft" | "Sent", sendEmail = false) {
     if (!customerId) {
       toast.error("Please select a customer");
       return;
@@ -1450,13 +1499,35 @@ function NewInvoicePageContent() {
       // email is actually transmitted.
       const createPayload = {
         ...payload,
-        status: status === "Sent" ? ("Draft" as const) : status,
+        status: (status === "Sent" && sendEmail) ? ("Draft" as const) : status,
       };
       const res = await invoiceApi.create(createPayload);
+      const invoiceId = res.data._id;
 
-      if (status === "Sent") {
-        setSavedInvoiceId(res.data._id);
-        setShowEmailModal(true);
+      if (creditsToApply > 0 && invoiceId) {
+        let remainingToApply = creditsToApply;
+        for (const payment of unusedPayments) {
+          if (remainingToApply <= 0) break;
+          const amountFromThisPayment = Math.min(
+            payment.amount_in_excess,
+            remainingToApply,
+          );
+          if (amountFromThisPayment > 0) {
+            try {
+              await paymentReceivedApi.apply(payment._id, {
+                invoice_id: invoiceId,
+                applied_amount: amountFromThisPayment,
+              });
+              remainingToApply -= amountFromThisPayment;
+            } catch (applyErr: any) {
+              console.error("Failed to apply advance credits auto:", applyErr);
+            }
+          }
+        }
+      }
+
+      if (status === "Sent" && sendEmail) {
+        router.push(`/sales/invoices/${invoiceId}/send-email`);
         setSaving(false);
         return;
       }
@@ -1839,94 +1910,114 @@ function NewInvoicePageContent() {
                     return (
                       <TableRow key={line.key}>
                         <TableCell>
-                          <Select
-                            value={line.itemId || undefined}
-                            onValueChange={(v) => {
-                              if (v === "__new") {
-                                saveInvoiceDraft(line.key);
-                                router.push(
-                                  "/items/new?returnUrl=/sales/invoices/new",
-                                );
-                              } else {
-                                handleItemSelect(line.key, v);
-                                // Move focus to quantity input after item selection
-                                requestAnimationFrame(() => {
-                                  const qtyInput = document.querySelector(
-                                    `input[data-quantity-key="${line.key}"]`,
-                                  ) as HTMLInputElement | null;
-                                  qtyInput?.focus();
-                                  qtyInput?.select();
-                                });
+                          <div className="space-y-1">
+                            <Popover
+                              open={openItemPopoverKey === line.key}
+                              onOpenChange={(open) =>
+                                setOpenItemPopoverKey(open ? line.key : null)
                               }
-                            }}
-                          >
-                            <SelectTrigger className="h-8 w-full text-sm">
-                              <SelectValue placeholder="Type or click to select an item." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__new">
-                                <span className="text-teal-600 font-medium">
-                                  + Add new item
-                                </span>
-                              </SelectItem>
-                              {items.length === 0 && (
-                                <SelectItem value="__empty" disabled>
-                                  No items found
-                                </SelectItem>
-                              )}
-                              {items.map((it) => (
-                                <SelectItem key={it._id} value={it._id}>
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span>
-                                      {it.name}
-                                      {it.sku ? ` (${it.sku})` : ""}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {it.inventoryTracked ?
-                                        `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
-                                      : "Non-stock"}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {!line.itemId && (
+                            >
+                              <PopoverTrigger asChild>
+                                <div className="relative w-full">
+                                  <Input
+                                    className="h-8 w-full pr-8 text-xs border-slate-200"
+                                    placeholder="Type or select an item"
+                                    value={line.itemId ? (items.find((it) => it._id === line.itemId)?.name || line.name) : line.name}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      updateLine(line.key, "itemId", "");
+                                      updateLine(line.key, "name", val);
+                                      setOpenItemPopoverKey(line.key);
+                                    }}
+                                    onFocus={() => setOpenItemPopoverKey(line.key)}
+                                  />
+                                  <ChevronsUpDown className="absolute right-2 top-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground pointer-events-none" />
+                                </div>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-[var(--radix-popover-trigger-width)] p-0"
+                                align="start"
+                                onOpenAutoFocus={(e) => e.preventDefault()}
+                              >
+                                <Command>
+                                  <CommandList>
+                                    <CommandEmpty>No items found.</CommandEmpty>
+                                    <CommandGroup>
+                                      <CommandItem
+                                        value="__new"
+                                        onSelect={() => {
+                                          setOpenItemPopoverKey(null);
+                                          saveInvoiceDraft(line.key);
+                                          router.push(
+                                            "/items/new?returnUrl=/sales/invoices/new",
+                                          );
+                                        }}
+                                      >
+                                        <span className="text-teal-650 font-medium">
+                                          + Add new item
+                                        </span>
+                                      </CommandItem>
+                                      {items
+                                        .filter((it) =>
+                                          it.name.toLowerCase().includes(line.name.toLowerCase()) ||
+                                          (it.sku && it.sku.toLowerCase().includes(line.name.toLowerCase()))
+                                        )
+                                        .map((it) => (
+                                          <CommandItem
+                                            key={it._id}
+                                            value={`${it.name} ${it.sku || ""}`}
+                                            onSelect={() => {
+                                              setOpenItemPopoverKey(null);
+                                              handleItemSelect(line.key, it._id);
+                                              // Move focus to quantity input after item selection
+                                              requestAnimationFrame(() => {
+                                                const qtyInput = document.querySelector(
+                                                  `input[data-quantity-key="${line.key}"]`,
+                                                ) as HTMLInputElement | null;
+                                                qtyInput?.focus();
+                                                qtyInput?.select();
+                                              });
+                                            }}
+                                          >
+                                            <div className="flex items-center justify-between gap-3 w-full">
+                                              <span>
+                                                {it.name}
+                                                {it.sku ? ` (${it.sku})` : ""}
+                                              </span>
+                                              <span className="text-xs text-muted-foreground">
+                                                {it.inventoryTracked ?
+                                                  `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
+                                                : "Non-stock"}
+                                              </span>
+                                            </div>
+                                          </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                             <Input
-                              className="mt-1 h-7 text-xs"
-                              placeholder="Or type a custom item name"
-                              value={line.name}
+                              className="h-7 text-xs"
+                              placeholder="Add a description to your item"
+                              value={line.description}
                               onChange={(e) =>
-                                updateLine(line.key, "name", e.target.value)
+                                updateLine(
+                                  line.key,
+                                  "description",
+                                  e.target.value,
+                                )
                               }
                             />
-                          )}
-                          {line.itemId && (
-                            <>
-                              <Input
-                                className="mt-1 h-7 text-xs"
-                                placeholder="Add a description to your item"
-                                value={line.description}
-                                onChange={(e) =>
-                                  updateLine(
-                                    line.key,
-                                    "description",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                              {selectedItem ?
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {selectedItem.sku ?
-                                    `SKU ${selectedItem.sku} · `
-                                  : ""}
-                                  {selectedItem.inventoryTracked ?
-                                    `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
+                            {selectedItem ? (
+                              <p className="mt-1 text-[10px] text-muted-foreground">
+                                {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                {selectedItem.inventoryTracked
+                                  ? `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
                                   : "Inventory not tracked"}
-                                </p>
-                              : null}
-                            </>
-                          )}
+                              </p>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Input
@@ -2339,11 +2430,36 @@ function NewInvoicePageContent() {
 
               <Separator />
 
-              {/* Total */}
               <div className="flex items-center justify-between text-base font-bold">
                 <span>Total ( &#8377; )</span>
                 <span className="tabular-nums">{decimalToFixed(total)}</span>
               </div>
+
+              {availableCredits > 0 && (
+                <div className="flex items-center justify-between text-xs py-1.5 mt-2 text-amber-800 bg-amber-50/40 px-2 rounded-lg border border-amber-100">
+                  <label className="flex items-center gap-2 font-medium cursor-pointer select-none">
+                    <Checkbox
+                      id="autoApplyCreditsNew"
+                      checked={applyCreditsAutomatically}
+                      onCheckedChange={(checked) =>
+                        setApplyCreditsAutomatically(checked === true)
+                      }
+                    />
+                    Apply Advance Credit (Available: &#8377; {decimalToFixed(availableCredits)})
+                  </label>
+                  <span className="font-bold tabular-nums">- {decimalToFixed(creditsToApply)}</span>
+                </div>
+              )}
+
+              {availableCredits > 0 && creditsToApply > 0 && (
+                <>
+                  <Separator />
+                  <div className="flex items-center justify-between text-base font-bold">
+                    <span>Balance Due ( &#8377; )</span>
+                    <span className="tabular-nums">{decimalToFixed(total - creditsToApply)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -2561,7 +2677,7 @@ function NewInvoicePageContent() {
               <Button
                 variant="outline"
                 disabled={saving}
-                onClick={() => handleSave("Draft")}
+                onClick={() => handleSave("Draft", false)}
               >
                 {saving ?
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -2569,10 +2685,21 @@ function NewInvoicePageContent() {
                 Save as Draft
               </Button>
 
+              <Button
+                variant="outline"
+                disabled={saving}
+                onClick={() => handleSave("Sent", false)}
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                : null}
+                Save
+              </Button>
+
               <div className="flex">
                 <Button
                   disabled={saving}
-                  onClick={() => handleSave("Sent")}
+                  onClick={() => handleSave("Sent", true)}
                   className="rounded-r-none bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 >
                   {saving ?
@@ -2590,10 +2717,13 @@ function NewInvoicePageContent() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => handleSave("Sent")}>
+                    <DropdownMenuItem onClick={() => handleSave("Sent", true)}>
                       Save and Send
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleSave("Draft")}>
+                    <DropdownMenuItem onClick={() => handleSave("Sent", false)}>
+                      Save
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleSave("Draft", false)}>
                       Save as Draft
                     </DropdownMenuItem>
                   </DropdownMenuContent>

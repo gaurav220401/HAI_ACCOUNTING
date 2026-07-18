@@ -13,6 +13,7 @@ import {
   downloadPdf,
   sendQuoteEmail,
   convertToInvoice,
+  convertToSalesOrder,
 } from "../controllers/quote.controller";
 import multer from "multer";
 
@@ -40,5 +41,6 @@ router.post("/:id/send-email", upload.array("files", 10), sendQuoteEmail);
 router.post("/:id/accept", acceptQuote);
 router.post("/:id/reject", rejectQuote);
 router.post("/:id/convert-to-invoice", convertToInvoice);
+router.post("/:id/convert-to-sales-order", convertToSalesOrder);
 
 export default router;

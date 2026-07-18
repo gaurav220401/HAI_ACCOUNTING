@@ -445,6 +445,7 @@ export interface IContact extends Document {
   // Calculated
   outstandingPayable: number;
   outstandingReceivable: number;
+  unusedCredits?: number;
   isActive: boolean;
   isDeleted: boolean;
   deletedAt?: Date;

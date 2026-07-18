@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
@@ -55,6 +56,14 @@ import {
   type PaymentReceived,
   type PaymentReceivedStatus,
 } from "@/lib/api/payments-received";
+import { invoiceApi, type Invoice } from "@/lib/api/invoices";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS: Array<PaymentReceivedStatus | "All"> = ["All", "DRAFT", "PAID", "VOID"];
@@ -176,6 +185,13 @@ export default function PaymentsReceivedPage() {
   const [deleteTarget, setDeleteTarget] = useState<PaymentReceived | null>(null);
   const [bulkDeleteTargets, setBulkDeleteTargets] = useState<PaymentReceived[]>([]);
   const [deleting, setDeleting] = useState(false);
+
+  // States for applying excess payment (customer advance) to invoices
+  const [applyInvoiceOpen, setApplyInvoiceOpen] = useState(false);
+  const [openInvoices, setOpenInvoices] = useState<Invoice[]>([]);
+  const [applyInvoiceId, setApplyInvoiceId] = useState("");
+  const [applyAmount, setApplyAmount] = useState(0);
+  const [applying, setApplying] = useState(false);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -356,6 +372,87 @@ export default function PaymentsReceivedPage() {
 
   function handlePrintReceipt() {
     window.print();
+  }
+
+  async function openApplyDialog() {
+    if (!active) return;
+    const custId = typeof active.customer_id === "string" ? active.customer_id : active.customer_id?._id;
+    if (!custId) {
+      toast.error("Customer ID is missing from receipt");
+      return;
+    }
+
+    setApplyInvoiceOpen(true);
+    setOpenInvoices([]);
+    setApplyInvoiceId("");
+    setApplyAmount(0);
+
+    try {
+      const res = await invoiceApi.list({ page: 1, limit: 200, status: "All" });
+      const filteredInvoices = (res.data || []).filter((inv: any) => {
+        const cId = typeof inv.customerId === "string" ? inv.customerId : inv.customerId?._id;
+        return cId === custId && !["Paid", "Void"].includes(inv.status);
+      });
+      setOpenInvoices(filteredInvoices);
+      if (filteredInvoices.length > 0) {
+        setApplyInvoiceId(filteredInvoices[0]._id);
+        setApplyAmount(Math.min(active.amount_in_excess, filteredInvoices[0].balanceDue || 0));
+      } else {
+        toast.info("No open invoices found for this customer to allocate credits");
+      }
+    } catch (e: any) {
+      toast.error("Failed to load customer open invoices");
+    }
+  }
+
+  async function handleApply() {
+    if (!active || !applyInvoiceId || applyAmount <= 0) return;
+    if (applyAmount > active.amount_in_excess) {
+      toast.error("Applied amount cannot exceed unused payment amount");
+      return;
+    }
+    const targetInvoice = openInvoices.find((inv) => inv._id === applyInvoiceId);
+    if (targetInvoice && applyAmount > (targetInvoice.balanceDue || 0)) {
+      toast.error("Applied amount cannot exceed invoice balance due");
+      return;
+    }
+
+    setApplying(true);
+    try {
+      await paymentReceivedApi.apply(active._id, {
+        invoice_id: applyInvoiceId,
+        applied_amount: applyAmount,
+      });
+      toast.success("Payment applied to invoice successfully");
+      setApplyInvoiceOpen(false);
+      setActiveDetail(null);
+      await fetchPayments();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to apply payment to invoice");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function handleUnapply(app: PaymentInvoiceMap) {
+    if (!active) return;
+    const invId = invoiceIdFromApplication(app);
+    if (!invId) {
+      toast.error("Invoice ID is missing from application");
+      return;
+    }
+
+    try {
+      await paymentReceivedApi.unapply(active._id, {
+        invoice_id: invId,
+        applied_amount: app.applied_amount,
+      });
+      toast.success("Payment unapplied successfully");
+      setActiveDetail(null);
+      await fetchPayments();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to unapply payment");
+    }
   }
 
   if (loading || orgLoading || !firebaseUser) {
@@ -583,6 +680,12 @@ export default function PaymentsReceivedPage() {
                         Edit
                       </Button>
                     ) : null}
+                    {active.status === "PAID" && active.amount_in_excess > 0 ? (
+                      <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold shadow-xs" onClick={openApplyDialog}>
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Apply to Invoice
+                      </Button>
+                    ) : null}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="sm" variant="outline">
@@ -631,7 +734,7 @@ export default function PaymentsReceivedPage() {
                 </div>
 
                 <div className="mx-auto max-w-5xl p-8">
-                  <div className="relative overflow-hidden rounded border bg-white shadow-sm">
+                  <div className="relative overflow-hidden rounded border bg-white shadow-sm statement-print-area">
                     {active.status === "PAID" ? (
                       <div className="absolute left-0 top-0">
                         <div className="-translate-x-10 translate-y-4 -rotate-45 bg-[#22c55e] py-1.5 text-center text-xs font-bold text-white w-32">
@@ -719,6 +822,7 @@ export default function PaymentsReceivedPage() {
                                   <th className="px-4 py-2 text-right font-normal">Invoice Amount</th>
                                   <th className="px-4 py-2 text-right font-normal">Balance Due</th>
                                   <th className="px-4 py-2 text-right font-normal">Payment Amount</th>
+                                  <th className="px-4 py-2 text-right font-normal no-print">Action</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -734,6 +838,16 @@ export default function PaymentsReceivedPage() {
                                     <td className="px-4 py-3 text-right">{fmtCurrency(invoiceTotalFromApplication(app))}</td>
                                     <td className="px-4 py-3 text-right">{fmtCurrency(invoiceBalanceFromApplication(app))}</td>
                                     <td className="px-4 py-3 text-right font-medium text-gray-800">{fmtCurrency(app.applied_amount)}</td>
+                                    <td className="px-4 py-3 text-right no-print">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold"
+                                        onClick={() => void handleUnapply(app)}
+                                      >
+                                        Unapply
+                                      </Button>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -798,6 +912,94 @@ export default function PaymentsReceivedPage() {
                     Save
                   </Button>
                   <Button variant="outline" onClick={() => setRefundTarget(null)}>Cancel</Button>
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={applyInvoiceOpen} onOpenChange={setApplyInvoiceOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Apply Credit to Invoice</DialogTitle>
+            </DialogHeader>
+            {active ? (
+              <div className="space-y-6">
+                <div className="rounded-md bg-muted/40 p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Customer Name:</span>
+                    <span className="font-semibold">{customerName(active.customer_id)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Unused Credits (Excess Amount):</span>
+                    <span className="font-semibold text-teal-700">{fmtCurrency(active.amount_in_excess)}</span>
+                  </div>
+                </div>
+
+                {openInvoices.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground">
+                    No open or unpaid invoices found for this customer.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label>Select Invoice*</Label>
+                      <Select
+                        value={applyInvoiceId}
+                        onValueChange={(val) => {
+                          setApplyInvoiceId(val);
+                          const target = openInvoices.find((inv) => inv._id === val);
+                          if (target) {
+                            setApplyAmount(Math.min(active.amount_in_excess, target.balanceDue || 0));
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Invoice" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {openInvoices.map((inv) => (
+                            <SelectItem key={inv._id} value={inv._id}>
+                              {inv.invoiceNumber} (Date: {fmtDate(inv.invoiceDate)} | Balance Due: {fmtCurrency(inv.balanceDue)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Amount to Apply*</Label>
+                      <div className="flex">
+                        <span className="inline-flex items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm">INR</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={Math.min(active.amount_in_excess, openInvoices.find((inv) => inv._id === applyInvoiceId)?.balanceDue || 0)}
+                          step="0.01"
+                          className="rounded-l-none"
+                          value={applyAmount || ""}
+                          onChange={(e) => setApplyAmount(Number(e.target.value || 0))}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        This amount will be deducted from the customer's advance and credited to the invoice balance due.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  {openInvoices.length > 0 && (
+                    <Button
+                      className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                      onClick={() => void handleApply()}
+                      disabled={applying || applyAmount <= 0}
+                    >
+                      {applying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Apply Credit
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setApplyInvoiceOpen(false)}>Cancel</Button>
                 </div>
               </div>
             ) : null}
