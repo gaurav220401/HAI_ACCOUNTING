@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { ImportTemplatesCard } from "@/components/import-templates-card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -677,26 +678,12 @@ export default function ItemImportPage() {
               </Button>
             </div>
 
-            {/* Sample Link */}
-            <p className="text-xs text-slate-500">
-              Download a sample file ({" "}
-              <button onClick={() => handleDownloadSample("csv")} className="text-blue-600 hover:underline font-semibold">
-                CSV
-              </button>{" "}
-              •{" "}
-              <button onClick={() => handleDownloadSample("excel")} className="text-blue-600 hover:underline font-semibold">
-                Excel
-              </button>{" "}
-              ) or a blank template ({" "}
-              <button onClick={() => handleDownloadBlank("csv")} className="text-blue-600 hover:underline font-semibold">
-                CSV
-              </button>{" "}
-              •{" "}
-              <button onClick={() => handleDownloadBlank("excel")} className="text-blue-600 hover:underline font-semibold">
-                Excel
-              </button>{" "}
-              ) and compare it to your import file to ensure you have the file perfect for the import.
-            </p>
+            {/* Templates download UI */}
+            <ImportTemplatesCard
+              onDownloadSample={handleDownloadSample}
+              onDownloadBlank={handleDownloadBlank}
+              theme="blue"
+            />
 
             {/* Form Fields */}
             <Card className="p-6 bg-white space-y-6">
