@@ -96,7 +96,7 @@ function NewPutawayContent() {
 
     setCreatingWarehouse(true);
     try {
-      const created = await settingsApi.warehouses.create({
+      const created = await warehouseApi.create({
         name,
         isPrimary: warehouses.length === 0,
         isActive: true,

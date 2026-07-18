@@ -3,7 +3,6 @@ import { authenticate } from "../middlewares/auth";
 import {
   taxCRUD, seedTaxes,
   paymentTermsCRUD, seedPaymentTerms, setDefaultPaymentTerm, unsetDefaultPaymentTerm,
-  warehouseCRUD,
   salesPersonCRUD,
   paymentModeCRUD, seedPaymentModes,
   expenseCategoryCRUD, seedExpenseCategories,
@@ -11,6 +10,7 @@ import {
   priceListCRUD,
   resetOrganizationData,
 } from "../controllers/settings.controller";
+import * as warehouseController from "../controllers/warehouse.controller";
 
 const router = Router();
 router.use(authenticate);
@@ -37,11 +37,11 @@ router.post("/payment-terms/:id/set-default", setDefaultPaymentTerm);
 router.post("/payment-terms/unset-default", unsetDefaultPaymentTerm);
 
 // ── Warehouses ──
-router.get("/warehouses", warehouseCRUD.list);
-router.post("/warehouses", warehouseCRUD.create);
-router.get("/warehouses/:id", warehouseCRUD.getOne);
-router.patch("/warehouses/:id", warehouseCRUD.update);
-router.delete("/warehouses/:id", warehouseCRUD.remove);
+router.get("/warehouses", warehouseController.list);
+router.post("/warehouses", warehouseController.create);
+router.get("/warehouses/:id", warehouseController.getOne);
+router.patch("/warehouses/:id", warehouseController.update);
+router.delete("/warehouses/:id", warehouseController.remove);
 
 // ── Sales Persons ──
 router.get("/sales-persons", salesPersonCRUD.list);

@@ -2,10 +2,15 @@ import { Response } from "express";
 import Putaway from "../models/putaway.model";
 import PurchaseReceive from "../models/purchase-receive.model";
 import Item from "../models/item.model";
+import InventoryAdjustment from "../models/inventory-adjustment.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -201,13 +206,34 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   }
   await receive.save();
 
-  // Optionally update item warehouses if they are not set
+  // Update Item default warehouse and create InventoryAdjustment for each putaway item
   for (const li of normalizedLineItems) {
-    if (li.itemId) {
-       await Item.updateOne(
-         { _id: li.itemId, organizationId: oid, warehouseId: null },
-         { $set: { warehouseId: warehouseId } }
-       );
+    if (li.itemId && toNum(li.quantityPutaway) > 0) {
+      const item = await Item.findOne({ _id: li.itemId, organizationId: oid, isDeleted: false });
+      if (item) {
+        // Update item's default warehouse if it is currently null
+        if (!item.warehouseId) {
+          item.warehouseId = li.warehouseId || warehouseId;
+          await item.save();
+        }
+
+        // Create an InventoryAdjustment audit record for this warehouse putaway
+        const adj = new InventoryAdjustment({
+          organizationId: oid,
+          itemId: item._id,
+          warehouseId: li.warehouseId || warehouseId,
+          direction: "Increase",
+          quantityDelta: toNum(li.quantityPutaway),
+          valueDelta: round2(toNum(li.quantityPutaway) * toNum(item.averageCost || item.costPrice || 0)),
+          reason: "Other",
+          referenceNumber: putawayNumber,
+          notes: `Putaway from Purchase Receive ${receive.purchaseReceiveNumber}`,
+          resultingStockOnHand: item.stockOnHand,
+          resultingInventoryValue: item.inventoryValue,
+        });
+        attachUser(adj, req);
+        await adj.save();
+      }
     }
   }
 
