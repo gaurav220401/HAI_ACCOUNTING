@@ -604,7 +604,9 @@ export default function EditPurchaseOrderPage() {
       setReferenceNumber(o.referenceNumber || "");
       setPoDate(o.purchaseOrderDate.slice(0, 10));
       setDeliveryDate(o.deliveryDate ? o.deliveryDate.slice(0, 10) : "");
-      const ptId = typeof o.paymentTermsId === "object" && o.paymentTermsId ? o.paymentTermsId._id : o.paymentTermsId || "";
+      const ptIdRaw = typeof o.paymentTermsId === "object" && o.paymentTermsId ? o.paymentTermsId._id : o.paymentTermsId || "";
+      const defaultPt = (ptRes.data ?? []).find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+      const ptId = ptIdRaw === "due_on_receipt" ? (defaultPt?._id || "") : ptIdRaw;
       setPaymentTermsId(ptId);
       setShipmentPreference(o.shipmentPreference || "");
       setDiscountLevel(o.discountLevel);
@@ -781,6 +783,9 @@ export default function EditPurchaseOrderPage() {
     if (!poDate) { toast.error("Purchase order date is required"); return; }
     setSaving(true);
     try {
+      const defaultPt = paymentTermsList.find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+      const resolvedPtId = paymentTermsId === "due_on_receipt" ? (defaultPt?._id || null) : (paymentTermsId || null);
+
       const payload: Partial<CreatePurchaseOrderInput> = {
         vendorId: vendorId || null,
         deliveryAddressType: deliveryAddrType,
@@ -788,7 +793,7 @@ export default function EditPurchaseOrderPage() {
         referenceNumber,
         purchaseOrderDate: poDate,
         deliveryDate: deliveryDate || null,
-        paymentTermsId: paymentTermsId || null,
+        paymentTermsId: resolvedPtId,
         shipmentPreference,
         discountLevel,
         discountAccountId: discountAccountId || null,
@@ -1001,7 +1006,6 @@ export default function EditPurchaseOrderPage() {
                   <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
                     <SelectTrigger className="h-9 text-sm flex-1"><SelectValue placeholder="Due on Receipt" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
                       {paymentTermsList.map((pt) => <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>)}
                     </SelectContent>
                   </Select>

@@ -884,7 +884,12 @@ export default function NewPurchaseOrderPage() {
       setCustomers(cRes.data ?? []);
       setItems(iRes.data ?? []);
       setAccounts(aRes.data ?? []);
-      setPaymentTermsList(ptRes.data ?? []);
+      const fetchedTerms = ptRes.data ?? [];
+      setPaymentTermsList(fetchedTerms);
+      const defaultPt = fetchedTerms.find((pt: any) => pt.isDefault || pt.name.toLowerCase() === "due on receipt");
+      if (defaultPt) {
+        setPaymentTermsId(defaultPt._id);
+      }
       const tdsData = tdsRes.data ?? [];
       setTdsTaxes(tdsData.length > 0 ? tdsData : DEFAULT_TDS_TAXES);
       const tcsData = tcsRes.data ?? [];
@@ -965,7 +970,9 @@ export default function NewPurchaseOrderPage() {
         setReferenceNumber(draft.referenceNumber || "");
         setPoDate(inputDate(draft.purchaseOrderDate) || today());
         setDeliveryDate(inputDate(draft.deliveryDate));
-        setPaymentTermsId(String(draft.paymentTermsId || ""));
+        const defaultPt = paymentTermsList.find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+        const loadedPtId = draft.paymentTermsId === "due_on_receipt" ? (defaultPt?._id || "") : String(draft.paymentTermsId || "");
+        setPaymentTermsId(loadedPtId);
         setShipmentPreference(draft.shipmentPreference || "");
         setDiscountLevel(nextDiscountLevel);
         setRows(nextRows.length > 0 ? nextRows : [newRow()]);
@@ -1139,6 +1146,9 @@ export default function NewPurchaseOrderPage() {
     if (!poDate) { toast.error("Purchase order date is required"); return; }
     setSaving(true);
     try {
+      const defaultPt = paymentTermsList.find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+      const resolvedPtId = paymentTermsId === "due_on_receipt" ? (defaultPt?._id || null) : (paymentTermsId || null);
+
       const payload: CreatePurchaseOrderInput = {
         vendorId: vendorId || null,
         deliveryAddressType: deliveryAddrType,
@@ -1146,7 +1156,7 @@ export default function NewPurchaseOrderPage() {
         referenceNumber,
         purchaseOrderDate: poDate,
         deliveryDate: deliveryDate || null,
-        paymentTermsId: paymentTermsId || null,
+        paymentTermsId: resolvedPtId,
         shipmentPreference,
         discountLevel,
         discountAccountId: discountAccountId || null,
@@ -1423,7 +1433,6 @@ export default function NewPurchaseOrderPage() {
                       <SelectValue placeholder="Due on Receipt" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
                       {paymentTermsList.map((pt) => (
                         <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
                       ))}
