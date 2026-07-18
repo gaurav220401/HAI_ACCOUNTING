@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { currencyApi, organizationApi, type Currency, type ExchangeRate } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
@@ -181,16 +182,16 @@ export default function CurrenciesSettingsPage() {
       title="Currencies"
       subtitle="Choose your base currency and maintain exchange rates for multi-currency accounting."
       actions={(
-        <Button onClick={handleSaveBaseCurrency} disabled={!canSaveBase || savingBase || fetching}>
+        <Button onClick={handleSaveBaseCurrency} disabled={!canSaveBase || savingBase || fetching} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5">
           {savingBase ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-2">Save Base Currency</span>
+          <span>Save Base Currency</span>
         </Button>
       )}
     >
       <div className="space-y-6">
-        <section className="rounded-lg border p-4">
-          <h2 className="font-medium mb-4">Base Currency</h2>
-          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-3 items-end">
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-4">Base Currency</h2>
+          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 items-end">
             <div className="space-y-1.5">
               <Label>Organization Base Currency</Label>
               <Select value={baseCurrency} onValueChange={setBaseCurrency}>
@@ -206,23 +207,23 @@ export default function CurrenciesSettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-slate-500 leading-relaxed max-w-md">
               Base currency is used for financial reports and account balances. Transaction currencies can still vary.
             </div>
           </div>
           {currencies.length === 0 && (
-            <div className="mt-3 rounded-md border border-dashed p-3 text-xs text-muted-foreground flex items-center justify-between gap-3">
+            <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-4 text-xs text-slate-650 flex items-center justify-between gap-3">
               <span>No currencies found yet. Initialize default world currencies to enable selection.</span>
-              <Button type="button" variant="outline" size="sm" onClick={handleInitializeCurrencies} disabled={seedingCurrencies}>
+              <Button type="button" variant="outline" size="sm" onClick={handleInitializeCurrencies} disabled={seedingCurrencies} className="border-slate-200 hover:bg-slate-100 rounded-md">
                 {seedingCurrencies ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                <span className="ml-2">Initialize</span>
+                <span className="ml-1.5">Initialize</span>
               </Button>
             </div>
           )}
         </section>
 
-        <section className="rounded-lg border p-4 space-y-4">
-          <h2 className="font-medium">Exchange Rates</h2>
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl space-y-4">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-4">Exchange Rates</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
             <div className="space-y-1.5">
@@ -270,46 +271,53 @@ export default function CurrenciesSettingsPage() {
               />
             </div>
 
-            <Button onClick={handleAddRate} disabled={savingRate || currencies.length === 0}>
+            <Button onClick={handleAddRate} disabled={savingRate || currencies.length === 0} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5">
               {savingRate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              <span className="ml-2">Add Rate</span>
+              <span>Add Rate</span>
             </Button>
           </div>
 
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-3 py-2">From</th>
-                  <th className="px-3 py-2">To</th>
-                  <th className="px-3 py-2">Rate</th>
-                  <th className="px-3 py-2">Date</th>
-                  <th className="px-3 py-2 w-20">Action</th>
+                  {[
+                    { label: "From", cls: "text-left" },
+                    { label: "To", cls: "text-left" },
+                    { label: "Rate", cls: "text-left" },
+                    { label: "Date", cls: "text-left" },
+                  ].map(({ label, cls }) => (
+                    <th key={label} className={cn(
+                      "text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 whitespace-nowrap",
+                      cls
+                    )}>{label}</th>
+                  ))}
+                  <th className="w-20 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {rates.length === 0 && (
                   <tr>
-                    <td className="px-3 py-4 text-muted-foreground" colSpan={5}>
+                    <td className="px-4 py-8 text-center text-slate-400 text-sm" colSpan={5}>
                       No exchange rates added yet.
                     </td>
                   </tr>
                 )}
                 {rates.map((rate) => (
-                  <tr key={rate._id} className="border-t">
-                    <td className="px-3 py-2">{rate.from}</td>
-                    <td className="px-3 py-2">{rate.to}</td>
-                    <td className="px-3 py-2">{rate.rate}</td>
-                    <td className="px-3 py-2">{new Date(rate.date).toLocaleDateString("en-IN")}</td>
-                    <td className="px-3 py-2">
+                  <tr key={rate._id} className="border-b border-slate-100 last:border-0 hover:bg-teal-50/20 transition-colors">
+                    <td className="px-4 py-2 font-medium text-slate-750">{rate.from}</td>
+                    <td className="px-4 py-2 text-slate-650">{rate.to}</td>
+                    <td className="px-4 py-2 text-slate-650 font-mono">{rate.rate}</td>
+                    <td className="px-4 py-2 text-slate-650">{new Date(rate.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
+                    <td className="px-4 py-2">
                       <Button
                         type="button"
                         size="icon"
                         variant="ghost"
-                        className="h-8 w-8"
+                        className="h-7 w-7 text-slate-400 hover:text-rose-650 hover:bg-rose-50 rounded-md"
                         onClick={() => handleDeleteRate(rate._id)}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </td>
                   </tr>

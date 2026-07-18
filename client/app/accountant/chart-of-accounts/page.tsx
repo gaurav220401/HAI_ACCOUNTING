@@ -176,8 +176,8 @@ function CustomizeColumnsDialog({
         </div>
 
         <DialogFooter>
-          <Button size="sm" onClick={() => onSave(draft)}>Save</Button>
-          <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={() => onSave(draft)} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">Save</Button>
+          <Button size="sm" variant="outline" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={() => onOpenChange(false)}>Cancel</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -201,28 +201,28 @@ function BulkActionToolbar({
 }) {
   return (
     <div className="flex items-center gap-3 px-6 py-2.5 bg-background border-b">
-      <Button variant="outline" size="sm" onClick={onMarkActive} className="text-xs font-medium">
+      <Button variant="outline" size="sm" onClick={onMarkActive} className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md text-xs font-medium">
         Mark as Active
       </Button>
-      <Button variant="outline" size="sm" onClick={onMarkInactive} className="text-xs font-medium">
+      <Button variant="outline" size="sm" onClick={onMarkInactive} className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md text-xs font-medium">
         Mark as Inactive
       </Button>
-      <Button variant="outline" size="sm" onClick={onDelete} className="text-xs font-medium">
+      <Button variant="outline" size="sm" onClick={onDelete} className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md text-xs font-medium">
         Delete
       </Button>
       <span className="text-muted-foreground text-xs">|</span>
-      <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded bg-primary text-primary-foreground text-xs font-bold px-1.5">
+      <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded bg-teal-50 text-teal-700 border border-teal-100 text-xs font-bold px-1.5">
         {count}
       </span>
-      <span className="text-sm text-muted-foreground">Selected</span>
+      <span className="text-sm text-slate-500 font-medium">Selected</span>
 
       <div className="ml-auto flex items-center gap-2">
         <button
           onClick={onClear}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors"
         >
           Esc
-          <X className="h-4 w-4 text-destructive" />
+          <X className="h-4 w-4 text-rose-500" />
         </button>
       </div>
     </div>
@@ -243,11 +243,11 @@ function ConfirmDelete({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background rounded-xl shadow-xl p-6 max-w-sm w-full space-y-4 border">
-        <h2 className="text-base font-semibold">Delete Account{message.includes("selected") ? "s" : ""}</h2>
-        <p className="text-sm text-muted-foreground">{message}</p>
+        <h2 className="text-base font-semibold text-slate-800">Delete Account{message.includes("selected") ? "s" : ""}</h2>
+        <p className="text-sm text-slate-500">{message}</p>
         <div className="flex gap-3 justify-end">
-          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm}>Delete</Button>
+          <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={onCancel}>Cancel</Button>
+          <Button variant="destructive" size="sm" className="bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-md" onClick={onConfirm}>Delete</Button>
         </div>
       </div>
     </div>
@@ -284,15 +284,15 @@ function AccountRow({
   const visibleCols = columns.filter((c) => c.visible);
   const canDelete = !account.isSystemAccount;
   const cellClass = wrapText
-    ? "px-3 py-2.5 text-sm"
-    : "px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[250px]";
+    ? "px-4 py-2 text-sm"
+    : "px-4 py-2 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[250px]";
 
   return (
     <tr
-      className={`group border-b last:border-0 hover:bg-muted/40 transition-colors ${selected ? "bg-primary/5" : ""} ${isDetailsActive ? "bg-emerald-50/70" : ""}`}
+      className={`group border-b border-slate-100 last:border-0 hover:bg-teal-50/30 transition-colors ${selected ? "bg-teal-50/20" : ""} ${isDetailsActive ? "bg-teal-50/50 border-l-[3px] border-l-teal-600" : ""}`}
     >
       {/* Lock or Checkbox */}
-      <td className="w-9 px-3 py-2.5 text-center">
+      <td className="w-9 px-4 py-2 text-center">
         <Checkbox
           checked={selected}
           onCheckedChange={() => onSelect(account._id)}
@@ -306,19 +306,19 @@ function AccountRow({
             return (
               <td key={col.id} className={cellClass}>
                 <span
-                  className="text-sm text-primary cursor-pointer hover:underline font-medium"
+                  className="text-sm text-teal-700 cursor-pointer hover:underline font-semibold"
                   onClick={() => onOpenDetails(account)}
                 >
                   {account.name}
                 </span>
                 {account.isSystemAccount && (
-                  <span className="ml-2 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 align-middle">
+                  <span className="ml-2 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 align-middle">
                     <Lock className="h-3 w-3" />
                     Predefined
                   </span>
                 )}
                 {!account.isActive && (
-                  <span className="ml-2 text-xs text-muted-foreground">(Inactive)</span>
+                  <span className="ml-2 text-xs text-slate-400 font-medium">(Inactive)</span>
                 )}
               </td>
             );
@@ -730,7 +730,7 @@ export default function ChartOfAccountsPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -738,19 +738,19 @@ export default function ChartOfAccountsPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="h-svh overflow-hidden flex flex-col">
+      <SidebarInset className="h-svh overflow-hidden flex flex-col bg-white">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Accountant <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Chart of Accounts</span>
+            <span className="flex flex-col text-left">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+              <span className="text-sm font-semibold text-slate-700 mt-0.5">Chart of Accounts</span>
             </span>
           }
           actions={
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                     {viewFilter} Accounts
                     <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
                   </Button>
@@ -768,19 +768,19 @@ export default function ChartOfAccountsPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <Button variant="outline" size="sm" onClick={fetchAccounts} disabled={fetching} className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+              <Button variant="outline" size="sm" onClick={fetchAccounts} disabled={fetching} className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                 <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
 
-              <Button size="sm" className="h-8 text-xs gap-1.5" onClick={openCreate}>
+              <Button size="sm" className="h-8 text-xs gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={openCreate}>
                 <Plus className="h-3.5 w-3.5" />
                 New
               </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-8 w-8 border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                  <Button variant="outline" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md">
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -838,14 +838,14 @@ export default function ChartOfAccountsPage() {
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {accounts.length === 0 ? (
             /* ── Empty state ─────────────────────────────────────── */
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-              <TreePine className="h-12 w-12 opacity-30" />
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground bg-white">
+              <TreePine className="h-12 w-12 text-teal-600/35" />
               <div className="text-center">
-                <p className="font-medium text-foreground">No accounts yet</p>
-                <p className="text-sm">Create your first account to get started.</p>
+                <p className="font-semibold text-slate-800 text-sm">No accounts yet</p>
+                <p className="text-xs text-slate-500 mt-1">Create your first account to get started.</p>
               </div>
               <div className="flex gap-3">
-                <Button onClick={openCreate}>
+                <Button onClick={openCreate} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm">
                   <Plus className="h-4 w-4 mr-1" />
                   New Account
                 </Button>

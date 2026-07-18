@@ -9,12 +9,6 @@ import { useOrganization } from "@/contexts/organization-context";
 import { inventoryApi, type InventoryOverviewResponse } from "@/lib/api/inventory";
 import { InventoryShell } from "./_components/inventory-shell";
 import { Button } from "@/components/ui/button";
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from "@/components/ui/tabs";
 
 export default function InventoryOverviewPage() {
   const router = useRouter();
@@ -50,17 +44,17 @@ export default function InventoryOverviewPage() {
       title="Inventory"
       actions={(
         <>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => loadOverview(period)} disabled={loading}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md" onClick={() => loadOverview(period)} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
-          <Button size="sm" className="h-8 rounded-lg shadow-sm" onClick={() => router.push("/inventory/adjustments")}>New Adjustment</Button>
+          <Button size="sm" className="h-8 rounded-lg shadow-sm bg-teal-600 hover:bg-teal-700 text-white" onClick={() => router.push("/inventory/adjustments")}>New Adjustment</Button>
         </>
       )}
     >
       <div className="flex flex-col flex-1">
         {loading && !overview ? (
           <div className="flex flex-col items-center justify-center py-40 gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
             <p className="text-sm text-slate-500 font-medium animate-pulse">Gathering inventory insights...</p>
           </div>
         ) : overview ? (

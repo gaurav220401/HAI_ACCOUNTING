@@ -27,6 +27,7 @@ import { contactApi, type Contact } from "@/lib/api/contacts";
 import { VendorDetailView } from "./[id]/vendor-detail-view";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { ExportDialog } from "@/components/export-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +55,7 @@ export default function VendorsPage() {
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Contact | null>(null);
   const [loadingVendor, setLoadingVendor] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const handleExportCSV = () => {
     if (filtered.length === 0) {
@@ -257,7 +259,7 @@ export default function VendorsPage() {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuPortal>
                         <DropdownMenuSubContent className="w-48 bg-white">
-                          <DropdownMenuItem onClick={handleExportCSV} className="cursor-pointer">
+                          <DropdownMenuItem onClick={() => setExportDialogOpen(true)} className="cursor-pointer">
                             <span className="text-xs">Export Vendors</span>
                           </DropdownMenuItem>
                         </DropdownMenuSubContent>
@@ -559,6 +561,11 @@ export default function VendorsPage() {
             </div>
           )}
         </div>
+        <ExportDialog
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+          initialModule="vendors"
+        />
       </SidebarInset>
     </SidebarProvider>
   );

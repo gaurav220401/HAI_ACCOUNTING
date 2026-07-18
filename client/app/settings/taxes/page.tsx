@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { settingsApi, type Tax, type TaxType } from "@/lib/api/settings";
+import { cn } from "@/lib/utils";
 
 type TaxFormState = {
   name: string;
@@ -164,21 +165,21 @@ export default function TaxesSettingsPage() {
       subtitle="Create, edit, and seed tax masters used across sales and purchases."
       actions={(
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={handleSeedTaxes} disabled={seeding || fetching}>
+          <Button type="button" variant="outline" onClick={handleSeedTaxes} disabled={seeding || fetching} className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
             {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            <span className="ml-2">Seed Defaults</span>
+            <span className="ml-1.5">Seed Defaults</span>
           </Button>
-          <Button onClick={handleSaveTax} disabled={!canSave || saving || fetching}>
+          <Button onClick={handleSaveTax} disabled={!canSave || saving || fetching} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm gap-1.5">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            <span className="ml-2">{editingId ? "Update Tax" : "Save Tax"}</span>
+            <span>{editingId ? "Update Tax" : "Save Tax"}</span>
           </Button>
         </div>
       )}
     >
       <div className="space-y-6">
-        <section className="rounded-lg border p-4">
-          <h2 className="font-medium mb-4">{editingId ? "Edit Tax" : "New Tax"}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-4">{editingId ? "Edit Tax" : "New Tax"}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
             <div className="space-y-1.5">
               <Label>Name</Label>
               <Input
@@ -226,46 +227,65 @@ export default function TaxesSettingsPage() {
           </div>
 
           {editingId && (
-            <div className="mt-3">
-              <Button type="button" variant="ghost" onClick={resetForm}>Cancel editing</Button>
+            <div className="mt-4">
+              <Button type="button" variant="ghost" size="sm" onClick={resetForm} className="text-slate-500 hover:text-slate-700 hover:bg-slate-100/70 rounded-md">Cancel editing</Button>
             </div>
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
-          <h2 className="font-medium mb-4">Tax List</h2>
-          <div className="overflow-x-auto rounded-md border">
+        <section className="border border-slate-200 bg-white shadow-sm p-6 rounded-xl">
+          <h2 className="text-sm font-semibold text-slate-800 border-b pb-2 mb-4">Tax List</h2>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Type</th>
-                  <th className="px-3 py-2">Rate</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2 w-44">Actions</th>
+                  {[
+                    { label: "Name", cls: "text-left" },
+                    { label: "Type", cls: "text-left" },
+                    { label: "Rate", cls: "text-left" },
+                    { label: "Status", cls: "text-left" },
+                  ].map(({ label, cls }) => (
+                    <th key={label} className={cn(
+                      "text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 whitespace-nowrap",
+                      cls
+                    )}>{label}</th>
+                  ))}
+                  <th className="w-44 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {taxes.length === 0 && (
                   <tr>
-                    <td className="px-3 py-4 text-muted-foreground" colSpan={5}>
+                    <td className="px-4 py-8 text-center text-slate-400 text-sm" colSpan={5}>
                       {fetching ? "Loading taxes…" : "No taxes available. Click Seed Defaults to initialize."}
                     </td>
                   </tr>
                 )}
                 {taxes.map((tax) => (
-                  <tr key={tax._id} className="border-t">
-                    <td className="px-3 py-2">{tax.name}</td>
-                    <td className="px-3 py-2">{tax.taxType}</td>
-                    <td className="px-3 py-2">{typeof tax.rate === "number" ? `${tax.rate}%` : "-"}</td>
-                    <td className="px-3 py-2">{tax.isActive ? "Active" : "Inactive"}</td>
-                    <td className="px-3 py-2">
+                  <tr key={tax._id} className="border-b border-slate-100 last:border-0 hover:bg-teal-50/20 transition-colors">
+                    <td className="px-4 py-2 font-medium text-slate-750">{tax.name}</td>
+                    <td className="px-4 py-2 text-slate-650">{tax.taxType}</td>
+                    <td className="px-4 py-2 text-slate-650 font-mono">{typeof tax.rate === "number" ? `${tax.rate}%` : "-"}</td>
+                    <td className="px-4 py-2 text-xs">
+                      {tax.isActive ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                          Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-505 border border-slate-200">
+                          <span className="h-1 w-1 rounded-full bg-slate-400" />
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => startEdit(tax)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => startEdit(tax)} className="border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-900 rounded-md font-semibold text-xs py-1 px-2.5 h-7">
                           Edit
                         </Button>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => handleDeleteTax(tax._id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => handleDeleteTax(tax._id)} className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md h-7 w-7">
+                          <Trash2 className="h-4 w-4 text-rose-650" />
                         </Button>
                       </div>
                     </td>

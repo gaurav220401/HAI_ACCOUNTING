@@ -40,9 +40,9 @@ export function InventoryShell({ title, actions, children }: InventoryShellProps
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex h-svh flex-col overflow-hidden">
+      <SidebarInset className="flex h-svh flex-col overflow-hidden bg-white">
         <PageHeader
-          breadcrumb={<span className="text-sm font-medium">{title}</span>}
+          breadcrumb={<span className="text-sm font-semibold text-slate-700">{title}</span>}
           actions={actions}
         />
         <div className="flex-1 overflow-auto p-4 md:p-6">{children}</div>

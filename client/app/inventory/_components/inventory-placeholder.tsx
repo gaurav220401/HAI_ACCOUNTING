@@ -32,13 +32,13 @@ export function InventoryPlaceholder({ title, description }: InventoryPlaceholde
           for stock correction workflows and the Inventory Overview for stock analysis.
         </p>
         <div className="flex gap-2">
-          <Button asChild size="sm">
+          <Button asChild size="sm" className="bg-teal-600 hover:bg-teal-700 text-white">
             <Link href="/inventory/adjustments">
               Open Inventory Adjustments
               <ArrowRight className="ml-1 h-4 w-4" />
             </Link>
           </Button>
-          <Button asChild size="sm" variant="outline">
+          <Button asChild size="sm" variant="outline" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
             <Link href="/inventory">Open Inventory Overview</Link>
           </Button>
         </div>

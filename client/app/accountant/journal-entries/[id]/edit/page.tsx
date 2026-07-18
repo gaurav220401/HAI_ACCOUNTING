@@ -236,7 +236,7 @@ export default function EditJournalPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -245,19 +245,12 @@ export default function EditJournalPage() {
     return (
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset className="flex flex-col h-svh overflow-hidden">
+        <SidebarInset className="flex flex-col h-svh overflow-hidden bg-white">
           <PageHeader
             breadcrumb={
-              <span className="text-sm text-muted-foreground">
-                Accountant <span className="mx-1">/</span>
-                <span
-                  className="hover:text-foreground cursor-pointer"
-                  onClick={() => router.push("/accountant/journal-entries")}
-                >
-                  Journal Entries
-                </span>
-                <span className="mx-1">/</span>
-                <span className="font-medium text-foreground">Edit</span>
+              <span className="flex flex-col text-left">
+                <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+                <span className="text-sm font-semibold text-slate-700 mt-0.5">Edit Journal Entry</span>
               </span>
             }
           />
@@ -282,7 +275,7 @@ export default function EditJournalPage() {
   if (!ready) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -290,21 +283,12 @@ export default function EditJournalPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col h-svh overflow-hidden">
+      <SidebarInset className="flex flex-col h-svh overflow-hidden bg-white">
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Accountant <span className="mx-1">/</span>
-              <span
-                className="hover:text-foreground cursor-pointer"
-                onClick={() => router.push("/accountant/journal-entries")}
-              >
-                Journal Entries
-              </span>
-              <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">
-                Edit #{journalNumber}
-              </span>
+            <span className="flex flex-col text-left">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+              <span className="text-sm font-semibold text-slate-700 mt-0.5">Edit Journal #{journalNumber}</span>
             </span>
           }
         />
@@ -427,22 +411,22 @@ export default function EditJournalPage() {
 
             <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
               <Table>
-                <TableHeader className="bg-muted/20">
+                <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow>
                     <TableHead className="w-8" />
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground w-72">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left w-72">
                       Account
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left">
                       Description
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground w-48">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left w-48">
                       Contact ({currency})
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground text-right w-32">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right w-32">
                       Debits
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase text-muted-foreground text-right w-32">
+                    <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right w-32">
                       Credits
                     </TableHead>
                     <TableHead className="w-12" />
@@ -560,7 +544,7 @@ export default function EditJournalPage() {
                   variant="ghost"
                   size="sm"
                   onClick={addRow}
-                  className="text-primary hover:text-primary gap-1.5 text-sm"
+                  className="text-teal-700 hover:text-teal-800 hover:bg-teal-50/50 gap-1.5 text-sm font-semibold rounded-md"
                 >
                   <Plus className="h-4 w-4" />
                   Add New Row
@@ -639,7 +623,7 @@ export default function EditJournalPage() {
         <div className="border-t bg-background px-8 py-4 flex items-center gap-3 shrink-0">
           <Button
             size="sm"
-            className="gap-1.5"
+            className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
             onClick={() => handleSubmit(true)}
             disabled={saving}
           >
@@ -649,6 +633,7 @@ export default function EditJournalPage() {
           <Button
             size="sm"
             variant="outline"
+            className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
             onClick={() => handleSubmit(false)}
             disabled={saving}
           >
@@ -657,6 +642,7 @@ export default function EditJournalPage() {
           <Button
             size="sm"
             variant="ghost"
+            className="text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md"
             onClick={() => router.push("/accountant/journal-entries")}
           >
             Cancel

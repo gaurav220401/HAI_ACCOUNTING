@@ -183,14 +183,14 @@ function LockDialog({
         <div className="flex items-center gap-2.5 bg-background px-5 py-3.5">
           <Button
             size="sm"
-            className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md shadow-sm"
             onClick={() => onConfirm(date)}
             disabled={!date}
           >
             <Lock className="h-3.5 w-3.5" />
             {action}
           </Button>
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={onClose}>
             Cancel
           </Button>
         </div>
@@ -248,7 +248,7 @@ function UnlockDialog({
             <LockOpen className="h-3.5 w-3.5" />
             Unlock
           </Button>
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md" onClick={onClose}>
             Cancel
           </Button>
         </div>
@@ -269,14 +269,14 @@ function ModuleRow({
   onUnlockClick: () => void;
 }) {
   return (
-    <div className="flex items-center gap-4 px-5 py-4 border rounded-lg bg-background hover:bg-muted/20 transition-colors group">
+    <div className="flex items-center gap-4 px-5 py-4 border border-slate-200 rounded-lg bg-white hover:bg-teal-50/20 transition-colors group">
       {/* Lock icon */}
       <div
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
           lock.locked
-            ? "bg-primary/10 text-primary"
-            : "bg-muted text-muted-foreground"
+            ? "bg-teal-50 text-teal-700"
+            : "bg-slate-100 text-slate-400"
         )}
       >
         {lock.locked ? (
@@ -301,17 +301,17 @@ function ModuleRow({
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
           {lock.locked && lock.lockedDate ? (
-            <>
-              Transactions locked before{" "}
-              <span className="font-medium text-primary">
-                {formatDate(lock.lockedDate)}
-              </span>
-            </>
-          ) : (
-            <span className="text-blue-600">
-              You have not locked the transactions in this module.
+          <>
+            Transactions locked before{" "}
+            <span className="font-semibold text-teal-700">
+              {formatDate(lock.lockedDate)}
             </span>
-          )}
+          </>
+        ) : (
+          <span className="text-teal-600 font-medium">
+            You have not locked the transactions in this module.
+          </span>
+        )}
         </p>
       </div>
 
@@ -329,10 +329,7 @@ function ModuleRow({
         <button
           onClick={onLockClick}
           className={cn(
-            "flex items-center gap-1 text-xs font-medium transition-colors",
-            lock.locked
-              ? "text-primary hover:text-primary/80"
-              : "text-primary hover:text-primary/80"
+            "flex items-center gap-1 text-xs font-semibold hover:text-teal-800 transition-colors text-teal-700"
           )}
         >
           <Lock className="h-3 w-3" />
@@ -389,7 +386,7 @@ export default function TransactionLockingPage() {
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
       </div>
     );
   }
@@ -477,19 +474,17 @@ export default function TransactionLockingPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="flex flex-col overflow-hidden h-svh">
+      <SidebarInset className="flex flex-col overflow-hidden h-svh bg-white">
         {/* ── Header ── */}
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Accountant <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">
-                Transaction Locking
-              </span>
+            <span className="flex flex-col text-left">
+              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
+              <span className="text-sm font-semibold text-slate-700 mt-0.5">Transaction Locking</span>
             </span>
           }
           actions={
-            <button className="flex items-center gap-1.5 text-xs text-primary hover:underline underline-offset-2">
+            <button className="flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-800 hover:underline underline-offset-2 font-semibold">
               <UserSearch className="h-3.5 w-3.5" />
               Find Accountants
             </button>
@@ -500,8 +495,8 @@ export default function TransactionLockingPage() {
         <div className="flex flex-col flex-1 overflow-auto">
           <div className="flex flex-col flex-1 px-6 py-6 max-w-3xl w-full">
             {/* Info banner */}
-            <div className="mb-6 text-sm text-muted-foreground leading-relaxed">
-              <span className="text-primary font-medium">
+            <div className="mb-6 text-sm text-slate-500 leading-relaxed">
+              <span className="text-teal-700 font-semibold">
                 Transaction locking
               </span>{" "}
               prevents you and your users from making any changes to
@@ -527,13 +522,13 @@ export default function TransactionLockingPage() {
             {/* Global lock (switch to lock all mode) */}
             {lockMode === "global" && (
               <div className="space-y-4">
-                <div className="flex items-center gap-4 px-5 py-5 border rounded-lg bg-background">
+                <div className="flex items-center gap-4 px-5 py-5 border border-slate-200 rounded-lg bg-white">
                   <div
                     className={cn(
                       "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
                       globalLock.locked
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground"
+                        ? "bg-teal-50 text-teal-700"
+                        : "bg-slate-100 text-slate-400"
                     )}
                   >
                     {globalLock.locked ? (
@@ -543,19 +538,19 @@ export default function TransactionLockingPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
+                    <p className="text-sm font-semibold text-slate-700">
                       All Transactions
                     </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-xs text-slate-500 mt-0.5">
                       {globalLock.locked && globalLock.date ? (
                         <>
                           All transactions locked before{" "}
-                          <span className="font-medium text-primary">
+                          <span className="font-semibold text-teal-700">
                             {formatDate(globalLock.date)}
                           </span>
                         </>
                       ) : (
-                        <span className="text-blue-600">
+                        <span className="text-teal-600 font-medium">
                           You have not locked all transactions globally.
                         </span>
                       )}
@@ -565,7 +560,7 @@ export default function TransactionLockingPage() {
                     {globalLock.locked && (
                       <button
                         onClick={() => openUnlockDialog("All")}
-                        className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1"
+                        className="text-xs text-slate-500 hover:text-rose-600 transition-colors flex items-center gap-1 font-semibold"
                       >
                         <LockOpen className="h-3 w-3" />
                         Unlock All
@@ -573,7 +568,7 @@ export default function TransactionLockingPage() {
                     )}
                     <button
                       onClick={() => openLockDialog("All")}
-                      className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                      className="flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800 transition-colors"
                     >
                       <Lock className="h-3 w-3" />
                       {globalLock.locked ? "Update" : "Lock All"}
@@ -609,7 +604,7 @@ export default function TransactionLockingPage() {
                   prev === "individual" ? "global" : "individual"
                 )
               }
-              className="text-xs text-primary hover:underline underline-offset-2 whitespace-nowrap ml-6 shrink-0 font-medium"
+              className="text-xs text-teal-700 hover:text-teal-800 hover:underline underline-offset-2 whitespace-nowrap ml-6 shrink-0 font-semibold"
             >
               {lockMode === "individual"
                 ? "Switch to Lock All Transactions"

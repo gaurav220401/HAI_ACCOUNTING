@@ -304,7 +304,7 @@ export default function NewInventoryMoveOrderPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8"
+          className="h-8 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
           onClick={() => router.push("/inventory/move-orders")}
         >
           Back to Move Orders
@@ -451,13 +451,13 @@ export default function NewInventoryMoveOrderPage() {
           <CardContent className="space-y-4">
             <div className="overflow-x-auto rounded-md border">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-muted-foreground">
+                <thead className="bg-slate-50 border-b border-slate-200 text-left">
                   <tr>
-                    <th className="px-3 py-2">Item</th>
-                    <th className="px-3 py-2">SKU</th>
-                    <th className="px-3 py-2 text-right">Available</th>
-                    <th className="px-3 py-2 text-right">Transfer Qty</th>
-                    <th className="w-16 px-3 py-2 text-center">Remove</th>
+                    <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Item</th>
+                    <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">SKU</th>
+                    <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Available</th>
+                    <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Transfer Qty</th>
+                    <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 w-16 text-center">Remove</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -473,8 +473,8 @@ export default function NewInventoryMoveOrderPage() {
                       : 0;
 
                     return (
-                      <tr key={line.id} className="border-t">
-                        <td className="px-3 py-2">
+                      <tr key={line.id} className="border-t border-slate-100">
+                        <td className="px-4 py-2">
                           <Select
                             value={line.itemId}
                             onValueChange={(value) =>
@@ -498,13 +498,13 @@ export default function NewInventoryMoveOrderPage() {
                             </SelectContent>
                           </Select>
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">
+                        <td className="px-4 py-2 text-muted-foreground">
                           {selectedItem?.sku || "-"}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
+                        <td className="px-4 py-2 text-right tabular-nums">
                           {Number(available || 0).toLocaleString("en-IN")}
                         </td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-4 py-2 text-right">
                           <Input
                             type="number"
                             min={0}
@@ -519,12 +519,12 @@ export default function NewInventoryMoveOrderPage() {
                             placeholder="0"
                           />
                         </td>
-                        <td className="px-3 py-2 text-center">
+                        <td className="px-4 py-2 text-center">
                           <Button
                             type="button"
                             size="icon"
                             variant="ghost"
-                            className="h-8 w-8"
+                            className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md"
                             onClick={() => removeLine(line.id)}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -543,6 +543,7 @@ export default function NewInventoryMoveOrderPage() {
                 variant="outline"
                 size="sm"
                 onClick={addLine}
+                className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
               >
                 <Plus className="mr-1 h-4 w-4" />
                 Add New Row
@@ -560,6 +561,7 @@ export default function NewInventoryMoveOrderPage() {
           <Button
             type="button"
             variant="outline"
+            className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
             onClick={() => router.push("/inventory/move-orders")}
             disabled={saving}
           >
@@ -568,16 +570,18 @@ export default function NewInventoryMoveOrderPage() {
           <Button
             type="button"
             variant="outline"
+            className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md"
             onClick={() => void handleSave("Draft")}
             disabled={saving}
           >
             {saving ?
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-teal-650" />
             : null}
             Save as Draft
           </Button>
           <Button
             type="button"
+            className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md"
             onClick={() => void handleSave("Sent")}
             disabled={saving}
           >
