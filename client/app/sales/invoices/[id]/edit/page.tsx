@@ -16,6 +16,7 @@ import {
   Send,
   Info,
   ChevronsUpDown,
+  CreditCard as PaymentIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -24,6 +25,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -83,6 +85,10 @@ import {
   type Invoice,
   type UpdateInvoiceInput,
 } from "@/lib/api/invoices";
+import {
+  paymentReceivedApi,
+  type PaymentReceived,
+} from "@/lib/api/payments-received";
 import {
   settingsApi,
   type SalesPerson,
@@ -165,6 +171,8 @@ export default function EditInvoicePage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [fetching, setFetching] = useState(true);
 
+  const isPosted = invoice ? (invoice.status !== "Draft" && invoice.status !== "Void") : false;
+
   // Master data
   const [customers, setCustomers] = useState<Contact[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -173,6 +181,11 @@ export default function EditInvoicePage() {
   const [tdsTaxes, setTdsTaxes] = useState<TdsTax[]>([]);
   const [tcsTaxes, setTcsTaxes] = useState<TcsTax[]>([]);
   const [paymentTermsList, setPaymentTermsList] = useState<PaymentTerms[]>([]);
+
+  // States for applying customer advances (excess payments)
+  const [availableCredits, setAvailableCredits] = useState(0);
+  const [unusedPayments, setUnusedPayments] = useState<PaymentReceived[]>([]);
+  const [applyCreditsAutomatically, setApplyCreditsAutomatically] = useState(true);
 
   // Form state
   const [customerId, setCustomerId] = useState("");
@@ -277,6 +290,28 @@ export default function EditInvoicePage() {
       .finally(() => setFetching(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser, loading, orgLoading, activeOrganization, id]);
+
+  useEffect(() => {
+    if (customerId) {
+      paymentReceivedApi
+        .list({ customer_id: customerId, status: "PAID", limit: 300 })
+        .then((res) => {
+          const unused = res.data.filter(
+            (p) =>
+              p.amount_in_excess > 0 && p.receipt_type !== "previous-payment",
+          );
+          setUnusedPayments(unused);
+          const totalExcess = unused.reduce(
+            (sum, p) => sum + p.amount_in_excess,
+            0,
+          );
+          setAvailableCredits(totalExcess);
+        });
+    } else {
+      setUnusedPayments([]);
+      setAvailableCredits(0);
+    }
+  }, [customerId]);
 
   const updateLine = useCallback(
     <K extends keyof LineItem>(key: number, field: K, value: LineItem[K]) => {
@@ -410,6 +445,7 @@ export default function EditInvoicePage() {
     : taxType === "TDS" ? -taxAmount
     : 0;
   const total = sumMoney([lineItemsTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
+  const creditsToApply = applyCreditsAutomatically ? Math.min(availableCredits, total) : 0;
 
   async function handleUpdate(shouldSend = false) {
     if (!customerId) {
@@ -426,49 +462,94 @@ export default function EditInvoicePage() {
         }
       }
 
-      const payload: UpdateInvoiceInput = {
-        invoiceNumber: finalInvoiceNumber,
-        referenceNumber,
-        orderNumber,
-        customerId,
-        invoiceDate,
-        dueDate: dueDate || null,
-        paymentTermsId:
-          paymentTermsId === "__receipt" || !paymentTermsId ?
-            null
-          : paymentTermsId,
-        salesPersonId:
-          salesPersonId === "__none" || !salesPersonId ? null : salesPersonId,
-        subject,
-        items: lines
-          .filter((l) => l.name.trim())
-          .map((l) => ({
-            itemId: l.itemId || null,
-            name: l.name,
-            description: l.description,
-            hsnSacCode: l.hsnSacCode,
-            quantity: l.quantity,
-            rate: l.rate,
-            discountPercent: l.discountPercent,
-            taxId: l.taxId || null,
-            taxPercent: l.taxPercent,
-            accountId: l.accountId || null,
-          })),
-        discountType,
-        discountValue,
-        taxType: totalTaxId && taxType !== "none" ? taxType : "none",
-        taxId: totalTaxId && taxType !== "none" ? totalTaxId : null,
-        tdsId: taxType === "TDS" && selectedTdsTax ? totalTaxId : null,
-        tcsId: taxType === "TCS" && selectedTcsTax ? totalTaxId : null,
-        taxAmount,
-        tcsAmount: taxType === "TCS" ? taxAmount : 0,
-        adjustmentLabel,
-        adjustmentAmount,
-        customerNotes,
-        termsAndConditions,
-        templateConfig: invoice?.templateConfig || {},
-      };
+      const payload: UpdateInvoiceInput = isPosted
+        ? {
+            invoiceNumber: finalInvoiceNumber,
+            referenceNumber,
+            orderNumber,
+            customerId,
+            invoiceDate,
+            dueDate: dueDate || null,
+            paymentTermsId:
+              paymentTermsId === "__receipt" || !paymentTermsId
+                ? null
+                : paymentTermsId,
+            salesPersonId:
+              salesPersonId === "__none" || !salesPersonId
+                ? null
+                : salesPersonId,
+            subject,
+            customerNotes,
+            termsAndConditions,
+            templateConfig: invoice?.templateConfig || {},
+          }
+        : {
+            invoiceNumber: finalInvoiceNumber,
+            referenceNumber,
+            orderNumber,
+            customerId,
+            invoiceDate,
+            dueDate: dueDate || null,
+            paymentTermsId:
+              paymentTermsId === "__receipt" || !paymentTermsId
+                ? null
+                : paymentTermsId,
+            salesPersonId:
+              salesPersonId === "__none" || !salesPersonId
+                ? null
+                : salesPersonId,
+            subject,
+            items: lines
+              .filter((l) => l.name.trim())
+              .map((l) => ({
+                itemId: l.itemId || null,
+                name: l.name,
+                description: l.description,
+                hsnSacCode: l.hsnSacCode,
+                quantity: l.quantity,
+                rate: l.rate,
+                discountPercent: l.discountPercent,
+                taxId: l.taxId || null,
+                taxPercent: l.taxPercent,
+                accountId: l.accountId || null,
+              })),
+            discountType,
+            discountValue,
+            taxType: totalTaxId && taxType !== "none" ? taxType : "none",
+            taxId: totalTaxId && taxType !== "none" ? totalTaxId : null,
+            tdsId: taxType === "TDS" && selectedTdsTax ? totalTaxId : null,
+            tcsId: taxType === "TCS" && selectedTcsTax ? totalTaxId : null,
+            taxAmount,
+            tcsAmount: taxType === "TCS" ? taxAmount : 0,
+            adjustmentLabel,
+            adjustmentAmount,
+            customerNotes,
+            termsAndConditions,
+            templateConfig: invoice?.templateConfig || {},
+          };
       await invoiceApi.update(id, payload);
+
+      if (creditsToApply > 0) {
+        let remainingToApply = creditsToApply;
+        for (const payment of unusedPayments) {
+          if (remainingToApply <= 0) break;
+          const amountFromThisPayment = Math.min(
+            payment.amount_in_excess,
+            remainingToApply,
+          );
+          if (amountFromThisPayment > 0) {
+            try {
+              await paymentReceivedApi.apply(payment._id, {
+                invoice_id: id,
+                applied_amount: amountFromThisPayment,
+              });
+              remainingToApply -= amountFromThisPayment;
+            } catch (applyErr: any) {
+              console.error("Failed to apply advance credits auto:", applyErr);
+            }
+          }
+        }
+      }
 
       if (shouldSend) {
         await invoiceApi.send(id);
@@ -561,6 +642,15 @@ export default function EditInvoicePage() {
         />
 
         <div className="flex flex-1 flex-col p-8 gap-8 max-w-7xl mx-auto bg-white/50 min-h-full">
+          {isPosted && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-3 shadow-xs">
+              <Info className="h-4.5 w-4.5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Financial changes restricted:</span> This invoice has already been posted. Financial details (such as items, discounts, taxes, and adjustment amounts) cannot be modified. If you need to make financial changes, please void this invoice and create a new one.
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border shadow-sm p-8 space-y-10">
             {/* ═══ Header Section ═══ */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-8">
@@ -570,6 +660,7 @@ export default function EditInvoicePage() {
                     Customer Name <span className="text-red-500">*</span>
                   </Label>
                   <Select
+                    disabled={isPosted}
                     value={customerId || undefined}
                     onValueChange={(v) => {
                       if (v === "__add_new") {
@@ -604,11 +695,13 @@ export default function EditInvoicePage() {
                     </Label>
                     <div className="flex gap-2">
                       <Input
+                        disabled={isPosted}
                         value={invoiceNumber}
                         onChange={(e) => setInvoiceNumber(e.target.value)}
                         className="h-11 border-slate-200 focus:ring-teal-500 font-mono"
                       />
                       <Button
+                        disabled={isPosted}
                         variant="outline"
                         size="icon"
                         className="h-11 w-11 shrink-0 border-slate-200"
@@ -622,6 +715,7 @@ export default function EditInvoicePage() {
                       Order Number
                     </Label>
                     <Input
+                      disabled={isPosted}
                       value={orderNumber}
                       onChange={(e) => setOrderNumber(e.target.value)}
                       className="h-11 border-slate-200 focus:ring-teal-500"
@@ -638,6 +732,7 @@ export default function EditInvoicePage() {
                       Invoice Date <span className="text-red-500">*</span>
                     </Label>
                     <Input
+                      disabled={isPosted}
                       type="date"
                       value={invoiceDate}
                       onChange={(e) => setInvoiceDate(e.target.value)}
@@ -649,6 +744,7 @@ export default function EditInvoicePage() {
                       Due Date
                     </Label>
                     <Input
+                      disabled={isPosted}
                       type="date"
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
@@ -663,6 +759,7 @@ export default function EditInvoicePage() {
                       Salesperson
                     </Label>
                     <Select
+                      disabled={isPosted}
                       value={salesPersonId || undefined}
                       onValueChange={setSalesPersonId}
                     >
@@ -775,6 +872,7 @@ export default function EditInvoicePage() {
                                 <PopoverTrigger asChild>
                                   <div className="relative w-full">
                                     <Input
+                                      disabled={isPosted}
                                       className="h-10 w-full pr-8 text-xs border-slate-200"
                                       placeholder="Type or select an item"
                                       value={line.itemId ? (items.find((it) => it._id === line.itemId)?.name || line.name) : line.name}
@@ -839,6 +937,7 @@ export default function EditInvoicePage() {
                                 </PopoverContent>
                               </Popover>
                               <Input
+                                disabled={isPosted}
                                 className="h-8 text-xs bg-slate-50 border-slate-100 italic"
                                 placeholder="Add a description or note for this item"
                                 value={line.description}
@@ -854,6 +953,7 @@ export default function EditInvoicePage() {
                           </TableCell>
                           <TableCell>
                             <Input
+                              disabled={isPosted}
                               type="number"
                               min={0}
                               className="h-10 text-right font-medium border-slate-200"
@@ -870,6 +970,7 @@ export default function EditInvoicePage() {
                           </TableCell>
                           <TableCell>
                             <Input
+                              disabled={isPosted}
                               type="number"
                               min={0}
                               step="0.01"
@@ -886,6 +987,7 @@ export default function EditInvoicePage() {
                           </TableCell>
                           <TableCell>
                             <Input
+                              disabled={isPosted}
                               type="number"
                               min={0}
                               max={100}
@@ -902,6 +1004,7 @@ export default function EditInvoicePage() {
                           </TableCell>
                           <TableCell>
                             <Select
+                              disabled={isPosted}
                               value={line.taxId || "__none"}
                               onValueChange={(v) =>
                                 updateLineTax(line.key, v === "__none" ? "" : v)
@@ -929,6 +1032,7 @@ export default function EditInvoicePage() {
                           </TableCell>
                           <TableCell className="py-5">
                             <Button
+                              disabled={isPosted}
                               variant="ghost"
                               size="icon"
                               className="h-9 w-9 text-slate-300 hover:text-red-600 hover:bg-red-50 transition-all rounded-full"
@@ -946,6 +1050,7 @@ export default function EditInvoicePage() {
 
               <div className="flex gap-4">
                 <Button
+                  disabled={isPosted}
                   variant="outline"
                   size="sm"
                   className="font-bold border-dashed border-2 hover:bg-slate-50 h-10 px-6 border-slate-200 text-teal-700 hover:text-teal-800 border-teal-200 hover:border-teal-300"
@@ -954,6 +1059,7 @@ export default function EditInvoicePage() {
                   <Plus className="h-4 w-4 mr-2 text-teal-600" /> Add New Row
                 </Button>
                 <Button
+                  disabled={isPosted}
                   variant="ghost"
                   size="sm"
                   className="font-bold text-slate-500 h-10"
@@ -1009,6 +1115,7 @@ export default function EditInvoicePage() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-500">Discount</span>
                     <Select
+                      disabled={isPosted}
                       value={discountType}
                       onValueChange={(v: any) => setDiscountType(v)}
                     >
@@ -1022,6 +1129,7 @@ export default function EditInvoicePage() {
                     </Select>
                   </div>
                   <Input
+                    disabled={isPosted}
                     type="number"
                     className="h-9 w-24 text-right font-bold border-slate-200"
                     value={discountValue}
@@ -1036,6 +1144,7 @@ export default function EditInvoicePage() {
                   <div className="flex items-center gap-3">
                     <label className="flex items-center gap-1 text-sm text-slate-500 font-medium">
                       <input
+                        disabled={isPosted}
                         type="radio"
                         name="invoiceTaxType"
                         value="none"
@@ -1050,6 +1159,7 @@ export default function EditInvoicePage() {
                     </label>
                     <label className="flex items-center gap-1 text-sm text-slate-500 font-medium">
                       <input
+                        disabled={isPosted}
                         type="radio"
                         name="invoiceTaxType"
                         value="TDS"
@@ -1064,6 +1174,7 @@ export default function EditInvoicePage() {
                     </label>
                     <label className="flex items-center gap-1 text-sm text-slate-500 font-medium">
                       <input
+                        disabled={isPosted}
                         type="radio"
                         name="invoiceTaxType"
                         value="TCS"
@@ -1080,6 +1191,7 @@ export default function EditInvoicePage() {
                   <div className="flex items-center gap-2">
                     {taxType === "TDS" ? (
                       <Select
+                        disabled={isPosted}
                         value={totalTaxId || undefined}
                         onValueChange={(value) => {
                           if (value === "__none") {
@@ -1108,6 +1220,7 @@ export default function EditInvoicePage() {
                       </Select>
                     ) : taxType === "TCS" ? (
                       <Select
+                        disabled={isPosted}
                         value={totalTaxId || undefined}
                         onValueChange={(value) => {
                           if (value === "__none") {
@@ -1159,6 +1272,7 @@ export default function EditInvoicePage() {
                     </TooltipProvider>
                   </div>
                   <Input
+                    disabled={isPosted}
                     type="number"
                     className="h-9 w-24 text-right font-bold border-slate-200"
                     value={adjustmentAmount}
@@ -1178,6 +1292,38 @@ export default function EditInvoicePage() {
                     {formatMoney(total)}
                   </span>
                 </div>
+
+                {availableCredits > 0 && !isPosted && (
+                  <div className="flex items-center justify-between text-xs py-1.5 mt-2 text-amber-800 bg-amber-50/40 px-2 rounded-lg border border-amber-100">
+                    <label className="flex items-center gap-2 font-medium cursor-pointer select-none">
+                      <Checkbox
+                        id="autoApplyCredits"
+                        checked={applyCreditsAutomatically}
+                        onCheckedChange={(checked) =>
+                          setApplyCreditsAutomatically(checked === true)
+                        }
+                      />
+                      Apply Advance Credit (Available: {formatMoney(availableCredits)})
+                    </label>
+                    <span className="font-bold tabular-nums">
+                      - {formatMoney(creditsToApply)}
+                    </span>
+                  </div>
+                )}
+
+                {availableCredits > 0 && !isPosted && (
+                  <>
+                    <Separator className="bg-slate-200 mt-2" />
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-lg font-bold text-slate-900">
+                        Balance Due ( ₹ )
+                      </span>
+                      <span className="text-2xl font-black text-slate-900 tabular-nums">
+                        {formatMoney(total - creditsToApply)}
+                      </span>
+                    </div>
+                  </>
+                )}
 
                 <div className="bg-white border rounded-xl p-4 mt-6 space-y-2">
                   <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest">

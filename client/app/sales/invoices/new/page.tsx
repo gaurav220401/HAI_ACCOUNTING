@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Image as ImageIcon,
   ChevronsUpDown,
+  CreditCard as PaymentIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -87,6 +88,10 @@ import {
   sumMoney,
 } from "@/lib/money";
 import { invoiceApi, type CreateInvoiceInput } from "@/lib/api/invoices";
+import {
+  paymentReceivedApi,
+  type PaymentReceived,
+} from "@/lib/api/payments-received";
 import {
   settingsApi,
   type SalesPerson,
@@ -940,6 +945,11 @@ function NewInvoicePageContent() {
   );
   const [termsAndConditions, setTermsAndConditions] = useState("");
 
+  // States for applying customer advances (excess payments)
+  const [availableCredits, setAvailableCredits] = useState(0);
+  const [unusedPayments, setUnusedPayments] = useState<PaymentReceived[]>([]);
+  const [applyCreditsAutomatically, setApplyCreditsAutomatically] = useState(true);
+
   // Extra sections
   const [paymentReceived, setPaymentReceived] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -1360,6 +1370,28 @@ function NewInvoicePageContent() {
     taxes,
   ]);
 
+  useEffect(() => {
+    if (customerId) {
+      paymentReceivedApi
+        .list({ customer_id: customerId, status: "PAID", limit: 300 })
+        .then((res) => {
+          const unused = res.data.filter(
+            (p) =>
+              p.amount_in_excess > 0 && p.receipt_type !== "previous-payment",
+          );
+          setUnusedPayments(unused);
+          const totalExcess = unused.reduce(
+            (sum, p) => sum + p.amount_in_excess,
+            0,
+          );
+          setAvailableCredits(totalExcess);
+        });
+    } else {
+      setUnusedPayments([]);
+      setAvailableCredits(0);
+    }
+  }, [customerId]);
+
   // ─── Calculations ────────────────────────────────────────────────
 
   const lineTotals = lines.map(calcLineAmount);
@@ -1391,6 +1423,8 @@ function NewInvoicePageContent() {
     : taxType === "TDS" ? -taxAmount
     : 0;
   const total = sumMoney([lineItemsTotal, -discountAmount, taxSignedAmount, adjustmentAmount]);
+  // Auto-compute credit to apply — full available amount capped to invoice total
+  const creditsToApply = applyCreditsAutomatically ? Math.min(availableCredits, total) : 0;
 
   // ─── Submit ──────────────────────────────────────────────────────
 
@@ -1468,9 +1502,31 @@ function NewInvoicePageContent() {
         status: (status === "Sent" && sendEmail) ? ("Draft" as const) : status,
       };
       const res = await invoiceApi.create(createPayload);
+      const invoiceId = res.data._id;
+
+      if (creditsToApply > 0 && invoiceId) {
+        let remainingToApply = creditsToApply;
+        for (const payment of unusedPayments) {
+          if (remainingToApply <= 0) break;
+          const amountFromThisPayment = Math.min(
+            payment.amount_in_excess,
+            remainingToApply,
+          );
+          if (amountFromThisPayment > 0) {
+            try {
+              await paymentReceivedApi.apply(payment._id, {
+                invoice_id: invoiceId,
+                applied_amount: amountFromThisPayment,
+              });
+              remainingToApply -= amountFromThisPayment;
+            } catch (applyErr: any) {
+              console.error("Failed to apply advance credits auto:", applyErr);
+            }
+          }
+        }
+      }
 
       if (status === "Sent" && sendEmail) {
-        const invoiceId = res.data._id;
         router.push(`/sales/invoices/${invoiceId}/send-email`);
         setSaving(false);
         return;
@@ -2374,11 +2430,36 @@ function NewInvoicePageContent() {
 
               <Separator />
 
-              {/* Total */}
               <div className="flex items-center justify-between text-base font-bold">
                 <span>Total ( &#8377; )</span>
                 <span className="tabular-nums">{decimalToFixed(total)}</span>
               </div>
+
+              {availableCredits > 0 && (
+                <div className="flex items-center justify-between text-xs py-1.5 mt-2 text-amber-800 bg-amber-50/40 px-2 rounded-lg border border-amber-100">
+                  <label className="flex items-center gap-2 font-medium cursor-pointer select-none">
+                    <Checkbox
+                      id="autoApplyCreditsNew"
+                      checked={applyCreditsAutomatically}
+                      onCheckedChange={(checked) =>
+                        setApplyCreditsAutomatically(checked === true)
+                      }
+                    />
+                    Apply Advance Credit (Available: &#8377; {decimalToFixed(availableCredits)})
+                  </label>
+                  <span className="font-bold tabular-nums">- {decimalToFixed(creditsToApply)}</span>
+                </div>
+              )}
+
+              {availableCredits > 0 && creditsToApply > 0 && (
+                <>
+                  <Separator />
+                  <div className="flex items-center justify-between text-base font-bold">
+                    <span>Balance Due ( &#8377; )</span>
+                    <span className="tabular-nums">{decimalToFixed(total - creditsToApply)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
