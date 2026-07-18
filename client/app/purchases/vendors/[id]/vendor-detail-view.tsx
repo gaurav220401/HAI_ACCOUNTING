@@ -1704,24 +1704,153 @@ function LogoAddressDialog({
   );
 }
 
-function computeStatement(expenses: Expense[], openingBalance: number, startDate: Date, endDate: Date) {
+function computeStatement(
+  expenses: Expense[],
+  bills: Bill[],
+  payments: PaymentMade[],
+  credits: VendorCredit[],
+  openingBalance: number,
+  startDate: Date,
+  endDate: Date
+) {
   const rows: StatementRow[] = [];
-  let runningBalance = openingBalance;
   const from = new Date(startDate);
   from.setHours(0, 0, 0, 0);
   const to = new Date(endDate);
   to.setHours(23, 59, 59, 999);
 
-  rows.push({ date: format(startDate, "dd/MM/yyyy"), type: "***Opening Balance***", details: "", amount: openingBalance, payments: 0, balance: openingBalance });
-  const filtered = expenses
-    .filter((e) => { const d = new Date(e.date); return d >= from && d <= to; })
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  for (const exp of filtered) {
-    runningBalance += exp.amount;
-    rows.push({ date: fmtDate(exp.date), type: "Expense", details: exp.expenseNumber, amount: exp.amount, payments: 0, balance: runningBalance });
+  let runningBalance = openingBalance;
+
+  // Calculate opening balance at startDate by including all historical transactions before startDate
+  for (const exp of expenses) {
+    if (new Date(exp.date) < from && exp.status !== "Draft" && exp.status !== "Rejected") {
+      runningBalance += exp.amount;
+    }
   }
-  const totalBilled = filtered.reduce((s, e) => s + e.amount, 0);
-  return { rows, openingBalance, totalBilled, totalPaid: 0, balanceDue: openingBalance + totalBilled };
+  for (const bill of bills) {
+    if (new Date(bill.billDate) < from && bill.status !== "Void" && bill.status !== "Draft") {
+      runningBalance += bill.total;
+    }
+  }
+  for (const p of payments) {
+    if (new Date(p.payment_date) < from && p.status === "PAID") {
+      runningBalance -= p.total_amount_paid;
+    }
+  }
+  for (const c of credits) {
+    if (new Date(c.vendorCreditDate) < from && c.status !== "VOID" && c.status !== "DRAFT") {
+      runningBalance -= c.total;
+    }
+  }
+
+  // Add opening balance row
+  rows.push({
+    date: format(startDate, "dd/MM/yyyy"),
+    type: "***Opening Balance***",
+    details: "",
+    amount: runningBalance,
+    payments: 0,
+    balance: runningBalance,
+  });
+
+  const initialBalanceForCalculations = runningBalance;
+
+  // Collect all matching items in range
+  const items: Array<{
+    date: Date;
+    dateStr: string;
+    type: string;
+    details: string;
+    amount: number;
+    payments: number;
+  }> = [];
+
+  for (const exp of expenses) {
+    const d = new Date(exp.date);
+    if (d >= from && d <= to && exp.status !== "Draft" && exp.status !== "Rejected") {
+      items.push({
+        date: d,
+        dateStr: fmtDate(exp.date),
+        type: "Expense",
+        details: exp.expenseNumber,
+        amount: exp.amount,
+        payments: 0,
+      });
+    }
+  }
+
+  for (const bill of bills) {
+    const d = new Date(bill.billDate);
+    if (d >= from && d <= to && bill.status !== "Void" && bill.status !== "Draft") {
+      items.push({
+        date: d,
+        dateStr: fmtDate(bill.billDate),
+        type: "Bill",
+        details: bill.billNumber,
+        amount: bill.total,
+        payments: 0,
+      });
+    }
+  }
+
+  for (const p of payments) {
+    const d = new Date(p.payment_date);
+    if (d >= from && d <= to && p.status === "PAID") {
+      items.push({
+        date: d,
+        dateStr: fmtDate(p.payment_date),
+        type: p.payment_type === "vendor-advance" ? "Vendor Advance" : "Payment Made",
+        details: p.payment_number,
+        amount: 0,
+        payments: p.total_amount_paid,
+      });
+    }
+  }
+
+  for (const c of credits) {
+    const d = new Date(c.vendorCreditDate);
+    if (d >= from && d <= to && c.status !== "VOID" && c.status !== "DRAFT") {
+      items.push({
+        date: d,
+        dateStr: fmtDate(c.vendorCreditDate),
+        type: "Vendor Credit",
+        details: c.vendorCreditNumber,
+        amount: 0,
+        payments: c.total,
+      });
+    }
+  }
+
+  // Sort items chronologically
+  items.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Calculate balances
+  for (const item of items) {
+    if (item.amount > 0) {
+      runningBalance += item.amount;
+    } else {
+      runningBalance -= item.payments;
+    }
+    rows.push({
+      date: item.dateStr,
+      type: item.type,
+      details: item.details,
+      amount: item.amount,
+      payments: item.payments,
+      balance: runningBalance,
+    });
+  }
+
+  const totalBilled = items.reduce((s, x) => s + x.amount, 0);
+  const totalPaid = items.reduce((s, x) => s + x.payments, 0);
+
+  return {
+    rows,
+    openingBalance: initialBalanceForCalculations,
+    totalBilled,
+    totalPaid,
+    balanceDue: runningBalance,
+  };
 }
 
 // â”€â”€â”€ ExpensesSection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2330,7 +2459,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
   }, [activeTab, vendor._id]);
 
   useEffect(() => {
-    if (activeTab !== "transactions" || !vendor._id) return;
+    if (!vendor._id) return;
     setTransactionsLoading(true);
     Promise.all([
       billApi.list({ vendorId: vendor._id, limit: 200 }),
@@ -2352,7 +2481,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
       })
       .catch(() => {})
       .finally(() => setTransactionsLoading(false));
-  }, [activeTab, vendor._id]);
+  }, [vendor._id]);
 
   useEffect(() => {
     if (!vendor._id) return;
@@ -2560,7 +2689,7 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
       (p) => p.name === primaryContact.name && p.email === primaryContact.email,
     );
   }, [primaryContact, vendor.contactPersons]);
-  const stmt = computeStatement(expenses, vendor.openingBalance ?? 0, stmtStart, stmtEnd);
+  const stmt = computeStatement(expenses, bills, paymentsMade, vendorCredits, vendor.openingBalance ?? 0, stmtStart, stmtEnd);
 
   // ── Email dialog state ────────────────────────────────────────────────────
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -2669,6 +2798,14 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
     en: "English", hi: "Hindi", bn: "Bengali", ta: "Tamil",
     te: "Telugu", mr: "Marathi", gu: "Gujarati",
   };
+
+  const unusedAdvances = useMemo(() => {
+    return paymentsMade.reduce((sum, p) => sum + (p.status === "PAID" ? p.amount_in_excess || 0 : 0), 0);
+  }, [paymentsMade]);
+
+  const unusedCredits = useMemo(() => {
+    return vendorCredits.reduce((sum, c) => sum + (c.status === "OPEN" ? c.balanceAmount || 0 : 0), 0);
+  }, [vendorCredits]);
 
   return (
     <div className="flex h-full min-h-0 flex-col flex-1 overflow-hidden">
@@ -3093,9 +3230,11 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                     <tr>
                       <td className="px-3 py-2 font-medium">{vendor.currency ?? "INR"}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {fmt(vendor.openingBalance ?? 0, vendor.currency ?? "INR")}
+                        {fmt(vendor.outstandingPayable ?? 0, vendor.currency ?? "INR")}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">â€”</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {fmt(unusedAdvances + unusedCredits, vendor.currency ?? "INR")}
+                      </td>
                     </tr>
                   </tbody>
                 </table>

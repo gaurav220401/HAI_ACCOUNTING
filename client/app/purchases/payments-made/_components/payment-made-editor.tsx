@@ -19,7 +19,7 @@ import { uploadApi } from "@/lib/api/upload";
 import { paymentMadeApi, type PaymentBillMap } from "@/lib/api/payments-made";
 import { useOrganization } from "@/contexts/organization-context";
 
-type PaymentEntryMode = "bill-payment" | "vendor-advance";
+type PaymentEntryMode = "bill-payment" | "vendor-advance" | "vendor-payable";
 
 interface BillAllocation {
   bill_id: string;
@@ -176,7 +176,7 @@ export function PaymentMadeEditor({
 
           setAppliedMaps(maps);
           setForm({
-            paymentType: maps.length > 0 ? "bill-payment" : "vendor-advance",
+            paymentType: payment.payment_type || (maps.length > 0 ? "bill-payment" : "vendor-advance"),
             vendor_id: typeof payment.vendor_id === "string" ? payment.vendor_id : payment.vendor_id._id,
             payment_number: payment.payment_number,
             total_amount_paid: payment.total_amount_paid,
@@ -307,7 +307,7 @@ export function PaymentMadeEditor({
       .map((a) => ({ bill_id: a.bill_id, applied_amount: Number(a.payment) }));
 
     if (form.paymentType === "bill-payment" && status === "PAID" && selectedApps.length === 0) {
-      toast.error("Add bill allocation or switch to Vendor Advance");
+      toast.error("Add bill allocation or switch to Vendor Advance / Pay Payable");
       return;
     }
 
@@ -329,6 +329,7 @@ export function PaymentMadeEditor({
         status,
         total_amount_paid: Number(form.total_amount_paid),
         bill_applications: form.paymentType === "bill-payment" ? selectedApps : [],
+        payment_type: form.paymentType,
       });
 
       toast.success(status === "PAID" ? "Payment saved" : "Payment saved as draft");
@@ -393,6 +394,7 @@ export function PaymentMadeEditor({
           <TabsList variant="line" className="w-full justify-start rounded-none border-b px-3 py-2">
             <TabsTrigger value="bill-payment" className="px-3 text-sm" disabled={mode === "edit"}>Bill Payment</TabsTrigger>
             <TabsTrigger value="vendor-advance" className="px-3 text-sm" disabled={mode === "edit"}>Vendor Advance</TabsTrigger>
+            <TabsTrigger value="vendor-payable" className="px-3 text-sm" disabled={mode === "edit"}>Pay Payable</TabsTrigger>
           </TabsList>
 
           <TabsContent value={form.paymentType} className="space-y-6 p-4 sm:p-6">
@@ -590,81 +592,89 @@ export function PaymentMadeEditor({
                   </div>
                 </div>
 
-                <div className={cn("rounded-md border", vendorLocked && mode === "create" && "pointer-events-none opacity-40")}>
-                  <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
-                    <span>Apply to Bills</span>
-                    {mode === "create" ? (
-                      <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={clearApplied}>
-                        Clear Applied Amount
-                      </Button>
-                    ) : null}
-                  </div>
+                {form.paymentType === "bill-payment" ? (
+                  <div className={cn("rounded-md border", vendorLocked && mode === "create" && "pointer-events-none opacity-40")}>
+                    <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
+                      <span>Apply to Bills</span>
+                      {mode === "create" ? (
+                        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={clearApplied}>
+                          Clear Applied Amount
+                        </Button>
+                      ) : null}
+                    </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-slate-50 text-xs uppercase text-slate-600">
-                        <tr>
-                          <th className="border-b px-3 py-2 text-left">Date</th>
-                          <th className="border-b px-3 py-2 text-left">Bill#</th>
-                          <th className="border-b px-3 py-2 text-right">Bill Amount</th>
-                          <th className="border-b px-3 py-2 text-right">Amount Due</th>
-                          <th className="border-b px-3 py-2 text-right">Payment</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {mode === "create" ? (
-                          openBills.length === 0 ? (
-                            <tr>
-                              <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
-                                There are no bills for this vendor.
-                              </td>
-                            </tr>
-                          ) : (
-                            openBills.map((bill) => {
-                              const current = form.billAllocations.find((a) => a.bill_id === bill._id)?.payment || 0;
-                              return (
-                                <tr key={bill._id}>
-                                  <td className="border-b px-3 py-2">{fmtDate(bill.billDate)}</td>
-                                  <td className="border-b px-3 py-2">{bill.billNumber}</td>
-                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.total)}</td>
-                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.balanceDue)}</td>
-                                  <td className="border-b px-3 py-2 text-right">
-                                    <Input
-                                      type="number"
-                                      min={0}
-                                      max={bill.balanceDue}
-                                      value={current || ""}
-                                      onChange={(e) => updateAllocation(bill._id, Number(e.target.value || 0))}
-                                      className="ml-auto h-8 w-28 text-right"
-                                    />
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )
-                        ) : (
-                          billRowsForEdit.length === 0 ? (
-                            <tr>
-                              <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
-                                No bill applications for this payment.
-                              </td>
-                            </tr>
-                          ) : (
-                            billRowsForEdit.map((row) => (
-                              <tr key={row.map._id}>
-                                <td className="border-b px-3 py-2">{fmtDate(row.bill?.billDate)}</td>
-                                <td className="border-b px-3 py-2">{row.bill?.billNumber || "-"}</td>
-                                <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.total || 0)}</td>
-                                <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.balanceDue || 0)}</td>
-                                <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.map.applied_amount)}</td>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase text-slate-600">
+                          <tr>
+                            <th className="border-b px-3 py-2 text-left">Date</th>
+                            <th className="border-b px-3 py-2 text-left">Bill#</th>
+                            <th className="border-b px-3 py-2 text-right">Bill Amount</th>
+                            <th className="border-b px-3 py-2 text-right">Amount Due</th>
+                            <th className="border-b px-3 py-2 text-right">Payment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mode === "create" ? (
+                            openBills.length === 0 ? (
+                              <tr>
+                                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
+                                  There are no bills for this vendor.
+                                </td>
                               </tr>
-                            ))
-                          )
-                        )}
-                      </tbody>
-                    </table>
+                            ) : (
+                              openBills.map((bill) => {
+                                const current = form.billAllocations.find((a) => a.bill_id === bill._id)?.payment || 0;
+                                return (
+                                  <tr key={bill._id}>
+                                    <td className="border-b px-3 py-2">{fmtDate(bill.billDate)}</td>
+                                    <td className="border-b px-3 py-2">{bill.billNumber}</td>
+                                    <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.total)}</td>
+                                    <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.balanceDue)}</td>
+                                    <td className="border-b px-3 py-2 text-right">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        max={bill.balanceDue}
+                                        value={current || ""}
+                                        onChange={(e) => updateAllocation(bill._id, Number(e.target.value || 0))}
+                                        className="ml-auto h-8 w-28 text-right"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )
+                          ) : (
+                            billRowsForEdit.length === 0 ? (
+                              <tr>
+                                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
+                                  No bill applications for this payment.
+                                </td>
+                              </tr>
+                            ) : (
+                              billRowsForEdit.map((row) => (
+                                <tr key={row.map._id}>
+                                  <td className="border-b px-3 py-2">{fmtDate(row.bill?.billDate)}</td>
+                                  <td className="border-b px-3 py-2">{row.bill?.billNumber || "-"}</td>
+                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.total || 0)}</td>
+                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.balanceDue || 0)}</td>
+                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.map.applied_amount)}</td>
+                                </tr>
+                              ))
+                            )
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-md border bg-amber-50/40 p-4 text-sm text-amber-900">
+                    {form.paymentType === "vendor-advance"
+                      ? "Vendor advance mode keeps the full amount in excess until bills are applied later."
+                      : "Direct payable payment posts the full amount directly to decrease the vendor's accounts payable balance."}
+                  </div>
+                )}
 
                 <div className={cn("space-y-1.5", vendorLocked && mode === "create" && "opacity-40")}>
                   <Label>Notes (Internal use. Not visible to vendor)</Label>

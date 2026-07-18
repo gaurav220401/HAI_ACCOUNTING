@@ -323,6 +323,7 @@ export function getIndianCoATemplate(): ChartTemplateNode[] {
   const template: ChartTemplateNode[] = [
     // Assets
     { name: "Employee Advance", rootType: "Asset", accountType: "Other Current Asset", description: "Advances paid to employees for business purposes." },
+    { name: "Advances to Suppliers", rootType: "Asset", accountType: "Other Current Asset", description: "Advance payments made to vendors for future supply of goods or services." },
     { name: "Prepaid Expenses", rootType: "Asset", accountType: "Other Current Asset", description: "Expenses paid in advance for future periods." },
     { name: "TDS Receivable", rootType: "Asset", accountType: "Other Current Asset", description: "Tax deducted at source receivable from the government." },
     { name: "Advance Tax", rootType: "Asset", accountType: "Other Current Asset", description: "Any tax paid in advance, such as quarterly, half-yearly, or yearly advance tax." },

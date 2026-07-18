@@ -451,9 +451,6 @@ export async function recomputeContactOutstanding(params: {
   const totalExcessReceivable = round2(Number(excessReceivableRows[0]?.total || 0));
   const totalExcessPayable = round2(Number(excessPayableRows[0]?.total || 0));
 
-  const receivable = round2(Number(receivableRows[0]?.total || 0) - totalExcessReceivable);
-  const payable = round2(Number(payableRows[0]?.total || 0) - totalExcessPayable);
-
   const contactQuery = Contact.findOne({
     _id: cid,
     organizationId: oid,
@@ -464,8 +461,16 @@ export async function recomputeContactOutstanding(params: {
   const contact = await contactQuery;
   if (!contact) return;
 
+  const ob = Number(contact.openingBalance || 0);
+  const isCust = ["Customer", "Both"].includes(contact.contactType);
+  const isVend = ["Vendor", "Both"].includes(contact.contactType);
+
+  const receivable = round2((isCust ? ob : 0) + Number(receivableRows[0]?.total || 0) - totalExcessReceivable);
+  const payable = round2((isVend ? ob : 0) + Number(payableRows[0]?.total || 0) - totalExcessPayable);
+
   contact.outstandingReceivable = receivable;
   contact.outstandingPayable = payable;
+  (contact as any).unusedCredits = isCust ? totalExcessReceivable : (isVend ? totalExcessPayable : 0);
 
   if (req) attachUser(contact, req);
 

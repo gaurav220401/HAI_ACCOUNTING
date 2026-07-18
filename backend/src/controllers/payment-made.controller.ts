@@ -1,6 +1,7 @@
 import mongoose, { ClientSession, Types } from "mongoose";
 import { Response } from "express";
 import Bill from "../models/bill.model";
+import Account from "../models/account.model";
 import Contact from "../models/contact.model";
 import { Counter } from "../models/counter.model";
 import PaymentBillMap from "../models/payment-bill-map.model";
@@ -85,7 +86,7 @@ function scalarId(value: unknown): string {
   return String(value);
 }
 
-async function resolvePaymentMadeAccounts(payment: IPaymentMade) {
+async function resolvePaymentMadeAccounts(payment: IPaymentMade, req?: AuthenticatedRequest) {
   const organizationId = payment.organization_id;
 
   const bankAccountId =
@@ -112,12 +113,31 @@ async function resolvePaymentMadeAccounts(payment: IPaymentMade) {
       accountType: "Accounts Payable",
     }));
 
-  const vendorAdvanceId = await findAccountIdByName({
+  let vendorAdvanceId;
+  const advanceAccount = await Account.findOne({
     organizationId,
-    names: ["Advances to Suppliers", "Vendor Advances", "Advances to Vendors"],
-    rootType: "Asset",
-    accountType: "Other Current Asset",
+    isDeleted: false,
+    name: { $in: ["Advances to Suppliers", "Vendor Advances", "Advances to Vendors"] },
   });
+  if (advanceAccount) {
+    vendorAdvanceId = advanceAccount._id;
+  } else {
+    const newAcc = new Account({
+      organizationId,
+      name: "Advances to Suppliers",
+      rootType: "Asset",
+      accountType: "Other Current Asset",
+      description: "Advance payments made to vendors for future supply of goods or services.",
+      isGroup: false,
+      isSystemAccount: true,
+    });
+    if (req?.user) {
+      newAcc.createdBy = req.user._id;
+      newAcc.updatedBy = req.user._id;
+    }
+    await newAcc.save();
+    vendorAdvanceId = newAcc._id;
+  }
 
   return { bankAccountId, accountsPayableId, vendorAdvanceId };
 }
@@ -138,7 +158,7 @@ async function postPaymentMadeEvent(params: {
   const movement = round2(toNum(amount));
 
   const { bankAccountId, accountsPayableId, vendorAdvanceId } =
-    await resolvePaymentMadeAccounts(payment);
+    await resolvePaymentMadeAccounts(payment, req);
 
   const lines: Array<{
     accountId: any;
@@ -150,32 +170,53 @@ async function postPaymentMadeEvent(params: {
   }> = [];
 
   if (event === "create") {
-    if (used > 0) {
-      lines.push({
-        accountId: accountsPayableId,
-        debit: used,
-        description: `Bill settlement ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
-      });
-    }
-    if (excess > 0) {
-      lines.push({
-        accountId: vendorAdvanceId,
-        debit: excess,
-        description: `Vendor advance ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
-      });
-    }
-    if (total > 0) {
-      lines.push({
-        accountId: bankAccountId,
-        credit: total,
-        description: `Payment made ${payment.payment_number}`,
-        contactType: "Vendor",
-        contactId: payment.vendor_id,
-      });
+    if (payment.payment_type === "vendor-payable") {
+      if (total > 0) {
+        lines.push(
+          {
+            accountId: accountsPayableId,
+            debit: total,
+            description: `Direct payable payment ${payment.payment_number}`,
+            contactType: "Vendor",
+            contactId: payment.vendor_id,
+          },
+          {
+            accountId: bankAccountId,
+            credit: total,
+            description: `Payment made ${payment.payment_number}`,
+            contactType: "Vendor",
+            contactId: payment.vendor_id,
+          }
+        );
+      }
+    } else {
+      if (used > 0) {
+        lines.push({
+          accountId: accountsPayableId,
+          debit: used,
+          description: `Bill settlement ${payment.payment_number}`,
+          contactType: "Vendor",
+          contactId: payment.vendor_id,
+        });
+      }
+      if (excess > 0) {
+        lines.push({
+          accountId: vendorAdvanceId,
+          debit: excess,
+          description: `Vendor advance ${payment.payment_number}`,
+          contactType: "Vendor",
+          contactId: payment.vendor_id,
+        });
+      }
+      if (total > 0) {
+        lines.push({
+          accountId: bankAccountId,
+          credit: total,
+          description: `Payment made ${payment.payment_number}`,
+          contactType: "Vendor",
+          contactId: payment.vendor_id,
+        });
+      }
     }
   }
 
@@ -548,6 +589,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
       reference_number: String(req.body.reference_number || req.body.referenceNumber || ""),
       notes: String(req.body.notes || ""),
       status,
+      payment_type: req.body.payment_type || req.body.paymentType || (billItems.length > 0 ? "bill-payment" : "vendor-advance"),
       total_amount_paid,
       amount_used_for_bills: 0,
       amount_refunded: 0,

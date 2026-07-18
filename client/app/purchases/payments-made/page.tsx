@@ -50,7 +50,7 @@ import { accountApi, type Account } from "@/lib/api/accounts";
 import { uploadApi } from "@/lib/api/upload";
 import { paymentMadeApi, type PaymentBillMap, type PaymentMade } from "@/lib/api/payments-made";
 
-type PaymentEntryMode = "bill-payment" | "vendor-advance";
+type PaymentEntryMode = "bill-payment" | "vendor-advance" | "vendor-payable";
 
 interface BillAllocation {
   bill_id: string;
@@ -802,7 +802,11 @@ export default function PaymentsMadePage() {
                         </thead>
                         <tbody>
                           <tr className="border-b">
-                            <td className="px-2 py-2">Prepaid Expenses</td>
+                            <td className="px-2 py-2">
+                              {selectedPayment.payment_type === "vendor-advance"
+                                ? "Advances to Suppliers"
+                                : "Accounts Payable"}
+                            </td>
                             <td className="px-2 py-2 text-right">{fmtCurrency(selectedPayment.total_amount_paid)}</td>
                             <td className="px-2 py-2 text-right">{fmtCurrency(0)}</td>
                           </tr>
@@ -1084,7 +1088,9 @@ function FormBody({
           </div>
         ) : (
           <div className="rounded-md border bg-amber-50/40 p-4 text-sm text-amber-900">
-            Vendor advance mode keeps the full amount in excess until bills are applied later.
+            {form.paymentType === "vendor-payable"
+              ? "Direct payable payment posts the full amount directly to decrease the vendor's accounts payable balance."
+              : "Vendor advance mode keeps the full amount in excess until bills are applied later."}
           </div>
         )}
 
