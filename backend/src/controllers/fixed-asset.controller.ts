@@ -12,6 +12,12 @@ import FixedAsset from "../models/fixed-asset.model";
 import FixedAssetType from "../models/fixed-asset-type.model";
 import Account from "../models/account.model";
 import Bill from "../models/bill.model";
+import { ensureDefaultFixedAssetTypes } from "../services/fixed-asset-type.service";
+import {
+  postDepreciationEntry,
+  postAssetPurchaseJournal,
+} from "../services/fixed-asset-depreciation.service";
+import { findAccountIdByName } from "../services/gl-posting.service";
 
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -51,6 +57,16 @@ async function validateFixedAssetAccountMappings(params: {
   accumulatedDepreciationAccountId: unknown;
   depreciationExpenseAccountId: unknown;
 }) {
+  // DRAFT assets created from bills may have null account IDs.
+  // Full account validation only runs when all three IDs are provided (e.g., on activation).
+  if (
+    !params.fixedAssetAccountId ||
+    !params.accumulatedDepreciationAccountId ||
+    !params.depreciationExpenseAccountId
+  ) {
+    return;
+  }
+
   const [fixedAssetAccount, accumulatedAccount, expenseAccount] =
     await Promise.all([
       findMappedAccount({
@@ -94,6 +110,7 @@ async function validateFixedAssetAccountMappings(params: {
     );
   }
 }
+
 
 async function hydrateLegacySourceBillInfo(
   organizationId: Types.ObjectId,
@@ -151,6 +168,9 @@ export const list = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { status, search, page = 1, limit = 25 } = req.query;
     const organizationId = orgId(req);
+
+    // Auto-seed default FA types and CoA accounts on first access
+    await ensureDefaultFixedAssetTypes(organizationId).catch(() => {});
 
     const filter: any = {
       organizationId,
@@ -239,15 +259,36 @@ export const create = asyncHandler(
 
     if (!assetName) throw new ValidationError("assetName is required");
     if (!purchaseDate) throw new ValidationError("purchaseDate is required");
-    if (!fixedAssetTypeId)
-      throw new ValidationError("fixedAssetTypeId is required");
-    if (!depreciationMethod)
-      throw new ValidationError("depreciationMethod is required");
-    if (!depreciationFrequency)
-      throw new ValidationError("depreciationFrequency is required");
-    if (!assetLifeValue || Number(assetLifeValue) <= 0) {
-      throw new ValidationError("assetLifeValue must be greater than 0");
+
+    const requestedStatus = (req.body.status || "DRAFT").toUpperCase();
+    const isDraft = requestedStatus === "DRAFT";
+
+    // For ACTIVE/DISPOSED assets, all depreciation fields are required.
+    // DRAFT assets can be saved with incomplete info (to be completed before activation).
+    if (!isDraft) {
+      if (!fixedAssetTypeId)
+        throw new ValidationError("fixedAssetTypeId is required");
+      if (!depreciationMethod)
+        throw new ValidationError("depreciationMethod is required");
+      if (!depreciationFrequency)
+        throw new ValidationError("depreciationFrequency is required");
+      if (!assetLifeValue || Number(assetLifeValue) <= 0) {
+        throw new ValidationError("assetLifeValue must be greater than 0");
+      }
+      if (!computationType)
+        throw new ValidationError("computationType is required");
+      if (!depreciationStartDate)
+        throw new ValidationError("depreciationStartDate is required");
+      if (!fixedAssetAccountId)
+        throw new ValidationError("fixedAssetAccountId is required");
+      if (!accumulatedDepreciationAccountId) {
+        throw new ValidationError("accumulatedDepreciationAccountId is required");
+      }
+      if (!depreciationExpenseAccountId) {
+        throw new ValidationError("depreciationExpenseAccountId is required");
+      }
     }
+
     if (depreciationMethod === "Declining Balance") {
       const percentage = Number(depreciationPercentage);
       if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
@@ -256,18 +297,6 @@ export const create = asyncHandler(
         );
       }
     }
-    if (!computationType)
-      throw new ValidationError("computationType is required");
-    if (!depreciationStartDate)
-      throw new ValidationError("depreciationStartDate is required");
-    if (!fixedAssetAccountId)
-      throw new ValidationError("fixedAssetAccountId is required");
-    if (!accumulatedDepreciationAccountId) {
-      throw new ValidationError("accumulatedDepreciationAccountId is required");
-    }
-    if (!depreciationExpenseAccountId) {
-      throw new ValidationError("depreciationExpenseAccountId is required");
-    }
 
     await validateFixedAssetAccountMappings({
       organizationId,
@@ -275,6 +304,7 @@ export const create = asyncHandler(
       accumulatedDepreciationAccountId,
       depreciationExpenseAccountId,
     });
+
 
     const doc = new FixedAsset({
       organizationId,
@@ -388,6 +418,55 @@ export const update = asyncHandler(
       depreciationExpenseAccountId: (asset as any).depreciationExpenseAccountId,
     });
 
+    // ── Activation GL Guard ─────────────────────────────────────────────────
+    // When transitioning DRAFT → ACTIVE, post the purchase journal ONLY if
+    // the asset was NOT created from a bill (bill already owns the GL entry).
+    if (previousStatus === "DRAFT" && nextStatus === "ACTIVE") {
+      // Enforce that all 3 account IDs are present before activation
+      if (!(asset as any).fixedAssetAccountId) {
+        throw new ValidationError(
+          "Asset Account (fixedAssetAccountId) is required to activate this asset",
+        );
+      }
+      if (!(asset as any).accumulatedDepreciationAccountId) {
+        throw new ValidationError(
+          "Accumulated Depreciation Account is required to activate this asset",
+        );
+      }
+      if (!(asset as any).depreciationExpenseAccountId) {
+        throw new ValidationError(
+          "Depreciation Expense Account is required to activate this asset",
+        );
+      }
+
+      const sourceBillId = String((asset as any).sourceBillId || "").trim();
+      if (!sourceBillId) {
+        // Asset was manually created — post the purchase journal now
+        const accountsPayableId = await findAccountIdByName({
+          organizationId,
+          names: ["Accounts Payable", "Trade Payables", "Creditors"],
+          rootType: "Liability",
+          accountType: "Accounts Payable",
+        });
+
+        await postAssetPurchaseJournal({
+          asset: {
+            _id: asset._id,
+            organizationId,
+            assetName: (asset as any).assetName,
+            assetNumber: (asset as any).assetNumber,
+            purchaseValue: Number((asset as any).purchaseValue || 0),
+            purchaseDate: (asset as any).purchaseDate,
+            fixedAssetAccountId: (asset as any).fixedAssetAccountId,
+          },
+          accountsPayableAccountId: accountsPayableId,
+          req,
+        });
+      }
+      // If sourceBillId is set → bill already posted Dr FA / Cr AP. Do nothing.
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     attachUser(asset as any, req);
     await asset.save();
 
@@ -462,6 +541,10 @@ export const remove = asyncHandler(
 export const listTypes = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const organizationId = orgId(req);
+
+    // Auto-seed default Fixed Asset Types
+    await ensureDefaultFixedAssetTypes(organizationId).catch(() => {});
+
     const data = await FixedAssetType.find({
       organizationId,
       isDeleted: false,
@@ -474,6 +557,60 @@ export const listTypes = asyncHandler(
       .lean();
 
     res.json({ success: true, data });
+  },
+);
+
+/** POST /api/fixed-assets/:id/depreciation — Post a depreciation entry for a period */
+export const postDepreciation = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const organizationId = orgId(req);
+    const asset = await FixedAsset.findOne({
+      _id: req.params.id,
+      organizationId,
+      isDeleted: false,
+    })
+      .populate("fixedAssetTypeId", "name")
+      .populate("fixedAssetAccountId", "name code")
+      .populate("accumulatedDepreciationAccountId", "name code")
+      .populate("depreciationExpenseAccountId", "name code")
+      .lean();
+
+    if (!asset) throw new NotFoundError("Fixed Asset");
+
+    // periodDate defaults to the last day of the current month if not provided
+    const periodDateRaw = req.body.periodDate
+      ? new Date(req.body.periodDate)
+      : (() => {
+          const now = new Date();
+          return new Date(now.getFullYear(), now.getMonth() + 1, 0); // end of current month
+        })();
+
+    if (Number.isNaN(periodDateRaw.getTime())) {
+      throw new ValidationError("periodDate must be a valid ISO date string");
+    }
+
+    const result = await postDepreciationEntry({
+      asset: asset as any,
+      periodDate: periodDateRaw,
+      req,
+    });
+
+    // After posting, update the asset's currentValue
+    if (result.posted && result.depreciationAmount > 0) {
+      await FixedAsset.findByIdAndUpdate(asset._id, {
+        $inc: { currentValue: -result.depreciationAmount },
+        $push: {
+          comments: {
+            author: req.user?.name || req.user?.email || "System",
+            text: `Depreciation posted for period ${result.periodKey}: ₹${result.depreciationAmount.toFixed(2)}`,
+            time: new Date(),
+            isSystem: true,
+          },
+        },
+      });
+    }
+
+    res.json({ success: true, data: result });
   },
 );
 

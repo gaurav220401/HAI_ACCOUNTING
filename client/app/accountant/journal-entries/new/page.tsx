@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { accountApi, type Account } from "@/lib/api/accounts";
+import { contactApi, type Contact } from "@/lib/api/contacts";
 import { journalApi } from "@/lib/api/journals";
 
 const toInputDate = (d: Date) => d.toISOString().split("T")[0];
@@ -133,6 +134,7 @@ function NewJournalPageInner() {
   const [numberPrefix, setNumberPrefix] = useState(DEFAULT_NUMBER_PREFIX);
   const [nextNumber, setNextNumber] = useState(String(DEFAULT_NEXT_NUMBER));
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadingNumberPrefs, setLoadingNumberPrefs] = useState(true);
   const [savingNumberPrefs, setSavingNumberPrefs] = useState(false);
   const [rows, setRows] = useState<JournalRow[]>(() => {
@@ -147,12 +149,14 @@ function NewJournalPageInner() {
 
     const loadData = async () => {
       try {
-        const [accountsRes, numberingRes] = await Promise.all([
+        const [accountsRes, numberingRes, contactsRes] = await Promise.all([
           accountApi.list({ excludeGroups: true }),
           journalApi.getNumberingPreferences(),
+          contactApi.list({ limit: 1000 }),
         ]);
 
         setAccounts((accountsRes.data || []).filter((acc) => acc.isActive));
+        setContacts(contactsRes.data || []);
 
         const prefs = numberingRes.data;
         setNumberingMode(prefs.mode);
@@ -314,6 +318,7 @@ function NewJournalPageInner() {
           debit: Number(r.debits) || 0,
           credit: Number(r.credits) || 0,
           narration: r.description || undefined,
+          contactId: (r.contactId && r.contactId !== "none_contact") ? r.contactId : undefined,
         }));
 
       if (payloadLines.length < 2) {
@@ -586,8 +591,12 @@ function NewJournalPageInner() {
                             <SelectValue placeholder="Select Contact" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="c1">John Doe</SelectItem>
-                            <SelectItem value="c2">Acme Corp</SelectItem>
+                            <SelectItem value="none_contact">None</SelectItem>
+                            {contacts.map((c) => (
+                              <SelectItem key={c._id} value={c._id}>
+                                {c.displayName || c.companyName || "Unnamed Contact"}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </TableCell>

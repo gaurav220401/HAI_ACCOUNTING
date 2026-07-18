@@ -15,6 +15,7 @@ router.get("/", ctrl.list);
 router.get("/:id", ctrl.getOne);
 router.post("/", ctrl.create);
 router.post("/:id/comments", ctrl.addComment);
+router.post("/:id/depreciation", ctrl.postDepreciation);
 router.patch("/:id", ctrl.update);
 router.delete("/:id", ctrl.remove);
 

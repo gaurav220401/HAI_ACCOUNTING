@@ -33,7 +33,7 @@ export interface IFixedAsset extends Document {
   serialNumber?: string;
   currentValue: number;
   disposalValue: number;
-  fixedAssetTypeId: Types.ObjectId;
+  fixedAssetTypeId?: Types.ObjectId | null;
   purchaseDate: Date;
   warrantyExpirationDate?: Date | null;
   description?: string;
@@ -44,9 +44,9 @@ export interface IFixedAsset extends Document {
   assetLifeUnit: AssetLifeUnit;
   computationType: ComputationType;
   depreciationStartDate: Date;
-  fixedAssetAccountId: Types.ObjectId;
-  accumulatedDepreciationAccountId: Types.ObjectId;
-  depreciationExpenseAccountId: Types.ObjectId;
+  fixedAssetAccountId?: Types.ObjectId | null;
+  accumulatedDepreciationAccountId?: Types.ObjectId | null;
+  depreciationExpenseAccountId?: Types.ObjectId | null;
   status: FixedAssetStatus;
   comments: IFixedAssetComment[];
   isActive: boolean;
@@ -79,7 +79,7 @@ const fixedAssetSchema = new Schema<IFixedAsset>(
     fixedAssetTypeId: {
       type: Schema.Types.ObjectId,
       ref: "FixedAssetType",
-      required: true,
+      default: null,
     },
     purchaseDate: { type: Date, required: true },
     warrantyExpirationDate: { type: Date, default: null },
@@ -87,41 +87,40 @@ const fixedAssetSchema = new Schema<IFixedAsset>(
     depreciationMethod: {
       type: String,
       enum: ["Straight Line", "Declining Balance"],
-      required: true,
+      default: "Straight Line",
     },
     depreciationPercentage: { type: Number, default: null, min: 0, max: 100 },
     depreciationFrequency: {
       type: String,
       enum: ["Monthly", "Yearly"],
-      required: true,
+      default: "Monthly",
     },
-    assetLifeValue: { type: Number, required: true, min: 1 },
+    assetLifeValue: { type: Number, default: 12, min: 0 },
     assetLifeUnit: {
       type: String,
       enum: ["Months", "Days"],
-      required: true,
       default: "Months",
     },
     computationType: {
       type: String,
       enum: ["Non Pro Rata", "Pro Rata"],
-      required: true,
+      default: "Non Pro Rata",
     },
-    depreciationStartDate: { type: Date, required: true },
+    depreciationStartDate: { type: Date, default: Date.now },
     fixedAssetAccountId: {
       type: Schema.Types.ObjectId,
       ref: "Account",
-      required: true,
+      default: null,
     },
     accumulatedDepreciationAccountId: {
       type: Schema.Types.ObjectId,
       ref: "Account",
-      required: true,
+      default: null,
     },
     depreciationExpenseAccountId: {
       type: Schema.Types.ObjectId,
       ref: "Account",
-      required: true,
+      default: null,
     },
     status: {
       type: String,

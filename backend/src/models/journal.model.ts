@@ -9,6 +9,8 @@ export interface IJournalLine {
   debit: number;
   credit: number;
   narration?: string;
+  contactId?: Types.ObjectId | null;
+  contactType?: "Customer" | "Vendor" | "None";
 }
 
 export interface IJournal extends Document {
@@ -37,6 +39,8 @@ const journalLineSchema = new Schema<IJournalLine>(
     debit: { type: Number, required: true, default: 0, min: 0 },
     credit: { type: Number, required: true, default: 0, min: 0 },
     narration: { type: String, default: "" },
+    contactId: { type: Schema.Types.ObjectId, ref: "Contact", default: null },
+    contactType: { type: String, enum: ["Customer", "Vendor", "None"], default: "None" },
   },
   { _id: false },
 );

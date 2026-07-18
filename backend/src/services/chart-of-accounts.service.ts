@@ -332,7 +332,14 @@ export function getIndianCoATemplate(): ChartTemplateNode[] {
     { name: "Accounts Receivable", rootType: "Asset", accountType: "Accounts Receivable", description: "Money customers owe for goods or services rendered." },
     { name: "Furniture and Equipment", rootType: "Asset", accountType: "Fixed Asset", description: "Furniture, fixtures, and equipment owned by the business.", code: "1007" },
     { name: "Accumulated Depreciation - Furniture and Equipment", rootType: "Asset", accountType: "Contra Asset", description: "Accumulated depreciation for Furniture and Equipment.", code: "1007.1" },
+    { name: "Computer Equipment", rootType: "Asset", accountType: "Fixed Asset", description: "Computers, laptops, servers, and other IT hardware owned by the business." },
+    { name: "Accumulated Depreciation - Computer Equipment", rootType: "Asset", accountType: "Contra Asset", description: "Accumulated depreciation for Computer Equipment." },
+    { name: "Vehicles", rootType: "Asset", accountType: "Fixed Asset", description: "Cars, trucks, and other vehicles used in the business." },
+    { name: "Accumulated Depreciation - Vehicles", rootType: "Asset", accountType: "Contra Asset", description: "Accumulated depreciation for Vehicles." },
+    { name: "Machinery and Equipment", rootType: "Asset", accountType: "Fixed Asset", description: "Industrial machinery and heavy equipment used in operations." },
+    { name: "Accumulated Depreciation - Machinery", rootType: "Asset", accountType: "Contra Asset", description: "Accumulated depreciation for Machinery and Equipment." },
     { name: "Inventory Asset", rootType: "Asset", accountType: "Stock", description: "Value of goods held in inventory." },
+
 
     // Liabilities
     { name: "Tax Payable", rootType: "Liability", accountType: "Other Current Liability", description: "Taxes owed to the government that are due within a year." },

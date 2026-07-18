@@ -50,6 +50,7 @@ import {
   fixedAssetApi,
   type FixedAsset,
   type FixedAssetType,
+  type DepreciationResult,
 } from "@/lib/api/fixed-assets";
 
 type TabFilter = "DRAFT" | "All";
@@ -490,11 +491,46 @@ function AssetOverview({ asset }: { asset: FixedAsset }) {
   );
 }
 
-function AssetDepreciation({ asset }: { asset: FixedAsset }) {
+function AssetDepreciation({
+  asset,
+  onPostDepreciation,
+  postingDepreciation,
+}: {
+  asset: FixedAsset;
+  onPostDepreciation?: () => void;
+  postingDepreciation?: boolean;
+}) {
   const projection = useMemo(() => buildDepreciationProjection(asset), [asset]);
+
+  const canPostDepreciation =
+    asset.status === "ACTIVE" &&
+    asset.accumulatedDepreciationAccountId &&
+    asset.depreciationExpenseAccountId;
 
   return (
     <div className="space-y-6 p-4">
+      {canPostDepreciation && (
+        <div className="flex items-center justify-between rounded-md border border-blue-100 bg-blue-50 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-blue-900">Post Monthly Depreciation</p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Posts a journal for the current month: Dr Depreciation Expense / Cr Accumulated Depreciation
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+            onClick={onPostDepreciation}
+            disabled={postingDepreciation}
+          >
+            {postingDepreciation ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : null}
+            Post Depreciation
+          </Button>
+        </div>
+      )}
+
       <div className="rounded-md border bg-muted/20 p-4">
         <p className="text-xl font-medium mb-3">Depreciation Flowchart</p>
         <div className="h-72 w-full">
@@ -605,6 +641,7 @@ export default function FixedAssetsPage() {
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [markingActive, setMarkingActive] = useState(false);
+  const [postingDepreciation, setPostingDepreciation] = useState(false);
   const [showTypeManager, setShowTypeManager] = useState(false);
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [typeDialogMode, setTypeDialogMode] = useState<"create" | "edit" | "clone">("create");
@@ -726,6 +763,39 @@ export default function FixedAssetsPage() {
       toast.error((error as Error).message || "Failed to mark asset as active");
     } finally {
       setMarkingActive(false);
+    }
+  }
+
+  async function handlePostDepreciation() {
+    if (!selectedAsset) return;
+    if (selectedAsset.status !== "ACTIVE") return;
+
+    setPostingDepreciation(true);
+    try {
+      const res = await fixedAssetApi.postDepreciation(selectedAsset._id);
+      const result: DepreciationResult = res.data;
+
+      if (!result.posted) {
+        toast.warning(result.message || "No depreciation posted");
+        return;
+      }
+
+      // Update currentValue in list state
+      setRows((prev) =>
+        prev.map((row) =>
+          row._id === selectedAsset._id
+            ? { ...row, currentValue: Math.max(0, row.currentValue - result.depreciationAmount) }
+            : row,
+        ),
+      );
+
+      toast.success(
+        `Depreciation posted: ₹${result.depreciationAmount.toFixed(2)} for period ${result.periodKey}`,
+      );
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to post depreciation");
+    } finally {
+      setPostingDepreciation(false);
     }
   }
 
@@ -1185,7 +1255,11 @@ export default function FixedAssetsPage() {
 
                   {detailTab === "overview" ?
                     <AssetOverview asset={selectedAsset} />
-                  : <AssetDepreciation asset={selectedAsset} />}
+                  : <AssetDepreciation
+                        asset={selectedAsset}
+                        onPostDepreciation={() => { void handlePostDepreciation(); }}
+                        postingDepreciation={postingDepreciation}
+                     />}
 
                   <Sheet open={showComments} onOpenChange={setShowComments}>
                     <SheetContent
