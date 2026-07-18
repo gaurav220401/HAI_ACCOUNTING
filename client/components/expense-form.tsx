@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Plus, Upload, X, ChevronDown, Search, MoreVertical, Tag, ArrowLeft, Settings2,
+  Plus, Upload, X, ChevronDown, Search, MoreVertical, Tag, ArrowLeft, Settings2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { expenseApi, type CreateExpenseInput, type Expense } from "@/lib/api/expenses";
+import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -535,6 +536,11 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
   const [saving, setSaving] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
+  // Receipts
+  const [receiptUrls, setReceiptUrls] = useState<string[]>([]);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
+
   // Mileage preferences
   const [milPrefs, setMilPrefs] = useState<MileagePrefs>(DEFAULT_PREFS);
   const [milPrefsSet, setMilPrefsSet] = useState(false);
@@ -633,6 +639,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
       // Pre-fill in edit mode
       if (isEdit && results[4]) {
         const e: Expense = results[4].data;
+        setReceiptUrls(e.receiptUrls || []);
 
         if (e.expenseType === "Mileage") {
           setActiveTab("mileage");
@@ -695,6 +702,27 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  async function handleReceiptUpload(file: File) {
+    setUploadingReceipt(true);
+    try {
+      const uploadResult = await uploadApi.upload(file, "expenses");
+      setReceiptUrls((prev) => [...prev, uploadResult.url]);
+      toast.success("Receipt uploaded successfully");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload receipt");
+    } finally {
+      setUploadingReceipt(false);
+      if (receiptInputRef.current) {
+        receiptInputRef.current.value = "";
+      }
+    }
+  }
+
+  function handleRemoveReceipt(urlToRemove: string) {
+    setReceiptUrls((prev) => prev.filter((url) => url !== urlToRemove));
+    toast.success("Receipt removed");
+  }
+
   // ── Save handlers ──────────────────────────────────────────────────────────
 
   async function handleSaveExpense(andNew = false) {
@@ -737,6 +765,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
             notes: expForm.notes, customerId: expForm.customerId || null,
             isBillable: expForm.isBillable, projectId: expForm.projectId || null,
             status: "Approved",
+            receiptUrls,
           }
         : {
             expenseType: "Regular", date: expForm.date,
@@ -747,6 +776,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
             notes: expForm.notes, customerId: expForm.customerId || null,
             isBillable: expForm.isBillable, projectId: expForm.projectId || null,
             status: "Approved",
+            receiptUrls,
           };
 
       if (isEdit && expenseNumber) {
@@ -762,6 +792,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
             customerId: "", isBillable: false, projectId: "" });
           setIsItemized(false);
           setLineItems([newLineItem()]);
+          setReceiptUrls([]);
         } else {
           router.push("/purchases/expenses");
         }
@@ -794,6 +825,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
         notes: milForm.notes, customerId: milForm.customerId || null,
         isBillable: milForm.isBillable, projectId: milForm.projectId || null,
         status: "Approved",
+        receiptUrls,
       };
 
       if (isEdit && expenseNumber) {
@@ -807,6 +839,7 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
           setMilForm({ date: today, employeeId: "", mileageCalcMethod: "DistanceTravelled",
             distance: "", mileageUnit: milPrefs.defaultUnit, paidThroughAccountId: "",
             vendorId: "", invoiceNumber: "", notes: "", customerId: "", isBillable: false, projectId: "" });
+          setReceiptUrls([]);
         } else {
           router.push("/purchases/expenses");
         }
@@ -1036,17 +1069,72 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
             </div>
 
             {/* Receipt upload sidebar */}
-            <div className="w-72 border-l bg-slate-50 p-6 flex flex-col items-center justify-center gap-3 shrink-0">
-              <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center border border-teal-100">
-                <Upload className="h-8 w-8 text-teal-600/60" />
+            <div className="w-72 border-l bg-slate-50 flex flex-col shrink-0">
+              <div className="p-4 border-b font-semibold text-xs uppercase text-muted-foreground flex items-center justify-between w-full">
+                <span>Receipts</span>
+                {receiptUrls.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => receiptInputRef.current?.click()}
+                    disabled={uploadingReceipt}
+                    className="text-[11px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> Upload
+                  </button>
+                )}
               </div>
-              <p className="text-sm font-semibold text-center mt-1">Upload Receipt</p>
-              <p className="text-[10px] text-muted-foreground text-center max-w-[200px] leading-relaxed">
-                Drag or Drop receipt files here. Max size is 10MB per file.
-              </p>
-              <Button variant="outline" size="sm" className="gap-2 border-teal-200 text-teal-700 hover:bg-teal-50 w-full mt-2">
-                <Upload className="h-3.5 w-3.5" /> Upload your Files
-              </Button>
+
+              {receiptUrls.length > 0 ? (
+                <div className="p-4 space-y-2 overflow-y-auto flex-1 bg-white w-full">
+                  {receiptUrls.map((url, i) => (
+                    <div key={i} className="flex items-center justify-between border rounded p-2 text-xs bg-slate-50">
+                      <a
+                        href={url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-teal-700 hover:text-teal-800 hover:underline min-w-0"
+                      >
+                        <Upload className="h-3 w-3 shrink-0" />
+                        <span className="truncate">Receipt {i + 1}</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveReceipt(url)}
+                        className="text-muted-foreground hover:text-destructive p-0.5"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center w-full">
+                  <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center border border-teal-100">
+                    {uploadingReceipt ? (
+                      <Loader2 className="h-8 w-8 text-teal-600/60 animate-spin" />
+                    ) : (
+                      <Upload className="h-8 w-8 text-teal-600/60" />
+                    )}
+                  </div>
+                  <p className="text-sm font-semibold text-center mt-1">Upload Receipt</p>
+                  <p className="text-[10px] text-muted-foreground text-center max-w-[200px] leading-relaxed">
+                    Drag or Drop receipt files here. Max size is 10MB per file.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-teal-200 text-teal-700 hover:bg-teal-50 w-full mt-2"
+                    onClick={() => receiptInputRef.current?.click()}
+                    disabled={uploadingReceipt}
+                  >
+                    {uploadingReceipt ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    Upload your Files
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1218,15 +1306,72 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
           </div>
 
             {/* Receipt upload sidebar */}
-            <div className="w-72 border-l bg-muted/10 p-6 flex flex-col items-center justify-center gap-3 shrink-0">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <Upload className="h-8 w-8 text-primary/60" />
+            <div className="w-72 border-l bg-slate-50 flex flex-col shrink-0">
+              <div className="p-4 border-b font-semibold text-xs uppercase text-muted-foreground flex items-center justify-between w-full">
+                <span>Receipts</span>
+                {receiptUrls.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => receiptInputRef.current?.click()}
+                    disabled={uploadingReceipt}
+                    className="text-[11px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> Upload
+                  </button>
+                )}
               </div>
-              <p className="text-sm font-medium text-center">Drag or Drop your Receipts</p>
-              <p className="text-xs text-muted-foreground text-center">Maximum file size allowed is 10MB</p>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Upload className="h-3.5 w-3.5" /> Upload your Files
-              </Button>
+
+              {receiptUrls.length > 0 ? (
+                <div className="p-4 space-y-2 overflow-y-auto flex-1 bg-white w-full">
+                  {receiptUrls.map((url, i) => (
+                    <div key={i} className="flex items-center justify-between border rounded p-2 text-xs bg-slate-50">
+                      <a
+                        href={url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-teal-700 hover:text-teal-800 hover:underline min-w-0"
+                      >
+                        <Upload className="h-3 w-3 shrink-0" />
+                        <span className="truncate">Receipt {i + 1}</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveReceipt(url)}
+                        className="text-muted-foreground hover:text-destructive p-0.5"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center w-full">
+                  <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center border border-teal-100">
+                    {uploadingReceipt ? (
+                      <Loader2 className="h-8 w-8 text-teal-600/60 animate-spin" />
+                    ) : (
+                      <Upload className="h-8 w-8 text-teal-600/60" />
+                    )}
+                  </div>
+                  <p className="text-sm font-semibold text-center mt-1">Upload Receipt</p>
+                  <p className="text-[10px] text-muted-foreground text-center max-w-[200px] leading-relaxed">
+                    Drag or Drop receipt files here. Max size is 10MB per file.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-teal-200 text-teal-700 hover:bg-teal-50 w-full mt-2"
+                    onClick={() => receiptInputRef.current?.click()}
+                    disabled={uploadingReceipt}
+                  >
+                    {uploadingReceipt ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    Upload your Files
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1331,6 +1476,17 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
           </div>
         )}
       </div>
+      <input
+        ref={receiptInputRef}
+        type="file"
+        accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.csv,.xlsx,.xls"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          handleReceiptUpload(file);
+        }}
+      />
     </>
   );
 }
