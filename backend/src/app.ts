@@ -46,6 +46,7 @@ const limiter = rateLimit({
   max: parseInt(process.env.RATE_LIMIT_MAX || (process.env.NODE_ENV === 'production' ? '200' : '1000')),
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
   keyGenerator: (req) => getClientIp(req),
   message: {
     success: false,
