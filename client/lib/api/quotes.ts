@@ -175,4 +175,9 @@ export const quoteApi = {
     apiFetch<{ data: any }>(`/quotes/${id}/convert-to-invoice`, {
       method: "POST",
     }),
+
+  convertToSalesOrder: (id: string) =>
+    apiFetch<{ data: any }>(`/quotes/${id}/convert-to-sales-order`, {
+      method: "POST",
+    }),
 };
