@@ -777,7 +777,7 @@ export default function EditPurchaseOrderPage() {
     setItemSelectorRow(null);
   }
 
-  async function handleSave(status: "Draft" | "Open") {
+  async function handleSave(status: "Draft" | "Open", sendEmail = true) {
     if (!poDate) { toast.error("Purchase order date is required"); return; }
     setSaving(true);
     try {
@@ -820,7 +820,7 @@ export default function EditPurchaseOrderPage() {
       };
       await purchaseOrderApi.update(orderId, payload);
       toast.success("Purchase order updated");
-      if (status === "Open") {
+      if (status === "Open" && sendEmail) {
         router.push(`/purchases/orders/${orderId}/send-email`);
       } else {
         router.push("/purchases/orders");
@@ -1512,7 +1512,10 @@ export default function EditPurchaseOrderPage() {
                 <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md font-semibold" onClick={() => handleSave("Draft")} disabled={saving}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save as Draft
                 </Button>
-                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open")} disabled={saving}>
+                <Button variant="outline" size="sm" className="border-teal-200 text-teal-700 bg-white hover:bg-slate-50 rounded-md font-semibold" onClick={() => handleSave("Open", false)} disabled={saving}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save
+                </Button>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open", true)} disabled={saving}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save and Send
                 </Button>
                 <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md font-semibold" onClick={() => router.back()}>Cancel</Button>
