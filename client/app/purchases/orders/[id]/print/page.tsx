@@ -86,7 +86,7 @@ export default function PrintPurchaseOrderPage() {
           <div className="flex items-center justify-center h-[70vh]"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : (
           <div className="p-6 bg-muted/20 min-h-screen">
-            <div className="mx-auto bg-white border shadow-sm" style={{ width: "920px" }}>
+            <div className="mx-auto bg-white border shadow-sm statement-print-area" style={{ width: "920px" }}>
               <div className="p-10">
                 <div className="flex justify-between items-start border-b pb-6 mb-6">
                   <div>

@@ -19,7 +19,7 @@ import { accountApi, type Account } from "@/lib/api/accounts";
 import { uploadApi } from "@/lib/api/upload";
 import { paymentReceivedApi, type PaymentInvoiceMap } from "@/lib/api/payments-received";
 
-type ReceiptEntryMode = "invoice-payment" | "customer-advance";
+type ReceiptEntryMode = "invoice-payment" | "customer-advance" | "previous-payment";
 
 interface InvoiceAllocation {
   invoice_id: string;
@@ -199,13 +199,21 @@ export function PaymentReceivedEditor({
 
           setAppliedMaps(maps);
           setForm({
-            receiptType: maps.length > 0 ? "invoice-payment" : "customer-advance",
+            receiptType:
+            payment.receipt_type === "previous-payment"
+              ? "previous-payment"
+              : maps.length > 0
+                ? "invoice-payment"
+                : "customer-advance",
             customer_id: typeof payment.customer_id === "string" ? payment.customer_id : payment.customer_id._id,
             payment_number: payment.payment_number,
             total_amount_received: payment.total_amount_received,
             payment_date: new Date(payment.payment_date).toISOString().split("T")[0],
             payment_mode: payment.payment_mode,
-            deposited_to_account: payment.deposited_to_account || "",
+            deposited_to_account:
+              typeof payment.deposited_to_account === "object" && payment.deposited_to_account !== null
+                ? (payment.deposited_to_account as any)._id || ""
+                : payment.deposited_to_account || "",
             reference_number: payment.reference_number || "",
             notes: payment.notes || "",
             invoiceAllocations: maps
@@ -354,6 +362,7 @@ export function PaymentReceivedEditor({
         reference_number: form.reference_number,
         notes: payloadNotes,
         status,
+        receipt_type: form.receiptType,
         total_amount_received: Number(form.total_amount_received),
         invoice_applications: form.receiptType === "invoice-payment" ? selectedApps : [],
       });
@@ -419,14 +428,27 @@ export function PaymentReceivedEditor({
           <TabsList variant="line" className="w-full justify-start rounded-none border-b px-3 py-2">
             <TabsTrigger value="invoice-payment" className="px-3 text-sm" disabled={mode === "edit"}>Invoice Payment</TabsTrigger>
             <TabsTrigger value="customer-advance" className="px-3 text-sm" disabled={mode === "edit"}>Customer Advance</TabsTrigger>
+            <TabsTrigger value="previous-payment" className="px-3 text-sm" disabled={mode === "edit"}>Previous Payment</TabsTrigger>
           </TabsList>
 
           <TabsContent value={form.receiptType} className="space-y-6 p-4 sm:p-6">
             <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
               <div className="space-y-4">
-                <div className={cn("rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900", customerLocked && "opacity-70")}>
-                  Receive and allocate customer collections directly against open invoices.
-                </div>
+                {form.receiptType === "invoice-payment" && (
+                  <div className={cn("rounded-md border bg-emerald-50 px-3 py-2 text-sm text-emerald-900", customerLocked && "opacity-70")}>
+                    Receive and allocate customer collections directly against open invoices.
+                  </div>
+                )}
+                {form.receiptType === "customer-advance" && (
+                  <div className={cn("rounded-md border bg-blue-50 px-3 py-2 text-sm text-blue-900", customerLocked && "opacity-70")}>
+                    Record an advance payment before an invoice is raised. The amount will be credited to <strong>Customer Advances (Unearned Revenue)</strong>.
+                  </div>
+                )}
+                {form.receiptType === "previous-payment" && (
+                  <div className={cn("rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900", customerLocked && "opacity-70")}>
+                    Record a payment already received from a customer that directly reduces their <strong>Accounts Receivable</strong> balance. Use this when money has been collected but was not linked to a specific invoice.
+                  </div>
+                )}
 
                 <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-2", customerLocked && "[&_.customer-dependent]:opacity-40")}>
                   <div className="space-y-1.5">
@@ -598,6 +620,7 @@ export function PaymentReceivedEditor({
                   </div>
                 </div>
 
+                {form.receiptType === "invoice-payment" && (
                 <div className={cn("rounded-md border", customerLocked && mode === "create" && "pointer-events-none opacity-40")}>
                   <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
                     <span>Apply to Invoices</span>
@@ -673,6 +696,7 @@ export function PaymentReceivedEditor({
                     </table>
                   </div>
                 </div>
+                )}
 
                 <div className={cn("space-y-1.5", customerLocked && mode === "create" && "opacity-40")}>
                   <Label>Notes (Internal use. Not visible to customer)</Label>

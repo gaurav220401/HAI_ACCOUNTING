@@ -456,6 +456,18 @@ export default function NewSalesOrderPage() {
     } finally { setSaving(false); }
   }
 
+  async function onSaveApproved() {
+    const payload = buildPayload("APPROVED");
+    if (!payload) return;
+    setSaving(true);
+    try {
+      await salesOrderApi.create(payload);
+      router.push("/sales/orders");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to create sales order"));
+    } finally { setSaving(false); }
+  }
+
   async function onSaveAndSend() {
     const payload = buildPayload("APPROVED");
     if (!payload) return;
@@ -525,6 +537,17 @@ export default function NewSalesOrderPage() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 : null}
                 Save as Draft
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onSaveApproved}
+                disabled={saving}
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                : null}
+                Save
               </Button>
               <Button
                 size="sm"

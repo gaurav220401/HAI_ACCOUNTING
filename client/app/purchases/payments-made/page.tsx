@@ -703,7 +703,7 @@ export default function PaymentsMadePage() {
                   </Button>
                 </div>
 
-                <div className="rounded-lg border bg-white p-6 shadow-2xs">
+                <div className="rounded-lg border bg-white p-6 shadow-2xs statement-print-area">
                   <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-5 sm:flex-row">
                     <div className="flex items-start gap-4">
                       {activeOrganization?.logo ? (

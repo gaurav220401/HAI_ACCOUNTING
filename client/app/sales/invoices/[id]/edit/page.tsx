@@ -15,6 +15,7 @@ import {
   Save,
   Send,
   Info,
+  ChevronsUpDown,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -32,6 +33,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Table,
   TableBody,
@@ -171,6 +185,7 @@ export default function EditInvoicePage() {
   const [salesPersonId, setSalesPersonId] = useState("");
   const [subject, setSubject] = useState("");
   const [lines, setLines] = useState<LineItem[]>([newLine()]);
+  const [openItemPopoverKey, setOpenItemPopoverKey] = useState<number | null>(null);
   const [discountType, setDiscountType] = useState<"percent" | "amount">(
     "percent",
   );
@@ -750,31 +765,79 @@ export default function EditInvoicePage() {
                           className="group hover:bg-slate-50/50 transition-colors"
                         >
                           <TableCell className="py-5">
-                            <div className="space-y-2">
-                              <Select
-                                value={line.itemId || undefined}
-                                onValueChange={(v) => {
-                                  handleItemSelect(line.key, v);
-                                  requestAnimationFrame(() => {
-                                    const qtyInput = document.querySelector(
-                                      `input[data-quantity-key="${line.key}"]`,
-                                    ) as HTMLInputElement | null;
-                                    qtyInput?.focus();
-                                    qtyInput?.select();
-                                  });
-                                }}
+                            <div className="space-y-1">
+                              <Popover
+                                open={openItemPopoverKey === line.key}
+                                onOpenChange={(open) =>
+                                  setOpenItemPopoverKey(open ? line.key : null)
+                                }
                               >
-                                <SelectTrigger className="h-10 border-slate-200 group-hover:border-slate-300">
-                                  <SelectValue placeholder="Select an item" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {items.map((it) => (
-                                    <SelectItem key={it._id} value={it._id}>
-                                      {it.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                <PopoverTrigger asChild>
+                                  <div className="relative w-full">
+                                    <Input
+                                      className="h-10 w-full pr-8 text-xs border-slate-200"
+                                      placeholder="Type or select an item"
+                                      value={line.itemId ? (items.find((it) => it._id === line.itemId)?.name || line.name) : line.name}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateLine(line.key, "itemId", "");
+                                        updateLine(line.key, "name", val);
+                                        setOpenItemPopoverKey(line.key);
+                                      }}
+                                      onFocus={() => setOpenItemPopoverKey(line.key)}
+                                    />
+                                    <ChevronsUpDown className="absolute right-2 top-3.5 h-4 w-4 shrink-0 opacity-50 text-muted-foreground pointer-events-none" />
+                                  </div>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className="w-[var(--radix-popover-trigger-width)] p-0"
+                                  align="start"
+                                  onOpenAutoFocus={(e) => e.preventDefault()}
+                                >
+                                  <Command>
+                                    <CommandList>
+                                      <CommandEmpty>No items found.</CommandEmpty>
+                                      <CommandGroup>
+                                        {items
+                                          .filter((it) =>
+                                            it.name.toLowerCase().includes(line.name.toLowerCase()) ||
+                                            (it.sku && it.sku.toLowerCase().includes(line.name.toLowerCase()))
+                                          )
+                                          .map((it) => (
+                                            <CommandItem
+                                              key={it._id}
+                                              value={`${it.name} ${it.sku || ""}`}
+                                              onSelect={() => {
+                                                setOpenItemPopoverKey(null);
+                                                handleItemSelect(line.key, it._id);
+                                                // Move focus to quantity input after item selection
+                                                requestAnimationFrame(() => {
+                                                  const qtyInput = document.querySelector(
+                                                    `input[data-quantity-key="${line.key}"]`,
+                                                  ) as HTMLInputElement | null;
+                                                  qtyInput?.focus();
+                                                  qtyInput?.select();
+                                                });
+                                              }}
+                                            >
+                                              <div className="flex items-center justify-between gap-3 w-full">
+                                                <span>
+                                                  {it.name}
+                                                  {it.sku ? ` (${it.sku})` : ""}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {it.inventoryTracked ?
+                                                    `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
+                                                  : "Non-stock"}
+                                                </span>
+                                              </div>
+                                            </CommandItem>
+                                          ))}
+                                      </CommandGroup>
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
                               <Input
                                 className="h-8 text-xs bg-slate-50 border-slate-100 italic"
                                 placeholder="Add a description or note for this item"

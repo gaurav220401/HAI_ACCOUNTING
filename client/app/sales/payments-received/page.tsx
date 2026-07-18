@@ -631,7 +631,7 @@ export default function PaymentsReceivedPage() {
                 </div>
 
                 <div className="mx-auto max-w-5xl p-8">
-                  <div className="relative overflow-hidden rounded border bg-white shadow-sm">
+                  <div className="relative overflow-hidden rounded border bg-white shadow-sm statement-print-area">
                     {active.status === "PAID" ? (
                       <div className="absolute left-0 top-0">
                         <div className="-translate-x-10 translate-y-4 -rotate-45 bg-[#22c55e] py-1.5 text-center text-xs font-bold text-white w-32">

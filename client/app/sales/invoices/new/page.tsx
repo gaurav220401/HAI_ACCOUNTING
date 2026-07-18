@@ -18,6 +18,7 @@ import {
   Cloud,
   RefreshCw,
   Image as ImageIcon,
+  ChevronsUpDown,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -34,6 +35,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Table,
   TableBody,
@@ -910,6 +924,7 @@ function NewInvoicePageContent() {
 
   // Items table
   const [lines, setLines] = useState<LineItem[]>([newLine()]);
+  const [openItemPopoverKey, setOpenItemPopoverKey] = useState<number | null>(null);
 
   // Totals section
   const [discountType, setDiscountType] = useState<"percent" | "amount">(
@@ -1379,7 +1394,7 @@ function NewInvoicePageContent() {
 
   // ─── Submit ──────────────────────────────────────────────────────
 
-  async function handleSave(status: "Draft" | "Sent") {
+  async function handleSave(status: "Draft" | "Sent", sendEmail = false) {
     if (!customerId) {
       toast.error("Please select a customer");
       return;
@@ -1450,13 +1465,13 @@ function NewInvoicePageContent() {
       // email is actually transmitted.
       const createPayload = {
         ...payload,
-        status: status === "Sent" ? ("Draft" as const) : status,
+        status: (status === "Sent" && sendEmail) ? ("Draft" as const) : status,
       };
       const res = await invoiceApi.create(createPayload);
 
-      if (status === "Sent") {
-        setSavedInvoiceId(res.data._id);
-        setShowEmailModal(true);
+      if (status === "Sent" && sendEmail) {
+        const invoiceId = res.data._id;
+        router.push(`/sales/invoices/${invoiceId}/send-email`);
         setSaving(false);
         return;
       }
@@ -1839,94 +1854,114 @@ function NewInvoicePageContent() {
                     return (
                       <TableRow key={line.key}>
                         <TableCell>
-                          <Select
-                            value={line.itemId || undefined}
-                            onValueChange={(v) => {
-                              if (v === "__new") {
-                                saveInvoiceDraft(line.key);
-                                router.push(
-                                  "/items/new?returnUrl=/sales/invoices/new",
-                                );
-                              } else {
-                                handleItemSelect(line.key, v);
-                                // Move focus to quantity input after item selection
-                                requestAnimationFrame(() => {
-                                  const qtyInput = document.querySelector(
-                                    `input[data-quantity-key="${line.key}"]`,
-                                  ) as HTMLInputElement | null;
-                                  qtyInput?.focus();
-                                  qtyInput?.select();
-                                });
+                          <div className="space-y-1">
+                            <Popover
+                              open={openItemPopoverKey === line.key}
+                              onOpenChange={(open) =>
+                                setOpenItemPopoverKey(open ? line.key : null)
                               }
-                            }}
-                          >
-                            <SelectTrigger className="h-8 w-full text-sm">
-                              <SelectValue placeholder="Type or click to select an item." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__new">
-                                <span className="text-teal-600 font-medium">
-                                  + Add new item
-                                </span>
-                              </SelectItem>
-                              {items.length === 0 && (
-                                <SelectItem value="__empty" disabled>
-                                  No items found
-                                </SelectItem>
-                              )}
-                              {items.map((it) => (
-                                <SelectItem key={it._id} value={it._id}>
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span>
-                                      {it.name}
-                                      {it.sku ? ` (${it.sku})` : ""}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {it.inventoryTracked ?
-                                        `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
-                                      : "Non-stock"}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {!line.itemId && (
+                            >
+                              <PopoverTrigger asChild>
+                                <div className="relative w-full">
+                                  <Input
+                                    className="h-8 w-full pr-8 text-xs border-slate-200"
+                                    placeholder="Type or select an item"
+                                    value={line.itemId ? (items.find((it) => it._id === line.itemId)?.name || line.name) : line.name}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      updateLine(line.key, "itemId", "");
+                                      updateLine(line.key, "name", val);
+                                      setOpenItemPopoverKey(line.key);
+                                    }}
+                                    onFocus={() => setOpenItemPopoverKey(line.key)}
+                                  />
+                                  <ChevronsUpDown className="absolute right-2 top-2 h-4 w-4 shrink-0 opacity-50 text-muted-foreground pointer-events-none" />
+                                </div>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="w-[var(--radix-popover-trigger-width)] p-0"
+                                align="start"
+                                onOpenAutoFocus={(e) => e.preventDefault()}
+                              >
+                                <Command>
+                                  <CommandList>
+                                    <CommandEmpty>No items found.</CommandEmpty>
+                                    <CommandGroup>
+                                      <CommandItem
+                                        value="__new"
+                                        onSelect={() => {
+                                          setOpenItemPopoverKey(null);
+                                          saveInvoiceDraft(line.key);
+                                          router.push(
+                                            "/items/new?returnUrl=/sales/invoices/new",
+                                          );
+                                        }}
+                                      >
+                                        <span className="text-teal-650 font-medium">
+                                          + Add new item
+                                        </span>
+                                      </CommandItem>
+                                      {items
+                                        .filter((it) =>
+                                          it.name.toLowerCase().includes(line.name.toLowerCase()) ||
+                                          (it.sku && it.sku.toLowerCase().includes(line.name.toLowerCase()))
+                                        )
+                                        .map((it) => (
+                                          <CommandItem
+                                            key={it._id}
+                                            value={`${it.name} ${it.sku || ""}`}
+                                            onSelect={() => {
+                                              setOpenItemPopoverKey(null);
+                                              handleItemSelect(line.key, it._id);
+                                              // Move focus to quantity input after item selection
+                                              requestAnimationFrame(() => {
+                                                const qtyInput = document.querySelector(
+                                                  `input[data-quantity-key="${line.key}"]`,
+                                                ) as HTMLInputElement | null;
+                                                qtyInput?.focus();
+                                                qtyInput?.select();
+                                              });
+                                            }}
+                                          >
+                                            <div className="flex items-center justify-between gap-3 w-full">
+                                              <span>
+                                                {it.name}
+                                                {it.sku ? ` (${it.sku})` : ""}
+                                              </span>
+                                              <span className="text-xs text-muted-foreground">
+                                                {it.inventoryTracked ?
+                                                  `Stock ${Number(it.stockOnHand || 0).toLocaleString("en-IN")}`
+                                                : "Non-stock"}
+                                              </span>
+                                            </div>
+                                          </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                             <Input
-                              className="mt-1 h-7 text-xs"
-                              placeholder="Or type a custom item name"
-                              value={line.name}
+                              className="h-7 text-xs"
+                              placeholder="Add a description to your item"
+                              value={line.description}
                               onChange={(e) =>
-                                updateLine(line.key, "name", e.target.value)
+                                updateLine(
+                                  line.key,
+                                  "description",
+                                  e.target.value,
+                                )
                               }
                             />
-                          )}
-                          {line.itemId && (
-                            <>
-                              <Input
-                                className="mt-1 h-7 text-xs"
-                                placeholder="Add a description to your item"
-                                value={line.description}
-                                onChange={(e) =>
-                                  updateLine(
-                                    line.key,
-                                    "description",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                              {selectedItem ?
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {selectedItem.sku ?
-                                    `SKU ${selectedItem.sku} · `
-                                  : ""}
-                                  {selectedItem.inventoryTracked ?
-                                    `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
+                            {selectedItem ? (
+                              <p className="mt-1 text-[10px] text-muted-foreground">
+                                {selectedItem.sku ? `SKU ${selectedItem.sku} · ` : ""}
+                                {selectedItem.inventoryTracked
+                                  ? `Stock on hand ${Number(selectedItem.stockOnHand || 0).toLocaleString("en-IN")}`
                                   : "Inventory not tracked"}
-                                </p>
-                              : null}
-                            </>
-                          )}
+                              </p>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Input
@@ -2561,7 +2596,7 @@ function NewInvoicePageContent() {
               <Button
                 variant="outline"
                 disabled={saving}
-                onClick={() => handleSave("Draft")}
+                onClick={() => handleSave("Draft", false)}
               >
                 {saving ?
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -2569,10 +2604,21 @@ function NewInvoicePageContent() {
                 Save as Draft
               </Button>
 
+              <Button
+                variant="outline"
+                disabled={saving}
+                onClick={() => handleSave("Sent", false)}
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                : null}
+                Save
+              </Button>
+
               <div className="flex">
                 <Button
                   disabled={saving}
-                  onClick={() => handleSave("Sent")}
+                  onClick={() => handleSave("Sent", true)}
                   className="rounded-r-none bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 >
                   {saving ?
@@ -2590,10 +2636,13 @@ function NewInvoicePageContent() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => handleSave("Sent")}>
+                    <DropdownMenuItem onClick={() => handleSave("Sent", true)}>
                       Save and Send
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleSave("Draft")}>
+                    <DropdownMenuItem onClick={() => handleSave("Sent", false)}>
+                      Save
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleSave("Draft", false)}>
                       Save as Draft
                     </DropdownMenuItem>
                   </DropdownMenuContent>

@@ -3,6 +3,8 @@ import Bill from "../models/bill.model";
 import Contact from "../models/contact.model";
 import Invoice from "../models/invoice.model";
 import Item from "../models/item.model";
+import PaymentReceived from "../models/payment-received.model";
+import PaymentMade from "../models/payment-made.model";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
 import { multiplyMoney, roundMoney } from "../utils/money";
@@ -403,10 +405,54 @@ export async function recomputeContactOutstanding(params: {
   ]);
   if (session) payableAgg.session(session);
 
-  const [receivableRows, payableRows] = await Promise.all([receivableAgg, payableAgg]);
+  const excessReceivableAgg = PaymentReceived.aggregate([
+    {
+      $match: {
+        organization_id: oid,
+        customer_id: cid,
+        status: "PAID",
+        is_deleted: { $ne: true },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: { $ifNull: ["$amount_in_excess", 0] } },
+      },
+    },
+  ]);
+  if (session) excessReceivableAgg.session(session);
 
-  const receivable = round2(Number(receivableRows[0]?.total || 0));
-  const payable = round2(Number(payableRows[0]?.total || 0));
+  const excessPayableAgg = PaymentMade.aggregate([
+    {
+      $match: {
+        organization_id: oid,
+        vendor_id: cid,
+        status: "PAID",
+        is_deleted: { $ne: true },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: { $ifNull: ["$amount_in_excess", 0] } },
+      },
+    },
+  ]);
+  if (session) excessPayableAgg.session(session);
+
+  const [receivableRows, payableRows, excessReceivableRows, excessPayableRows] = await Promise.all([
+    receivableAgg,
+    payableAgg,
+    excessReceivableAgg,
+    excessPayableAgg,
+  ]);
+
+  const totalExcessReceivable = round2(Number(excessReceivableRows[0]?.total || 0));
+  const totalExcessPayable = round2(Number(excessPayableRows[0]?.total || 0));
+
+  const receivable = round2(Number(receivableRows[0]?.total || 0) - totalExcessReceivable);
+  const payable = round2(Number(payableRows[0]?.total || 0) - totalExcessPayable);
 
   const contactQuery = Contact.findOne({
     _id: cid,

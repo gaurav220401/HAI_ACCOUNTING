@@ -23,6 +23,7 @@ export interface IPaymentReceived extends Document {
   reference_number?: string;
   notes?: string;
   status: PaymentReceivedStatus;
+  receipt_type?: "invoice-payment" | "customer-advance" | "previous-payment";
 
   total_amount_received: number;
   amount_used_for_invoices: number;
@@ -64,6 +65,11 @@ const paymentReceivedSchema = new Schema<IPaymentReceived>(
     reference_number: { type: String, default: "" },
     notes: { type: String, default: "" },
     status: { type: String, enum: ["DRAFT", "PAID", "VOID"], default: "PAID", index: true },
+    receipt_type: {
+      type: String,
+      enum: ["invoice-payment", "customer-advance", "previous-payment"],
+      default: "invoice-payment",
+    },
 
     total_amount_received: { type: Number, required: true, default: 0 },
     amount_used_for_invoices: { type: Number, required: true, default: 0 },

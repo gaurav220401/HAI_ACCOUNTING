@@ -446,7 +446,7 @@ export default function NewQuotePage() {
 
   // ─── Submit ──────────────────────────────────────────────────────
 
-  async function handleSave(status: "Draft" | "Sent") {
+  async function handleSave(status: "Draft" | "Sent", sendEmail = false) {
     if (!customerId) {
       alert("Please select a customer");
       return;
@@ -494,14 +494,14 @@ export default function NewQuotePage() {
         adjustmentAmount,
         customerNotes,
         termsAndConditions,
-        status,
+        status: (status === "Sent" && sendEmail) ? ("Draft" as const) : status,
         placeOfSupply,
       };
       const res = await quoteApi.create(payload);
 
-      if (status === "Sent") {
-        setSavedQuoteId(res.data._id);
-        setShowEmailModal(true);
+      if (status === "Sent" && sendEmail) {
+        const quoteId = res.data._id;
+        router.push(`/sales/quotes/${quoteId}/send-email`);
         setSaving(false);
         return;
       }
@@ -1163,15 +1163,24 @@ export default function NewQuotePage() {
               variant="outline"
               disabled={saving}
               className="h-9 border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold"
-              onClick={() => handleSave("Draft")}
+              onClick={() => handleSave("Draft", false)}
             >
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Save as Draft
             </Button>
             <Button
+              variant="outline"
+              disabled={saving}
+              className="h-9 border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold"
+              onClick={() => handleSave("Sent", false)}
+            >
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Save
+            </Button>
+            <Button
               disabled={saving}
               className="h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold"
-              onClick={() => handleSave("Sent")}
+              onClick={() => handleSave("Sent", true)}
             >
               {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Save and Send
@@ -1186,16 +1195,6 @@ export default function NewQuotePage() {
           </div>
         </div>
 
-        <SendEmailModal
-          isOpen={showEmailModal}
-          onClose={() => {
-            setShowEmailModal(false);
-            router.push(`/sales/quotes/${savedQuoteId}`);
-          }}
-          quoteNumber={quoteNumber}
-          defaultRecipient={selectedCustomer?.email || ""}
-          onSend={handleSendEmail}
-        />
       </SidebarInset>
     </SidebarProvider>
   );
