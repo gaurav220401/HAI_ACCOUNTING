@@ -271,21 +271,118 @@ export function useFormAgent() {
     triggerEl.click();
     await sleep(400);
 
-    const options = Array.from(
-      document.querySelectorAll('[role="option"], [role="menuitem"], .select-item, [data-radix-select-viewport] *')
-    ) as HTMLElement[];
+    let matched: HTMLElement | undefined = undefined;
 
-    const matched = options.find(
-      (opt) =>
-        opt.textContent?.trim().toLowerCase() === value.toLowerCase() ||
-        opt.textContent?.trim().toLowerCase().includes(value.toLowerCase())
-    );
+    // Retry up to 10 times to find the matching option to handle dynamic server-side loading
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const options = Array.from(
+        document.querySelectorAll('[role="option"], [role="menuitem"], .select-item, [data-radix-select-viewport] *')
+      ) as HTMLElement[];
+
+      matched = options.find(
+        (opt) =>
+          opt.textContent?.trim().toLowerCase() === value.toLowerCase() ||
+          opt.textContent?.trim().toLowerCase().includes(value.toLowerCase())
+      );
+
+      if (matched) break;
+      await sleep(300);
+    }
 
     if (matched) {
       onProgress(`Selecting "${value}" from dropdown...`);
       matched.click();
+    } else if (fieldName.toLowerCase() === "unit" || fieldName.toLowerCase() === "uom") {
+      // Fetch options again to check for New Unit
+      const options = Array.from(
+        document.querySelectorAll('[role="option"], [role="menuitem"], .select-item, [data-radix-select-viewport] *')
+      ) as HTMLElement[];
+
+      const newUnitOption = options.find(
+        (opt) => opt.textContent?.toLowerCase().includes("new unit")
+      );
+
+      if (newUnitOption) {
+        onProgress(`Unit "${value}" not found. Opening "New Unit" dialog to create it...`);
+        newUnitOption.click();
+        await sleep(600); // Wait for Dialog to open
+
+        const nameInput = document.querySelector('input[placeholder="e.g. Kilogram"]') as HTMLInputElement;
+        const dialog = document.querySelector('[role="dialog"]');
+
+        if (dialog && nameInput) {
+          // Fill Name using helper
+          await setInputValue(nameInput, value, onProgress, "new unit name");
+          await sleep(200);
+
+          // Find abbreviation trigger inside dialog
+          const dialogSelectTrigger = dialog.querySelector('button[role="combobox"]') as HTMLElement;
+          if (dialogSelectTrigger) {
+            dialogSelectTrigger.click();
+            await sleep(400);
+
+            // Find abbreviation option in the select viewport
+            const abbrOptions = Array.from(
+              document.querySelectorAll('[role="option"], [role="menuitem"], .select-item, [data-radix-select-viewport] *')
+            ) as HTMLElement[];
+
+            let matchedAbbr = abbrOptions.find(
+              (opt) =>
+                opt.textContent?.trim().toLowerCase() === value.toLowerCase() ||
+                opt.textContent?.trim().toLowerCase().includes(value.toLowerCase())
+            );
+
+            if (!matchedAbbr) {
+              matchedAbbr = abbrOptions.find((opt) => opt.textContent?.includes("OTH") || opt.textContent?.toLowerCase().includes("other"));
+            }
+            if (!matchedAbbr && abbrOptions.length > 1) {
+              matchedAbbr = abbrOptions[1]; // select first non-placeholder option
+            }
+
+            if (matchedAbbr) {
+              matchedAbbr.click();
+              await sleep(300);
+            }
+          }
+
+          // Click "Create Unit" button
+          const saveBtn = Array.from(dialog.querySelectorAll('button')).find(
+            (btn) => btn.textContent?.toLowerCase().includes("create unit") || btn.textContent?.toLowerCase().includes("save")
+          );
+
+          if (saveBtn) {
+            onProgress(`Saving new unit "${value}"...`);
+            saveBtn.click();
+            await sleep(1000); // Wait for save and list refresh
+
+            // Re-open main unit dropdown to select the new unit
+            onProgress(`Selecting newly created unit "${value}"...`);
+            triggerEl.click();
+            await sleep(600);
+
+            const newOptions = Array.from(
+              document.querySelectorAll('[role="option"], [role="menuitem"], .select-item, [data-radix-select-viewport] *')
+            ) as HTMLElement[];
+
+            const newMatched = newOptions.find(
+              (opt) =>
+                opt.textContent?.trim().toLowerCase() === value.toLowerCase() ||
+                opt.textContent?.trim().toLowerCase().includes(value.toLowerCase())
+            );
+
+            if (newMatched) {
+              newMatched.click();
+            } else {
+              triggerEl.click(); // Close main dropdown
+            }
+          }
+        }
+      } else {
+        triggerEl.click(); // Close main dropdown
+        onProgress(`Could not find "${value}" in dropdown option list.`);
+      }
     } else {
-      triggerEl.click();
+      triggerEl.click(); // Close main dropdown
       onProgress(`Could not find "${value}" in dropdown option list.`);
     }
 
@@ -297,7 +394,7 @@ export function useFormAgent() {
       "shadow-[0_0_10px_rgba(20,184,166,0.5)]"
     );
     triggerEl.blur();
-  }, []);
+  }, [setInputValue]);
 
   // Primary runner function to orchestrate navigation and automation
   const executeFormFilling = useCallback(
@@ -398,9 +495,23 @@ export function useFormAgent() {
           );
 
           const isRelatedToKey = keyCandidates.some((cand) => {
-            const groupParent = radio.closest(".flex-col, .grid, .flex");
-            const groupLabel = groupParent?.querySelector("label")?.textContent?.toLowerCase() || "";
-            return groupLabel.includes(cand) || radio.getAttribute("name")?.toLowerCase().includes(cand);
+            let curr: HTMLElement | null = radio;
+            while (curr && curr !== document.body) {
+              const labels = Array.from(curr.querySelectorAll("label")) as HTMLElement[];
+              const hasMatchingLabel = labels.some((lbl) => {
+                const htmlFor = lbl.getAttribute("for");
+                if (htmlFor === radio.getAttribute("id")) return false;
+                const txt = lbl.textContent?.toLowerCase() || "";
+                return txt.includes(cand);
+              });
+
+              if (hasMatchingLabel) return true;
+              if (curr.getAttribute("name")?.toLowerCase().includes(cand)) return true;
+              if (curr.getAttribute("data-field")?.toLowerCase().includes(cand)) return true;
+
+              curr = curr.parentElement;
+            }
+            return false;
           });
 
           if (
@@ -427,7 +538,14 @@ export function useFormAgent() {
           continue;
         }
 
-        const el = findElement(key, activeModule);
+        // Wait/poll for the element to appear/load (to handle dynamic loading/skeletons)
+        let el: HTMLElement | null = null;
+        for (let attempt = 0; attempt < 15; attempt++) {
+          el = findElement(key, activeModule);
+          if (el) break;
+          await sleep(400);
+        }
+
         if (!el) {
           onProgress(`Field "${key}" could not be located in form.`);
           await sleep(400);
