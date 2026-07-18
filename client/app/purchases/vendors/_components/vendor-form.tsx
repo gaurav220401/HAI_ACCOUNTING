@@ -773,7 +773,7 @@ export function VendorForm({ initialData }: VendorFormProps) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="bg-white min-h-full flex flex-col">
+    <div className="bg-white min-h-full flex flex-col overflow-y-auto flex-1 min-h-0">
 
       {/* ── Toolbar ── */}
       <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-white sticky top-0 z-10">

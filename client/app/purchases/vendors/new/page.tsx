@@ -33,7 +33,7 @@ export default function NewVendorPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
