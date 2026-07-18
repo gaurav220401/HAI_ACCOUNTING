@@ -430,6 +430,8 @@ export async function recomputeContactOutstanding(params: {
         vendor_id: cid,
         status: "PAID",
         is_deleted: { $ne: true },
+        // Only bill-payments and vendor-payable contribute to reducing payable
+        payment_type: { $in: ["bill-payment", "vendor-payable"] },
       },
     },
     {
@@ -441,15 +443,37 @@ export async function recomputeContactOutstanding(params: {
   ]);
   if (session) excessPayableAgg.session(session);
 
-  const [receivableRows, payableRows, excessReceivableRows, excessPayableRows] = await Promise.all([
+  // Sum of all active vendor advances (not yet applied to bills)
+  const vendorAdvancesAgg = PaymentMade.aggregate([
+    {
+      $match: {
+        organization_id: oid,
+        vendor_id: cid,
+        status: "PAID",
+        is_deleted: { $ne: true },
+        payment_type: "vendor-advance",
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: { $ifNull: ["$amount_in_excess", 0] } },
+      },
+    },
+  ]);
+  if (session) vendorAdvancesAgg.session(session);
+
+  const [receivableRows, payableRows, excessReceivableRows, excessPayableRows, vendorAdvancesRows] = await Promise.all([
     receivableAgg,
     payableAgg,
     excessReceivableAgg,
     excessPayableAgg,
+    vendorAdvancesAgg,
   ]);
 
   const totalExcessReceivable = round2(Number(excessReceivableRows[0]?.total || 0));
   const totalExcessPayable = round2(Number(excessPayableRows[0]?.total || 0));
+  const totalVendorAdvances = round2(Number(vendorAdvancesRows[0]?.total || 0));
 
   const contactQuery = Contact.findOne({
     _id: cid,
@@ -465,12 +489,15 @@ export async function recomputeContactOutstanding(params: {
   const isCust = ["Customer", "Both"].includes(contact.contactType);
   const isVend = ["Vendor", "Both"].includes(contact.contactType);
 
+  // receivable = sum of invoice balances - overpayments received
   const receivable = round2((isCust ? ob : 0) + Number(receivableRows[0]?.total || 0) - totalExcessReceivable);
+  // payable = opening balance + sum of bill balances (vendor advances are an asset, NOT subtracted from payable)
   const payable = round2((isVend ? ob : 0) + Number(payableRows[0]?.total || 0) - totalExcessPayable);
 
   contact.outstandingReceivable = receivable;
   contact.outstandingPayable = payable;
-  (contact as any).unusedCredits = isCust ? totalExcessReceivable : (isVend ? totalExcessPayable : 0);
+  // unusedCredits = unapplied advance amounts (vendor advances in the Advances to Suppliers asset account)
+  (contact as any).unusedCredits = isCust ? totalExcessReceivable : (isVend ? totalVendorAdvances : 0);
 
   if (req) attachUser(contact, req);
 

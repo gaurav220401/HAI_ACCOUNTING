@@ -12,6 +12,7 @@ import VendorCreditApplication from "../models/vendor-credit-application.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
+import { autoApplyVendorAdvancesToBill } from "./payment-made.controller";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 import {
   applyStockDeltas,
@@ -844,6 +845,10 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   }
 
   await syncBillCreationAccounting({ bill, req });
+  
+  // Automatically apply any outstanding vendor advance payments
+  await autoApplyVendorAdvancesToBill({ bill, req });
+
   await syncPurchaseOrdersFromBillOrderNumbers({
     organizationId: bill.organizationId,
     orderNumbers: [bill.orderNumber],

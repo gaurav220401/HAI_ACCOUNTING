@@ -466,6 +466,80 @@ async function applyAgainstBill(
   return amount;
 }
 
+export async function autoApplyVendorAdvancesToBill(params: {
+  bill: any;
+  req: AuthenticatedRequest;
+  session?: ClientSession;
+}): Promise<void> {
+  const { bill, req, session } = params;
+  if (!["Open", "Overdue"].includes(bill.status)) return;
+
+  const organizationId = bill.organizationId;
+  const vendorId = bill.vendorId;
+
+  // Find all vendor advances with unapplied amounts (amount_in_excess > 0)
+  const advancesQuery = PaymentMade.find({
+    organization_id: organizationId,
+    vendor_id: vendorId,
+    status: "PAID",
+    is_deleted: { $ne: true },
+    payment_type: "vendor-advance",
+    amount_in_excess: { $gt: 0 },
+  }).sort({ payment_date: 1 }); // oldest first
+
+  if (session) advancesQuery.session(session);
+  const advances = await advancesQuery;
+
+  if (advances.length === 0) return;
+
+  let remainingBillBalance = round2(toNum(bill.balanceDue));
+
+  for (const payment of advances) {
+    if (remainingBillBalance <= 0) break;
+
+    const available = round2(toNum(payment.amount_in_excess));
+    if (available <= 0) continue;
+
+    const applyAmount = round2(Math.min(available, remainingBillBalance));
+
+    try {
+      const applied = await applyAgainstBill(payment, String(bill._id), applyAmount, req, session);
+      
+      // Save updated payment excess/status
+      attachUser(payment, req);
+      if (session) {
+        await payment.save({ session });
+      } else {
+        await payment.save();
+      }
+
+      // Post the apply GL voucher
+      await postPaymentMadeEvent({
+        payment,
+        req,
+        event: "apply",
+        amount: applied,
+        eventKey: `auto-apply-bill-${String(bill._id)}`,
+      });
+
+      remainingBillBalance = round2(remainingBillBalance - applied);
+    } catch (error) {
+      console.error(`Auto-apply vendor advance ${payment.payment_number} failed:`, error);
+    }
+  }
+
+  // Reload the bill details to get the final updated balanceDue and status
+  const finalBillQuery = Bill.findById(bill._id);
+  if (session) finalBillQuery.session(session);
+  const finalBill = await finalBillQuery;
+  if (finalBill) {
+    bill.balanceDue = finalBill.balanceDue;
+    bill.amountPaid = finalBill.amountPaid;
+    bill.status = finalBill.status;
+  }
+}
+
+
 export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const payment_number = await nextPaymentNumber(await orgId(req));
   res.json({ success: true, data: { payment_number } });
