@@ -1358,8 +1358,8 @@ function ReportsPageContent() {
               data={reportData}
               columns={activeReport.columns}
               title={activeReport.name}
-              from={from}
-              to={to}
+              from={activeReport.useAsOf ? "" : from}
+              to={activeReport.useAsOf ? "" : to}
             />
           )}
           {!fetching && activeReport?.id === "trial-balance" && trialBalance && (
