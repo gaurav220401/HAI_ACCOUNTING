@@ -157,7 +157,7 @@ function ReportsPageContent() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [datePreset, setDatePreset] = useState("today");
+  const [datePreset, setDatePreset] = useState("this-month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
@@ -174,26 +174,59 @@ function ReportsPageContent() {
   const [printOrientation, setPrintOrientation] = useState<"portrait" | "landscape">("portrait");
   const [fetching, setFetching] = useState(false);
   const [reportData, setReportData] = useState<GenericReportResponse | null>(null);
-
+ 
   const [trialBalance, setTrialBalance] = useState<TrialBalanceResponse | null>(null);
   const [profitLoss, setProfitLoss] = useState<ProfitLossResponse | null>(null);
   const [balanceSheet, setBalanceSheet] = useState<BalanceSheetResponse | null>(null);
   const [controlRec, setControlRec] = useState<ControlReconciliationResponse | null>(null);
-
+ 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
-
+ 
   useEffect(() => {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
-
+ 
   useEffect(() => {
     const report = searchParams.get("report");
     if (report) {
       setActiveReportId(report);
       const def = REPORTS.find((r) => r.id === report);
       if (def) setActiveCategory(def.category);
+    }
+ 
+    const preset = searchParams.get("preset") || searchParams.get("datePreset");
+    if (preset) {
+      setDatePreset(preset);
+    }
+    const fromParam = searchParams.get("from");
+    if (fromParam) {
+      setCustomFrom(fromParam);
+    }
+    const toParam = searchParams.get("to");
+    if (toParam) {
+      setCustomTo(toParam);
+    }
+    const asOfParam = searchParams.get("asOf");
+    if (asOfParam) {
+      setAsOf(asOfParam);
+    }
+    const basis = searchParams.get("basis");
+    if (basis && (basis === "Accrual" || basis === "Cash")) {
+      setReportBasis(basis);
+    }
+    const status = searchParams.get("status");
+    if (status) {
+      setStatusFilter(status);
+    }
+    const vendorId = searchParams.get("vendorId");
+    if (vendorId) {
+      setVendorFilter(vendorId);
+    }
+    const customerId = searchParams.get("customerId");
+    if (customerId) {
+      setCustomerFilter(customerId);
     }
   }, [searchParams]);
 
