@@ -1276,7 +1276,7 @@ export const committedStockDetails = asyncHandler(async (req: AuthenticatedReque
   const orders = await (SalesOrder as any).find({
     organizationId,
     isDeleted: false,
-    status: { $in: SALES_ORDER_COMMITTED_STATUSES },
+    status: { $nin: ["VOID", "Void"] },
     orderDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
   })
     .populate("customerId", "displayName companyName")
@@ -1734,32 +1734,68 @@ export const packingHistory = asyncHandler(async (req: AuthenticatedRequest, res
   const to = parseDate(req.query.to, "to") || defaultTo();
   ensureFromBeforeTo(from, to);
 
-  const challans = await (DeliveryChallan as any).find({
-    organizationId,
-    isDeleted: false,
-    challanDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
-  })
-    .populate("customerId", "displayName companyName")
-    .sort({ challanDate: -1 })
-    .lean();
+  const [challans, salesOrders] = await Promise.all([
+    (DeliveryChallan as any).find({
+      organizationId,
+      isDeleted: false,
+      challanDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+    })
+      .populate("customerId", "displayName companyName")
+      .sort({ challanDate: -1 })
+      .lean(),
+    (SalesOrder as any).find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["VOID", "Void"] },
+      orderDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+    })
+      .populate("customerId", "displayName companyName")
+      .sort({ orderDate: -1 })
+      .lean(),
+  ]);
 
-  const rows = (challans as Array<Record<string, any>>).map((challan) => {
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const challan of challans as Array<Record<string, any>>) {
     const items = (challan.items || []) as any[];
     const totalQuantity = round2(items.reduce((sum, item) => sum + toNum(item.quantity), 0));
-    const itemCount = items.length;
 
-    return {
+    rows.push({
       challanId: String(challan._id),
       challanNumber: String(challan.challanNumber || ""),
       challanDate: challan.challanDate,
       salesOrderNumber: String(challan.salesOrderNumber || ""),
       customerName: challan.customerId?.displayName || challan.customerId?.companyName || "Unknown",
-      itemCount,
+      itemCount: items.length,
       totalQuantity,
       totalAmount: round2(toNum(challan.total)),
-      status: String(challan.status || ""),
-      invoiceStatus: String(challan.invoiceStatus || ""),
-    };
+      status: String(challan.status || "Open"),
+      invoiceStatus: String(challan.invoiceStatus || "NOT INVOICED"),
+    });
+  }
+
+  for (const order of salesOrders as Array<Record<string, any>>) {
+    const items = (order.lineItems || []) as any[];
+    const totalQuantity = round2(items.reduce((sum, item) => sum + toNum(item.quantity), 0));
+
+    rows.push({
+      challanId: String(order._id),
+      challanNumber: String(order.salesOrderNumber || ""),
+      challanDate: order.orderDate,
+      salesOrderNumber: String(order.salesOrderNumber || ""),
+      customerName: order.customerId?.displayName || order.customerId?.companyName || "Unknown",
+      itemCount: items.length,
+      totalQuantity,
+      totalAmount: round2(toNum(order.total, items.reduce((sum, i) => sum + toNum(i.amount, toNum(i.quantity) * toNum(i.rate)), 0))),
+      status: String(order.shipmentStatus || order.status || "Delivered"),
+      invoiceStatus: String(order.invoiceStatus || "Invoiced"),
+    });
+  }
+
+  rows.sort((a, b) => {
+    const aDate = new Date(String(a.challanDate || "")).getTime();
+    const bDate = new Date(String(b.challanDate || "")).getTime();
+    return bDate - aDate;
   });
 
   const totals = {
@@ -1777,14 +1813,45 @@ export const shipmentDetails = asyncHandler(async (req: AuthenticatedRequest, re
   const to = parseDate(req.query.to, "to") || defaultTo();
   ensureFromBeforeTo(from, to);
 
-  const challans = await (DeliveryChallan as any).find({
-    organizationId,
-    isDeleted: false,
-    challanDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
-  })
-    .populate("customerId", "displayName companyName")
-    .sort({ challanDate: -1 })
+  const [challans, salesOrders] = await Promise.all([
+    (DeliveryChallan as any).find({
+      organizationId,
+      isDeleted: false,
+      challanDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+    })
+      .populate("customerId", "displayName companyName")
+      .sort({ challanDate: -1 })
+      .lean(),
+    (SalesOrder as any).find({
+      organizationId,
+      isDeleted: false,
+      status: { $nin: ["VOID", "Void"] },
+      orderDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+    })
+      .populate("customerId", "displayName companyName")
+      .sort({ orderDate: -1 })
+      .lean(),
+  ]);
+
+  const itemIds = new Set<string>();
+  for (const challan of challans as any[]) {
+    for (const line of (challan.items || []) as any[]) {
+      const id = normalizeObjectId(line.itemId);
+      if (id) itemIds.add(id);
+    }
+  }
+  for (const order of salesOrders as any[]) {
+    for (const line of (order.lineItems || []) as any[]) {
+      const id = normalizeObjectId(line.itemId);
+      if (id) itemIds.add(id);
+    }
+  }
+
+  const itemRows = await Item.find({ _id: { $in: Array.from(itemIds) } })
+    .select("name sku")
     .lean();
+
+  const itemNameById = new Map(itemRows.map((item: any) => [String(item._id), item.name || "Unknown Item"]));
 
   const rows: Array<Record<string, unknown>> = [];
 
@@ -1804,13 +1871,14 @@ export const shipmentDetails = asyncHandler(async (req: AuthenticatedRequest, re
             : "Pending";
 
     for (const line of (challan.items || []) as any[]) {
+      const itemId = normalizeObjectId(line.itemId);
       rows.push({
         challanId: String(challan._id),
         challanNumber: String(challan.challanNumber || ""),
         challanDate: challan.challanDate,
         customerName,
-        itemId: normalizeObjectId(line.itemId),
-        itemName: String(line.name || "Unknown Item"),
+        itemId,
+        itemName: String(line.name || (itemId ? itemNameById.get(itemId) : "") || "Unknown Item"),
         quantity: round2(toNum(line.quantity)),
         rate: round2(toNum(line.rate)),
         amount: round2(toNum(line.amount)),
@@ -1820,6 +1888,41 @@ export const shipmentDetails = asyncHandler(async (req: AuthenticatedRequest, re
       });
     }
   }
+
+  for (const order of salesOrders as Array<Record<string, any>>) {
+    const customerName = order.customerId?.displayName || order.customerId?.companyName || "Unknown";
+    const status = String(order.status || "");
+    const invoiceStatus = String(order.invoiceStatus || "Invoiced");
+    const shipmentStatus = String(order.shipmentStatus || "Delivered");
+
+    for (const line of (order.lineItems || []) as any[]) {
+      const itemId = normalizeObjectId(line.itemId);
+      const qty = round2(toNum(line.quantity));
+      const rate = round2(toNum(line.rate));
+      const amount = round2(toNum(line.amount, qty * rate));
+
+      rows.push({
+        challanId: String(order._id),
+        challanNumber: String(order.salesOrderNumber || ""),
+        challanDate: order.orderDate,
+        customerName,
+        itemId,
+        itemName: String(line.name || (itemId ? itemNameById.get(itemId) : "") || "Unknown Item"),
+        quantity: qty,
+        rate,
+        amount,
+        challanStatus: status,
+        invoiceStatus,
+        shipmentStatus,
+      });
+    }
+  }
+
+  rows.sort((a, b) => {
+    const aDate = new Date(String(a.challanDate || "")).getTime();
+    const bDate = new Date(String(b.challanDate || "")).getTime();
+    return bDate - aDate;
+  });
 
   const totals = {
     totalLines: rows.length,
