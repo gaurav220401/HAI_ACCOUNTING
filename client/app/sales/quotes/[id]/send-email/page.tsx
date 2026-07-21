@@ -70,7 +70,7 @@ function buildDefaultBody(params: {
     <p>Here is a quick overview:</p>
     <hr style="border:none;border-top:1px dashed #6b7280;margin:18px 0;" />
     <h2 style="font-size:22px;line-height:1.35;margin:0 0 14px 0;">
-      Quotation # : <strong>${escapeHtml(params.quoteNumber)}</strong>
+      Quotation Number : <strong>${escapeHtml(params.quoteNumber)}</strong>
     </h2>
     <hr style="border:none;border-top:1px dashed #6b7280;margin:14px 0;" />
     <table style="border-collapse:collapse;font-size:18px;line-height:1.8;">
@@ -146,7 +146,7 @@ export default function SendQuoteEmailPage() {
         const customerEmail = getCustomerEmail(nextQuote.customerId);
         setTo(customerEmail);
         setSubject(
-          `Quotation from ${activeOrganization.name} (Quote #: ${nextQuote.quoteNumber})`,
+          `Quotation from ${activeOrganization.name} (Quote Number: ${nextQuote.quoteNumber})`,
         );
 
         let senderEmail = "";

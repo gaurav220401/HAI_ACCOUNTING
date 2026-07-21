@@ -3,8 +3,9 @@ import Link from "next/link";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, RefreshCw, FileUp} from "lucide-react";
+import { Plus, Search, RefreshCw, FileUp, Calendar, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -14,6 +15,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -101,10 +103,28 @@ export default function SalesOrdersPage() {
     }
   }
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return orders;
+    let list = orders;
+
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter(
+        (o) => new Date(o.orderDate || 0).getTime() >= fromTime,
+      );
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter(
+        (o) => new Date(o.orderDate || 0).getTime() <= toTime,
+      );
+    }
+
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return orders.filter((o) => {
+    return list.filter((o) => {
       const custName = getCustomerName(o.customerId).toLowerCase();
       return (
         o.salesOrderNumber.toLowerCase().includes(q) ||
@@ -112,7 +132,79 @@ export default function SalesOrdersPage() {
         custName.includes(q)
       );
     });
-  }, [orders, search]);
+  }, [orders, search, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    const totalAmount = filtered.reduce(
+      (acc, o) => acc + Number(o.total || 0),
+      0,
+    );
+    const deliveredCount = filtered.filter(
+      (o) => o.shipmentStatus === "Delivered",
+    ).length;
+    const closedCount = filtered.filter((o) => o.status === "CLOSED").length;
+    return {
+      count: filtered.length,
+      totalAmount,
+      deliveredCount,
+      closedCount,
+    };
+  }, [filtered]);
+
+  type OrderSortField = "date" | "number" | "reference" | "customer" | "status" | "amount";
+  type OrderSortOrder = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<OrderSortField>("date");
+  const [sortOrder, setSortOrder] = useState<OrderSortOrder>("desc");
+
+  function toggleSort(field: OrderSortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
+  const sortedOrders = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "date":
+          aVal = new Date(a.orderDate || 0).getTime();
+          bVal = new Date(b.orderDate || 0).getTime();
+          break;
+        case "number":
+          aVal = a.salesOrderNumber || "";
+          bVal = b.salesOrderNumber || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "reference":
+          aVal = (a.reference || "").toLowerCase();
+          bVal = (b.reference || "").toLowerCase();
+          break;
+        case "customer":
+          aVal = getCustomerName(a.customerId).toLowerCase();
+          bVal = getCustomerName(b.customerId).toLowerCase();
+          break;
+        case "status":
+          aVal = (a.status || "").toLowerCase();
+          bVal = (b.status || "").toLowerCase();
+          break;
+        case "amount":
+          aVal = Number(a.total || 0);
+          bVal = Number(b.total || 0);
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const allFilteredIds = useMemo(() => filtered.map((o) => o._id), [filtered]);
@@ -181,7 +273,7 @@ export default function SalesOrdersPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-background flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
@@ -190,20 +282,81 @@ export default function SalesOrdersPage() {
             </span>
           }
           actions={
-            <>
-              <div className="relative w-72">
+            <div className="flex items-center gap-2">
+              <div className="relative w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search in Sales Orders..."
-                  className="pl-8 h-8 text-sm"
+                  placeholder="Search sales orders..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8 h-9 text-sm"
                 />
               </div>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-9 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <Button
                 variant="outline"
                 size="sm"
-                onClick={fetchOrders}
+                onClick={() => void fetchOrders()}
                 disabled={fetching}
               >
                 <RefreshCw
@@ -212,80 +365,87 @@ export default function SalesOrdersPage() {
               </Button>
               <Button
                 size="sm"
-                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                 onClick={() => router.push("/sales/orders/new")}
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
               >
-                <Plus className="h-4 w-4 mr-1" />
-                New
+                <Plus className="mr-1 h-4 w-4" />
+                New Sales Order
               </Button>
               <Link href="/batch-import?section=sales&type=Sales Orders&back=/sales/orders">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50">
+                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-9 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50">
                   <FileUp className="h-3.5 w-3.5" /> Batch Import
                 </Button>
               </Link>
-            </>
+            </div>
           }
         />
 
-        <div className="flex flex-1 flex-col p-6 gap-4">
-          <div>
-            <h1 className="text-xl font-bold">All Sales Orders</h1>
-            <p className="text-sm text-muted-foreground">
-              {filtered.length} sales orders
-            </p>
+        <div className="flex-1 overflow-auto p-6 space-y-3">
+          {/* Sleek Ultra-Compact KPI Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Orders</span>
+              <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Order Value</span>
+              <span className="text-sm font-bold text-teal-700 tabular-nums">₹{summary.totalAmount.toLocaleString("en-IN")}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Delivered</span>
+              <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.deliveredCount}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-indigo-500 uppercase tracking-wide">Closed</span>
+              <span className="text-sm font-bold text-indigo-600 tabular-nums">{summary.closedCount}</span>
+            </div>
           </div>
 
           {selectedIds.length > 0 && (
-            <div className="rounded-lg border bg-muted/40 px-3 py-2 flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium">{selectedIds.length} selected</span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={bulkRunning}
-                onClick={() => runBulkAction("Mark shipment fulfilled", salesOrderApi.markShipmentFulfilled)}
-              >
-                Mark shipment as fulfilled
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={bulkRunning}
-                onClick={() => runBulkAction("Instant invoice", salesOrderApi.instantInvoice)}
-              >
-                Instant Invoice
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={bulkRunning}
-                onClick={() => runBulkAction("Dropship", salesOrderApi.dropship)}
-              >
-                Dropship
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={bulkRunning}
-                onClick={() => runBulkAction("Void", salesOrderApi.voidOrder)}
-              >
-                Void
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={bulkRunning}
-                onClick={() => runBulkAction("Delete", salesOrderApi.remove)}
-              >
-                Delete
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={bulkRunning}
-                onClick={() => setSelectedIds([])}
-              >
-                Clear
-              </Button>
+            <div className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-md px-4 py-2 text-sm text-teal-800">
+              <span>{selectedIds.length} item(s) selected</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runBulkAction("Mark shipment fulfilled", salesOrderApi.markShipmentFulfilled)}
+                  disabled={bulkRunning}
+                >
+                  Mark shipment as fulfilled
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runBulkAction("Instant invoice", salesOrderApi.instantInvoice)}
+                  disabled={bulkRunning}
+                >
+                  Instant Invoice
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runBulkAction("Void", salesOrderApi.voidOrder)}
+                  disabled={bulkRunning}
+                >
+                  Void
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => runBulkAction("Delete", salesOrderApi.remove)}
+                  disabled={bulkRunning}
+                >
+                  Delete
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={bulkRunning}
+                  onClick={() => setSelectedIds([])}
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
           )}
 
@@ -300,19 +460,61 @@ export default function SalesOrdersPage() {
                       aria-label="Select all sales orders"
                     />
                   </TableHead>
-                  <TableHead className="w-28">Date</TableHead>
-                  <TableHead className="w-36">Sales Order#</TableHead>
-                  <TableHead className="w-32">Reference#</TableHead>
-                  <TableHead className="w-48">Customer Name</TableHead>
-                  <TableHead className="w-28">Status</TableHead>
-                  <TableHead className="w-32 text-right">Amount</TableHead>
+                  <TableHead className="w-28">
+                    <button onClick={() => toggleSort("date")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Date
+                      <span className={cn("text-[10px]", sortField === "date" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "date" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-36">
+                    <button onClick={() => toggleSort("number")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Sales Order Number
+                      <span className={cn("text-[10px]", sortField === "number" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "number" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-32">
+                    <button onClick={() => toggleSort("reference")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Reference Number
+                      <span className={cn("text-[10px]", sortField === "reference" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "reference" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-48">
+                    <button onClick={() => toggleSort("customer")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Customer Name
+                      <span className={cn("text-[10px]", sortField === "customer" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "customer" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-28">
+                    <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Status
+                      <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-32 text-right">
+                    <button onClick={() => toggleSort("amount")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                      Amount
+                      <span className={cn("text-[10px]", sortField === "amount" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "amount" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </TableHead>
                   <TableHead className="w-24 text-center">Shipping</TableHead>
                   <TableHead className="w-24 text-center">Invoiced</TableHead>
                   <TableHead className="w-24 text-center">Payment</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((o) => (
+                {sortedOrders.map((o: SalesOrder) => (
                   <TableRow
                     key={o._id}
                     className="cursor-pointer hover:bg-muted/50"

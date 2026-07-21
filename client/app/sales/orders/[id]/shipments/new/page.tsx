@@ -178,11 +178,11 @@ export default function NewShipmentPage() {
           <div className="rounded-lg border bg-card p-5 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-red-600">Package#</Label>
+                <Label className="text-red-600">Package Number</Label>
                 <Input value={`PKG-${order?.salesOrderNumber || ""}-${packages.length + 1}`} readOnly className="mt-1" />
               </div>
               <div>
-                <Label className="text-red-600">Shipment Order#</Label>
+                <Label className="text-red-600">Shipment Order Number</Label>
                 <Input value={shipmentOrderNumber} onChange={(e) => setShipmentOrderNumber(e.target.value)} className="mt-1" />
               </div>
               <div>
@@ -194,7 +194,7 @@ export default function NewShipmentPage() {
                 <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Select or type a carrier" className="mt-1" />
               </div>
               <div>
-                <Label>Tracking#</Label>
+                <Label>Tracking Number</Label>
                 <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} className="mt-1" />
               </div>
               <div>

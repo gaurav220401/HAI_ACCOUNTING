@@ -70,7 +70,7 @@ function buildDefaultBody(params: {
     <p>An overview of the invoice is available below:</p>
     <hr style="border:none;border-top:1px dashed #6b7280;margin:18px 0;" />
     <h2 style="font-size:22px;line-height:1.35;margin:0 0 14px 0;">
-      Invoice # : <strong>${escapeHtml(params.invoiceNumber)}</strong>
+      Invoice Number : <strong>${escapeHtml(params.invoiceNumber)}</strong>
     </h2>
     <hr style="border:none;border-top:1px dashed #6b7280;margin:14px 0;" />
     <table style="border-collapse:collapse;font-size:18px;line-height:1.8;">
@@ -146,7 +146,7 @@ export default function SendInvoiceEmailPage() {
         const customerEmail = getCustomerEmail(nextInvoice.customerId);
         setTo(customerEmail);
         setSubject(
-          `Invoice from ${activeOrganization.name} (Invoice #: ${nextInvoice.invoiceNumber})`,
+          `Invoice from ${activeOrganization.name} (Invoice Number: ${nextInvoice.invoiceNumber})`,
         );
 
         let senderEmail = "";

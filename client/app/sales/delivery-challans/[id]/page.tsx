@@ -402,7 +402,7 @@ export default function DeliveryChallanDetailPage() {
           </div>
 
           <div className="text-sm">
-            <span className="text-muted-foreground">Sales Order#: </span>
+            <span className="text-muted-foreground">Sales Order Number: </span>
             <span className="font-medium text-foreground">
               {challan.salesOrderNumber || "-"}
             </span>
@@ -448,7 +448,7 @@ export default function DeliveryChallanDetailPage() {
                     CHALLAN
                   </h2>
                   <p className="text-sm mt-2">
-                    <span className="font-semibold">Delivery Challan#</span>{" "}
+                    <span className="font-semibold">Delivery Challan Number</span>{" "}
                     {challan.challanNumber}
                   </p>
                 </div>

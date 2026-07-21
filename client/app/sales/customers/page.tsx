@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -21,6 +21,7 @@ import {
   EyeOff,
   GripVertical,
   Trash2,
+  Calendar,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -29,6 +30,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { CustomerDetailView } from "./[id]/customer-detail-view";
 import { cn } from "@/lib/utils";
@@ -224,6 +226,8 @@ export default function CustomersPage() {
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"Active" | "Inactive" | "All">("All");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
@@ -791,10 +795,32 @@ export default function CustomersPage() {
     );
   }
 
+  type CustSortField = "displayName" | "companyName" | "email" | "phone" | "receivables";
+  type CustSortOrder = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<CustSortField>("displayName");
+  const [sortOrder, setSortOrder] = useState<CustSortOrder>("asc");
+
+  function toggleSort(field: CustSortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   const filtered = contacts
     .filter((row) => {
       if (statusFilter === "Active") return row.isActive !== false;
       if (statusFilter === "Inactive") return row.isActive === false;
+      return true;
+    })
+    .filter((row) => {
+      if (!fromDate && !toDate) return true;
+      const rowDate = (row as any).createdAt ? new Date((row as any).createdAt).toISOString().slice(0, 10) : "";
+      if (fromDate && rowDate && rowDate < fromDate) return false;
+      if (toDate && rowDate && rowDate > toDate) return false;
       return true;
     })
     .filter((row) => {
@@ -806,6 +832,54 @@ export default function CustomersPage() {
         (row.email || "").toLowerCase().includes(q)
       );
     });
+
+  const sortedCustomers = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "displayName":
+          aVal = (a.displayName || "").toLowerCase();
+          bVal = (b.displayName || "").toLowerCase();
+          break;
+        case "companyName":
+          aVal = (a.companyName || "").toLowerCase();
+          bVal = (b.companyName || "").toLowerCase();
+          break;
+        case "email":
+          aVal = (a.email || "").toLowerCase();
+          bVal = (b.email || "").toLowerCase();
+          break;
+        case "phone":
+          aVal = (a.phone || a.mobile || "").toLowerCase();
+          bVal = (b.phone || b.mobile || "").toLowerCase();
+          break;
+        case "receivables":
+          aVal = Number((a.outstandingReceivable ?? 0) + (a.openingBalance ?? 0));
+          bVal = Number((b.outstandingReceivable ?? 0) + (b.openingBalance ?? 0));
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
+  const summary = useMemo(() => {
+    const totalReceivables = filtered.reduce(
+      (acc, row) => acc + Number((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0)),
+      0,
+    );
+    const activeCount = filtered.filter((row) => row.isActive !== false).length;
+    const inactiveCount = filtered.filter((row) => row.isActive === false).length;
+    return {
+      count: filtered.length,
+      totalReceivables,
+      activeCount,
+      inactiveCount,
+    };
+  }, [filtered]);
 
   return (
     <SidebarProvider>
@@ -831,6 +905,67 @@ export default function CustomersPage() {
                       onChange={(event) => setSearch(event.target.value)}
                     />
                   </div>
+
+                  {/* Compact Date Range Popover */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                          (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                        )}
+                      >
+                        <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                        {fromDate || toDate ? (
+                          <span>
+                            {fromDate || "Start"} - {toDate || "End"}
+                          </span>
+                        ) : (
+                          <span>Date Range</span>
+                        )}
+                        <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                        {(fromDate || toDate) && (
+                          <button
+                            onClick={() => {
+                              setFromDate("");
+                              setToDate("");
+                            }}
+                            className="text-xs text-rose-600 hover:underline font-medium"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                          <Input
+                            type="date"
+                            value={fromDate}
+                            onChange={(e) => setFromDate(e.target.value)}
+                            className="h-8 text-xs bg-slate-50 border-slate-200"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                          <Input
+                            type="date"
+                            value={toDate}
+                            onChange={(e) => setToDate(e.target.value)}
+                            className="h-8 text-xs bg-slate-50 border-slate-200"
+                          />
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
                   <select
                     value={statusFilter}
                     onChange={(event) =>
@@ -840,7 +975,7 @@ export default function CustomersPage() {
                   >
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
-                    <option value="All">All</option>
+                    <option value="All">All Statuses</option>
                   </select>
                 </div>
 
@@ -918,49 +1053,32 @@ export default function CustomersPage() {
               panelOpen ? "w-[320px] shrink-0" : "flex-1",
             )}
           >
-            <div
-              className={cn(
-                "flex shrink-0 items-center border-b",
-                panelOpen ? "justify-between px-3 py-2" : "justify-between px-4 py-3",
-              )}
-            >
-              {panelOpen ? (
-                <>
-                  <button className="flex items-center gap-1.5 text-sm font-semibold">
-                    All Customers
-                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6"
-                      onClick={() => void fetchContacts()}
-                      disabled={fetching}
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
-                    </Button>
-                    <Button
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => router.push("/sales/customers/new")}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <button className="flex items-center gap-1.5 text-sm font-medium">
-                    All Customers
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                  <span className="text-xs text-muted-foreground">
-                    {filtered.length} customer{filtered.length !== 1 ? "s" : ""}
-                  </span>
-                </>
-              )}
-            </div>
+            {panelOpen ? (
+              <div className="flex shrink-0 items-center justify-between border-b px-3 py-2">
+                <button className="flex items-center gap-1.5 text-sm font-semibold">
+                  All Customers
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => void fetchContacts()}
+                    disabled={fetching}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
+                  </Button>
+                  <Button
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => router.push("/sales/customers/new")}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             {panelOpen ? (
               <div className="border-b px-2 py-1.5">
@@ -1031,22 +1149,77 @@ export default function CustomersPage() {
                 ) : null}
               </div>
             ) : (
-              <div className="flex-1 overflow-auto px-6 py-4">
+              <div className="flex-1 overflow-auto px-6 py-4 space-y-3">
+                {/* Sleek Ultra-Compact KPI Summary Strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Customers</span>
+                    <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Receivables</span>
+                    <span className="text-sm font-bold text-teal-700 tabular-nums">{fmt(summary.totalReceivables, "INR")}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Active</span>
+                    <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.activeCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Inactive</span>
+                    <span className="text-sm font-bold text-slate-500 tabular-nums">{summary.inactiveCount}</span>
+                  </div>
+                </div>
+
                 <div className="overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-card">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b bg-muted/30">
-                        <TableHead className="w-1/4 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Name</TableHead>
-                        <TableHead className="w-1/4 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Company Name</TableHead>
-                        <TableHead className="w-1/5 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Email</TableHead>
-                        <TableHead className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work Phone</TableHead>
+                        <TableHead className="w-1/4 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <button onClick={() => toggleSort("displayName")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Name
+                            <span className={cn("text-[10px]", sortField === "displayName" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "displayName" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-1/4 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <button onClick={() => toggleSort("companyName")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Company Name
+                            <span className={cn("text-[10px]", sortField === "companyName" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "companyName" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-1/5 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <button onClick={() => toggleSort("email")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Email
+                            <span className={cn("text-[10px]", sortField === "email" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "email" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <button onClick={() => toggleSort("phone")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Work Phone
+                            <span className={cn("text-[10px]", sortField === "phone" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "phone" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
                         <TableHead className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">GST Treatment</TableHead>
-                        <TableHead className="w-40 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receivables (BCY)</TableHead>
+                        <TableHead className="w-40 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <button onClick={() => toggleSort("receivables")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                            Receivables (BCY)
+                            <span className={cn("text-[10px]", sortField === "receivables" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "receivables" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filtered.map((row) => {
-                        const primary = row.contactPersons?.find((person) => person.isPrimary) ?? row.contactPersons?.[0];
+                      {sortedCustomers.map((row: Contact) => {
+                        const primary = row.contactPersons?.find((person: any) => person.isPrimary) ?? row.contactPersons?.[0];
                         const email = row.email || primary?.email || "";
                         const phone = row.phone || primary?.workPhone || primary?.mobile || row.mobile || "";
                         return (

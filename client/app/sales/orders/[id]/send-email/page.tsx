@@ -181,7 +181,7 @@ export default function SendSalesOrderEmailPage() {
         const customerName = getCustomerName(so.customerId);
         const customerEmail = (so.customerId as any)?.email || "";
         setTo(customerEmail);
-        setSubject(`Sales Order from ${activeOrganization.name} (Sales Order #: ${so.salesOrderNumber})`);
+        setSubject(`Sales Order from ${activeOrganization.name} (Sales Order Number: ${so.salesOrderNumber})`);
 
         let senderEmail = "";
         try {

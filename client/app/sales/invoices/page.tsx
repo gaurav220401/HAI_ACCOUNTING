@@ -20,8 +20,10 @@ import {
   Loader2,
   Maximize2,
   FileUp,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -29,6 +31,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -223,6 +226,32 @@ export default function InvoicesPage() {
   );
   const [showFilterDD, setShowFilterDD] = useState(false);
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  type SortField =
+    | "invoiceDate"
+    | "invoiceNumber"
+    | "orderNumber"
+    | "customer"
+    | "status"
+    | "dueDate"
+    | "total"
+    | "balanceDue";
+  type SortOrder = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<SortField>("invoiceDate");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
@@ -239,16 +268,105 @@ export default function InvoicesPage() {
   }, [firebaseUser, loading, statusFilter]);
 
   const filtered = useMemo(() => {
+    let list = invoices;
+
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter(
+        (inv) => new Date(inv.invoiceDate || 0).getTime() >= fromTime,
+      );
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter(
+        (inv) => new Date(inv.invoiceDate || 0).getTime() <= toTime,
+      );
+    }
+
     const query = search.trim().toLowerCase();
-    if (!query) return invoices;
-    return invoices.filter(
+    if (!query) return list;
+    return list.filter(
       (inv) =>
         inv.invoiceNumber.toLowerCase().includes(query) ||
         inv.orderNumber?.toLowerCase().includes(query) ||
         inv.subject?.toLowerCase().includes(query) ||
         getCustomerName(inv.customerId).toLowerCase().includes(query),
     );
-  }, [invoices, search]);
+  }, [invoices, search, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    const totalAmount = filtered.reduce(
+      (acc, inv) => acc + Number(inv.total || 0),
+      0,
+    );
+    const totalBalance = filtered.reduce(
+      (acc, inv) => acc + Number(inv.balanceDue || 0),
+      0,
+    );
+    const totalPaid = Math.max(0, totalAmount - totalBalance);
+    return {
+      count: filtered.length,
+      totalAmount,
+      totalBalance,
+      totalPaid,
+    };
+  }, [filtered]);
+
+  const sortedInvoices = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+
+      switch (sortField) {
+        case "invoiceDate":
+          aVal = new Date(a.invoiceDate || 0).getTime();
+          bVal = new Date(b.invoiceDate || 0).getTime();
+          break;
+        case "invoiceNumber":
+          aVal = a.invoiceNumber || "";
+          bVal = b.invoiceNumber || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "orderNumber":
+          aVal = a.orderNumber || "";
+          bVal = b.orderNumber || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "customer":
+          aVal = getCustomerName(a.customerId).toLowerCase();
+          bVal = getCustomerName(b.customerId).toLowerCase();
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+        case "status":
+          aVal = a.status || "";
+          bVal = b.status || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+        case "dueDate":
+          aVal = new Date(a.dueDate || 0).getTime();
+          bVal = new Date(b.dueDate || 0).getTime();
+          break;
+        case "total":
+          aVal = Number(a.total || 0);
+          bVal = Number(b.total || 0);
+          break;
+        case "balanceDue":
+          aVal = Number(a.balanceDue || 0);
+          bVal = Number(b.balanceDue || 0);
+          break;
+      }
+
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
 
   useEffect(() => {
     if (filtered.length === 0) {
@@ -454,6 +572,67 @@ export default function InvoicesPage() {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
+
+                {/* Compact Date Range Popover */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                        (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                      )}
+                    >
+                      <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                      {fromDate || toDate ? (
+                        <span>
+                          {fromDate || "Start"} - {toDate || "End"}
+                        </span>
+                      ) : (
+                        <span>Date Range</span>
+                      )}
+                      <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                      {(fromDate || toDate) && (
+                        <button
+                          onClick={() => {
+                            setFromDate("");
+                            setToDate("");
+                          }}
+                          className="text-xs text-rose-600 hover:underline font-medium"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                        <Input
+                          type="date"
+                          value={fromDate}
+                          onChange={(e) => setFromDate(e.target.value)}
+                          className="h-8 text-xs bg-slate-50 border-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                        <Input
+                          type="date"
+                          value={toDate}
+                          onChange={(e) => setToDate(e.target.value)}
+                          className="h-8 text-xs bg-slate-50 border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -485,7 +664,27 @@ export default function InvoicesPage() {
             }
           />
 
-          <div className="flex flex-1 flex-col overflow-hidden p-6 gap-4">
+          <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3">
+            {/* Sleek Ultra-Compact KPI Summary Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Invoices</span>
+                <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Amount</span>
+                <span className="text-sm font-bold text-teal-700 tabular-nums">{formatCurrency(summary.totalAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Collected</span>
+                <span className="text-sm font-bold text-emerald-700 tabular-nums">{formatCurrency(summary.totalPaid)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-rose-500 uppercase tracking-wide">Balance Due</span>
+                <span className="text-sm font-bold text-rose-600 tabular-nums">{formatCurrency(summary.totalBalance)}</span>
+              </div>
+            </div>
+
             {fetching && invoices.length === 0 ?
               <TableSkeleton />
             : filtered.length === 0 ?
@@ -520,7 +719,7 @@ export default function InvoicesPage() {
                 >
                   {selectedInvoice ?
                     <div className="divide-y divide-slate-100">
-                      {filtered.map((inv) => {
+                      {sortedInvoices.map((inv) => {
                         const dueStatus = getDueStatus(inv);
                         const active = selectedId === inv._id;
                         return (
@@ -575,34 +774,74 @@ export default function InvoicesPage() {
                       <TableHeader className="bg-slate-50 border-b border-slate-200">
                         <TableRow>
                           <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                            Date
+                            <button onClick={() => toggleSort("invoiceDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Date
+                              <span className={cn("text-[10px]", sortField === "invoiceDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "invoiceDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-36 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                            Invoice#
+                            <button onClick={() => toggleSort("invoiceNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Invoice Number
+                              <span className={cn("text-[10px]", sortField === "invoiceNumber" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "invoiceNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                            Order#
+                            <button onClick={() => toggleSort("orderNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Order Number
+                              <span className={cn("text-[10px]", sortField === "orderNumber" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "orderNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-48 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                            Customer
+                            <button onClick={() => toggleSort("customer")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Customer
+                              <span className={cn("text-[10px]", sortField === "customer" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "customer" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                            Status
+                            <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Status
+                              <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                            Due Date
+                            <button onClick={() => toggleSort("dueDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Due Date
+                              <span className={cn("text-[10px]", sortField === "dueDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "dueDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
-                            Amount
+                            <button onClick={() => toggleSort("total")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                              Amount
+                              <span className={cn("text-[10px]", sortField === "total" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "total" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
-                            Balance Due
+                            <button onClick={() => toggleSort("balanceDue")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                              Balance Due
+                              <span className={cn("text-[10px]", sortField === "balanceDue" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "balanceDue" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
                           </TableHead>
                           <TableHead className="w-10" />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filtered.map((inv) => {
+                        {sortedInvoices.map((inv) => {
                           const dueStatus = getDueStatus(inv);
                           return (
                             <TableRow

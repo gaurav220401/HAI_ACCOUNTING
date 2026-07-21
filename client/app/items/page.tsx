@@ -1298,6 +1298,21 @@ function ItemsPageContent() {
     return matchesType && matchesSearch;
   });
 
+  const summary = useMemo(() => {
+    const totalStock = filtered.reduce(
+      (acc, i) => acc + Number(i.stockOnHand || 0),
+      0,
+    );
+    const goodsCount = filtered.filter((i) => i.itemType === "Goods").length;
+    const servicesCount = filtered.filter((i) => i.itemType === "Service").length;
+    return {
+      count: filtered.length,
+      totalStock,
+      goodsCount,
+      servicesCount,
+    };
+  }, [filtered]);
+
   useEffect(() => {
     const visibleSet = new Set(filtered.map((item) => item._id));
     setSelectedItemIds((prev) => {
@@ -1516,8 +1531,28 @@ function ItemsPageContent() {
         {/* ── Body: table OR split panel ── */}
         {!selectedId ? (
           /* ── Full-width table view (initial state) ── */
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <div className="bg-white flex flex-col flex-1 overflow-hidden border-t border-slate-100">
+          <div className="flex-1 overflow-hidden flex flex-col p-6 gap-4">
+            {/* Sleek Ultra-Compact KPI Summary Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Items</span>
+                <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Stock On Hand</span>
+                <span className="text-sm font-bold text-teal-700 tabular-nums">{summary.totalStock.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-indigo-600 uppercase tracking-wide">Goods</span>
+                <span className="text-sm font-bold text-indigo-700 tabular-nums">{summary.goodsCount}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-amber-500 uppercase tracking-wide">Services</span>
+                <span className="text-sm font-bold text-amber-600 tabular-nums">{summary.servicesCount}</span>
+              </div>
+            </div>
+
+            <div className="bg-white flex flex-col flex-1 overflow-hidden border border-slate-200 rounded-xl shadow-2xs">
             {fetching ? (
               <div className="space-y-0">
                 {/* Dummy action panel space with a pulse to keep alignment consistent */}
