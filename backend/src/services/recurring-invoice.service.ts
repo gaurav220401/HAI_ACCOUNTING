@@ -5,6 +5,7 @@ import Item from "../models/item.model";
 import PaymentTerms from "../models/payment-terms.model";
 import Organization from "../models/organization.model";
 import Contact from "../models/contact.model";
+import { Counter } from "../models/counter.model";
 import {
   IInvoiceItem,
   IRecurringInvoice,
@@ -253,17 +254,12 @@ export function summarizeInvoiceTotals(
 async function nextInvoiceNumber(
   organizationId: string | Types.ObjectId,
 ): Promise<string> {
-  const last = await Invoice.findOne({ organizationId })
-    .sort({ invoiceNumber: -1 })
-    .select("invoiceNumber")
-    .lean();
-
-  if (!last) return "INV-000001";
-
-  const match = last.invoiceNumber.match(/INV-(\d+)/);
-  if (!match) return "INV-000001";
-  const next = parseInt(match[1], 10) + 1;
-  return `INV-${String(next).padStart(6, "0")}`;
+  const counter = await Counter.findByIdAndUpdate(
+    `invoice-${organizationId}`,
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true },
+  );
+  return `INV-${String(counter!.seq).padStart(6, "0")}`;
 }
 
 async function resolveDueDate(
@@ -479,6 +475,34 @@ export async function generateInvoiceFromRecurringProfile(
   const runDate = startOfDay(
     options?.runDate || profile.nextRunDate || new Date(),
   );
+
+  // Guard: if an invoice was already generated for this run date, skip gracefully
+  const existingForRunDate = await Invoice.findOne({
+    organizationId: profile.organizationId,
+    recurringProfileId: profile._id,
+    invoiceDate: runDate,
+    isDeleted: { $ne: true },
+  })
+    .select("_id invoiceNumber")
+    .lean();
+
+  if (existingForRunDate) {
+    // Advance the schedule without creating a duplicate
+    if (options?.advanceSchedule !== false) {
+      const candidateNextRun = calculateNextRunDate(
+        runDate,
+        profile.frequency,
+        profile.startDate,
+      );
+      profile.nextRunDate = candidateNextRun;
+      if (shouldCompleteProfile(profile, candidateNextRun)) {
+        profile.status = "completed";
+      }
+      await profile.save();
+    }
+    return { invoice: existingForRunDate as any, profile };
+  }
+
   const invoiceNumber = await nextInvoiceNumber(profile.organizationId);
   const linkedItems = await applyItemTaxLinkageToItems({
     organizationId: profile.organizationId,

@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Counter } from "../models/counter.model";
 import Invoice from "../models/invoice.model";
 import Contact from "../models/contact.model";
 import SalesOrder from "../models/sales-order.model";
@@ -272,17 +273,12 @@ function applyCostLinesToInvoiceItems(items: any[] = [], costLines: any[] = []):
 
 
 async function nextInvoiceNumber(organizationId: any): Promise<string> {
-  const last = await Invoice.findOne({ organizationId })
-    .sort({ invoiceNumber: -1 })
-    .select("invoiceNumber")
-    .lean();
-
-  if (!last) return "INV-000001";
-
-  const match = last.invoiceNumber.match(/INV-(\d+)/);
-  if (!match) return "INV-000001";
-  const next = parseInt(match[1], 10) + 1;
-  return `INV-${String(next).padStart(6, "0")}`;
+  const counter = await Counter.findByIdAndUpdate(
+    `invoice-${organizationId}`,
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true },
+  );
+  return `INV-${String(counter!.seq).padStart(6, "0")}`;
 }
 
 // ─── List Invoices ─────────────────────────────────────────────────────

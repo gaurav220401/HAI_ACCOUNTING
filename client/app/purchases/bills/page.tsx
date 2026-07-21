@@ -86,6 +86,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtCur = (v: number) =>
@@ -2623,8 +2624,8 @@ function BillsPageContent() {
                         onClick={() => setSelectedId(b._id)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-sm text-foreground truncate">{getName(b.vendorId) || "—"}</div>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <DraggableText className="font-semibold text-sm text-foreground">{getName(b.vendorId) || "—"}</DraggableText>
                             <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
                               {b.billNumber} • {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>

@@ -263,14 +263,14 @@ export default function DeliveryChallansPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Delivery Challan#</TableHead>
-                    <TableHead>Sales Order#</TableHead>
-                    <TableHead>Reference Number</TableHead>
-                    <TableHead>Customer Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Invoice Status</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="w-28">Date</TableHead>
+                    <TableHead className="w-40">Delivery Challan#</TableHead>
+                    <TableHead className="w-32">Sales Order#</TableHead>
+                    <TableHead className="w-36">Reference Number</TableHead>
+                    <TableHead className="w-48">Customer Name</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead className="w-32">Invoice Status</TableHead>
+                    <TableHead className="w-32 text-right">Amount</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>

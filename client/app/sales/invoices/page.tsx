@@ -37,6 +37,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -533,12 +535,12 @@ export default function InvoicesPage() {
                             onClick={() => setSelectedId(inv._id)}
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-bold text-teal-700">
-                                  {inv.invoiceNumber}
+                              <div className="min-w-0 flex-1 overflow-hidden">
+                                <div className="text-sm font-bold text-teal-700 min-w-0 overflow-hidden">
+                                  <DraggableText className="text-sm font-bold">{inv.invoiceNumber}</DraggableText>
                                 </div>
-                                <div className="mt-0.5 truncate text-sm font-medium text-slate-700">
-                                  {getCustomerName(inv.customerId)}
+                                <div className="mt-0.5 text-sm font-medium text-slate-700 min-w-0 overflow-hidden">
+                                  <DraggableText className="text-sm font-medium text-slate-700">{getCustomerName(inv.customerId)}</DraggableText>
                                 </div>
                                 <div className="mt-1 text-xs text-slate-400">
                                   {formatDate(inv.invoiceDate)}
@@ -572,28 +574,28 @@ export default function InvoicesPage() {
                   : <Table>
                       <TableHeader className="bg-slate-50 border-b border-slate-200">
                         <TableRow>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                          <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                             Date
                           </TableHead>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                          <TableHead className="w-36 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                             Invoice#
                           </TableHead>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                          <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                             Order#
                           </TableHead>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                          <TableHead className="w-48 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                             Customer
                           </TableHead>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                          <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                             Status
                           </TableHead>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                          <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                             Due Date
                           </TableHead>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
+                          <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
                             Amount
                           </TableHead>
-                          <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
+                          <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right font-medium">
                             Balance Due
                           </TableHead>
                           <TableHead className="w-10" />

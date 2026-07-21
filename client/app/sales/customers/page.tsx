@@ -35,6 +35,16 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ExportDialog } from "@/components/export-dialog";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { DraggableText } from "@/components/ui/draggable-text";
+
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -44,6 +54,7 @@ import {
   DropdownMenuPortal,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -988,11 +999,11 @@ export default function CustomersPage() {
                     )}
                     onClick={() => void selectCustomer(row._id)}
                   >
-                    <div className="flex min-w-0 items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-foreground">{row.displayName}</p>
+                    <div className="flex min-w-0 items-center justify-between gap-2 overflow-hidden">
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <DraggableText className="text-xs font-medium text-foreground">{row.displayName}</DraggableText>
                         {row.companyName && row.companyName !== row.displayName ? (
-                          <p className="truncate text-[10px] text-muted-foreground">{row.companyName}</p>
+                          <DraggableText className="text-[10px] text-muted-foreground">{row.companyName}</DraggableText>
                         ) : null}
                         {row.isActive === false ? <p className="text-[10px] text-muted-foreground">Inactive</p> : null}
                       </div>
@@ -1022,24 +1033,24 @@ export default function CustomersPage() {
             ) : (
               <div className="flex-1 overflow-auto px-6 py-4">
                 <div className="overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-card">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/30">
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Company Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Email</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work Phone</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">GST Treatment</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receivables (BCY)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b bg-muted/30">
+                        <TableHead className="w-1/4 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Name</TableHead>
+                        <TableHead className="w-1/4 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Company Name</TableHead>
+                        <TableHead className="w-1/5 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Email</TableHead>
+                        <TableHead className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work Phone</TableHead>
+                        <TableHead className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">GST Treatment</TableHead>
+                        <TableHead className="w-40 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receivables (BCY)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {filtered.map((row) => {
                         const primary = row.contactPersons?.find((person) => person.isPrimary) ?? row.contactPersons?.[0];
                         const email = row.email || primary?.email || "";
                         const phone = row.phone || primary?.workPhone || primary?.mobile || row.mobile || "";
                         return (
-                          <tr
+                          <TableRow
                             key={row._id}
                             className={cn(
                               "cursor-pointer border-b transition-colors hover:bg-muted/40 last:border-0",
@@ -1047,11 +1058,11 @@ export default function CustomersPage() {
                             )}
                             onClick={() => void selectCustomer(row._id)}
                           >
-                            <td className="px-4 py-3">
+                            <TableCell className="px-4 py-3">
                               <span className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{row.displayName}</span>
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">{row.companyName || "-"}</td>
-                            <td className="px-4 py-3 text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-muted-foreground">{row.companyName || "-"}</TableCell>
+                            <TableCell className="px-4 py-3 text-muted-foreground">
                               {email ? (
                                 <span className="flex items-center gap-1">
                                   <Mail className="h-3.5 w-3.5" /> {email}
@@ -1059,8 +1070,8 @@ export default function CustomersPage() {
                               ) : (
                                 "-"
                               )}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-muted-foreground">
                               {phone ? (
                                 <span className="flex items-center gap-1">
                                   <Phone className="h-3.5 w-3.5" /> {phone}
@@ -1068,16 +1079,16 @@ export default function CustomersPage() {
                               ) : (
                                 "-"
                               )}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">{row.taxTreatment || "-"}</td>
-                            <td className="px-4 py-3 text-right tabular-nums font-medium">
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-muted-foreground">{row.taxTreatment || "-"}</TableCell>
+                            <TableCell className="px-4 py-3 text-right tabular-nums font-medium">
                               {fmt((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0), row.currency || "INR")}
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
             )}
