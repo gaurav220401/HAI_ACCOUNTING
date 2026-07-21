@@ -1683,7 +1683,7 @@ export function CustomerDetailView({
                     <thead>
                       <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="px-3 py-2 font-semibold">Date</th>
-                        <th className="px-3 py-2 font-semibold">Payment Number</th>
+                        <th className="px-3 py-2 font-semibold">Payment Voucher Number</th>
                         <th className="px-3 py-2 font-semibold">Reference Number</th>
                         <th className="px-3 py-2 font-semibold">Payment Mode</th>
                         <th className="px-3 py-2 font-semibold">Amount</th>

@@ -340,10 +340,10 @@ export default function QuotesPage() {
                         Date
                       </TableHead>
                       <TableHead className="w-36 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                        Quote#
+                        Quote Number
                       </TableHead>
                       <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
-                        Reference#
+                        Reference Number
                       </TableHead>
                       <TableHead className="w-48 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         Customer

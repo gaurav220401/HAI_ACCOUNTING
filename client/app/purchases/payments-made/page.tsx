@@ -546,10 +546,10 @@ export default function PaymentsMadePage() {
                     <thead className="border-b bg-slate-50 text-[11px] uppercase text-slate-600">
                       <tr>
                         <th className="px-3 py-2 text-left">Date</th>
-                        <th className="px-3 py-2 text-left">Payment #</th>
-                        <th className="px-3 py-2 text-left">Reference#</th>
+                        <th className="px-3 py-2 text-left">Payment Voucher Number</th>
+                        <th className="px-3 py-2 text-left">Reference Number</th>
                         <th className="px-3 py-2 text-left">Vendor Name</th>
-                        <th className="px-3 py-2 text-left">Bill#</th>
+                        <th className="px-3 py-2 text-left">Bill Number</th>
                         <th className="px-3 py-2 text-left">Mode</th>
                         <th className="px-3 py-2 text-left">Status</th>
                         <th className="px-3 py-2 text-right">Amount</th>
@@ -690,7 +690,7 @@ export default function PaymentsMadePage() {
                   </div>
 
                   <div className="text-xs text-muted-foreground">
-                    Payment #{selectedPayment.payment_number}
+                    Payment Voucher No. {selectedPayment.payment_number}
                   </div>
 
                   <Button
@@ -737,7 +737,7 @@ export default function PaymentsMadePage() {
                   <h2 className="mb-4 text-center text-xl font-semibold tracking-wide text-slate-800">PAYMENTS MADE</h2>
 
                   <div className="grid gap-3 border-b pb-6 text-sm sm:grid-cols-[220px_1fr]">
-                    <p className="text-muted-foreground">Payment#</p>
+                    <p className="text-muted-foreground">Payment Voucher Number</p>
                     <p className="font-semibold text-slate-900">{selectedPayment.payment_number}</p>
 
                     <p className="text-muted-foreground">Payment Date</p>
@@ -921,7 +921,7 @@ function FormBody({
           </div>
 
           <div className="vendor-dependent space-y-1.5">
-            <Label>Payment #*</Label>
+            <Label>Payment Voucher Number*</Label>
             <Input
               disabled={vendorLocked}
               value={form.payment_number}
@@ -1028,7 +1028,7 @@ function FormBody({
           </div>
 
           <div className="vendor-dependent space-y-1.5">
-            <Label>Reference#</Label>
+            <Label>Reference Number</Label>
             <Input
               disabled={vendorLocked}
               value={form.reference_number}
@@ -1051,7 +1051,7 @@ function FormBody({
                 <thead className="bg-slate-50 text-xs uppercase text-slate-600">
                   <tr>
                     <th className="border-b px-3 py-2 text-left">Date</th>
-                    <th className="border-b px-3 py-2 text-left">Bill#</th>
+                    <th className="border-b px-3 py-2 text-left">Bill Number</th>
                     <th className="border-b px-3 py-2 text-right">Bill Amount</th>
                     <th className="border-b px-3 py-2 text-right">Amount Due</th>
                     <th className="border-b px-3 py-2 text-right">Payment</th>

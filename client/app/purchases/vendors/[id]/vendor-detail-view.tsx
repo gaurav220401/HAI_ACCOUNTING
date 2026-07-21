@@ -1989,7 +1989,7 @@ function BillPaymentsSection({ payments, loading }: { payments: PaymentMade[]; l
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
-              <TableHead>Payment #</TableHead><TableHead>Date</TableHead><TableHead>Mode</TableHead>
+              <TableHead>Payment Voucher Number</TableHead><TableHead>Date</TableHead><TableHead>Mode</TableHead>
               <TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead>
             </TableRow>
           </TableHeader>
