@@ -238,7 +238,7 @@ export default function NewInventoryPackagePage() {
       return;
     }
     if (!packageSlipNumber.trim()) {
-      toast.error("Package Slip# is required");
+      toast.error("Package Slip Number is required");
       return;
     }
     if (totalItems <= 0) {
@@ -350,7 +350,7 @@ export default function NewInventoryPackagePage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Sales Order#</Label>
+                <Label>Sales Order Number</Label>
                 <Select
                   value={selectedSalesOrderId}
                   onValueChange={setSelectedSalesOrderId}
@@ -387,7 +387,7 @@ export default function NewInventoryPackagePage() {
             <CardContent className="space-y-6 pt-6">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label>Package Slip#</Label>
+                  <Label>Package Slip Number</Label>
                   <Input
                     value={packageSlipNumber}
                     onChange={(e) => setPackageSlipNumber(e.target.value)}

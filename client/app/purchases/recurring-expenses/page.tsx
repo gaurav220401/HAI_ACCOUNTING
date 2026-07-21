@@ -8,6 +8,7 @@ import {
   ArrowUpDown, Upload, Download, ChevronRight, Eye, EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DraggableText } from "@/components/ui/draggable-text";
 import { useAuth } from "@/contexts/auth-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
@@ -328,8 +329,14 @@ function RecurringDetailPanel({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-            <X className="h-4 w-4" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+            onClick={onClose}
+          >
+            <X className="h-3.5 w-3.5" />
+            Close
           </Button>
         </div>
       </div>
@@ -1351,10 +1358,18 @@ export default function RecurringExpensesPage() {
                         onClick={() => setSelectedId(rec._id)}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold truncate text-teal-700 hover:text-teal-800 hover:underline">{rec.profileName}</span>
-                          <span className="text-xs font-semibold shrink-0 ml-2">{fmtCurrency(rec.amount, rec.currency)}</span>
+                          <span className="text-xs font-semibold overflow-hidden text-teal-700 hover:text-teal-800 hover:underline flex-1 mr-2">
+                            <DraggableText alwaysActive className="block truncate">
+                              {rec.profileName}
+                            </DraggableText>
+                          </span>
+                          <span className="text-xs font-semibold shrink-0">{fmtCurrency(rec.amount, rec.currency)}</span>
                         </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{getName(rec.expenseAccountId) || "—"}</p>
+                        <div className="text-[11px] text-muted-foreground mt-0.5 overflow-hidden">
+                          <DraggableText alwaysActive className="block truncate">
+                            {getName(rec.expenseAccountId) || "—"}
+                          </DraggableText>
+                        </div>
                         <div className="flex items-center justify-between mt-0.5">
                           <StatusPill status={rec.status} />
                           <span className="text-[11px] text-muted-foreground">{freqLabel(rec)}</span>
@@ -1407,9 +1422,15 @@ export default function RecurringExpensesPage() {
                               className="h-3.5 w-3.5"
                             />
                           </td>
-                          <td className="px-4 py-3 font-medium text-teal-700 hover:text-teal-800 hover:underline" onClick={() => setSelectedId(rec._id)}>{rec.profileName}</td>
-                          <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{getName(rec.expenseAccountId) || "—"}</td>
-                          <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{getName(rec.vendorId) || "—"}</td>
+                          <td className="px-4 py-3 font-medium text-teal-700 hover:text-teal-800 hover:underline max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
+                            <DraggableText alwaysActive className="block truncate">{rec.profileName}</DraggableText>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
+                            <DraggableText alwaysActive className="block truncate">{getName(rec.expenseAccountId) || "—"}</DraggableText>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
+                            <DraggableText alwaysActive className="block truncate">{getName(rec.vendorId) || "—"}</DraggableText>
+                          </td>
                           <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{freqLabel(rec)}</td>
                           <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.lastExpenseDate)}</td>
                           <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.nextExpenseDate)}</td>

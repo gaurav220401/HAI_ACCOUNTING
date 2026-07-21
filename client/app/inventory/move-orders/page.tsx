@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, RefreshCw, Plus, Trash2, ArrowRightLeft } from "lucide-react";
+import { Loader2, RefreshCw, Plus, Trash2, ArrowRightLeft, Search, Calendar, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { InventoryShell } from "@/app/inventory/_components/inventory-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -58,11 +60,82 @@ export default function InventoryMoveOrdersPage() {
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<MoveOrderFormState>(DEFAULT_FORM);
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const trackedItems = useMemo(
     () => (items || []).filter((item) => item.inventoryTracked && item.isActive),
     [items],
   );
+
+  type MoveOrderSortField = "orderNumber" | "date" | "from" | "to" | "status";
+  type MoveOrderSortOrder = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<MoveOrderSortField>("date");
+  const [sortOrder, setSortOrder] = useState<MoveOrderSortOrder>("desc");
+
+  function toggleSort(field: MoveOrderSortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
+  const filteredMoveOrders = useMemo(() => {
+    return moveOrders.filter((mo) => {
+      if (search) {
+        const q = search.toLowerCase();
+        const matches =
+          (mo.orderNumber || "").toLowerCase().includes(q) ||
+          (mo.status || "").toLowerCase().includes(q) ||
+          (mo.referenceNumber || "").toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      if (fromDate || toDate) {
+        const d = mo.date ? new Date(mo.date).toISOString().slice(0, 10) : "";
+        if (fromDate && d < fromDate) return false;
+        if (toDate && d > toDate) return false;
+      }
+      return true;
+    });
+  }, [moveOrders, search, fromDate, toDate]);
+
+  const sortedMoveOrders = useMemo(() => {
+    const list = [...filteredMoveOrders];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "orderNumber":
+          aVal = (a.orderNumber || "").toLowerCase();
+          bVal = (b.orderNumber || "").toLowerCase();
+          break;
+        case "date":
+          aVal = new Date(a.date || 0).getTime();
+          bVal = new Date(b.date || 0).getTime();
+          break;
+        case "from":
+          aVal = getWarehouseName(a.fromWarehouseId).toLowerCase();
+          bVal = getWarehouseName(b.fromWarehouseId).toLowerCase();
+          break;
+        case "to":
+          aVal = getWarehouseName(a.toWarehouseId).toLowerCase();
+          bVal = getWarehouseName(b.toWarehouseId).toLowerCase();
+          break;
+        case "status":
+          aVal = (a.status || "").toLowerCase();
+          bVal = (b.status || "").toLowerCase();
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [moveOrders, sortField, sortOrder, warehouses]);
 
   const loadMoveOrders = useCallback(async () => {
     try {
@@ -230,9 +303,81 @@ export default function InventoryMoveOrdersPage() {
     <InventoryShell
       title="Move Orders"
       actions={(
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md" onClick={loadData} disabled={fetching}>
-          <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative w-52">
+            <Search className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="Search move orders..."
+              className="pl-8 h-8 text-xs bg-white border-slate-200"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Compact Date Range Popover */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                  (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                )}
+              >
+                <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                {fromDate || toDate ? (
+                  <span>
+                    {fromDate || "Start"} - {toDate || "End"}
+                  </span>
+                ) : (
+                  <span>Date Range</span>
+                )}
+                <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                {(fromDate || toDate) && (
+                  <button
+                    onClick={() => {
+                      setFromDate("");
+                      setToDate("");
+                    }}
+                    className="text-xs text-rose-600 hover:underline font-medium"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                  <Input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="h-8 text-xs bg-slate-50 border-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                  <Input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="h-8 text-xs bg-slate-50 border-slate-200"
+                  />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Button variant="outline" size="sm" className="h-8 px-2 border-slate-200 bg-white" onClick={loadData} disabled={fetching}>
+            <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       )}
     >
       <div className="space-y-6">
@@ -356,24 +501,59 @@ export default function InventoryMoveOrdersPage() {
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 border-b border-slate-200 text-left">
                     <tr>
-                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Order #</th>
-                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Date</th>
-                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">From</th>
-                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">To</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("orderNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Order Number
+                          <span className={sortField === "orderNumber" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "orderNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("date")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Date
+                          <span className={sortField === "date" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "date" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("from")} className="group flex items-center gap-1 hover:text-teal-700">
+                          From
+                          <span className={sortField === "from" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "from" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("to")} className="group flex items-center gap-1 hover:text-teal-700">
+                          To
+                          <span className={sortField === "to" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "to" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
                       <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Items</th>
-                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Status</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Status
+                          <span className={sortField === "status" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
                       <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {moveOrders.length === 0 && (
+                    {sortedMoveOrders.length === 0 && (
                       <tr>
                         <td className="px-4 py-6 text-muted-foreground text-center" colSpan={7}>
                           No move orders recorded yet.
                         </td>
                       </tr>
                     )}
-                    {moveOrders.map((order) => (
+                    {sortedMoveOrders.map((order) => (
                       <tr key={order._id} className="border-t border-slate-100 hover:bg-teal-50/30 transition-colors">
                         <td className="px-4 py-2 font-medium text-teal-700 hover:text-teal-800 hover:underline cursor-pointer" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>{order.orderNumber}</td>
                         <td className="px-4 py-2 text-slate-500">{new Date(order.date).toLocaleDateString("en-IN")}</td>

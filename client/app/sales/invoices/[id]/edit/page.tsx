@@ -691,7 +691,7 @@ export default function EditInvoicePage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-sm font-bold text-slate-700">
-                      Invoice# <span className="text-red-500">*</span>
+                      Invoice Number <span className="text-red-500">*</span>
                     </Label>
                     <div className="flex gap-2">
                       <Input
@@ -778,7 +778,7 @@ export default function EditInvoicePage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm font-bold text-slate-700">
-                      Reference#
+                      Reference Number
                     </Label>
                     <Input
                       value={referenceNumber}

@@ -115,6 +115,7 @@ export async function executeRecurringExpenseRun(rec: any, scheduledRunDate: Dat
     await expense.save();
   } catch (err: any) {
     if (err?.code === 11000) {
+      // Case 1: duplicate on recurringId+runDate – another concurrent insert already created it
       const duplicateRunExpense = await Expense.findOne({
         organizationId: rec.organizationId,
         recurringId: rec._id,
@@ -125,8 +126,38 @@ export async function executeRecurringExpenseRun(rec: any, scheduledRunDate: Dat
         await advanceRecurringStateAfterRun(rec, normalizedRunDate, duplicateRunExpense._id, creatorId);
         return { expense: duplicateRunExpense, skipped: true };
       }
+
+      // Case 2: duplicate on expenseNumber – counter sequence drifted; retry once with a fresh number
+      const keyPattern = err?.keyPattern || err?.errorResponse?.keyPattern || {};
+      if (keyPattern.expenseNumber) {
+        // Clear cached expenseNumber so the pre-save hook re-runs the counter increment
+        (expense as any).expenseNumber = undefined;
+        (expense as any).isNew = true;
+        try {
+          await expense.save();
+        } catch (retryErr: any) {
+          // If the retry also fails with a run-date collision, handle it
+          if (retryErr?.code === 11000) {
+            const retryDup = await Expense.findOne({
+              organizationId: rec.organizationId,
+              recurringId: rec._id,
+              recurringRunDate: normalizedRunDate,
+              isDeleted: false,
+            });
+            if (retryDup) {
+              await advanceRecurringStateAfterRun(rec, normalizedRunDate, retryDup._id, creatorId);
+              return { expense: retryDup, skipped: true };
+            }
+          }
+          throw retryErr;
+        }
+        // Retry succeeded – fall through to advance state below
+      } else {
+        throw err;
+      }
+    } else {
+      throw err;
     }
-    throw err;
   }
 
   await advanceRecurringStateAfterRun(rec, normalizedRunDate, expense._id, creatorId);

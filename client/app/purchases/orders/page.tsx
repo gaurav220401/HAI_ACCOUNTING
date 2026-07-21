@@ -42,6 +42,7 @@ import { itemApi } from "@/lib/api/items";
 import { accountApi } from "@/lib/api/accounts";
 import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -1948,8 +1949,8 @@ export default function PurchaseOrdersPage() {
                         onClick={() => setSelectedId(o._id)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-sm text-teal-700 hover:text-teal-800 hover:underline truncate">{getName(o.vendorId) || "—"}</div>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <DraggableText className="font-semibold text-sm text-teal-700 hover:text-teal-800 hover:underline">{getName(o.vendorId) || "—"}</DraggableText>
                             <div className="text-xs text-muted-foreground mt-0.5">
                               {o.purchaseOrderNumber} • {new Date(o.purchaseOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>
@@ -1976,9 +1977,15 @@ export default function PurchaseOrdersPage() {
                         <div className="px-2 py-2.5 text-muted-foreground text-xs">
                           {new Date(o.purchaseOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </div>
-                        <div className="px-2 py-2.5 text-teal-700 font-semibold hover:text-teal-800 hover:underline">{o.purchaseOrderNumber}</div>
-                        <div className="px-2 py-2.5 text-muted-foreground">{o.referenceNumber || ""}</div>
-                        <div className="px-2 py-2.5">{getName(o.vendorId)}</div>
+                        <div className="px-2 py-2.5 text-teal-700 font-semibold hover:text-teal-800 overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm font-semibold text-teal-700">{o.purchaseOrderNumber}</DraggableText>
+                        </div>
+                        <div className="px-2 py-2.5 text-muted-foreground overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm">{o.referenceNumber || ""}</DraggableText>
+                        </div>
+                        <div className="px-2 py-2.5 overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm">{getName(o.vendorId)}</DraggableText>
+                        </div>
                         <div className="px-2 py-2.5"><StatusPill status={o.status} /></div>
                         <div className="px-2 py-2.5 text-muted-foreground text-xs"></div>
                         <div className="px-2 py-2.5 text-right font-medium">₹{fmtCur(o.total)}</div>

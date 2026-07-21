@@ -178,7 +178,7 @@ function NewPutawayContent() {
         {/* Form Fields */}
         <div className="max-w-xl space-y-6">
           <div className="grid grid-cols-[160px_1fr] items-center gap-4">
-            <Label className="text-rose-600 font-medium text-sm">Putaway#*</Label>
+            <Label className="text-slate-700 font-medium text-sm">Putaway Number<span className="text-rose-500">*</span></Label>
             <div className="relative">
               <Input 
                 value={putawayNumber}

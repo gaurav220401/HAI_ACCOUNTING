@@ -86,6 +86,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtCur = (v: number) =>
@@ -2623,8 +2624,8 @@ function BillsPageContent() {
                         onClick={() => setSelectedId(b._id)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-sm text-foreground truncate">{getName(b.vendorId) || "—"}</div>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <DraggableText className="font-semibold text-sm text-foreground">{getName(b.vendorId) || "—"}</DraggableText>
                             <div className="text-xs text-muted-foreground mt-0.5" suppressHydrationWarning>
                               {b.billNumber} • {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>
@@ -2682,13 +2683,15 @@ function BillsPageContent() {
                         <div className="px-2 py-2.5 text-muted-foreground text-xs" suppressHydrationWarning>
                           {new Date(b.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </div>
-                        <div className="px-2 py-2.5 text-teal-700 hover:text-teal-800 hover:underline font-semibold">
-                          {b.billNumber}
+                        <div className="px-2 py-2.5 text-teal-700 hover:text-teal-800 font-semibold overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm font-semibold text-teal-700">{b.billNumber}</DraggableText>
                         </div>
-                        <div className="px-2 py-2.5 text-muted-foreground">
-                          {b.referenceNumber || ""}
+                        <div className="px-2 py-2.5 text-muted-foreground overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm">{b.referenceNumber || ""}</DraggableText>
                         </div>
-                        <div className="px-2 py-2.5 font-medium text-slate-700">{getName(b.vendorId)}</div>
+                        <div className="px-2 py-2.5 font-medium text-slate-700 overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm font-medium">{getName(b.vendorId)}</DraggableText>
+                        </div>
                         <div className="px-2 py-2.5">
                           <span className={cn(
                             "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",

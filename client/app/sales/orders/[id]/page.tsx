@@ -48,6 +48,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 import {
   salesOrderApi,
   type SalesOrder,
@@ -768,9 +770,9 @@ export default function SalesOrderDetailsPage() {
                       (isActive ? "bg-muted" : "")
                     }
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-medium truncate">
-                        {o.salesOrderNumber}
+                    <div className="flex items-center justify-between gap-2 overflow-hidden">
+                      <div className="text-sm font-medium min-w-0 flex-1 overflow-hidden">
+                        <DraggableText className="text-sm font-medium">{o.salesOrderNumber}</DraggableText>
                       </div>
                       <Badge
                         variant={statusVariant(o.status)}
@@ -779,8 +781,8 @@ export default function SalesOrderDetailsPage() {
                         {o.status}
                       </Badge>
                     </div>
-                    <div className="mt-0.5 text-xs text-muted-foreground truncate">
-                      {getCustomerName(o.customerId) || "—"}
+                    <div className="mt-0.5 text-xs text-muted-foreground min-w-0 overflow-hidden">
+                      <DraggableText className="text-xs text-muted-foreground">{getCustomerName(o.customerId) || "—"}</DraggableText>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground tabular-nums">
                       {o.total != null ?
@@ -806,12 +808,12 @@ export default function SalesOrderDetailsPage() {
               </div>
             : <>
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl font-bold">
-                      {active.salesOrderNumber}
+                  <div className="min-w-0 max-w-xl">
+                    <h1 className="text-2xl font-bold max-w-full overflow-hidden">
+                      <DraggableText className="text-2xl font-bold">{active.salesOrderNumber}</DraggableText>
                     </h1>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                      <span>{getCustomerName(active.customerId) || "—"}</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground max-w-full overflow-hidden">
+                      <DraggableText className="max-w-[250px] inline-block font-medium">{getCustomerName(active.customerId) || "—"}</DraggableText>
                       <span>{formatDate(active.orderDate)}</span>
                       {active.reference ?
                         <span>Ref {active.reference}</span>

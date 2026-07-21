@@ -660,11 +660,11 @@ export default function EditQuotePage() {
             <div />
 
             <div className="space-y-1.5">
-              <Label className="text-xs text-slate-600 font-semibold">Quote#</Label>
+              <Label className="text-xs text-slate-600 font-semibold">Quote Number</Label>
               <Input value={quoteNumber} disabled className="border-slate-200 bg-slate-100/50 h-9 cursor-not-allowed" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-slate-600 font-semibold">Reference#</Label>
+              <Label className="text-xs text-slate-600 font-semibold">Reference Number</Label>
               <Input
                 value={referenceNumber}
                 onChange={(e) => setReferenceNumber(e.target.value)}

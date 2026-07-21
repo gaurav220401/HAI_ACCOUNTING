@@ -27,6 +27,8 @@ import { contactApi, type Contact } from "@/lib/api/contacts";
 import { VendorDetailView } from "./[id]/vendor-detail-view";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 import { ExportDialog } from "@/components/export-dialog";
 import {
   DropdownMenu,
@@ -38,6 +40,15 @@ import {
   DropdownMenuPortal,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
 
 const fmt = (v?: number, currency = "INR") =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 2 }).format(v ?? 0);
@@ -393,12 +404,12 @@ export default function VendorsPage() {
                     onClick={() => selectVendor(c._id)}
                   >
                     <div className="flex items-center justify-between gap-2 min-w-0">
-                      <div className="min-w-0 flex-1">
-                        <p className={cn("text-[13px] font-semibold truncate", selectedId === c._id && c.isActive !== false ? "text-teal-700" : "text-slate-800")}>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <DraggableText className={cn("text-[13px] font-semibold", selectedId === c._id && c.isActive !== false ? "text-teal-700" : "text-slate-800")}>
                           {c.displayName}
-                        </p>
+                        </DraggableText>
                         {c.companyName && c.companyName !== c.displayName && (
-                          <p className="text-[10px] text-slate-400 truncate mt-0.5">{c.companyName}</p>
+                          <DraggableText className="text-[10px] text-slate-400 mt-0.5">{c.companyName}</DraggableText>
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -437,25 +448,25 @@ export default function VendorsPage() {
               /* Full-width table */
               <div className="flex-1 overflow-auto px-6 py-4">
                 <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50">
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Name</th>
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Company Name</th>
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Email</th>
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Work Phone</th>
-                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Payables (BCY)</th>
-                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Unused Credits (BCY)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b border-slate-200 bg-slate-50">
+                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Name</TableHead>
+                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Company Name</TableHead>
+                        <TableHead className="w-24 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
+                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Email</TableHead>
+                        <TableHead className="w-32 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Work Phone</TableHead>
+                        <TableHead className="w-36 px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Payables (BCY)</TableHead>
+                        <TableHead className="w-40 px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Unused Credits (BCY)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {filtered.map((c) => {
                         const primary = c.contactPersons?.find((p) => p.isPrimary) ?? c.contactPersons?.[0];
                         const email = c.email ?? primary?.email ?? "";
                         const phone = c.phone ?? primary?.workPhone ?? primary?.mobile ?? "";
                         return (
-                          <tr
+                          <TableRow
                             key={c._id}
                             className={cn(
                               "border-b border-slate-100 last:border-0 hover:bg-slate-100/70 cursor-pointer transition-colors px-4 py-2.5",
@@ -463,11 +474,17 @@ export default function VendorsPage() {
                             )}
                             onClick={() => selectVendor(c._id)}
                           >
-                            <td className="px-4 py-3">
-                              <span className={cn("text-[13px] font-medium hover:underline", c.isActive === false ? "text-slate-400" : "text-teal-700 hover:text-teal-800")}>{c.displayName}</span>
-                            </td>
-                            <td className="px-4 py-3 text-slate-500">{c.companyName ?? "—"}</td>
-                            <td className="px-4 py-3 text-slate-500">
+                            <TableCell className="px-4 py-3 max-w-[160px] overflow-hidden">
+                              <DraggableText alwaysActive className={cn("text-[13px] font-medium hover:underline block truncate", c.isActive === false ? "text-slate-400" : "text-teal-700 hover:text-teal-800")}>
+                                {c.displayName}
+                              </DraggableText>
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-slate-500 max-w-[160px] overflow-hidden">
+                              <DraggableText alwaysActive className="block truncate">
+                                {c.companyName ?? "—"}
+                              </DraggableText>
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-slate-500">
                               {c.isActive === false ? (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none">
                                   <span className="h-1 w-1 rounded-full bg-slate-400" />
@@ -479,34 +496,34 @@ export default function VendorsPage() {
                                   Active
                                 </span>
                               )}
-                            </td>
-                            <td className="px-4 py-3 text-slate-500">
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-slate-500 max-w-[180px] overflow-hidden">
                               {email ? (
-                                <span className="flex items-center gap-1">
-                                  <Mail className="h-3.5 w-3.5" />
-                                  {email}
-                                </span>
+                                <DraggableText alwaysActive className="flex items-center gap-1">
+                                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{email}</span>
+                                </DraggableText>
                               ) : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-slate-500">
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-slate-500 max-w-[140px] overflow-hidden">
                               {phone ? (
-                                <span className="flex items-center gap-1">
-                                  <Phone className="h-3.5 w-3.5" />
-                                  {phone}
-                                </span>
+                                <DraggableText alwaysActive className="flex items-center gap-1">
+                                  <Phone className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{phone}</span>
+                                </DraggableText>
                               ) : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-700">
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-right tabular-nums font-semibold text-slate-700">
                               {fmt(c.outstandingPayable ?? 0, c.currency ?? "INR")}
-                            </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-slate-500">
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-right tabular-nums text-slate-500">
                               {fmt(c.unusedCredits ?? 0, c.currency ?? "INR")}
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
             )}

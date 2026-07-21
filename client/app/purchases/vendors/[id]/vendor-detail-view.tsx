@@ -41,6 +41,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -1987,7 +1989,7 @@ function BillPaymentsSection({ payments, loading }: { payments: PaymentMade[]; l
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
-              <TableHead>Payment #</TableHead><TableHead>Date</TableHead><TableHead>Mode</TableHead>
+              <TableHead>Payment Voucher Number</TableHead><TableHead>Date</TableHead><TableHead>Mode</TableHead>
               <TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead>
             </TableRow>
           </TableHeader>
@@ -2811,10 +2813,12 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
     <div className="flex h-full min-h-0 flex-col flex-1 overflow-hidden">
       {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex items-center justify-between px-5 py-3 border-b bg-background shrink-0 gap-3">
-        <div className="min-w-0">
-          <h1 className="text-base font-semibold truncate">{vendor.displayName}</h1>
+        <div className="min-w-0 max-w-xl">
+          <h1 className="text-base font-semibold max-w-full overflow-hidden">
+            <DraggableText className="text-base font-semibold">{vendor.displayName}</DraggableText>
+          </h1>
           {vendor.companyName && vendor.companyName !== vendor.displayName && (
-            <p className="text-xs text-muted-foreground truncate">{vendor.companyName}</p>
+            <DraggableText className="text-xs text-muted-foreground max-w-full">{vendor.companyName}</DraggableText>
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -2942,8 +2946,14 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
 
           {/* Close button (when used in split-panel) */}
           {onClose && (
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onClose}>
-              <X className="h-4 w-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+              onClick={onClose}
+            >
+              <X className="h-3.5 w-3.5" />
+              Close
             </Button>
           )}
         </div>
@@ -2997,10 +3007,14 @@ export function VendorDetailView({ vendor: initialVendor, onVendorUpdate, onClos
                       <User className="h-8 w-8 text-teal-600" />
                     )}
                   </div>
-                  <div className="pt-1">
-                    <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">{vendor.companyName}</p>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h2 className="text-xl font-semibold leading-none">{primaryContact?.name ?? "No Primary Contact"}</h2>
+                  <div className="pt-1 min-w-0 max-w-xs overflow-hidden">
+                    {vendor.companyName && (
+                      <DraggableText className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">{vendor.companyName}</DraggableText>
+                    )}
+                    <div className="flex items-center gap-2 mb-1 max-w-full overflow-hidden">
+                      <h2 className="text-xl font-semibold leading-none max-w-full overflow-hidden flex-1">
+                        <DraggableText className="text-xl font-semibold leading-tight">{primaryContact?.name ?? "No Primary Contact"}</DraggableText>
+                      </h2>
                       {primaryContact && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

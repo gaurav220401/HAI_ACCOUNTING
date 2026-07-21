@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 
 // ─── Print helper ─────────────────────────────────────────────────────────────
 
@@ -1417,17 +1419,17 @@ export default function ExpensesPage() {
                     >
                       <input type="checkbox" className="accent-teal-600 mt-0.5 shrink-0" onClick={(e) => e.stopPropagation()} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex justify-between gap-2 items-start">
-                          <p className={cn("text-[13px] font-semibold truncate", isSel ? "text-teal-700" : "text-slate-800")}>
+                        <div className="flex justify-between gap-2 items-start overflow-hidden">
+                          <DraggableText className={cn("text-[13px] font-semibold", isSel ? "text-teal-700" : "text-slate-800")}>
                             {acct}
-                          </p>
+                          </DraggableText>
                           <p className="text-xs font-semibold tabular-nums shrink-0">
                             {fmtCurrency(exp.amount, exp.currency)}
                           </p>
                         </div>
-                        <div className="flex gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
+                        <div className="flex gap-1.5 mt-0.5 text-[10px] text-muted-foreground overflow-hidden">
                           <span>{fmtDate(exp.date)}</span>
-                          {vendor && <><span>·</span><span className="truncate">{vendor}</span></>}
+                          {vendor && <><span>·</span><DraggableText className="text-[10px] text-muted-foreground">{vendor}</DraggableText></>}
                         </div>
                       </div>
                     </div>
@@ -1482,11 +1484,21 @@ export default function ExpensesPage() {
                             />
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">{fmtDate(expense.date)}</td>
-                          <td className="px-3 py-2.5 text-teal-700 hover:text-teal-800 font-semibold">{acct}</td>
-                          <td className="px-3 py-2.5 text-slate-400">{expense.invoiceNumber || ""}</td>
-                          <td className="px-3 py-2.5">{vendor}</td>
-                          <td className="px-3 py-2.5">{paidThru}</td>
-                          <td className="px-3 py-2.5">{customer}</td>
+                          <td className="px-3 py-2.5 text-teal-700 hover:text-teal-800 font-semibold max-w-[160px]">
+                            <DraggableText alwaysActive className="text-sm font-semibold text-teal-700">{acct}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-400 max-w-[120px]">
+                            <DraggableText alwaysActive className="text-sm text-slate-400">{expense.invoiceNumber || ""}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 max-w-[160px]">
+                            <DraggableText alwaysActive className="text-sm">{vendor}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 max-w-[140px]">
+                            <DraggableText alwaysActive className="text-sm">{paidThru}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 max-w-[160px]">
+                            <DraggableText alwaysActive className="text-sm">{customer}</DraggableText>
+                          </td>
                           <td className="px-3 py-2.5">
                             <span className={cn(
                               "text-[11px] font-semibold tracking-wide uppercase",

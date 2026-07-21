@@ -26,6 +26,7 @@ import {
   sumMoney,
 } from "../utils/money";
 import { Types } from "mongoose";
+import { Counter } from "../models/counter.model";
 
 const VALID_SALES_ORDER_STATUSES = new Set<SalesOrderStatus>([
   "DRAFT",
@@ -379,17 +380,12 @@ function normalizeLineItems(items: any[] = [], discountLevel: string = "transact
 }
 
 async function nextInvoiceNumber(organizationId: any): Promise<string> {
-  const last = await Invoice.findOne({ organizationId })
-    .sort({ invoiceNumber: -1 })
-    .select("invoiceNumber")
-    .lean();
-
-  if (!last) return "INV-000001";
-
-  const match = String(last.invoiceNumber || "").match(/INV-(\d+)/);
-  if (!match) return "INV-000001";
-  const next = parseInt(match[1], 10) + 1;
-  return `INV-${String(next).padStart(6, "0")}`;
+  const counter = await Counter.findByIdAndUpdate(
+    `invoice-${organizationId}`,
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true },
+  );
+  return `INV-${String(counter!.seq).padStart(6, "0")}`;
 }
 
 async function nextSalesOrderNumber(organizationId: any): Promise<string> {

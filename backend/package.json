@@ -8,7 +8,7 @@
     "build": "rimraf dist && tsc",
     "start": "node dist/server.js",
     "test": "npm run test:integration",
-    "test:integration": "node --import tsx --test src/tests/integration/accounting-voucher.integration.test.ts src/tests/integration/contact-import.integration.test.ts src/tests/integration/account-import.integration.test.ts",
+    "test:integration": "node --import tsx --test src/tests/integration/accounting-voucher.integration.test.ts src/tests/integration/contact-import.integration.test.ts src/tests/integration/account-import.integration.test.ts src/tests/integration/invoice-number-dedup.integration.test.ts",
     "backfill:gl": "tsx src/scripts/backfill-gl-history.ts",
     "migrate:journal-number-index": "tsx src/scripts/migrate-journal-number-index.ts",
     "migrate:journal-number-index:dry-run": "tsx src/scripts/migrate-journal-number-index.ts --dry-run",

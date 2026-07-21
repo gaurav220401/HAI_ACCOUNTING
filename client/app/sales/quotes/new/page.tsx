@@ -640,10 +640,10 @@ export default function NewQuotePage() {
             {/* Empty right placeholder */}
             <div />
 
-            {/* Quote # */}
+            {/* Quote Number */}
             <div className="space-y-1.5">
               <Label className="text-xs text-slate-600 font-semibold">
-                Quote#<span className="text-rose-500">*</span>
+                Quote Number<span className="text-rose-500">*</span>
               </Label>
               <div className="flex gap-2">
                 <Input
@@ -657,9 +657,9 @@ export default function NewQuotePage() {
               </div>
             </div>
 
-            {/* Reference # */}
+            {/* Reference Number */}
             <div className="space-y-1.5">
-              <Label className="text-xs text-slate-600 font-semibold">Reference#</Label>
+              <Label className="text-xs text-slate-600 font-semibold">Reference Number</Label>
               <Input
                 value={referenceNumber}
                 onChange={(e) => setReferenceNumber(e.target.value)}

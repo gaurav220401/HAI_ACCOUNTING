@@ -655,7 +655,7 @@ export default function EditSalesOrderPage() {
             </div>
 
             <div>
-              <Label htmlFor="salesOrderNumber">Sales Order # *</Label>
+              <Label htmlFor="salesOrderNumber">Sales Order Number *</Label>
               <Input
                 id="salesOrderNumber"
                 name="salesOrderNumber"
@@ -672,7 +672,7 @@ export default function EditSalesOrderPage() {
             </div>
 
             <div>
-              <Label htmlFor="reference">Reference #</Label>
+              <Label htmlFor="reference">Reference Number</Label>
               <Input
                 id="reference"
                 name="reference"

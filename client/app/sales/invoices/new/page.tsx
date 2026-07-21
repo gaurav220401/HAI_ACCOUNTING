@@ -803,7 +803,7 @@ function SendEmailModal({
               {/* Invoice Header Banner */}
               <div className="bg-teal-600 text-white text-center py-4 rounded">
                 <h2 className="text-lg font-semibold">
-                  Invoice #{invoiceNumber}
+                  Invoice Number {invoiceNumber}
                 </h2>
               </div>
 
@@ -1696,10 +1696,10 @@ function NewInvoicePageContent() {
             {/* Empty right */}
             <div />
 
-            {/* Invoice # */}
+            {/* Invoice Number */}
             <div className="space-y-1.5">
               <Label>
-                Invoice#<span className="text-red-500">*</span>
+                Invoice Number<span className="text-red-500">*</span>
               </Label>
               <div className="flex gap-2">
                 <Input
@@ -1712,9 +1712,9 @@ function NewInvoicePageContent() {
               </div>
             </div>
 
-            {/* Reference # */}
+            {/* Reference Number */}
             <div className="space-y-1.5">
-              <Label>Reference#</Label>
+              <Label>Reference Number</Label>
               <Input
                 value={referenceNumber}
                 onChange={(e) => setReferenceNumber(e.target.value)}

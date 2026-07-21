@@ -10,12 +10,15 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +66,7 @@ import {
   type CreditNoteStatus,
 } from "@/lib/api/credit-notes";
 import { invoiceApi, type Invoice } from "@/lib/api/invoices";
+import { DraggableText } from "@/components/ui/draggable-text";
 
 const STATUS_FILTERS: Array<CreditNoteStatus | "All"> = [
   "All",
@@ -280,11 +284,29 @@ export default function CreditNotesPage() {
     };
   }, [selectedId, selectedCredit?.updatedAt]);
 
-  const filteredCredits = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return credits;
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
-    return credits.filter((credit) => {
+  const filteredCredits = useMemo(() => {
+    let list = credits;
+
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter(
+        (credit) => new Date(credit.creditNoteDate || 0).getTime() >= fromTime,
+      );
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter(
+        (credit) => new Date(credit.creditNoteDate || 0).getTime() <= toTime,
+      );
+    }
+
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+
+    return list.filter((credit) => {
       const number = (credit.creditNoteNumber || "").toLowerCase();
       const reference = (credit.referenceNumber || "").toLowerCase();
       const subject = (credit.subject || "").toLowerCase();
@@ -296,7 +318,28 @@ export default function CreditNotesPage() {
         customer.includes(q)
       );
     });
-  }, [credits, search]);
+  }, [credits, search, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    const totalAmount = filteredCredits.reduce(
+      (acc, c) => acc + Number(c.total || 0),
+      0,
+    );
+    const totalApplied = filteredCredits.reduce(
+      (acc, c) => acc + Number(c.appliedAmount || 0),
+      0,
+    );
+    const totalBalance = filteredCredits.reduce(
+      (acc, c) => acc + Number(c.balanceAmount || 0),
+      0,
+    );
+    return {
+      count: filteredCredits.length,
+      totalAmount,
+      totalApplied,
+      totalBalance,
+    };
+  }, [filteredCredits]);
 
   async function downloadPdf(id: string, creditNumber?: string) {
     try {
@@ -452,10 +495,73 @@ export default function CreditNotesPage() {
     );
   }
 
+  type CreditSortField = "date" | "number" | "reference" | "customer" | "status" | "total" | "applied" | "balance";
+  type CreditSortOrder = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<CreditSortField>("date");
+  const [sortOrder, setSortOrder] = useState<CreditSortOrder>("desc");
+
+  function toggleSort(field: CreditSortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
+  const sortedCredits = useMemo(() => {
+    const list = [...filteredCredits];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "date":
+          aVal = new Date(a.creditNoteDate || 0).getTime();
+          bVal = new Date(b.creditNoteDate || 0).getTime();
+          break;
+        case "number":
+          aVal = a.creditNoteNumber || "";
+          bVal = b.creditNoteNumber || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "reference":
+          aVal = (a.referenceNumber || "").toLowerCase();
+          bVal = (b.referenceNumber || "").toLowerCase();
+          break;
+        case "customer":
+          aVal = displayName(a.customerId).toLowerCase();
+          bVal = displayName(b.customerId).toLowerCase();
+          break;
+        case "status":
+          aVal = (a.status || "").toLowerCase();
+          bVal = (b.status || "").toLowerCase();
+          break;
+        case "total":
+          aVal = Number(a.total || 0);
+          bVal = Number(b.total || 0);
+          break;
+        case "applied":
+          aVal = Number(a.appliedAmount || 0);
+          bVal = Number(b.appliedAmount || 0);
+          break;
+        case "balance":
+          aVal = Number(a.balanceAmount || 0);
+          bVal = Number(b.balanceAmount || 0);
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filteredCredits, sortField, sortOrder]);
+
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="bg-background flex flex-col overflow-hidden h-svh">
         <PageHeader
           breadcrumb={
             <span className="text-sm text-muted-foreground">
@@ -464,108 +570,232 @@ export default function CreditNotesPage() {
             </span>
           }
           actions={
-            <>
-              <div className="relative w-56">
+            <div className="flex items-center gap-2">
+              <div className="relative w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search credit notes..."
-                  className="pl-8 h-8 text-sm"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8 h-9 text-sm"
                 />
               </div>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-9 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Select
+                value={statusFilter}
+                onValueChange={(v) =>
+                  setStatusFilter(v as CreditNoteStatus | "All")
+                }
+              >
+                <SelectTrigger className="w-36 h-9 text-xs bg-white border-slate-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_FILTERS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s === "All" ? "All Statuses" : statusLabel(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
               <Button
                 variant="outline"
                 size="sm"
-                onClick={loadCredits}
+                onClick={() => void loadCredits()}
                 disabled={fetching}
               >
-                <RefreshCw className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`h-4 w-4 ${fetching ? "animate-spin" : ""}`}
+                />
               </Button>
-
-              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/credit-notes/new")}>
-                <Plus className="h-4 w-4 mr-1" />
-                New
+              <Button
+                size="sm"
+                onClick={() => router.push("/sales/credit-notes/new")}
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                New Credit Note
               </Button>
-            </>
+            </div>
           }
         />
 
-        <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1">
-                    {statusFilter === "All"
-                      ? "All Credit Notes"
-                      : `${statusLabel(statusFilter)} Credit Notes`}
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {STATUS_FILTERS.map((status) => (
-                    <DropdownMenuItem
-                      key={status}
-                      onClick={() => setStatusFilter(status)}
-                    >
-                      {status === "All"
-                        ? "All Credit Notes"
-                        : statusLabel(status)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <span className="text-sm text-muted-foreground">
-                {filteredCredits.length} credit note
-                {filteredCredits.length !== 1 ? "s" : ""}
-              </span>
+        <div className="flex-1 overflow-auto p-6 space-y-3">
+          {/* Sleek Ultra-Compact KPI Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Notes</span>
+              <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Credit Value</span>
+              <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCurrency(summary.totalAmount)}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Applied</span>
+              <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtCurrency(summary.totalApplied)}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-amber-500 uppercase tracking-wide">Remaining</span>
+              <span className="text-sm font-bold text-amber-600 tabular-nums">{fmtCurrency(summary.totalBalance)}</span>
             </div>
           </div>
 
           {filteredCredits.length === 0 ? (
-            <div className="rounded-lg border bg-white py-24 px-6 text-center text-muted-foreground">
-              <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <h3 className="text-lg font-semibold text-foreground">No credit notes yet</h3>
-              <p className="text-sm mt-2 mb-4">
-                Create a sales credit note for returns, rate difference, or post-sale adjustments.
-              </p>
-              <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/credit-notes/new")}>
-                <Plus className="h-4 w-4 mr-1" />
-                CREATE CREDIT NOTE
-              </Button>
+            <div className="flex flex-col items-center justify-center border-2 border-dashed rounded-xl py-20 gap-3 text-muted-foreground">
+              <FileText className="h-12 w-12 opacity-20" />
+              <p className="text-sm font-medium">No credit notes found</p>
             </div>
           ) : (
             <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Credit Note#</TableHead>
-                    <TableHead>Reference#</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Applied</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead>
+                      <button onClick={() => toggleSort("date")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Date
+                        <span className={cn("text-[10px]", sortField === "date" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "date" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button onClick={() => toggleSort("number")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Credit Note Number
+                        <span className={cn("text-[10px]", sortField === "number" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "number" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button onClick={() => toggleSort("reference")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Reference Number
+                        <span className={cn("text-[10px]", sortField === "reference" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "reference" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button onClick={() => toggleSort("customer")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Customer
+                        <span className={cn("text-[10px]", sortField === "customer" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "customer" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Status
+                        <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <button onClick={() => toggleSort("total")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                        Total
+                        <span className={cn("text-[10px]", sortField === "total" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "total" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <button onClick={() => toggleSort("applied")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                        Applied
+                        <span className={cn("text-[10px]", sortField === "applied" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "applied" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <button onClick={() => toggleSort("balance")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                        Balance
+                        <span className={cn("text-[10px]", sortField === "balance" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "balance" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCredits.map((credit) => (
+                  {sortedCredits.map((credit) => (
                     <TableRow
                       key={credit._id}
                       className="cursor-pointer hover:bg-muted/40"
                       onClick={() => setSelectedId(credit._id)}
                     >
                       <TableCell>{fmtDate(credit.creditNoteDate)}</TableCell>
-                      <TableCell className="text-teal-600 hover:text-teal-700 font-medium">
-                        {credit.creditNoteNumber}
+                      <TableCell className="text-teal-600 hover:text-teal-700 font-medium max-w-[144px]">
+                        <DraggableText alwaysActive className="text-sm font-medium text-teal-600">{credit.creditNoteNumber}</DraggableText>
                       </TableCell>
-                      <TableCell>{credit.referenceNumber || "-"}</TableCell>
-                      <TableCell>{displayName(credit.customerId)}</TableCell>
+                      <TableCell className="max-w-[120px]">
+                        <DraggableText alwaysActive className="text-sm">{credit.referenceNumber || "-"}</DraggableText>
+                      </TableCell>
+                      <TableCell className="max-w-[192px]">
+                        <DraggableText alwaysActive className="text-sm">{displayName(credit.customerId)}</DraggableText>
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
@@ -746,7 +976,7 @@ export default function CreditNotesPage() {
                           <span>{fmtDate(selectedCredit.creditNoteDate)}</span>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Reference#: </span>
+                          <span className="text-muted-foreground">Reference Number: </span>
                           <span>{selectedCredit.referenceNumber || "-"}</span>
                         </div>
                         <div>

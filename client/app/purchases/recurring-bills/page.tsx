@@ -15,6 +15,7 @@ import { useOrganization } from "@/contexts/organization-context";
 import { recurringBillApi, type RecurringBill } from "@/lib/api/recurring-bills";
 import type { Bill } from "@/lib/api/bills";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 
 function fmtDate(d?: string | null) {
   if (!d) return "—";
@@ -250,10 +251,18 @@ function RecurringBillsPageContent() {
                       <input type="checkbox" aria-label={`Select ${rec.profileName}`} onClick={(e) => e.stopPropagation()} className="mt-1" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="font-semibold text-gray-900 truncate">{getName(rec.vendorId) || "Vendor"}</div>
-                          <div className="text-sm font-semibold">{fmtCurrency(rec.total || 0)}</div>
+                          <div className="font-semibold text-gray-900 overflow-hidden">
+                            <DraggableText alwaysActive className="block truncate">
+                              {getName(rec.vendorId) || "—"}
+                            </DraggableText>
+                          </div>
+                          <div className="text-sm font-semibold shrink-0">{fmtCurrency(rec.total || 0)}</div>
                         </div>
-                        <div className="text-xs text-teal-700 font-semibold hover:underline cursor-pointer truncate mt-0.5">{rec.profileName}</div>
+                        <div className="text-xs text-teal-700 font-semibold hover:underline cursor-pointer overflow-hidden mt-0.5">
+                          <DraggableText alwaysActive className="block truncate">
+                            {rec.profileName}
+                          </DraggableText>
+                        </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                           <span>{freqLabel(rec)}</span>
                           <span>Next Bill on {fmtDate(rec.nextBillDate)}</span>
@@ -319,6 +328,15 @@ function RecurringBillsPageContent() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                        onClick={() => setSelectedId(null)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Close
+                      </Button>
                   </div>
                 </div>
 
@@ -481,8 +499,16 @@ function RecurringBillsPageContent() {
                   <div className="flex items-center justify-center">
                     <input type="checkbox" aria-label={`Select ${rec.profileName}`} onClick={(e) => e.stopPropagation()} />
                   </div>
-                  <div className="font-semibold text-slate-700 truncate">{getName(rec.vendorId) || "Vendor"}</div>
-                  <div className="text-teal-700 font-semibold hover:underline cursor-pointer truncate">{rec.profileName}</div>
+                  <div className="font-semibold text-slate-700 overflow-hidden">
+                    <DraggableText alwaysActive className="block truncate">
+                      {getName(rec.vendorId) || "—"}
+                    </DraggableText>
+                  </div>
+                  <div className="text-teal-700 font-semibold hover:underline cursor-pointer overflow-hidden">
+                    <DraggableText alwaysActive className="block truncate">
+                      {rec.profileName}
+                    </DraggableText>
+                  </div>
                   <div className="text-slate-600">{freqLabel(rec)}</div>
                   <div className="text-slate-500">{fmtDate(rec.lastBillDate)}</div>
                   <div className="text-slate-500">{fmtDate(rec.nextBillDate)}</div>
