@@ -7,13 +7,14 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } f
 import {
   Plus, Search, Package, RefreshCw, Pencil, X, MoreHorizontal, Copy,
   EyeOff, Eye, Trash2, Loader2, ShoppingCart, Tag, ArrowRightLeft, Truck, FileUp, Upload, Download,
-  GripVertical, ChevronDown, Info
+  GripVertical, ChevronDown, Info, Calendar
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
 import { DraggableText } from "@/components/ui/draggable-text";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -169,6 +170,8 @@ function ItemsPageContent() {
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"All" | "Goods" | "Service">("All");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   // Detail panel
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1295,8 +1298,77 @@ function ItemsPageContent() {
     const matchesSearch = !search ||
       i.name.toLowerCase().includes(search.toLowerCase()) ||
       (i.sku ?? "").toLowerCase().includes(search.toLowerCase());
-    return matchesType && matchesSearch;
+    
+    let matchesDate = true;
+    if (fromDate || toDate) {
+      const itemDate = i.createdAt ? new Date(i.createdAt).toISOString().slice(0, 10) : "";
+      if (fromDate && itemDate < fromDate) matchesDate = false;
+      if (toDate && itemDate > toDate) matchesDate = false;
+    }
+
+    return matchesType && matchesSearch && matchesDate;
   });
+
+  type ItemSortField = "name" | "purchaseDescription" | "purchaseRate" | "description" | "rate" | "stock" | "hsn" | "unit";
+  type ItemSortOrder = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<ItemSortField>("name");
+  const [sortOrder, setSortOrder] = useState<ItemSortOrder>("asc");
+
+  function toggleSort(field: ItemSortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
+  const sortedFilteredItems = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "name":
+          aVal = (a.name || "").toLowerCase();
+          bVal = (b.name || "").toLowerCase();
+          break;
+        case "purchaseDescription":
+          aVal = (a.purchaseDescription || "").toLowerCase();
+          bVal = (b.purchaseDescription || "").toLowerCase();
+          break;
+        case "purchaseRate":
+          aVal = Number(a.costPrice || 0);
+          bVal = Number(b.costPrice || 0);
+          break;
+        case "description":
+          aVal = (a.sellingDescription || a.description || "").toLowerCase();
+          bVal = (b.sellingDescription || b.description || "").toLowerCase();
+          break;
+        case "rate":
+          aVal = Number(a.sellingPrice || 0);
+          bVal = Number(b.sellingPrice || 0);
+          break;
+        case "stock":
+          aVal = Number(a.stockOnHand || 0);
+          bVal = Number(b.stockOnHand || 0);
+          break;
+        case "hsn":
+          aVal = (a.hsnSacCode || "").toLowerCase();
+          bVal = (b.hsnSacCode || "").toLowerCase();
+          break;
+        case "unit":
+          aVal = (typeof a.unit === "object" && a.unit ? a.unit.name : String(a.unit || "")).toLowerCase();
+          bVal = (typeof b.unit === "object" && b.unit ? b.unit.name : String(b.unit || "")).toLowerCase();
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
 
   const summary = useMemo(() => {
     const totalStock = filtered.reduce(
@@ -1435,6 +1507,66 @@ function ItemsPageContent() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <div className="flex gap-1">
                 {(["All", "Goods", "Service"] as const).map((f) => (
                   <button
@@ -1705,18 +1837,74 @@ function ItemsPageContent() {
                           aria-label="Select all filtered items"
                         />
                       </TableHead>
-                      <TableHead className="w-48 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Name</TableHead>
-                      <TableHead className="w-44 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Purchase Description</TableHead>
-                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Purchase Rate</TableHead>
-                      <TableHead className="w-44 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Description</TableHead>
-                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Rate</TableHead>
-                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Stock On Hand</TableHead>
-                      <TableHead className="w-28 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">HSN/SAC</TableHead>
-                      <TableHead className="w-28 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Usage Unit</TableHead>
+                      <TableHead className="w-48 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("name")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Name
+                          <span className={sortField === "name" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "name" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="w-44 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("purchaseDescription")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Purchase Description
+                          <span className={sortField === "purchaseDescription" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "purchaseDescription" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">
+                        <button onClick={() => toggleSort("purchaseRate")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                          Purchase Rate
+                          <span className={sortField === "purchaseRate" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "purchaseRate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="w-44 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("description")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Description
+                          <span className={sortField === "description" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "description" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">
+                        <button onClick={() => toggleSort("rate")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                          Rate
+                          <span className={sortField === "rate" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "rate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">
+                        <button onClick={() => toggleSort("stock")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                          Stock On Hand
+                          <span className={sortField === "stock" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "stock" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="w-28 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("hsn")} className="group flex items-center gap-1 hover:text-teal-700">
+                          HSN/SAC
+                          <span className={sortField === "hsn" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "hsn" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="w-28 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                        <button onClick={() => toggleSort("unit")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Usage Unit
+                          <span className={sortField === "unit" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "unit" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((item) => (
+                    {sortedFilteredItems.map((item) => (
                       <TableRow
                         key={item._id}
                         className="cursor-pointer hover:bg-blue-50/20 transition-colors border-b border-slate-100 last:border-0"

@@ -209,7 +209,7 @@ export default function NewInventoryMoveOrderPage() {
 
   async function handleSave(status: MoveOrderStatus) {
     if (!form.orderNumber.trim()) {
-      toast.error("Order# is required");
+      toast.error("Order Number is required");
       return;
     }
 
@@ -329,7 +329,7 @@ export default function NewInventoryMoveOrderPage() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-1.5">
-                <Label>Order#</Label>
+                <Label>Order Number</Label>
                 <Input
                   value={form.orderNumber}
                   onChange={(e) =>
