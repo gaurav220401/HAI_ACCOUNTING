@@ -613,14 +613,14 @@ export default function InvoicesPage() {
                               <TableCell className="text-sm px-4 py-2.5">
                                 {formatDate(inv.invoiceDate)}
                               </TableCell>
-                              <TableCell className="text-sm font-semibold text-teal-700 hover:underline px-4 py-2.5">
-                                {inv.invoiceNumber}
+                              <TableCell className="text-sm font-semibold text-teal-700 px-4 py-2.5 max-w-[144px]">
+                                <DraggableText alwaysActive className="text-sm font-semibold text-teal-700">{inv.invoiceNumber}</DraggableText>
                               </TableCell>
-                              <TableCell className="text-sm text-slate-500 px-4 py-2.5">
-                                {inv.orderNumber || "—"}
+                              <TableCell className="text-sm text-slate-500 px-4 py-2.5 max-w-[128px]">
+                                <DraggableText alwaysActive className="text-sm text-slate-500">{inv.orderNumber || "—"}</DraggableText>
                               </TableCell>
-                              <TableCell className="text-sm px-4 py-2.5">
-                                {getCustomerName(inv.customerId)}
+                              <TableCell className="text-sm px-4 py-2.5 max-w-[192px]">
+                                <DraggableText alwaysActive className="text-sm">{getCustomerName(inv.customerId)}</DraggableText>
                               </TableCell>
                               <TableCell className="px-4 py-2.5">
                                 <StatusPill status={inv.status} />
@@ -849,12 +849,13 @@ export default function InvoicesPage() {
                       </DropdownMenu>
 
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        className="ml-auto h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                        variant="outline"
+                        size="sm"
+                        className="ml-auto h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                         onClick={() => setSelectedId(null)}
                       >
-                        <X className="h-4 w-4" />
+                        <X className="h-3.5 w-3.5" />
+                        Close
                       </Button>
                     </div>
 

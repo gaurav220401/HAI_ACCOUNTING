@@ -474,10 +474,16 @@ export default function VendorsPage() {
                             )}
                             onClick={() => selectVendor(c._id)}
                           >
-                            <TableCell className="px-4 py-3">
-                              <span className={cn("text-[13px] font-medium hover:underline", c.isActive === false ? "text-slate-400" : "text-teal-700 hover:text-teal-800")}>{c.displayName}</span>
+                            <TableCell className="px-4 py-3 max-w-[160px] overflow-hidden">
+                              <DraggableText alwaysActive className={cn("text-[13px] font-medium hover:underline block truncate", c.isActive === false ? "text-slate-400" : "text-teal-700 hover:text-teal-800")}>
+                                {c.displayName}
+                              </DraggableText>
                             </TableCell>
-                            <TableCell className="px-4 py-3 text-slate-500">{c.companyName ?? "—"}</TableCell>
+                            <TableCell className="px-4 py-3 text-slate-500 max-w-[160px] overflow-hidden">
+                              <DraggableText alwaysActive className="block truncate">
+                                {c.companyName ?? "—"}
+                              </DraggableText>
+                            </TableCell>
                             <TableCell className="px-4 py-3 text-slate-500">
                               {c.isActive === false ? (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none">
@@ -491,20 +497,20 @@ export default function VendorsPage() {
                                 </span>
                               )}
                             </TableCell>
-                            <TableCell className="px-4 py-3 text-slate-500">
+                            <TableCell className="px-4 py-3 text-slate-500 max-w-[180px] overflow-hidden">
                               {email ? (
-                                <span className="flex items-center gap-1">
-                                  <Mail className="h-3.5 w-3.5" />
-                                  {email}
-                                </span>
+                                <DraggableText alwaysActive className="flex items-center gap-1">
+                                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{email}</span>
+                                </DraggableText>
                               ) : "—"}
                             </TableCell>
-                            <TableCell className="px-4 py-3 text-slate-500">
+                            <TableCell className="px-4 py-3 text-slate-500 max-w-[140px] overflow-hidden">
                               {phone ? (
-                                <span className="flex items-center gap-1">
-                                  <Phone className="h-3.5 w-3.5" />
-                                  {phone}
-                                </span>
+                                <DraggableText alwaysActive className="flex items-center gap-1">
+                                  <Phone className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{phone}</span>
+                                </DraggableText>
                               ) : "—"}
                             </TableCell>
                             <TableCell className="px-4 py-3 text-right tabular-nums font-semibold text-slate-700">

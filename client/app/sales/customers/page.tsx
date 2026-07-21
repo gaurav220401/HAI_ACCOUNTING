@@ -1058,28 +1058,36 @@ export default function CustomersPage() {
                             )}
                             onClick={() => void selectCustomer(row._id)}
                           >
-                            <TableCell className="px-4 py-3">
-                              <span className="font-medium text-teal-700 hover:text-teal-800 hover:underline">{row.displayName}</span>
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-muted-foreground">{row.companyName || "-"}</TableCell>
-                            <TableCell className="px-4 py-3 text-muted-foreground">
-                              {email ? (
-                                <span className="flex items-center gap-1">
-                                  <Mail className="h-3.5 w-3.5" /> {email}
-                                </span>
-                              ) : (
-                                "-"
-                              )}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-muted-foreground">
-                              {phone ? (
-                                <span className="flex items-center gap-1">
-                                  <Phone className="h-3.5 w-3.5" /> {phone}
-                                </span>
-                              ) : (
-                                "-"
-                              )}
-                            </TableCell>
+                             <TableCell className="px-4 py-3 max-w-[160px] overflow-hidden">
+                               <DraggableText alwaysActive className="font-medium text-teal-700 hover:text-teal-800 hover:underline block truncate">
+                                 {row.displayName}
+                               </DraggableText>
+                             </TableCell>
+                             <TableCell className="px-4 py-3 text-muted-foreground max-w-[160px] overflow-hidden">
+                               <DraggableText alwaysActive className="block truncate">
+                                 {row.companyName || "—"}
+                               </DraggableText>
+                             </TableCell>
+                             <TableCell className="px-4 py-3 text-muted-foreground max-w-[180px] overflow-hidden">
+                               {email ? (
+                                 <DraggableText alwaysActive className="flex items-center gap-1">
+                                   <Mail className="h-3.5 w-3.5 shrink-0" />
+                                   <span className="truncate">{email}</span>
+                                 </DraggableText>
+                               ) : (
+                                 "—"
+                               )}
+                             </TableCell>
+                             <TableCell className="px-4 py-3 text-muted-foreground max-w-[140px] overflow-hidden">
+                               {phone ? (
+                                 <DraggableText alwaysActive className="flex items-center gap-1">
+                                   <Phone className="h-3.5 w-3.5 shrink-0" />
+                                   <span className="truncate">{phone}</span>
+                                 </DraggableText>
+                               ) : (
+                                 "—"
+                               )}
+                             </TableCell>
                             <TableCell className="px-4 py-3 text-muted-foreground">{row.taxTreatment || "-"}</TableCell>
                             <TableCell className="px-4 py-3 text-right tabular-nums font-medium">
                               {fmt((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0), row.currency || "INR")}

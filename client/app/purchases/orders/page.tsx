@@ -1977,9 +1977,15 @@ export default function PurchaseOrdersPage() {
                         <div className="px-2 py-2.5 text-muted-foreground text-xs">
                           {new Date(o.purchaseOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </div>
-                        <div className="px-2 py-2.5 text-teal-700 font-semibold hover:text-teal-800 hover:underline">{o.purchaseOrderNumber}</div>
-                        <div className="px-2 py-2.5 text-muted-foreground">{o.referenceNumber || ""}</div>
-                        <div className="px-2 py-2.5">{getName(o.vendorId)}</div>
+                        <div className="px-2 py-2.5 text-teal-700 font-semibold hover:text-teal-800 overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm font-semibold text-teal-700">{o.purchaseOrderNumber}</DraggableText>
+                        </div>
+                        <div className="px-2 py-2.5 text-muted-foreground overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm">{o.referenceNumber || ""}</DraggableText>
+                        </div>
+                        <div className="px-2 py-2.5 overflow-hidden">
+                          <DraggableText alwaysActive className="text-sm">{getName(o.vendorId)}</DraggableText>
+                        </div>
                         <div className="px-2 py-2.5"><StatusPill status={o.status} /></div>
                         <div className="px-2 py-2.5 text-muted-foreground text-xs"></div>
                         <div className="px-2 py-2.5 text-right font-medium">₹{fmtCur(o.total)}</div>

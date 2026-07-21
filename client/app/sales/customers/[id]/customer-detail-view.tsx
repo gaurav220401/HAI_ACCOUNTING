@@ -20,6 +20,7 @@ import {
   Send,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -1254,8 +1255,14 @@ export function CustomerDetailView({
           </DropdownMenu>
 
           {onClose ? (
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close panel">
-              <Trash2 className="h-4 w-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+              onClick={onClose}
+            >
+              <X className="h-3.5 w-3.5" />
+              Close
             </Button>
           ) : null}
         </div>

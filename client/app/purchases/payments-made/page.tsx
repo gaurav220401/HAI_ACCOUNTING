@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 import { billApi, type Bill } from "@/lib/api/bills";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { accountApi, type Account } from "@/lib/api/accounts";
@@ -566,9 +567,13 @@ export default function PaymentsMadePage() {
                           }}
                         >
                           <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(payment.payment_date)}</td>
-                          <td className="px-3 py-2 text-teal-700 hover:text-teal-800 hover:underline font-semibold">{payment.payment_number}</td>
+                          <td className="px-3 py-2 text-teal-700 hover:text-teal-800 hover:underline font-semibold max-w-[120px] overflow-hidden">
+                            <DraggableText alwaysActive className="block truncate">{payment.payment_number}</DraggableText>
+                          </td>
                           <td className="px-3 py-2">{payment.reference_number || "-"}</td>
-                          <td className="px-3 py-2 font-medium text-slate-700">{vendorName(payment.vendor_id)}</td>
+                          <td className="px-3 py-2 font-medium text-slate-700 max-w-[160px] overflow-hidden">
+                            <DraggableText alwaysActive className="block truncate">{vendorName(payment.vendor_id)}</DraggableText>
+                          </td>
                           <td className="px-3 py-2">-</td>
                           <td className="px-3 py-2 text-slate-600">{payment.payment_mode}</td>
                           <td className="px-3 py-2">
@@ -689,17 +694,17 @@ export default function PaymentsMadePage() {
                   </div>
 
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 hover:bg-slate-200/50"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                     onClick={() => {
                       setSelectedPaymentId(null);
                       setSelectedPayment(null);
                       setSelectedPaymentMaps([]);
                     }}
-                    title="Close"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3.5 w-3.5" />
+                    Close
                   </Button>
                 </div>
 

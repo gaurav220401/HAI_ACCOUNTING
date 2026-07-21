@@ -30,6 +30,7 @@ import {
   type SalesOrder,
   type SalesOrderStatus,
 } from "@/lib/api/sales-orders";
+import { DraggableText } from "@/components/ui/draggable-text";
 
 function getCustomerName(
   customer: SalesOrder["customerId"] | null | undefined,
@@ -328,14 +329,14 @@ export default function SalesOrdersPage() {
                     <TableCell className="text-sm">
                       {formatDate(o.orderDate)}
                     </TableCell>
-                    <TableCell className="font-medium text-teal-700">
-                      {o.salesOrderNumber}
+                    <TableCell className="font-medium text-teal-700 max-w-[144px]">
+                      <DraggableText alwaysActive className="font-medium text-teal-700">{o.salesOrderNumber}</DraggableText>
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {o.reference || "—"}
+                    <TableCell className="text-sm max-w-[128px]">
+                      <DraggableText alwaysActive className="text-sm">{o.reference || "—"}</DraggableText>
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {getCustomerName(o.customerId) || "—"}
+                    <TableCell className="text-sm max-w-[192px]">
+                      <DraggableText alwaysActive className="text-sm">{getCustomerName(o.customerId) || "—"}</DraggableText>
                     </TableCell>
                     <TableCell>
                       <Badge variant={statusBadgeVariant(o.status)}>
