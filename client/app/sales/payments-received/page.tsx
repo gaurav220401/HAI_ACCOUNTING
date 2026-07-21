@@ -571,10 +571,10 @@ export default function PaymentsReceivedPage() {
                       />
                     </th>
                     <th className="px-3 py-3 text-left font-medium">Date</th>
-                    <th className="px-3 py-3 text-left font-medium">Payment #</th>
+                    <th className="px-3 py-3 text-left font-medium">Payment Voucher Number</th>
                     <th className="px-3 py-3 text-left font-medium">Reference Number</th>
                     <th className="px-3 py-3 text-left font-medium">Customer Name</th>
-                    <th className="px-3 py-3 text-left font-medium">Invoice#</th>
+                    <th className="px-3 py-3 text-left font-medium">Invoice Number</th>
                     <th className="px-3 py-3 text-left font-medium">Mode</th>
                     <th className="px-3 py-3 text-right font-medium">Amount</th>
                     <th className="px-3 py-3 text-right font-medium">Unused Amount</th>

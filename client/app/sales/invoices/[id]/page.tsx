@@ -738,8 +738,8 @@ export default function InvoiceDetailPage() {
                         <TableHeader className="bg-slate-50 border-b border-slate-200">
                           <TableRow>
                             <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Date</TableHead>
-                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Payment #</TableHead>
-                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Reference #</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Payment Voucher Number</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Reference Number</TableHead>
                             <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Mode</TableHead>
                             <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Amount</TableHead>
                           </TableRow>

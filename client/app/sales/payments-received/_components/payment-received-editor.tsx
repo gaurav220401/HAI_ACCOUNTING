@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { invoiceApi, type Invoice } from "@/lib/api/invoices";
 import { contactApi, type Contact } from "@/lib/api/contacts";
@@ -105,6 +106,9 @@ export function PaymentReceivedEditor({
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [accountSearchOpen, setAccountSearchOpen] = useState(false);
 
+  const [allOpenInvoices, setAllOpenInvoices] = useState<Invoice[]>([]);
+  const [showRefDD, setShowRefDD] = useState(false);
+
   const PRIORITY_ACCOUNTS = [
     "Petty Cash",
     "Cash",
@@ -139,21 +143,100 @@ export function PaymentReceivedEditor({
     [customers, form.customer_id],
   );
 
+  const suggestedInvoices = useMemo(() => {
+    if (form.customer_id) {
+      return openInvoices;
+    }
+    return allOpenInvoices;
+  }, [form.customer_id, openInvoices, allOpenInvoices]);
+
+  const filteredSuggestedInvoices = useMemo(() => {
+    const q = (form.reference_number || "").toLowerCase().trim();
+    if (!q) return suggestedInvoices;
+    return suggestedInvoices.filter((inv) => {
+      const custName =
+        typeof inv.customerId === "object" && inv.customerId
+          ? inv.customerId.displayName || inv.customerId.companyName || ""
+          : "";
+      return inv.invoiceNumber.toLowerCase().includes(q) || custName.toLowerCase().includes(q);
+    });
+  }, [suggestedInvoices, form.reference_number]);
+
+function allocateAmountToInvoices(amount: number, invoices: Invoice[], refInvoiceNo?: string): InvoiceAllocation[] {
+  let remaining = Math.max(0, amount);
+  if (invoices.length === 0) return [];
+
+  const orderedInvoices = [...invoices];
+  if (refInvoiceNo) {
+    const refIndex = orderedInvoices.findIndex(
+      (inv) => inv.invoiceNumber.toLowerCase() === refInvoiceNo.toLowerCase()
+    );
+    if (refIndex > 0) {
+      const [refInv] = orderedInvoices.splice(refIndex, 1);
+      orderedInvoices.unshift(refInv);
+    }
+  }
+
+  const payMap = new Map<string, number>();
+  for (const inv of orderedInvoices) {
+    const due = Number(inv.balanceDue || 0);
+    const pay = Math.min(remaining, due);
+    payMap.set(inv._id, pay);
+    remaining -= pay;
+  }
+
+  return invoices.map((inv) => ({
+    invoice_id: inv._id,
+    payment: payMap.get(inv._id) || 0,
+  }));
+}
+
+  function selectInvoiceReference(invoice: Invoice) {
+    const targetCustId = getInvoiceCustomerId(invoice);
+
+    setForm((prev) => {
+      const newCustId = targetCustId || prev.customer_id;
+      const targetInvoices = openInvoices.length > 0 ? openInvoices : allOpenInvoices;
+      const targetInvoiceList = targetInvoices.some((inv) => inv._id === invoice._id) ? targetInvoices : [...targetInvoices, invoice];
+      const targetAmt = prev.total_amount_received > 0 ? prev.total_amount_received : Number(invoice.balanceDue || 0);
+      const newAllocations = allocateAmountToInvoices(targetAmt, targetInvoiceList, invoice.invoiceNumber);
+
+      return {
+        ...prev,
+        receiptType: "invoice-payment",
+        customer_id: newCustId,
+        reference_number: invoice.invoiceNumber,
+        total_amount_received: targetAmt,
+        invoiceAllocations: newAllocations,
+      };
+    });
+
+    setShowRefDD(false);
+    toast.success(`Linked Invoice ${invoice.invoiceNumber} (${invoice.status})`);
+  }
+
   useEffect(() => {
     let cancelled = false;
     const search = new URLSearchParams(window.location.search);
     const initialCustomerId = search.get("customerId");
+    const initialInvoiceNo = search.get("invoiceNumber");
 
     (async () => {
       setLoading(true);
       try {
-        const [customerRes, accountRes] = await Promise.all([
+        const [customerRes, accountRes, invoiceListRes] = await Promise.all([
           contactApi.list({ type: "Customer", page: 1, limit: 200 }),
           accountApi.list({ excludeGroups: true }),
+          invoiceApi.list({ page: 1, limit: 200, status: "All" }),
         ]);
         if (cancelled) return;
         setCustomers(customerRes.data || []);
         setAccounts(accountRes.data || []);
+
+        const validInvoices = (invoiceListRes.data || []).filter(
+          (inv) => !["Paid", "Void"].includes(inv.status),
+        );
+        setAllOpenInvoices(validInvoices);
 
         if (mode === "create") {
           const nextNum = await paymentReceivedApi.getNextNumber();
@@ -257,17 +340,29 @@ export function PaymentReceivedEditor({
         });
 
         setOpenInvoices(invoices);
-        setForm((prev) => ({
-          ...prev,
-          invoiceAllocations: invoices.map((inv) => ({
-            invoice_id: inv._id,
-            payment: initialInvoiceId && inv._id === initialInvoiceId ? Number(inv.balanceDue || 0) : 0,
-          })),
-          total_amount_received:
-            initialInvoiceId && prev.total_amount_received <= 0
-              ? Number(invoices.find((inv) => inv._id === initialInvoiceId)?.balanceDue || 0)
-              : prev.total_amount_received,
-        }));
+        setForm((prev) => {
+          const hasAllocations = prev.invoiceAllocations.some((a) => a.payment > 0);
+          let newAllocations = invoices.map((inv) => {
+            const existing = prev.invoiceAllocations.find((a) => a.invoice_id === inv._id);
+            if (existing && existing.payment > 0) return existing;
+            if (initialInvoiceId && inv._id === initialInvoiceId) return { invoice_id: inv._id, payment: Number(inv.balanceDue || 0) };
+            return { invoice_id: inv._id, payment: 0 };
+          });
+
+          const effectiveAmt = initialInvoiceId && prev.total_amount_received <= 0
+            ? Number(invoices.find((inv) => inv._id === initialInvoiceId)?.balanceDue || 0)
+            : prev.total_amount_received;
+
+          if (!hasAllocations && effectiveAmt > 0) {
+            newAllocations = allocateAmountToInvoices(effectiveAmt, invoices, prev.reference_number);
+          }
+
+          return {
+            ...prev,
+            invoiceAllocations: newAllocations,
+            total_amount_received: effectiveAmt,
+          };
+        });
       } catch {
         if (cancelled) return;
         setOpenInvoices([]);
@@ -305,12 +400,17 @@ export function PaymentReceivedEditor({
   }
 
   function updateAllocation(invoiceId: string, value: number) {
-    setForm((prev) => ({
-      ...prev,
-      invoiceAllocations: prev.invoiceAllocations.map((row) =>
+    setForm((prev) => {
+      const updated = prev.invoiceAllocations.map((row) =>
         row.invoice_id === invoiceId ? { ...row, payment: Math.max(0, value) } : row,
-      ),
-    }));
+      );
+      const sumAllocated = updated.reduce((sum, r) => sum + (r.payment || 0), 0);
+      return {
+        ...prev,
+        invoiceAllocations: updated,
+        total_amount_received: Math.max(prev.total_amount_received, sumAllocated),
+      };
+    });
   }
 
   function clearApplied() {
@@ -414,7 +514,7 @@ export function PaymentReceivedEditor({
     <div className="h-full overflow-auto bg-slate-50 p-3 sm:p-6">
       <div className="rounded-lg border bg-white">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <p className="text-sm font-semibold">{mode === "create" ? "New Payment Received" : `Edit Receipt #${form.payment_number}`}</p>
+          <p className="text-sm font-semibold">{mode === "create" ? "New Payment Received" : `Edit Payment Voucher ${form.payment_number}`}</p>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push("/sales/payments-received")}>
             <X className="h-4 w-4" />
           </Button>
@@ -478,9 +578,9 @@ export function PaymentReceivedEditor({
                     )}
                   </div>
 
-                  <div className="customer-dependent space-y-1.5">
-                    <Label>Receipt #*</Label>
-                    <Input disabled value={form.payment_number} onChange={(e) => setForm((prev) => ({ ...prev, payment_number: e.target.value }))} />
+                  <div className="space-y-1.5">
+                    <Label>Payment Voucher Number*</Label>
+                    <Input value={form.payment_number} onChange={(e) => setForm((prev) => ({ ...prev, payment_number: e.target.value }))} placeholder="e.g. REC-00001" />
                   </div>
 
                   <div className="customer-dependent space-y-1.5">
@@ -490,7 +590,17 @@ export function PaymentReceivedEditor({
                       type="number"
                       min={0}
                       value={form.total_amount_received || ""}
-                      onChange={(e) => setForm((prev) => ({ ...prev, total_amount_received: Number(e.target.value || 0) }))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value || 0);
+                        setForm((prev) => {
+                          const newAllocations = allocateAmountToInvoices(val, openInvoices, prev.reference_number);
+                          return {
+                            ...prev,
+                            total_amount_received: val,
+                            invoiceAllocations: openInvoices.length > 0 ? newAllocations : prev.invoiceAllocations,
+                          };
+                        });
+                      }}
                       placeholder="INR"
                     />
                   </div>
@@ -610,13 +720,80 @@ export function PaymentReceivedEditor({
                   )}
                 </div>
 
-                  <div className="customer-dependent space-y-1.5">
-                    <Label>Reference#</Label>
-                    <Input
-                      disabled={customerLocked}
-                      value={form.reference_number}
-                      onChange={(e) => setForm((prev) => ({ ...prev, reference_number: e.target.value }))}
-                    />
+                  <div className="space-y-1.5">
+                    <Label>Reference Number</Label>
+                    <DropdownMenu open={showRefDD} onOpenChange={setShowRefDD}>
+                      <div className="relative flex items-center">
+                        <Input
+                          value={form.reference_number}
+                          onChange={(e) => {
+                            setForm((prev) => ({ ...prev, reference_number: e.target.value }));
+                            setShowRefDD(true);
+                          }}
+                          onFocus={() => setShowRefDD(true)}
+                          placeholder="Select or enter invoice number"
+                          className="pr-8"
+                        />
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="absolute right-2 text-slate-400 hover:text-slate-600 focus:outline-none p-1"
+                            title="Select Invoice Reference"
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                      </div>
+                      <DropdownMenuContent align="start" sideOffset={4} className="z-[220] w-[340px] p-0 overflow-hidden">
+                        <div className="p-2 border-b bg-slate-50 flex items-center justify-between text-xs font-semibold text-slate-700">
+                          <span>{form.customer_id ? "Suggested Invoices for Customer" : "Select Open Invoice"}</span>
+                          <span className="text-[10px] font-normal text-slate-500">{filteredSuggestedInvoices.length} found</span>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto p-1">
+                          {filteredSuggestedInvoices.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-4">No matching open invoices</p>
+                          ) : (
+                            filteredSuggestedInvoices.map((inv) => {
+                              const custName =
+                                typeof inv.customerId === "object" && inv.customerId
+                                  ? inv.customerId.displayName || inv.customerId.companyName
+                                  : "";
+                              return (
+                                <button
+                                  key={inv._id}
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 text-xs rounded hover:bg-emerald-50/70 transition-colors flex items-center justify-between border-b border-slate-100 last:border-0"
+                                  onClick={() => selectInvoiceReference(inv)}
+                                >
+                                  <div className="space-y-0.5">
+                                    <div className="font-semibold text-emerald-800 flex items-center gap-1.5">
+                                      <span>{inv.invoiceNumber}</span>
+                                      <span
+                                        className={cn(
+                                          "px-1.5 py-0.2 text-[9px] rounded font-medium border",
+                                          inv.status === "Overdue" && "bg-red-50 text-red-700 border-red-200",
+                                          inv.status === "Partially Paid" && "bg-amber-50 text-amber-700 border-amber-200",
+                                          (inv.status === "Sent" || inv.status === "Viewed") && "bg-blue-50 text-blue-700 border-blue-200",
+                                          inv.status === "Draft" && "bg-slate-50 text-slate-600 border-slate-200"
+                                        )}
+                                      >
+                                        {inv.status}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500">
+                                      {fmtDate(inv.invoiceDate)} {custName ? `• ${custName}` : ""}
+                                    </div>
+                                  </div>
+                                  <div className="text-right font-medium text-slate-900">
+                                    {fmtCurrency(inv.balanceDue)}
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 
@@ -636,7 +813,7 @@ export function PaymentReceivedEditor({
                       <thead className="bg-slate-50 text-xs uppercase text-slate-600">
                         <tr>
                           <th className="border-b px-3 py-2 text-left">Date</th>
-                          <th className="border-b px-3 py-2 text-left">Invoice#</th>
+                          <th className="border-b px-3 py-2 text-left">Invoice Number</th>
                           <th className="border-b px-3 py-2 text-right">Invoice Amount</th>
                           <th className="border-b px-3 py-2 text-right">Amount Due</th>
                           <th className="border-b px-3 py-2 text-right">Payment</th>
