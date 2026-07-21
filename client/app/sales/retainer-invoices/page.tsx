@@ -293,7 +293,7 @@ export default function RetainerInvoicesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>Retainer #</TableHead>
+                    <TableHead>Retainer Number</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-right">Received</TableHead>
