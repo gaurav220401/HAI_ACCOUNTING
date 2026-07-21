@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 
 // ─── Print helper ─────────────────────────────────────────────────────────────
 
@@ -1417,17 +1419,17 @@ export default function ExpensesPage() {
                     >
                       <input type="checkbox" className="accent-teal-600 mt-0.5 shrink-0" onClick={(e) => e.stopPropagation()} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex justify-between gap-2 items-start">
-                          <p className={cn("text-[13px] font-semibold truncate", isSel ? "text-teal-700" : "text-slate-800")}>
+                        <div className="flex justify-between gap-2 items-start overflow-hidden">
+                          <DraggableText className={cn("text-[13px] font-semibold", isSel ? "text-teal-700" : "text-slate-800")}>
                             {acct}
-                          </p>
+                          </DraggableText>
                           <p className="text-xs font-semibold tabular-nums shrink-0">
                             {fmtCurrency(exp.amount, exp.currency)}
                           </p>
                         </div>
-                        <div className="flex gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
+                        <div className="flex gap-1.5 mt-0.5 text-[10px] text-muted-foreground overflow-hidden">
                           <span>{fmtDate(exp.date)}</span>
-                          {vendor && <><span>·</span><span className="truncate">{vendor}</span></>}
+                          {vendor && <><span>·</span><DraggableText className="text-[10px] text-muted-foreground">{vendor}</DraggableText></>}
                         </div>
                       </div>
                     </div>

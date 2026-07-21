@@ -300,15 +300,15 @@ export default function SalesOrdersPage() {
                       aria-label="Select all sales orders"
                     />
                   </TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Sales Order#</TableHead>
-                  <TableHead>Reference#</TableHead>
-                  <TableHead>Customer Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-center">Shipping</TableHead>
-                  <TableHead className="text-center">Invoiced</TableHead>
-                  <TableHead className="text-center">Payment</TableHead>
+                  <TableHead className="w-28">Date</TableHead>
+                  <TableHead className="w-36">Sales Order#</TableHead>
+                  <TableHead className="w-32">Reference#</TableHead>
+                  <TableHead className="w-48">Customer Name</TableHead>
+                  <TableHead className="w-28">Status</TableHead>
+                  <TableHead className="w-32 text-right">Amount</TableHead>
+                  <TableHead className="w-24 text-center">Shipping</TableHead>
+                  <TableHead className="w-24 text-center">Invoiced</TableHead>
+                  <TableHead className="w-24 text-center">Payment</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

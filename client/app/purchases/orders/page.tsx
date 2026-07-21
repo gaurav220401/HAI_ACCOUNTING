@@ -42,6 +42,7 @@ import { itemApi } from "@/lib/api/items";
 import { accountApi } from "@/lib/api/accounts";
 import { uploadApi } from "@/lib/api/upload";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -1948,8 +1949,8 @@ export default function PurchaseOrdersPage() {
                         onClick={() => setSelectedId(o._id)}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-sm text-teal-700 hover:text-teal-800 hover:underline truncate">{getName(o.vendorId) || "—"}</div>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <DraggableText className="font-semibold text-sm text-teal-700 hover:text-teal-800 hover:underline">{getName(o.vendorId) || "—"}</DraggableText>
                             <div className="text-xs text-muted-foreground mt-0.5">
                               {o.purchaseOrderNumber} • {new Date(o.purchaseOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </div>

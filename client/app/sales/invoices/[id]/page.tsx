@@ -77,6 +77,8 @@ import {
 import { toast } from "sonner";
 import { InvoiceTemplateRenderer } from "@/components/invoice-template-renderer";
 import { DEFAULT_CONFIG } from "@/app/sales/invoices/[id]/edit-template/config";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 
 // ─── STYLES ──────────────────────────────────────────────────────────
 const printStyles = `
@@ -508,12 +510,12 @@ export default function InvoiceDetailPage() {
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="font-semibold text-teal-700">Invoices</span>
-                <span className="text-slate-400">/</span>
-                <span className="font-semibold text-slate-700">
+              <div className="flex items-center gap-1.5 text-xs max-w-xs overflow-hidden">
+                <span className="font-semibold text-teal-700 shrink-0">Invoices</span>
+                <span className="text-slate-400 shrink-0">/</span>
+                <DraggableText className="font-semibold text-slate-700 max-w-[150px]">
                   {invoice.invoiceNumber}
-                </span>
+                </DraggableText>
               </div>
               <div className="ml-2">
                 <StatusPill status={invoice.status} />

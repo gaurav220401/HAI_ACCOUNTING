@@ -335,25 +335,25 @@ export default function QuotesPage() {
                 <Table>
                   <TableHeader className="bg-slate-50 border-b border-slate-200">
                     <TableRow>
-                      <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                      <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         Date
                       </TableHead>
-                      <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                      <TableHead className="w-36 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         Quote#
                       </TableHead>
-                      <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                      <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         Reference#
                       </TableHead>
-                      <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                      <TableHead className="w-48 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         Customer
                       </TableHead>
-                      <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                      <TableHead className="w-44 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         Subject
                       </TableHead>
-                      <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
+                      <TableHead className="w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         Status
                       </TableHead>
-                      <TableHead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">
+                      <TableHead className="w-32 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">
                         Amount
                       </TableHead>
                       <TableHead className="w-10" />
@@ -378,7 +378,7 @@ export default function QuotesPage() {
                         <TableCell className="text-sm px-4 py-2.5">
                           {getCustomerName(q.customerId)}
                         </TableCell>
-                        <TableCell className="text-sm text-slate-500 max-w-[200px] truncate px-4 py-2.5">
+                        <TableCell className="text-sm text-slate-500 px-4 py-2.5">
                           {q.subject || "—"}
                         </TableCell>
                         <TableCell className="px-4 py-2.5">

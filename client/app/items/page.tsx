@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -1669,14 +1670,14 @@ function ItemsPageContent() {
                           aria-label="Select all filtered items"
                         />
                       </TableHead>
-                      <TableHead className="w-[220px] font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Name</TableHead>
-                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Purchase Description</TableHead>
-                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Purchase Rate</TableHead>
-                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Description</TableHead>
-                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Rate</TableHead>
-                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Stock On Hand</TableHead>
-                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">HSN/SAC</TableHead>
-                      <TableHead className="font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Usage Unit</TableHead>
+                      <TableHead className="w-48 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Name</TableHead>
+                      <TableHead className="w-44 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Purchase Description</TableHead>
+                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Purchase Rate</TableHead>
+                      <TableHead className="w-44 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Description</TableHead>
+                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Rate</TableHead>
+                      <TableHead className="w-32 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Stock On Hand</TableHead>
+                      <TableHead className="w-28 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">HSN/SAC</TableHead>
+                      <TableHead className="w-28 font-semibold text-[11px] text-slate-500 uppercase tracking-wide px-4 py-2.5">Usage Unit</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1710,14 +1711,14 @@ function ItemsPageContent() {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 max-w-[200px] truncate">
-                          {item.purchaseDescription || "—"}
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 overflow-hidden">
+                          <DraggableText>{item.purchaseDescription || "—"}</DraggableText>
                         </TableCell>
                         <TableCell className="px-4 py-2 text-[13px] text-right tabular-nums text-slate-600">
                           {item.costPrice != null ? `₹${Number(item.costPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
                         </TableCell>
-                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 max-w-[200px] truncate">
-                          {item.sellingDescription || "—"}
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 overflow-hidden">
+                          <DraggableText>{item.sellingDescription || "—"}</DraggableText>
                         </TableCell>
                         <TableCell className="px-4 py-2 text-[13px] text-right tabular-nums text-slate-700 font-semibold">
                           {item.sellingPrice != null ? `₹${Number(item.sellingPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
@@ -1768,10 +1769,10 @@ function ItemsPageContent() {
                         : "hover:bg-slate-50/50"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`text-[13px] font-bold truncate ${selectedId === item._id ? "text-teal-700" : "text-slate-800"}`}>
+                    <div className="flex items-center justify-between gap-2 overflow-hidden">
+                      <DraggableText className={`text-[13px] font-bold ${selectedId === item._id ? "text-teal-700" : "text-slate-800"}`}>
                         {item.name}
-                      </span>
+                      </DraggableText>
                       {!item.isActive ? (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
                           Inactive
