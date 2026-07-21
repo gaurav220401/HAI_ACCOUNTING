@@ -37,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { quoteApi, type Quote, type QuoteStatus } from "@/lib/api/quotes";
+import { DraggableText } from "@/components/ui/draggable-text";
 
 const STATUS_FILTERS: Array<QuoteStatus | "All"> = [
   "All",
@@ -587,17 +588,17 @@ export default function QuotesPage() {
                         <TableCell className="text-sm px-4 py-2.5">
                           {formatDate(q.quoteDate)}
                         </TableCell>
-                        <TableCell className="text-sm font-semibold text-teal-700 hover:text-teal-800 px-4 py-2.5">
-                          {q.quoteNumber}
+                        <TableCell className="text-sm font-semibold text-teal-700 hover:text-teal-800 px-4 py-2.5 max-w-[144px]">
+                          <DraggableText alwaysActive className="text-sm font-semibold text-teal-700">{q.quoteNumber}</DraggableText>
                         </TableCell>
-                        <TableCell className="text-sm text-slate-500 px-4 py-2.5">
-                          {q.referenceNumber || "—"}
+                        <TableCell className="text-sm text-slate-500 px-4 py-2.5 max-w-[128px]">
+                          <DraggableText alwaysActive className="text-sm text-slate-500">{q.referenceNumber || "—"}</DraggableText>
                         </TableCell>
-                        <TableCell className="text-sm px-4 py-2.5">
-                          {getCustomerName(q.customerId)}
+                        <TableCell className="text-sm px-4 py-2.5 max-w-[192px]">
+                          <DraggableText alwaysActive className="text-sm">{getCustomerName(q.customerId)}</DraggableText>
                         </TableCell>
-                        <TableCell className="text-sm text-slate-500 px-4 py-2.5">
-                          {q.subject || "—"}
+                        <TableCell className="text-sm text-slate-500 px-4 py-2.5 max-w-[176px]">
+                          <DraggableText alwaysActive className="text-sm text-slate-500">{q.subject || "—"}</DraggableText>
                         </TableCell>
                         <TableCell className="px-4 py-2.5">
                           <StatusPill status={q.status} />

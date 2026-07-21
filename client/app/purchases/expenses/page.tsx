@@ -1484,11 +1484,21 @@ export default function ExpensesPage() {
                             />
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">{fmtDate(expense.date)}</td>
-                          <td className="px-3 py-2.5 text-teal-700 hover:text-teal-800 font-semibold">{acct}</td>
-                          <td className="px-3 py-2.5 text-slate-400">{expense.invoiceNumber || ""}</td>
-                          <td className="px-3 py-2.5">{vendor}</td>
-                          <td className="px-3 py-2.5">{paidThru}</td>
-                          <td className="px-3 py-2.5">{customer}</td>
+                          <td className="px-3 py-2.5 text-teal-700 hover:text-teal-800 font-semibold max-w-[160px]">
+                            <DraggableText alwaysActive className="text-sm font-semibold text-teal-700">{acct}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-400 max-w-[120px]">
+                            <DraggableText alwaysActive className="text-sm text-slate-400">{expense.invoiceNumber || ""}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 max-w-[160px]">
+                            <DraggableText alwaysActive className="text-sm">{vendor}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 max-w-[140px]">
+                            <DraggableText alwaysActive className="text-sm">{paidThru}</DraggableText>
+                          </td>
+                          <td className="px-3 py-2.5 max-w-[160px]">
+                            <DraggableText alwaysActive className="text-sm">{customer}</DraggableText>
+                          </td>
                           <td className="px-3 py-2.5">
                             <span className={cn(
                               "text-[11px] font-semibold tracking-wide uppercase",

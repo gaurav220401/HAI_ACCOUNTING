@@ -1730,30 +1730,30 @@ function ItemsPageContent() {
                             aria-label={`Select ${item.name}`}
                           />
                         </TableCell>
-                        <TableCell className="px-4 py-2 font-medium text-slate-800">
-                          <span className="text-[13px] text-teal-700 hover:text-teal-800 hover:underline">
-                            {item.name}
-                          </span>
-                          {!item.isActive ? (
-                            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none">
-                              <span className="h-1 w-1 rounded-full bg-slate-400" />
-                              Inactive
-                            </span>
-                          ) : (
-                            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100 select-none">
-                              <span className="h-1 w-1 rounded-full bg-emerald-500" />
-                              Active
-                            </span>
-                          )}
+                        <TableCell className="px-4 py-2 font-medium text-slate-800 max-w-[180px] overflow-hidden">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <DraggableText alwaysActive className="text-[13px] text-teal-700 hover:text-teal-800 hover:underline block truncate">
+                              {item.name}
+                            </DraggableText>
+                            {!item.isActive ? (
+                              <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none">
+                                Inactive
+                              </span>
+                            ) : (
+                              <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100 select-none">
+                                Active
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
-                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 overflow-hidden">
-                          <DraggableText>{item.purchaseDescription || "—"}</DraggableText>
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 max-w-[160px] overflow-hidden">
+                          <DraggableText alwaysActive className="block truncate">{item.purchaseDescription || "—"}</DraggableText>
                         </TableCell>
                         <TableCell className="px-4 py-2 text-[13px] text-right tabular-nums text-slate-600">
                           {item.costPrice != null ? `₹${Number(item.costPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
                         </TableCell>
-                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 overflow-hidden">
-                          <DraggableText>{item.sellingDescription || "—"}</DraggableText>
+                        <TableCell className="px-4 py-2 text-[13px] text-slate-500 max-w-[160px] overflow-hidden">
+                          <DraggableText alwaysActive className="block truncate">{item.sellingDescription || "—"}</DraggableText>
                         </TableCell>
                         <TableCell className="px-4 py-2 text-[13px] text-right tabular-nums text-slate-700 font-semibold">
                           {item.sellingPrice != null ? `₹${Number(item.sellingPrice).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
@@ -1912,8 +1912,14 @@ function ItemsPageContent() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={closeDetail}>
-                      <X className="h-4 w-4" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                      onClick={closeDetail}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Close
                     </Button>
                   </div>
 

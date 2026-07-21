@@ -3,16 +3,32 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+/**
+ * DraggableText – horizontal drag-to-scroll for overflowing text.
+ *
+ * Two modes:
+ *  • Default (alwaysActive=false): requires a double-click to "activate" before
+ *    dragging starts. Good for sidebar panels where row clicks don't conflict.
+ *
+ *  • Table mode (alwaysActive=true): drag starts on the very first mousedown –
+ *    no double-click required, just like Excel. If the pointer barely moves
+ *    (< 4 px) the click propagates normally so the parent <TableRow> still
+ *    navigates / selects. If the pointer dragged further, the click is
+ *    suppressed so the row action does NOT fire.
+ */
 export function DraggableText({
   children,
   className,
   title,
   disabled = false,
+  alwaysActive = false,
 }: {
   children: React.ReactNode;
   className?: string;
   title?: string;
   disabled?: boolean;
+  /** Enable single-mousedown drag (table / Excel mode). No double-click needed. */
+  alwaysActive?: boolean;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [isActivated, setIsActivated] = React.useState(false);
@@ -26,11 +42,13 @@ export function DraggableText({
     const handleWindowMouseMove = (e: MouseEvent) => {
       if (!isMouseDown.current || !ref.current) return;
       const dx = e.clientX - startX.current;
-      if (Math.abs(dx) > 2) {
+      if (Math.abs(dx) > 3) {
         isDragging.current = true;
       }
       if (isDragging.current) {
         ref.current.scrollLeft = startScrollLeft.current - dx;
+        // Prevent text selection while dragging
+        e.preventDefault();
       }
     };
 
@@ -53,9 +71,9 @@ export function DraggableText({
     };
   }, []);
 
-  // Deactivate when clicking outside the active element
+  // Deactivate when clicking outside the active element (non-alwaysActive mode)
   React.useEffect(() => {
-    if (!isActivated) return;
+    if (!isActivated || alwaysActive) return;
     const handleOutsideClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setIsActivated(false);
@@ -70,13 +88,14 @@ export function DraggableText({
       clearTimeout(timer);
       window.removeEventListener("mousedown", handleOutsideClick);
     };
-  }, [isActivated]);
+  }, [isActivated, alwaysActive]);
 
   if (disabled) {
     return <>{children}</>;
   }
 
   const handleDoubleClick = (e: React.MouseEvent) => {
+    if (alwaysActive) return; // no-op; drag already works on mousedown
     const target = e.target as HTMLElement;
     if (target.closest("button, input, select, textarea, a, [role='checkbox'], [role='button'], .no-drag")) {
       return;
@@ -88,6 +107,16 @@ export function DraggableText({
   const handleMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest("button, input, select, textarea, a, [role='checkbox'], [role='button'], .no-drag")) {
+      return;
+    }
+
+    if (alwaysActive) {
+      // Table / Excel mode: always start tracking on mousedown
+      if (!ref.current) return;
+      isMouseDown.current = true;
+      isDragging.current = false;
+      startX.current = e.clientX;
+      startScrollLeft.current = ref.current.scrollLeft;
       return;
     }
 
@@ -115,6 +144,24 @@ export function DraggableText({
   };
 
   const resolvedTitle = typeof children === "string" ? children : title;
+
+  if (alwaysActive) {
+    return (
+      <div
+        ref={ref}
+        onMouseDown={handleMouseDown}
+        onClickCapture={handleClick}
+        title={resolvedTitle}
+        className={cn(
+          "w-full overflow-x-auto no-scrollbar whitespace-nowrap align-middle select-none block min-w-0 max-w-full cursor-grab active:cursor-grabbing",
+          className
+        )}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div

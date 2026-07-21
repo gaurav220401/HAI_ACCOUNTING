@@ -66,6 +66,7 @@ import {
   type CreditNoteStatus,
 } from "@/lib/api/credit-notes";
 import { invoiceApi, type Invoice } from "@/lib/api/invoices";
+import { DraggableText } from "@/components/ui/draggable-text";
 
 const STATUS_FILTERS: Array<CreditNoteStatus | "All"> = [
   "All",
@@ -786,11 +787,15 @@ export default function CreditNotesPage() {
                       onClick={() => setSelectedId(credit._id)}
                     >
                       <TableCell>{fmtDate(credit.creditNoteDate)}</TableCell>
-                      <TableCell className="text-teal-600 hover:text-teal-700 font-medium">
-                        {credit.creditNoteNumber}
+                      <TableCell className="text-teal-600 hover:text-teal-700 font-medium max-w-[144px]">
+                        <DraggableText alwaysActive className="text-sm font-medium text-teal-600">{credit.creditNoteNumber}</DraggableText>
                       </TableCell>
-                      <TableCell>{credit.referenceNumber || "-"}</TableCell>
-                      <TableCell>{displayName(credit.customerId)}</TableCell>
+                      <TableCell className="max-w-[120px]">
+                        <DraggableText alwaysActive className="text-sm">{credit.referenceNumber || "-"}</DraggableText>
+                      </TableCell>
+                      <TableCell className="max-w-[192px]">
+                        <DraggableText alwaysActive className="text-sm">{displayName(credit.customerId)}</DraggableText>
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
