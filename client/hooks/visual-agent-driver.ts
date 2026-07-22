@@ -8,7 +8,7 @@
  * - Navigates pages via Next.js router (no full reload)
  * - Fills form fields via the autofill hook (React state-based)
  * - Highlights active elements with glowing rings
- * - Reports progress to the VisualAgentOverlay
+ * - Reports progress to the assistant status listeners
  */
 
 import type { AgentExecutionStep } from "@/lib/api/agent";

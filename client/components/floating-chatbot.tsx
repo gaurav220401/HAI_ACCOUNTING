@@ -41,7 +41,7 @@ export function FloatingChatbot() {
                 <span>👋</span> Hi, I'm Nemo
               </p>
               <p className="mt-1 text-[11px] font-medium leading-relaxed text-slate-500">
-                Click to ask anything with AI. I can help with invoices, reports, and more!
+                Ask anything, or tell me where you need to go. I can navigate you to pages, explain features, and more!
               </p>
             </div>
           </div>

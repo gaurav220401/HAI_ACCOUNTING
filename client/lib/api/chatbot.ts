@@ -1,9 +1,15 @@
 import { apiFetch } from "../api";
 
+export interface ChatNavigationAction {
+  label: string;
+  url: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: Array<{ title: string; url: string }>;
+  actions?: ChatNavigationAction[];
   timestamp: number;
   isError?: boolean;
 }
@@ -13,6 +19,7 @@ export interface ChatResponse {
   data?: {
     answer: string;
     sources: Array<{ title: string; url: string }>;
+    actions?: ChatNavigationAction[];
     sessionId: string;
     responseTimeMs: number;
   };
@@ -42,3 +49,4 @@ export async function sendChatMessage(
 
   return data;
 }
+
