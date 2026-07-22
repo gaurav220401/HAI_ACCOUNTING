@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendChatMessage, type ChatMessage, type ChatNavigationAction } from "@/lib/api/chatbot";
+import { sendChatMessage, type ChatMessage, type ChatNavigationAction, type ChatModelProvider } from "@/lib/api/chatbot";
 import type { AgentExecutionStep, AgentMessage, AgentToolStep } from "@/lib/api/agent";
 import { dispatchAgentAutofill } from "@/hooks/use-agent-autofill";
 import { cn } from "@/lib/utils";
@@ -480,6 +480,11 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [selectedProvider, setSelectedProvider] = useState<ChatModelProvider>(() => {
+    if (typeof window === "undefined") return "gemini";
+    const savedProvider = window.localStorage.getItem("hai_chat_provider");
+    return savedProvider === "groq" ? "groq" : "gemini";
+  });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -503,6 +508,11 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen, isInitializing]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("hai_chat_provider", selectedProvider);
+  }, [selectedProvider]);
 
   // Handle navigation from action buttons
   const handleNavigate = useCallback(
@@ -549,7 +559,7 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
       setIsLoading(true);
 
       try {
-        const response = await sendChatMessage(question, sessionId);
+        const response = await sendChatMessage(question, sessionId, selectedProvider);
 
         if (response.success && response.data) {
           if (response.data.sessionId) {
@@ -586,7 +596,7 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
         setIsLoading(false);
       }
     },
-    [handleAutofill, input, isLoading, sessionId]
+    [handleAutofill, input, isLoading, selectedProvider, sessionId]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -636,14 +646,28 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
-            title="Close chat"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1 rounded-md border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-sm">
+              <span className="uppercase tracking-wide text-white/70">Model</span>
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value as ChatModelProvider)}
+                className="bg-transparent text-[10px] font-semibold text-white outline-none"
+                aria-label="Select chat model provider"
+              >
+                <option value="gemini" className="text-slate-900">Gemini</option>
+                <option value="groq" className="text-slate-900">Groq</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
+              title="Close chat"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* ── Messages Area ── */}

@@ -1,5 +1,7 @@
 import { apiFetch } from "../api";
 
+export type ChatModelProvider = "gemini" | "groq";
+
 export interface ChatNavigationAction {
   label: string;
   url: string;
@@ -22,6 +24,8 @@ export interface ChatResponse {
     actions?: ChatNavigationAction[];
     sessionId: string;
     responseTimeMs: number;
+    provider?: ChatModelProvider;
+    model?: string;
   };
   message?: string;
 }
@@ -31,11 +35,12 @@ export interface ChatResponse {
  */
 export async function sendChatMessage(
   question: string,
-  sessionId?: string
+  sessionId?: string,
+  provider?: ChatModelProvider
 ): Promise<ChatResponse> {
   const res = await apiFetch("/chat", {
     method: "POST",
-    body: JSON.stringify({ question, sessionId }),
+    body: JSON.stringify({ question, sessionId, provider }),
   });
 
   const data = await res.json();

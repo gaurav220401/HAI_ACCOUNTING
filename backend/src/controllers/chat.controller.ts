@@ -42,6 +42,8 @@ const NUM_CANDIDATES = 150;
 const MAX_QUESTION_LENGTH = 500;
 const MAX_CONTEXT_TOKENS = 3000;
 
+type ChatProvider = "gemini" | "groq";
+
 // ─── Gemini LLM Client ────────────────────────────────────────────────
 
 let genaiClient: GoogleGenAI | null = null;
@@ -55,6 +57,86 @@ function getGenAIClient(): GoogleGenAI {
     genaiClient = new GoogleGenAI({ apiKey });
   }
   return genaiClient;
+}
+
+function normalizeChatProvider(provider?: string): ChatProvider {
+  return provider?.toLowerCase() === "groq" ? "groq" : "gemini";
+}
+
+function resolveChatModel(provider: ChatProvider, requestedModel?: string): string {
+  const trimmedModel = requestedModel?.trim();
+  if (trimmedModel) {
+    return trimmedModel;
+  }
+
+  if (provider === "groq") {
+    return process.env.CHATBOT_GROQ_MODEL || "llama-3.1-70b-versatile";
+  }
+
+  return process.env.CHATBOT_GEMINI_MODEL || process.env.CHATBOT_LLM_MODEL || "gemini-3.5-flash";
+}
+
+async function generateChatAnswer(params: {
+  provider: ChatProvider;
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+}): Promise<string> {
+  const { provider, model, systemPrompt, userPrompt } = params;
+
+  if (provider === "groq") {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error("GROQ_API_KEY environment variable is not set.");
+    }
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 1500,
+        top_p: 0.8,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API request failed (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    const answer = data?.choices?.[0]?.message?.content;
+
+    if (typeof answer !== "string" || !answer.trim()) {
+      throw new Error("Groq API returned an empty response.");
+    }
+
+    return answer.trim();
+  }
+
+  const client = getGenAIClient();
+  const response = await client.models.generateContent({
+    model,
+    contents: userPrompt,
+    config: {
+      systemInstruction: systemPrompt,
+      temperature: 0.3,
+      maxOutputTokens: 1500,
+      topP: 0.8,
+    },
+  });
+
+  const answer = response.text || "I'm sorry, I couldn't generate a response. Please try again.";
+  return answer;
 }
 
 // ─── Intent Detection ──────────────────────────────────────────────────
@@ -952,7 +1034,7 @@ function buildKBContext(chunks: any[]): { context: string; sources: Array<{ titl
 export const handleChat = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const startTime = Date.now();
-    const { question, sessionId: clientSessionId } = req.body;
+    const { question, sessionId: clientSessionId, provider: requestedProvider, model: requestedModel } = req.body;
 
     // ── Input Validation ──
     if (!question || typeof question !== "string") {
@@ -977,6 +1059,8 @@ export const handleChat = asyncHandler(
     const sessionId = clientSessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const userId = req.user?._id?.toString() || req.firebaseUser?.uid || "anonymous";
     const organizationId = req.user?.activeOrganization;
+    const provider = normalizeChatProvider(requestedProvider);
+    const model = resolveChatModel(provider, requestedModel);
 
     try {
       // ── Step 1: Always fetch ALL live business data ──
@@ -1085,23 +1169,14 @@ export const handleChat = asyncHandler(
         }
 
         // ── Step 8: Call Gemini LLM ──
-        const client = getGenAIClient();
-        const llmModel = process.env.CHATBOT_LLM_MODEL || "gemini-3.5-flash";
-
         const userPrompt = `${fullContext}\n\nUSER QUESTION: ${trimmedQuestion}`;
 
-        const response = await client.models.generateContent({
-          model: llmModel,
-          contents: userPrompt,
-          config: {
-            systemInstruction: buildSystemPrompt(orgName),
-            temperature: 0.3,
-            maxOutputTokens: 1500,
-            topP: 0.8,
-          },
+        answer = await generateChatAnswer({
+          provider,
+          model,
+          systemPrompt: buildSystemPrompt(orgName),
+          userPrompt,
         });
-
-        answer = response.text || "I'm sorry, I couldn't generate a response. Please try again.";
 
         // Also check for navigation actions in fallback text
         // (actions will be parsed below after the if-else block)
@@ -1139,6 +1214,8 @@ export const handleChat = asyncHandler(
           actions: actions.length > 0 ? actions : undefined,
           sessionId,
           responseTimeMs,
+          provider,
+          model,
         },
       });
     } catch (error: any) {
@@ -1152,10 +1229,14 @@ export const handleChat = asyncHandler(
         return;
       }
 
-      if (error.message?.includes("GEMINI_API_KEY") || error.message?.includes("API key")) {
+      if (
+        error.message?.includes("GEMINI_API_KEY") ||
+        error.message?.includes("GROQ_API_KEY") ||
+        error.message?.includes("API key")
+      ) {
         res.status(503).json({
           success: false,
-          message: "AI service is temporarily unavailable. Please try again later.",
+          message: "AI service is temporarily unavailable. Please check your Gemini or Groq API key and try again later.",
         });
         return;
       }
