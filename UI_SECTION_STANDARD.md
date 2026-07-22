@@ -64,3 +64,12 @@ This document defines the UI quality standard for all module sections in the app
 | **Sales Orders** | `/sales/orders` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
 | **Delivery Challans** | `/sales/delivery-challans` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
 | **Retainer Invoices** | `/sales/retainer-invoices` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Vendors** | `/purchases/vendors` | ✅ | ✅ | N/A | ✅ | ✅ | Completed |
+| **Purchase Orders** | `/purchases/orders` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Purchase Receives** | `/purchases/receives` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Bills** | `/purchases/bills` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Payments Made** | `/purchases/payments-made` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Vendor Credits** | `/purchases/vendor-credits` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Expenses** | `/purchases/expenses` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Recurring Bills** | `/purchases/recurring-bills` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |
+| **Recurring Expenses** | `/purchases/recurring-expenses` | ✅ | ✅ | ✅ | ✅ | ✅ | Completed |

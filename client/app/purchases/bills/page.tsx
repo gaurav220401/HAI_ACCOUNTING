@@ -31,12 +31,14 @@ import {
   ChevronRight,
   CreditCard,
   PackageCheck,
-  ShieldCheck,  FileUp} from "lucide-react";
+  ShieldCheck, FileUp, Calendar
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1984,15 +1986,97 @@ function BillsPageContent() {
     };
   }, [selectedId, firebaseUser, activeOrganization?._id]);
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  type SortField = "billDate" | "billNumber" | "orderNumber" | "vendor" | "status" | "dueDate" | "total" | "balanceDue";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("billDate");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   const filtered = bills.filter((b) => {
     if (filterStatus && b.status !== filterStatus) return false;
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      if (new Date(b.billDate || 0).getTime() < fromTime) return false;
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      if (new Date(b.billDate || 0).getTime() > toTime) return false;
+    }
     if (!search) return true;
     const s = search.toLowerCase();
-    return [
-      b.billNumber || "",
-      b.referenceNumber || "",
-      getName(b.vendorId),
-    ].some((v) => v.toLowerCase().includes(s));
+    return (
+      (b.billNumber && b.billNumber.toLowerCase().includes(s)) ||
+      (b.orderNumber && b.orderNumber.toLowerCase().includes(s)) ||
+      (b.referenceNumber && b.referenceNumber.toLowerCase().includes(s)) ||
+      getName(b.vendorId).toLowerCase().includes(s) ||
+      (b.status && b.status.toLowerCase().includes(s)) ||
+      String(b.total || "").includes(s) ||
+      String(b.balanceDue || "").includes(s)
+    );
+  });
+
+  const summary = {
+    count: filtered.length,
+    totalAmount: filtered.reduce((acc, b) => acc + Number(b.total || 0), 0),
+    balanceDue: filtered.reduce((acc, b) => acc + Number(b.balanceDue || 0), 0),
+    totalPaid: filtered.reduce((acc, b) => acc + (Number(b.total || 0) - Number(b.balanceDue || 0)), 0),
+  };
+
+  const sortedBills = [...filtered].sort((a: any, b: any) => {
+    let aVal: any = "";
+    let bVal: any = "";
+    switch (sortField) {
+      case "billDate":
+        aVal = new Date(a.billDate || 0).getTime();
+        bVal = new Date(b.billDate || 0).getTime();
+        break;
+      case "billNumber":
+        aVal = a.billNumber || "";
+        bVal = b.billNumber || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      case "orderNumber":
+        aVal = a.orderNumber || "";
+        bVal = b.orderNumber || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      case "vendor":
+        aVal = getName(a.vendorId).toLowerCase();
+        bVal = getName(b.vendorId).toLowerCase();
+        return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      case "status":
+        aVal = a.status || "";
+        bVal = b.status || "";
+        return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      case "dueDate":
+        aVal = new Date(a.dueDate || 0).getTime();
+        bVal = new Date(b.dueDate || 0).getTime();
+        break;
+      case "total":
+        aVal = Number(a.total || 0);
+        bVal = Number(b.total || 0);
+        break;
+      case "balanceDue":
+        aVal = Number(a.balanceDue || 0);
+        bVal = Number(b.balanceDue || 0);
+        break;
+    }
+    if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+    if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+    return 0;
   });
 
   const visibleBillIds = filtered.map((bill) => bill._id);
@@ -2339,6 +2423,76 @@ function BillsPageContent() {
             }
             actions={
               <div className="flex items-center gap-1.5">
+                <div className="relative w-56">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Search bills..."
+                    className="pl-8 h-8 text-sm border-slate-200 focus-visible:ring-teal-600"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+
+                {/* Compact Date Range Popover */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                        (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                      )}
+                    >
+                      <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                      {fromDate || toDate ? (
+                        <span>
+                          {fromDate || "Start"} - {toDate || "End"}
+                        </span>
+                      ) : (
+                        <span>Date Range</span>
+                      )}
+                      <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                      {(fromDate || toDate) && (
+                        <button
+                          onClick={() => {
+                            setFromDate("");
+                            setToDate("");
+                          }}
+                          className="text-xs text-rose-600 hover:underline font-medium"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                        <Input
+                          type="date"
+                          value={fromDate}
+                          onChange={(e) => setFromDate(e.target.value)}
+                          className="h-8 text-xs bg-slate-50 border-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                        <Input
+                          type="date"
+                          value={toDate}
+                          onChange={(e) => setToDate(e.target.value)}
+                          className="h-8 text-xs bg-slate-50 border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 {selectedIds.length > 0 && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -2375,11 +2529,11 @@ function BillsPageContent() {
                 >
                   <Plus className="h-3.5 w-3.5" /> New
                 </Button>
-              <Link href="/batch-import?section=purchases&type=Bills&back=/purchases/bills">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
-                  <FileUp className="h-3.5 w-3.5" /> Batch Import
-                </Button>
-              </Link>
+                <Link href="/batch-import?section=purchases&type=Bills&back=/purchases/bills">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+                    <FileUp className="h-3.5 w-3.5" /> Batch Import
+                  </Button>
+                </Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -2407,7 +2561,7 @@ function BillsPageContent() {
                         </DropdownMenuItem>
                         {[
                           "Date",
-                          "Bill#",
+                          "Bill Number",
                           "Vendor Name",
                           "Amount",
                           "Due Date",
@@ -2474,85 +2628,144 @@ function BillsPageContent() {
           />
 
           {/* Body */}
-          <div className="flex flex-1 overflow-hidden">
-            {/* Left list panel */}
-            <div
-              className={cn(
-                "flex flex-col border-r bg-white overflow-hidden transition-all duration-200",
-                selectedBill ? "w-[320px] shrink-0" : "flex-1",
-              )}
-            >
-              {/* List header / search */}
-              <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
-                {!selectedBill && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-1">
-                    <input
-                      type="checkbox"
-                      className="rounded border"
-                      checked={allVisibleSelected}
-                      onChange={(e) => toggleSelectAllVisible(e.target.checked)}
-                    />
-                    <span className="ml-1 font-medium uppercase tracking-wide">
-                      DATE
-                    </span>
-                    <span className="ml-auto font-medium uppercase tracking-wide">
-                      BILL#
-                    </span>
-                  </div>
+          <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3">
+            {/* Sleek Ultra-Compact KPI Summary Strip */}
+            {!selectedBill && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Bills</span>
+                  <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Amount</span>
+                  <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCur(summary.totalAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Paid Amount</span>
+                  <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtCur(summary.totalPaid)}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-rose-500 uppercase tracking-wide">Balance Due</span>
+                  <span className="text-sm font-bold text-rose-600 tabular-nums">{fmtCur(summary.balanceDue)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-1 overflow-hidden border border-slate-200 rounded-xl bg-white shadow-2xs">
+              {/* Left list panel */}
+              <div
+                className={cn(
+                  "flex flex-col border-r bg-white overflow-hidden transition-all duration-200",
+                  selectedBill ? "w-[320px] shrink-0" : "flex-1",
                 )}
-                {!selectedBill && (
-                  <div className="flex items-center gap-1 ml-2">
-                    <div className="relative">
+              >
+                {/* List header / search */}
+                <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
+                  {!selectedBill && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-1">
+                      <input
+                        type="checkbox"
+                        className="rounded border"
+                        checked={allVisibleSelected}
+                        onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                      />
+                      <span className="ml-1 font-medium uppercase tracking-wide">
+                        DATE
+                      </span>
+                      <span className="ml-auto font-medium uppercase tracking-wide">
+                        BILL NUMBER
+                      </span>
+                    </div>
+                  )}
+                  {selectedBill && (
+                    <div className="relative flex-1">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                       <Input
-                        className="h-7 pl-7 text-xs w-40"
+                        className="h-7 pl-7 text-xs w-full"
                         placeholder="Search..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                       />
                     </div>
-                  </div>
-                )}
-                {selectedBill && (
-                  <div className="relative flex-1">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                      className="h-7 pl-7 text-xs w-full"
-                      placeholder="Search..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Full-width table header (only when no detail panel open) */}
-              {!selectedBill && (
-                <div
-                  className="grid text-[11px] uppercase tracking-wide text-muted-foreground font-medium border-b bg-muted/10 shrink-0"
-                  style={{
-                    gridTemplateColumns:
-                      "36px 90px 150px 130px 1fr 120px 100px 110px 36px",
-                  }}
-                >
-                  <div className="px-3 py-2 flex items-center">
-                    <input
-                      type="checkbox"
-                      className="rounded border"
-                      checked={allVisibleSelected}
-                      onChange={(e) => toggleSelectAllVisible(e.target.checked)}
-                    />
-                  </div>
-                  <div className="px-2 py-2">Date</div>
-                  <div className="px-2 py-2">Bill#</div>
-                  <div className="px-2 py-2">Reference#</div>
-                  <div className="px-2 py-2">Vendor Name</div>
-                  <div className="px-2 py-2">Status</div>
-                  <div className="px-2 py-2 text-right">Amount</div>
-                  <div className="px-2 py-2 text-right">Balance Due</div>
-                  <div className="px-2 py-2" />
+                  )}
                 </div>
-              )}
+
+                {/* Full-width table header (only when no detail panel open) */}
+                {!selectedBill && (
+                  <div
+                    className="grid text-[11px] uppercase tracking-wide text-slate-500 font-semibold border-b bg-slate-50 shrink-0 items-center"
+                    style={{
+                      gridTemplateColumns:
+                        "36px 90px 150px 130px 1fr 120px 100px 110px 36px",
+                    }}
+                  >
+                    <div className="px-3 py-2.5 flex items-center">
+                      <input
+                        type="checkbox"
+                        className="rounded border"
+                        checked={allVisibleSelected}
+                        onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                      />
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("billDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Date
+                        <span className={cn("text-[10px]", sortField === "billDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "billDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("billNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Bill Number
+                        <span className={cn("text-[10px]", sortField === "billNumber" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "billNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("orderNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Order Number
+                        <span className={cn("text-[10px]", sortField === "orderNumber" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "orderNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("vendor")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Vendor Name
+                        <span className={cn("text-[10px]", sortField === "vendor" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "vendor" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Status
+                        <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5 text-right">
+                      <button onClick={() => toggleSort("total")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                        Amount
+                        <span className={cn("text-[10px]", sortField === "total" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "total" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5 text-right">
+                      <button onClick={() => toggleSort("balanceDue")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                        Balance Due
+                        <span className={cn("text-[10px]", sortField === "balanceDue" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "balanceDue" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5" />
+                  </div>
+                )}
               {/* List content */}
               <div className="flex-1 overflow-y-auto">
                 {fetching ? (
@@ -2604,15 +2817,15 @@ function BillsPageContent() {
                       </div>
                     </div>
                   </div>
-                ) : filtered.length === 0 ?
+                ) : filtered.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                     <FileText className="h-8 w-8 text-muted-foreground/40" />
                     <p className="text-sm">No bills match your filter.</p>
                   </div>
-                : selectedBill ?
+                ) : selectedBill ? (
                   /* Compact list when detail panel is open */
                   <div className="divide-y">
-                    {filtered.map((b) => (
+                    {sortedBills.map((b) => (
                       <button
                         key={b._id}
                         type="button"
@@ -2655,9 +2868,10 @@ function BillsPageContent() {
                       </button>
                     ))}
                   </div>
-                : /* Full-width table rows */
+                ) : (
+                  /* Full-width table rows */
                   <div>
-                    {filtered.map((b) => (
+                    {sortedBills.map((b) => (
                       <div
                         key={b._id}
                         className="grid items-center border-b border-slate-100 hover:bg-teal-50/30 cursor-pointer transition-colors text-sm group"
@@ -2775,9 +2989,10 @@ function BillsPageContent() {
                       </div>
                     ))}
                   </div>
-                }
+                )}
               </div>
             </div>
+          </div>
 
             {/* Right detail panel */}
             {selectedBill && (

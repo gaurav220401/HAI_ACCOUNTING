@@ -1386,10 +1386,10 @@ export default function NewPurchaseOrderPage() {
               </div>
             </div>
 
-            {/* ── PO #, Reference, Date ────────────────────────────── */}
+            {/* ── PO Number, Reference, Date ────────────────────────────── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
               <div className="grid grid-cols-[140px_1fr] items-center gap-4">
-                <Label className="text-sm font-medium text-red-500">Purchase Order# *</Label>
+                <Label className="text-sm font-medium text-red-500">Purchase Order Number *</Label>
                 <div className="flex gap-1">
                   <Input className="h-9 text-sm flex-1" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
                   <div className="relative group/po">
@@ -1409,7 +1409,7 @@ export default function NewPurchaseOrderPage() {
                 </div>
               </div>
               <div className="grid grid-cols-[140px_1fr] items-center gap-4">
-                <Label className="text-sm font-medium">Reference#</Label>
+                <Label className="text-sm font-medium">Reference Number</Label>
                 <Input className="h-9 text-sm flex-1" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
               </div>
               <div className="grid grid-cols-[140px_1fr] items-center gap-4">
@@ -2190,7 +2190,7 @@ export default function NewPurchaseOrderPage() {
         <Dialog open={showPOConfig} onOpenChange={(o) => { if (!o) { setShowPOConfig(false); setShowPrefixPlaceholders(false); } }}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Configure Purchase Order# Preferences</DialogTitle>
+              <DialogTitle>Configure Purchase Order Number Preferences</DialogTitle>
             </DialogHeader>
             {/* Info banner */}
             <div className="bg-muted/40 rounded-lg p-3 flex items-start gap-3 mb-1">

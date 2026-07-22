@@ -2,12 +2,14 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, ChevronDown, Loader2, MoreHorizontal, PauseCircle, PlayCircle, Plus, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Loader2, MoreHorizontal, PauseCircle, PlayCircle, Plus, X, Search, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/auth-context";
@@ -107,6 +109,102 @@ function RecurringBillsPageContent() {
   const [childBills, setChildBills] = useState<Bill[]>([]);
   const [loadingChildBills, setLoadingChildBills] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "activities">("overview");
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Stopped">("All");
+  const [showFilterDD, setShowFilterDD] = useState(false);
+
+  type SortField = "vendor" | "profileName" | "frequency" | "lastBillDate" | "nextBillDate" | "status" | "total";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("nextBillDate");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
+  const filteredRecs = useMemo(() => {
+    let list = recs;
+    if (statusFilter !== "All") {
+      list = list.filter((r) => r.status === statusFilter);
+    }
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter((r) => new Date(r.nextBillDate || 0).getTime() >= fromTime);
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter((r) => new Date(r.nextBillDate || 0).getTime() <= toTime);
+    }
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((r) => {
+      return (
+        r.profileName.toLowerCase().includes(q) ||
+        getName(r.vendorId).toLowerCase().includes(q) ||
+        (r.frequency || "").toLowerCase().includes(q) ||
+        (r.status || "").toLowerCase().includes(q) ||
+        String(r.total || "").includes(q)
+      );
+    });
+  }, [recs, search, statusFilter, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    return {
+      count: filteredRecs.length,
+      activeCount: filteredRecs.filter((r) => r.status === "Active").length,
+      stoppedCount: filteredRecs.filter((r) => r.status === "Stopped").length,
+      totalAmount: filteredRecs.reduce((acc, r) => acc + Number(r.total || 0), 0),
+    };
+  }, [filteredRecs]);
+
+  const sortedRecs = useMemo(() => {
+    const list = [...filteredRecs];
+    list.sort((a: any, b: any) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "vendor":
+          aVal = getName(a.vendorId).toLowerCase();
+          bVal = getName(b.vendorId).toLowerCase();
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "profileName":
+          aVal = a.profileName || "";
+          bVal = b.profileName || "";
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "frequency":
+          aVal = a.frequency || "";
+          bVal = b.frequency || "";
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "lastBillDate":
+          aVal = new Date(a.lastBillDate || 0).getTime();
+          bVal = new Date(b.lastBillDate || 0).getTime();
+          break;
+        case "nextBillDate":
+          aVal = new Date(a.nextBillDate || 0).getTime();
+          bVal = new Date(b.nextBillDate || 0).getTime();
+          break;
+        case "status":
+          aVal = a.status || "";
+          bVal = b.status || "";
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "total":
+          aVal = Number(a.total || 0);
+          bVal = Number(b.total || 0);
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filteredRecs, sortField, sortOrder]);
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
@@ -207,21 +305,94 @@ function RecurringBillsPageContent() {
         <PageHeader
           breadcrumb={
             <div className="flex flex-col">
-              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
-              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">Recurring Bills</span>
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-teal-700">
+                    {statusFilter === "All" ? "All Recurring Bills" : `${statusFilter} Profiles`} <ChevronDown className="h-3 w-3 ml-0.5 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem onClick={() => { setStatusFilter("All"); setShowFilterDD(false); }}>All Recurring Bills</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("Active"); setShowFilterDD(false); }}>Active</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("Stopped"); setShowFilterDD(false); }}>Stopped</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           }
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className="relative w-56">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Input className="pl-8 h-8 text-sm border-slate-200 focus-visible:ring-teal-600" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search profiles..." />
+              </div>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Next Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <Button
                 size="sm"
-                className="gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-8 px-3"
+                className="gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-8 px-3 text-xs"
                 onClick={() => router.push("/purchases/recurring-bills/new")}
               >
-                <Plus className="h-4 w-4" /> New
-              </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" /> New
               </Button>
             </div>
           }
@@ -231,13 +402,13 @@ function RecurringBillsPageContent() {
         <div className="flex h-[calc(100vh-120px)] border-t">
           <div className="w-[360px] border-r bg-white overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
-              <span>{fetching ? "Loading..." : `${recs.length} Profiles`}</span>
+              <span>{fetching ? "Loading..." : `${sortedRecs.length} Profiles`}</span>
             </div>
             {fetching ? (
               <ListSkeleton />
             ) : (
               <div className="divide-y">
-                {recs.map((rec) => (
+                {sortedRecs.map((rec) => (
                   <button
                     key={rec._id}
                     type="button"
@@ -469,68 +640,136 @@ function RecurringBillsPageContent() {
         ) : fetching ? (
           <TableSkeleton />
         ) : (
-        <div className="h-[calc(100vh-120px)] border-t bg-white overflow-y-auto">
-          <div className="sticky top-0 bg-white border-b">
-            <div className="px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
-              <span>{recs.length} Profiles</span>
+        <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3 bg-white">
+          {/* Sleek Ultra-Compact KPI Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Profiles</span>
+              <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
             </div>
-            <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b">
-              <div className="flex items-center justify-center">
-                <input type="checkbox" aria-label="Select all" />
-              </div>
-              <div>Vendor Name</div>
-              <div>Profile Name</div>
-              <div>Frequency</div>
-              <div>Last Bill Date</div>
-              <div>Next Bill Date</div>
-              <div>Status</div>
-              <div className="text-right">Amount</div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Active Profiles</span>
+              <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.activeCount}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Stopped Profiles</span>
+              <span className="text-sm font-bold text-amber-700 tabular-nums">{summary.stoppedCount}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Total Amount</span>
+              <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCurrency(summary.totalAmount)}</span>
             </div>
           </div>
-          <div className="divide-y">
-            {recs.map((rec) => (
-              <button
-                key={rec._id}
-                type="button"
-                className="w-full text-left px-4 py-3.5 hover:bg-teal-50/10 transition-colors border-b border-slate-100"
-                onClick={() => setSelectedId(rec._id)}
-              >
-                <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 items-center text-sm">
-                  <div className="flex items-center justify-center">
-                    <input type="checkbox" aria-label={`Select ${rec.profileName}`} onClick={(e) => e.stopPropagation()} />
-                  </div>
-                  <div className="font-semibold text-slate-700 overflow-hidden">
-                    <DraggableText alwaysActive className="block truncate">
-                      {getName(rec.vendorId) || "—"}
-                    </DraggableText>
-                  </div>
-                  <div className="text-teal-700 font-semibold hover:underline cursor-pointer overflow-hidden">
-                    <DraggableText alwaysActive className="block truncate">
-                      {rec.profileName}
-                    </DraggableText>
-                  </div>
-                  <div className="text-slate-600">{freqLabel(rec)}</div>
-                  <div className="text-slate-500">{fmtDate(rec.lastBillDate)}</div>
-                  <div className="text-slate-500">{fmtDate(rec.nextBillDate)}</div>
-                  <div className="flex items-center">
-                    <span className={cn(
-                      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
-                      rec.status === "Active" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"
-                    )}>
-                      <span className={cn(
-                        "h-1 w-1 rounded-full",
-                        rec.status === "Active" ? "bg-emerald-500" : "bg-amber-500"
-                      )} />
-                      {rec.status}
-                    </span>
-                  </div>
-                  <div className="text-right font-semibold text-slate-900">{fmtCurrency(rec.total || 0)}</div>
+
+          <div className="flex-1 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs flex flex-col">
+            <div className="flex-1 overflow-auto">
+              <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b sticky top-0 items-center z-10">
+                <div className="flex items-center justify-center">
+                  <input type="checkbox" aria-label="Select all" />
                 </div>
-              </button>
-            ))}
-            {recs.length === 0 && (
-              <div className="px-6 py-8 text-sm text-muted-foreground text-center bg-white">No recurring bills</div>
-            )}
+                <div>
+                  <button onClick={() => toggleSort("vendor")} className="group flex items-center gap-1 hover:text-teal-700">
+                    Vendor Name
+                    <span className={cn("text-[10px]", sortField === "vendor" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                      {sortField === "vendor" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                </div>
+                <div>
+                  <button onClick={() => toggleSort("profileName")} className="group flex items-center gap-1 hover:text-teal-700">
+                    Profile Name
+                    <span className={cn("text-[10px]", sortField === "profileName" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                      {sortField === "profileName" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                </div>
+                <div>
+                  <button onClick={() => toggleSort("frequency")} className="group flex items-center gap-1 hover:text-teal-700">
+                    Frequency
+                    <span className={cn("text-[10px]", sortField === "frequency" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                      {sortField === "frequency" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                </div>
+                <div>
+                  <button onClick={() => toggleSort("lastBillDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                    Last Bill Date
+                    <span className={cn("text-[10px]", sortField === "lastBillDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                      {sortField === "lastBillDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                </div>
+                <div>
+                  <button onClick={() => toggleSort("nextBillDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                    Next Bill Date
+                    <span className={cn("text-[10px]", sortField === "nextBillDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                      {sortField === "nextBillDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                </div>
+                <div>
+                  <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                    Status
+                    <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                      {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                </div>
+                <div className="text-right">
+                  <button onClick={() => toggleSort("total")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                    Amount
+                    <span className={cn("text-[10px]", sortField === "total" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                      {sortField === "total" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div className="divide-y">
+                {sortedRecs.map((rec) => (
+                  <button
+                    key={rec._id}
+                    type="button"
+                    className="w-full text-left px-4 py-3.5 hover:bg-teal-50/30 transition-colors border-b border-slate-100"
+                    onClick={() => setSelectedId(rec._id)}
+                  >
+                    <div className="grid grid-cols-[28px_2fr_1.5fr_1fr_1fr_1fr_0.9fr_0.9fr] gap-3 items-center text-sm">
+                      <div className="flex items-center justify-center">
+                        <input type="checkbox" aria-label={`Select ${rec.profileName}`} onClick={(e) => e.stopPropagation()} />
+                      </div>
+                      <div className="font-semibold text-slate-700 overflow-hidden">
+                        <DraggableText alwaysActive className="block truncate">
+                          {getName(rec.vendorId) || "—"}
+                        </DraggableText>
+                      </div>
+                      <div className="text-teal-700 font-semibold hover:underline cursor-pointer overflow-hidden">
+                        <DraggableText alwaysActive className="block truncate">
+                          {rec.profileName}
+                        </DraggableText>
+                      </div>
+                      <div className="text-slate-600">{freqLabel(rec)}</div>
+                      <div className="text-slate-500">{fmtDate(rec.lastBillDate)}</div>
+                      <div className="text-slate-500">{fmtDate(rec.nextBillDate)}</div>
+                      <div className="flex items-center">
+                        <span className={cn(
+                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                          rec.status === "Active" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"
+                        )}>
+                          <span className={cn(
+                            "h-1 w-1 rounded-full",
+                            rec.status === "Active" ? "bg-emerald-500" : "bg-amber-500"
+                          )} />
+                          {rec.status}
+                        </span>
+                      </div>
+                      <div className="text-right font-semibold text-slate-900">{fmtCurrency(rec.total || 0)}</div>
+                    </div>
+                  </button>
+                ))}
+                {sortedRecs.length === 0 && (
+                  <div className="px-6 py-8 text-sm text-muted-foreground text-center bg-white">No recurring bills</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
         )}

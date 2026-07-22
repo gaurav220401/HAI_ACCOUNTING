@@ -8,7 +8,8 @@ import {
   ShoppingBag, ChevronDown, Pencil, Mail, Printer, CheckCircle,
   Copy, X, Paperclip, MessageSquare, ChevronRight, Sparkles,
   FileText, PackageCheck, Upload, History, ArrowUpDown, Download,
-  Settings, Columns, FileUp} from "lucide-react";
+  Settings, Columns, FileUp, Calendar
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -18,6 +19,7 @@ import RichTextEditor from "@/components/ui/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub,
@@ -1649,11 +1651,95 @@ export default function PurchaseOrdersPage() {
     };
   }, [activeOrganization?._id, fetching, orders, selectedFromQuery]);
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  type SortField = "orderDate" | "purchaseOrderNumber" | "referenceNumber" | "vendor" | "status" | "billedStatus" | "total" | "deliveryDate";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("orderDate");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   const filtered = orders.filter((o) => {
     if (filterStatus && o.status !== filterStatus) return false;
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      if (new Date(o.purchaseOrderDate || (o as any).orderDate || 0).getTime() < fromTime) return false;
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      if (new Date(o.purchaseOrderDate || (o as any).orderDate || 0).getTime() > toTime) return false;
+    }
     if (!search) return true;
     const s = search.toLowerCase();
-    return [o.purchaseOrderNumber, o.referenceNumber || "", getName(o.vendorId)].some((v) => v.toLowerCase().includes(s));
+    return (
+      o.purchaseOrderNumber.toLowerCase().includes(s) ||
+      (o.referenceNumber && o.referenceNumber.toLowerCase().includes(s)) ||
+      getName(o.vendorId).toLowerCase().includes(s) ||
+      (o.status && o.status.toLowerCase().includes(s)) ||
+      String(o.total || "").includes(s)
+    );
+  });
+
+  const summary = {
+    count: filtered.length,
+    totalAmount: filtered.reduce((acc, o) => acc + Number(o.total || 0), 0),
+    billedAmount: filtered.filter((o) => o.status === "Billed" || (o as any).billedStatus === "Billed").reduce((acc, o) => acc + Number(o.total || 0), 0),
+    openAmount: filtered.filter((o) => o.status === "Open" || o.status === "Draft").reduce((acc, o) => acc + Number(o.total || 0), 0),
+  };
+
+  const sortedOrders = [...filtered].sort((a, b) => {
+    let aVal: any = "";
+    let bVal: any = "";
+    switch (sortField) {
+      case "orderDate":
+        aVal = new Date(a.purchaseOrderDate || (a as any).orderDate || 0).getTime();
+        bVal = new Date(b.purchaseOrderDate || (b as any).orderDate || 0).getTime();
+        break;
+      case "purchaseOrderNumber":
+        aVal = a.purchaseOrderNumber || "";
+        bVal = b.purchaseOrderNumber || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      case "referenceNumber":
+        aVal = a.referenceNumber || "";
+        bVal = b.referenceNumber || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      case "vendor":
+        aVal = getName(a.vendorId).toLowerCase();
+        bVal = getName(b.vendorId).toLowerCase();
+        return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      case "status":
+        aVal = a.status || "";
+        bVal = b.status || "";
+        return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      case "billedStatus":
+        aVal = (a as any).billedStatus || a.status || "";
+        bVal = (b as any).billedStatus || b.status || "";
+        return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      case "total":
+        aVal = Number(a.total || 0);
+        bVal = Number(b.total || 0);
+        break;
+      case "deliveryDate":
+        aVal = new Date(a.deliveryDate || 0).getTime();
+        bVal = new Date(b.deliveryDate || 0).getTime();
+        break;
+    }
+    if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+    if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+    return 0;
   });
 
   const selectedOrder = orders.find((o) => o._id === selectedId) ?? null;
@@ -1745,8 +1831,7 @@ export default function PurchaseOrdersPage() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="bg-white flex flex-col overflow-hidden h-svh">
-        <div className="flex flex-col h-screen overflow-hidden">
-          <PageHeader
+        <PageHeader
             breadcrumb={
               <div className="flex flex-col">
                 <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
@@ -1768,14 +1853,84 @@ export default function PurchaseOrdersPage() {
             }
             actions={(
               <div className="flex items-center gap-1.5">
+                <div className="relative w-56">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Search purchase orders..."
+                    className="pl-8 h-8 text-sm border-slate-200 focus-visible:ring-teal-600"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+
+                {/* Compact Date Range Popover */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                        (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                      )}
+                    >
+                      <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                      {fromDate || toDate ? (
+                        <span>
+                          {fromDate || "Start"} - {toDate || "End"}
+                        </span>
+                      ) : (
+                        <span>Date Range</span>
+                      )}
+                      <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                      {(fromDate || toDate) && (
+                        <button
+                          onClick={() => {
+                            setFromDate("");
+                            setToDate("");
+                          }}
+                          className="text-xs text-rose-600 hover:underline font-medium"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                        <Input
+                          type="date"
+                          value={fromDate}
+                          onChange={(e) => setFromDate(e.target.value)}
+                          className="h-8 text-xs bg-slate-50 border-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                        <Input
+                          type="date"
+                          value={toDate}
+                          onChange={(e) => setToDate(e.target.value)}
+                          className="h-8 text-xs bg-slate-50 border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 <Button size="sm" className="h-8 gap-1 text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => router.push("/purchases/orders/new")}>
                   <Plus className="h-3.5 w-3.5" /> New
                 </Button>
-              <Link href="/batch-import?section=purchases&type=Purchase Orders&back=/purchases/orders">
-                <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
-                  <FileUp className="h-3.5 w-3.5" /> Batch Import
-                </Button>
-              </Link>
+                <Link href="/batch-import?section=purchases&type=Purchase Orders&back=/purchases/orders">
+                  <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
+                    <FileUp className="h-3.5 w-3.5" /> Batch Import
+                  </Button>
+                </Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="icon" className="h-8 w-8 border-gray-200">
@@ -1793,7 +1948,7 @@ export default function PurchaseOrdersPage() {
                         <DropdownMenuItem className="px-3 py-2 text-[13px] bg-blue-600 text-white flex justify-between">
                           Created Time <ChevronDown className="h-4 w-4 rotate-180" />
                         </DropdownMenuItem>
-                        {["Date", "Purchase Order#", "Vendor Name", "Amount", "Delivery Date", "Last Modified Time"].map((s) => (
+                        {["Date", "Purchase Order Number", "Vendor Name", "Amount", "Delivery Date", "Last Modified Time"].map((s) => (
                           <DropdownMenuItem key={s} className="px-3 py-2 text-[13px] hover:bg-gray-100">{s}</DropdownMenuItem>
                         ))}
                       </DropdownMenuSubContent>
@@ -1843,55 +1998,126 @@ export default function PurchaseOrdersPage() {
           />
 
           {/* Body: list + optional detail panel */}
-          <div className="flex flex-1 overflow-hidden">
-            {/* Left list panel */}
-            <div className={cn(
-              "flex flex-col border-r bg-white overflow-hidden transition-all duration-200",
-              selectedOrder ? "w-[320px] shrink-0" : "flex-1",
-            )}>
-              {/* List header */}
-              <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
-                <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", selectedOrder ? "hidden" : "flex flex-1")}>
-                  <input type="checkbox" className="rounded border" />
-                  <span className="ml-1 font-medium uppercase tracking-wide">DATE</span>
-                  <span className="ml-auto font-medium uppercase tracking-wide">PURCHASE ORDER#</span>
+          <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3">
+            {/* Sleek Ultra-Compact KPI Summary Strip */}
+            {!selectedOrder && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Orders</span>
+                  <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
                 </div>
-                {!selectedOrder && (
-                  <div className="flex items-center gap-1 ml-auto">
-                    <div className="relative">
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Amount</span>
+                  <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCur(summary.totalAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Billed Amount</span>
+                  <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtCur(summary.billedAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Open / Draft</span>
+                  <span className="text-sm font-bold text-amber-700 tabular-nums">{fmtCur(summary.openAmount)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-1 overflow-hidden border border-slate-200 rounded-xl bg-white shadow-2xs">
+              {/* Left list panel */}
+              <div className={cn(
+                "flex flex-col border-r bg-white overflow-hidden transition-all duration-200",
+                selectedOrder ? "w-[320px] shrink-0" : "flex-1",
+              )}>
+                {/* List header */}
+                <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
+                  <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", selectedOrder ? "hidden" : "flex flex-1")}>
+                    <input type="checkbox" className="rounded border" />
+                    <span className="ml-1 font-medium uppercase tracking-wide">DATE</span>
+                    <span className="ml-auto font-medium uppercase tracking-wide">PURCHASE ORDER NUMBER</span>
+                  </div>
+                  {selectedOrder && (
+                    <div className="relative flex-1">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input className="h-7 pl-7 text-xs w-40" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                      <Input className="h-7 pl-7 text-xs w-full" placeholder="Search orders..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Full-width table header (only when no detail panel) */}
+                {!selectedOrder && (
+                  <div className="grid text-[11px] uppercase tracking-wide text-slate-500 font-semibold border-b bg-slate-50 shrink-0 items-center"
+                    style={{ gridTemplateColumns: "36px 90px 150px 120px 1fr 110px 100px 110px 100px 36px" }}>
+                    <div className="px-3 py-2.5 flex items-center"><input type="checkbox" className="rounded border" /></div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("orderDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Date
+                        <span className={cn("text-[10px]", sortField === "orderDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "orderDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("purchaseOrderNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Purchase Order Number
+                        <span className={cn("text-[10px]", sortField === "purchaseOrderNumber" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "purchaseOrderNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("referenceNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Reference Number
+                        <span className={cn("text-[10px]", sortField === "referenceNumber" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "referenceNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("vendor")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Vendor Name
+                        <span className={cn("text-[10px]", sortField === "vendor" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "vendor" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Status
+                        <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("billedStatus")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Billed Status
+                        <span className={cn("text-[10px]", sortField === "billedStatus" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "billedStatus" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5 text-right">
+                      <button onClick={() => toggleSort("total")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                        Amount
+                        <span className={cn("text-[10px]", sortField === "total" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "total" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <button onClick={() => toggleSort("deliveryDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Delivery Date
+                        <span className={cn("text-[10px]", sortField === "deliveryDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "deliveryDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="px-2 py-2 flex items-center justify-end">
+                      <button onClick={() => setShowAdvancedSearch(true)} className="p-1 hover:bg-muted rounded transition-colors" title="Advanced Search">
+                        <Search className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 )}
-                {selectedOrder && (
-                  <div className="relative flex-1">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input className="h-7 pl-7 text-xs w-full" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
-                  </div>
-                )}
-              </div>
-
-              {/* Full-width table header (only when no detail panel) */}
-              {!selectedOrder && (
-                <div className="grid text-[11px] uppercase tracking-wide text-slate-500 font-semibold border-b bg-slate-50 shrink-0"
-                  style={{ gridTemplateColumns: "36px 90px 150px 120px 1fr 110px 100px 110px 100px 36px" }}>
-                  <div className="px-3 py-2.5 flex items-center"><input type="checkbox" className="rounded border" /></div>
-                  <div className="px-2 py-2.5">Date</div>
-                  <div className="px-2 py-2.5">Purchase Order#</div>
-                  <div className="px-2 py-2.5">Reference#</div>
-                  <div className="px-2 py-2.5">Vendor Name</div>
-                  <div className="px-2 py-2.5">Status</div>
-                  <div className="px-2 py-2.5">Billed Status</div>
-                  <div className="px-2 py-2.5 text-right">Amount</div>
-                  <div className="px-2 py-2.5">Delivery Date</div>
-                  <div className="px-2 py-2 flex items-center justify-end">
-                    <button onClick={() => setShowAdvancedSearch(true)} className="p-1 hover:bg-muted rounded transition-colors" title="Advanced Search">
-                      <Search className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* List content */}
               <div className="flex-1 overflow-y-auto">
@@ -1938,7 +2164,7 @@ export default function PurchaseOrdersPage() {
                 ) : selectedOrder ? (
                   /* Compact list when detail panel open */
                   <div className="divide-y">
-                    {filtered.map((o) => (
+                    {sortedOrders.map((o) => (
                       <button
                         key={o._id}
                         type="button"
@@ -1964,7 +2190,7 @@ export default function PurchaseOrdersPage() {
                 ) : (
                   /* Full-width table */
                   <div>
-                    {filtered.map((o) => (
+                    {sortedOrders.map((o) => (
                       <div
                         key={o._id}
                         className="grid items-center border-b hover:bg-teal-50/20 cursor-pointer transition-colors text-sm group"

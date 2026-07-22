@@ -1885,7 +1885,7 @@ function ExpensesSection({ expenses, loading }: { expenses: Expense[]; loading: 
             <Table>
               <TableHeader>
                 <TableRow className="text-xs">
-                  <TableHead>Date</TableHead><TableHead>Expense #</TableHead><TableHead>Account</TableHead>
+                  <TableHead>Date</TableHead><TableHead>Expense Number</TableHead><TableHead>Account</TableHead>
                   <TableHead>Paid Through</TableHead><TableHead>Customer</TableHead>
                   <TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead>
                 </TableRow>
@@ -1941,7 +1941,7 @@ function BillsSection({ bills, loading }: { bills: Bill[]; loading: boolean }) {
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
-              <TableHead>Bill #</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead>
+              <TableHead>Bill Number</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead>
               <TableHead className="text-right">Total</TableHead><TableHead className="text-right">Balance</TableHead>
             </TableRow>
           </TableHeader>
@@ -2129,7 +2129,7 @@ function PurchaseOrdersSection({ purchaseOrders, loading }: { purchaseOrders: Pu
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
-              <TableHead>PO #</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Total</TableHead>
+              <TableHead>Purchase Order Number</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -2175,7 +2175,7 @@ function VendorCreditsSection({ vendorCredits, loading }: { vendorCredits: Vendo
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
-              <TableHead>Credit #</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead>
+              <TableHead>Credit Note Number</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead>
               <TableHead className="text-right">Total</TableHead><TableHead className="text-right">Balance</TableHead>
             </TableRow>
           </TableHeader>
@@ -2219,7 +2219,7 @@ function JournalsSection({ journals, loading }: { journals: Journal[]; loading: 
         <Table>
           <TableHeader>
             <TableRow className="text-xs">
-              <TableHead>Journal #</TableHead>
+              <TableHead>Journal Number</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Status</TableHead>

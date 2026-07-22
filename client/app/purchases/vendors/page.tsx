@@ -68,6 +68,20 @@ export default function VendorsPage() {
   const [loadingVendor, setLoadingVendor] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
+  type SortField = "displayName" | "companyName" | "isActive" | "email" | "phone" | "outstandingPayable" | "unusedCredits";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("displayName");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   const handleExportCSV = () => {
     if (filtered.length === 0) {
       toast.error("No vendors to export");
@@ -187,8 +201,62 @@ export default function VendorsPage() {
         !search ||
         c.displayName.toLowerCase().includes(search.toLowerCase()) ||
         c.companyName?.toLowerCase().includes(search.toLowerCase()) ||
-        c.email?.toLowerCase().includes(search.toLowerCase()),
+        c.email?.toLowerCase().includes(search.toLowerCase()) ||
+        c.phone?.toLowerCase().includes(search.toLowerCase()),
     );
+
+  const summary = {
+    total: filtered.length,
+    active: filtered.filter((c) => c.isActive !== false).length,
+    payables: filtered.reduce((acc, c) => acc + Number(c.outstandingPayable || 0), 0),
+    unusedCredits: filtered.reduce((acc, c) => acc + Number(c.unusedCredits || 0), 0),
+  };
+
+  const sortedVendors = [...filtered].sort((a, b) => {
+    let aVal: any = "";
+    let bVal: any = "";
+    switch (sortField) {
+      case "displayName":
+        aVal = a.displayName || "";
+        bVal = b.displayName || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      case "companyName":
+        aVal = a.companyName || "";
+        bVal = b.companyName || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal, undefined, { numeric: true })
+          : bVal.localeCompare(aVal, undefined, { numeric: true });
+      case "isActive":
+        aVal = a.isActive !== false ? 1 : 0;
+        bVal = b.isActive !== false ? 1 : 0;
+        break;
+      case "email":
+        aVal = a.email || "";
+        bVal = b.email || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      case "phone":
+        aVal = a.phone || "";
+        bVal = b.phone || "";
+        return sortOrder === "asc"
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      case "outstandingPayable":
+        aVal = Number(a.outstandingPayable || 0);
+        bVal = Number(b.outstandingPayable || 0);
+        break;
+      case "unusedCredits":
+        aVal = Number(a.unusedCredits || 0);
+        bVal = Number(b.unusedCredits || 0);
+        break;
+    }
+    if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+    if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 
   return (
     <SidebarProvider>
@@ -289,36 +357,23 @@ export default function VendorsPage() {
             "flex flex-col border-r transition-all duration-200 overflow-hidden",
             panelOpen ? "w-[320px] shrink-0" : "flex-1",
           )}>
-            {/* Panel header */}
-            <div className={cn(
-              "flex items-center shrink-0 border-b",
-              panelOpen ? "px-3 py-2 justify-between" : "px-4 py-3 justify-between",
-            )}>
-              {panelOpen ? (
-                <>
-                  <button className="flex items-center gap-1.5 text-sm font-semibold">
-                    All Vendors
-                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-slate-600" onClick={fetchContacts} disabled={fetching}>
-                      <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
-                    </Button>
-                    <Button size="icon" className="h-6 w-6 bg-teal-600 hover:bg-teal-700 text-white rounded" onClick={() => router.push("/purchases/vendors/new")}>
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <button className="flex items-center gap-1.5 text-sm font-medium">
-                    All Vendors
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                  <span className="text-xs text-muted-foreground">{filtered.length} vendor{filtered.length !== 1 ? "s" : ""}</span>
-                </>
-              )}
-            </div>
+            {/* Panel header (split view sidebar header) */}
+            {panelOpen && (
+              <div className="flex items-center justify-between shrink-0 border-b px-3 py-2">
+                <button className="flex items-center gap-1.5 text-sm font-semibold">
+                  All Vendors
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-slate-600" onClick={fetchContacts} disabled={fetching}>
+                    <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
+                  </Button>
+                  <Button size="icon" className="h-6 w-6 bg-teal-600 hover:bg-teal-700 text-white rounded" onClick={() => router.push("/purchases/vendors/new")}>
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Search row — shown only in narrow (split) mode */}
             {panelOpen && (
@@ -445,23 +500,92 @@ export default function VendorsPage() {
                 )}
               </div>
             ) : (
-              /* Full-width table */
-              <div className="flex-1 overflow-auto px-6 py-4">
-                <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-2xs">
+              /* Full-width table view with KPI summary strip */
+              <div className="flex-1 flex flex-col overflow-hidden px-6 py-4 gap-3">
+                {/* Compact KPI summary strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Vendors</span>
+                    <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.total}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Active Vendors</span>
+                    <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.active}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-rose-500 uppercase tracking-wide">Total Payables</span>
+                    <span className="text-sm font-bold text-rose-600 tabular-nums">{fmt(summary.payables)}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Unused Credits</span>
+                    <span className="text-sm font-bold text-teal-700 tabular-nums">{fmt(summary.unusedCredits)}</span>
+                  </div>
+                </div>
+
+                <div className="flex-1 border border-slate-100 rounded-xl overflow-auto bg-white shadow-2xs">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b border-slate-200 bg-slate-50">
-                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Name</TableHead>
-                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Company Name</TableHead>
-                        <TableHead className="w-24 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</TableHead>
-                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Email</TableHead>
-                        <TableHead className="w-32 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Work Phone</TableHead>
-                        <TableHead className="w-36 px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Payables (BCY)</TableHead>
-                        <TableHead className="w-40 px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Unused Credits (BCY)</TableHead>
+                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <button onClick={() => toggleSort("displayName")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Name
+                            <span className={cn("text-[10px]", sortField === "displayName" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "displayName" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <button onClick={() => toggleSort("companyName")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Company Name
+                            <span className={cn("text-[10px]", sortField === "companyName" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "companyName" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-24 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <button onClick={() => toggleSort("isActive")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Status
+                            <span className={cn("text-[10px]", sortField === "isActive" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "isActive" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-1/5 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <button onClick={() => toggleSort("email")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Email
+                            <span className={cn("text-[10px]", sortField === "email" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "email" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-32 px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <button onClick={() => toggleSort("phone")} className="group flex items-center gap-1 hover:text-teal-700">
+                            Work Phone
+                            <span className={cn("text-[10px]", sortField === "phone" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "phone" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-36 px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <button onClick={() => toggleSort("outstandingPayable")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                            Payables (BCY)
+                            <span className={cn("text-[10px]", sortField === "outstandingPayable" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "outstandingPayable" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-40 px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                          <button onClick={() => toggleSort("unusedCredits")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                            Unused Credits (BCY)
+                            <span className={cn("text-[10px]", sortField === "unusedCredits" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                              {sortField === "unusedCredits" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filtered.map((c) => {
+                      {sortedVendors.map((c) => {
                         const primary = c.contactPersons?.find((p) => p.isPrimary) ?? c.contactPersons?.[0];
                         const email = c.email ?? primary?.email ?? "";
                         const phone = c.phone ?? primary?.workPhone ?? primary?.mobile ?? "";
