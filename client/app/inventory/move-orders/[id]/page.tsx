@@ -162,7 +162,7 @@ export default function MoveOrderDetailsPage() {
         </div>
       )}
     >
-      <div className="space-y-6">
+      <div className="space-y-6 statement-print-area">
         <div className="flex flex-wrap items-center justify-between gap-4 bg-muted/20 p-4 rounded-lg border">
           <div className="flex items-center gap-6">
             <div className="space-y-1">

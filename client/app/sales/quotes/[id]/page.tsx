@@ -323,6 +323,26 @@ export default function QuoteDetailPage() {
     }
   }
 
+  async function handleConvertToSalesOrder() {
+    if (!quote) return;
+    if (!confirm("Convert this accepted quote to a Sales Order?")) return;
+
+    setActionLoading(true);
+    try {
+      const res = await quoteApi.convertToSalesOrder(quote._id);
+      toast.success("Converted to Sales Order");
+      if (res.data?._id) {
+        router.push(`/sales/sales-orders/${res.data._id}`);
+      } else {
+        fetchQuote();
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to convert to sales order");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function onSendEmail(data: any) {
     if (!quote) return;
     await quoteApi.sendEmailWithFiles(quote._id, data, data.files);
@@ -569,11 +589,7 @@ export default function QuoteDetailPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent>
-                        <DropdownMenuItem onClick={handleConvertToInvoice}>
-                          <Receipt className="h-4 w-4 mr-2" />
-                          To Invoice
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.info("Sales Order conversion coming soon")}>
+                        <DropdownMenuItem onClick={handleConvertToSalesOrder}>
                           <FileText className="h-4 w-4 mr-2" />
                           To Sales Order
                         </DropdownMenuItem>
@@ -622,23 +638,16 @@ export default function QuoteDetailPage() {
                           </div>
                           <div>
                             <div className="text-xs font-bold text-slate-800 uppercase tracking-tight">WHAT&apos;S NEXT?</div>
-                            <div className="text-[11px] text-slate-500">Convert this quote to an invoice or a sales order to proceed.</div>
+                            <div className="text-[11px] text-slate-500">Once accepted, convert this quote to a Sales Order to proceed.</div>
                           </div>
                        </div>
                        <div className="flex gap-2">
                          <Button
                            size="sm"
                            className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold h-8 rounded-md"
-                           onClick={handleConvertToInvoice}
+                           onClick={handleConvertToSalesOrder}
                          >
-                            Convert <ChevronDown className="ml-1 h-3 w-3" />
-                         </Button>
-                         <Button
-                           size="sm"
-                           variant="outline"
-                           className="text-xs font-semibold h-8 border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md"
-                         >
-                            Create Project
+                            Convert to Sales Order
                          </Button>
                        </div>
                     </div>

@@ -51,7 +51,7 @@ export interface FixedAsset {
   serialNumber?: string;
   currentValue: number;
   disposalValue: number;
-  fixedAssetTypeId: string | Pick<FixedAssetType, "_id" | "name">;
+  fixedAssetTypeId?: string | Pick<FixedAssetType, "_id" | "name"> | null;
   purchaseDate: string;
   warrantyExpirationDate?: string | null;
   description?: string;
@@ -62,15 +62,16 @@ export interface FixedAsset {
   assetLifeUnit: AssetLifeUnit;
   computationType: ComputationType;
   depreciationStartDate: string;
-  fixedAssetAccountId: string | RefName;
-  accumulatedDepreciationAccountId: string | RefName;
-  depreciationExpenseAccountId: string | RefName;
+  fixedAssetAccountId?: string | RefName | null;
+  accumulatedDepreciationAccountId?: string | RefName | null;
+  depreciationExpenseAccountId?: string | RefName | null;
   status: FixedAssetStatus;
   comments?: FixedAssetComment[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
 
 export interface FixedAssetListParams extends ListParams {
   status?: FixedAssetStatus | "All";
@@ -123,6 +124,14 @@ export type UpdateFixedAssetInput = Partial<CreateFixedAssetInput> & {
   isActive?: boolean;
 };
 
+export interface DepreciationResult {
+  posted: boolean;
+  periodKey: string;
+  depreciationAmount: number;
+  entryIds: string[];
+  message?: string;
+}
+
 export const fixedAssetApi = {
   list: (params?: FixedAssetListParams) =>
     apiFetch<PaginatedResponse<FixedAsset>>(
@@ -155,6 +164,16 @@ export const fixedAssetApi = {
       body: JSON.stringify({ text, isSystem }),
       headers: { "Content-Type": "application/json" },
     }),
+
+  /** Post a depreciation journal for a specific period (ISO date string or null for current month end) */
+  postDepreciation: (id: string, periodDate?: string) =>
+    apiFetch<{ success: boolean; data: DepreciationResult }>(
+      `/fixed-assets/${id}/depreciation`,
+      {
+        method: "POST",
+        body: JSON.stringify({ periodDate: periodDate ?? null }),
+      },
+    ),
 
   listTypes: () => apiFetch<{ data: FixedAssetType[] }>("/fixed-assets/types"),
 

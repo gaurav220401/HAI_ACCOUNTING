@@ -806,6 +806,91 @@ export const convertToInvoice = asyncHandler(
   },
 );
 
+/** POST /api/quotes/:id/convert-to-sales-order */
+export const convertToSalesOrder = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const oid = orgId(req);
+    const quote = await Quote.findOne({
+      _id: req.params.id,
+      organizationId: oid,
+      isDeleted: false,
+    });
+
+    if (!quote) throw new NotFoundError("Quote");
+
+    const SalesOrderModel = require("../models/sales-order.model").default;
+
+    // Generate next SO number
+    const lastSO = await SalesOrderModel.findOne({
+      organizationId: oid,
+      isDeleted: { $in: [true, false] },
+    })
+      .sort({ salesOrderNumber: -1 })
+      .select("salesOrderNumber")
+      .lean();
+
+    let nextSONum = "SO-00001";
+    if (lastSO) {
+      const match = String((lastSO as any).salesOrderNumber || "").match(/SO-(\d+)/);
+      if (match) {
+        const next = parseInt(match[1], 10) + 1;
+        nextSONum = `SO-${String(next).padStart(5, "0")}`;
+      }
+    }
+
+    // Map quote items → sales order lineItems
+    const lineItems = (quote.items || []).map((item: any) => ({
+      itemId: item.itemId || null,
+      name: item.name,
+      description: item.description,
+      hsnSacCode: item.hsnSacCode,
+      quantity: item.quantity,
+      rate: item.rate,
+      discount: item.discountPercent || 0,
+      taxId: item.taxId || null,
+      taxPercent: item.taxPercent || 0,
+      taxAmount: item.taxAmount || 0,
+      amount: item.amount,
+    }));
+
+    const salesOrder = new SalesOrderModel({
+      organizationId: oid,
+      salesOrderNumber: nextSONum,
+      customerId: quote.customerId,
+      orderDate: new Date(),
+      lineItems,
+      subTotal: quote.subTotal,
+      shippingCharges: 0,
+      adjustment: quote.adjustmentAmount || 0,
+      total: quote.total,
+      notes: quote.customerNotes,
+      terms: quote.termsAndConditions,
+      taxType: quote.taxType || "none",
+      taxAmount: quote.taxAmount || 0,
+      status: "DRAFT",
+      invoiceStatus: "Not Invoiced",
+      shipmentStatus: "Pending",
+      isActive: true,
+      isDeleted: false,
+    });
+
+    attachUser(salesOrder, req);
+    await salesOrder.save();
+
+    // Mark quote as Accepted (converted to a sales order)
+    if (quote.status !== "Accepted") {
+      quote.status = "Accepted";
+      await quote.save();
+    }
+
+    res.status(201).json({
+      success: true,
+      data: salesOrder,
+      message: "Quote converted to Sales Order",
+    });
+  },
+);
+
 /** POST /api/quotes/:id/accept */
 export const acceptQuote = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {

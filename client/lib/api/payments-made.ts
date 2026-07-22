@@ -34,6 +34,7 @@ export interface PaymentMade {
   reference_number?: string;
   notes?: string;
   status: PaymentMadeStatus;
+  payment_type?: "bill-payment" | "vendor-advance" | "vendor-payable";
   total_amount_paid: number;
   amount_used_for_bills: number;
   amount_refunded: number;
@@ -84,6 +85,7 @@ export interface CreatePaymentMadeInput {
   reference_number?: string;
   notes?: string;
   status: "DRAFT" | "PAID";
+  payment_type?: "bill-payment" | "vendor-advance" | "vendor-payable";
   total_amount_paid: number;
   bill_applications?: Array<{
     bill_id: string;

@@ -884,7 +884,12 @@ export default function NewPurchaseOrderPage() {
       setCustomers(cRes.data ?? []);
       setItems(iRes.data ?? []);
       setAccounts(aRes.data ?? []);
-      setPaymentTermsList(ptRes.data ?? []);
+      const fetchedTerms = ptRes.data ?? [];
+      setPaymentTermsList(fetchedTerms);
+      const defaultPt = fetchedTerms.find((pt: any) => pt.isDefault || pt.name.toLowerCase() === "due on receipt");
+      if (defaultPt) {
+        setPaymentTermsId(defaultPt._id);
+      }
       const tdsData = tdsRes.data ?? [];
       setTdsTaxes(tdsData.length > 0 ? tdsData : DEFAULT_TDS_TAXES);
       const tcsData = tcsRes.data ?? [];
@@ -965,7 +970,9 @@ export default function NewPurchaseOrderPage() {
         setReferenceNumber(draft.referenceNumber || "");
         setPoDate(inputDate(draft.purchaseOrderDate) || today());
         setDeliveryDate(inputDate(draft.deliveryDate));
-        setPaymentTermsId(String(draft.paymentTermsId || ""));
+        const defaultPt = paymentTermsList.find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+        const loadedPtId = draft.paymentTermsId === "due_on_receipt" ? (defaultPt?._id || "") : String(draft.paymentTermsId || "");
+        setPaymentTermsId(loadedPtId);
         setShipmentPreference(draft.shipmentPreference || "");
         setDiscountLevel(nextDiscountLevel);
         setRows(nextRows.length > 0 ? nextRows : [newRow()]);
@@ -1135,10 +1142,13 @@ export default function NewPurchaseOrderPage() {
     setItemSelectorRow(null);
   }
 
-  async function handleSave(status: "Draft" | "Open") {
+  async function handleSave(status: "Draft" | "Open", sendEmail = true) {
     if (!poDate) { toast.error("Purchase order date is required"); return; }
     setSaving(true);
     try {
+      const defaultPt = paymentTermsList.find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+      const resolvedPtId = paymentTermsId === "due_on_receipt" ? (defaultPt?._id || null) : (paymentTermsId || null);
+
       const payload: CreatePurchaseOrderInput = {
         vendorId: vendorId || null,
         deliveryAddressType: deliveryAddrType,
@@ -1146,7 +1156,7 @@ export default function NewPurchaseOrderPage() {
         referenceNumber,
         purchaseOrderDate: poDate,
         deliveryDate: deliveryDate || null,
-        paymentTermsId: paymentTermsId || null,
+        paymentTermsId: resolvedPtId,
         shipmentPreference,
         discountLevel,
         discountAccountId: discountAccountId || null,
@@ -1178,7 +1188,7 @@ export default function NewPurchaseOrderPage() {
       };
       const res = await purchaseOrderApi.create(payload);
       toast.success(`Purchase order ${status === "Draft" ? "saved as draft" : "saved"}`);
-      if (status === "Open") {
+      if (status === "Open" && sendEmail) {
         router.push(`/purchases/orders/${res.data._id}/send-email`);
       } else {
         router.push("/purchases/orders");
@@ -1423,7 +1433,6 @@ export default function NewPurchaseOrderPage() {
                       <SelectValue placeholder="Due on Receipt" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
                       {paymentTermsList.map((pt) => (
                         <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>
                       ))}
@@ -2041,7 +2050,11 @@ export default function NewPurchaseOrderPage() {
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   Save as Draft
                 </Button>
-                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open")} disabled={saving || draftLoading}>
+                <Button variant="outline" size="sm" className="border-teal-200 text-teal-700 bg-white hover:bg-teal-50 rounded-md font-semibold" onClick={() => handleSave("Open", false)} disabled={saving || draftLoading}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Save
+                </Button>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open", true)} disabled={saving || draftLoading}>
                   {(saving || draftLoading) ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   {draftLoading ? "Loading..." : "Save and Send"}
                 </Button>

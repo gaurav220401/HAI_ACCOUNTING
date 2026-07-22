@@ -58,6 +58,14 @@ export interface RetainerInvoice {
   status: RetainerInvoiceStatus;
   sent_at?: string | null;
   applications: RetainerInvoiceApplication[];
+  audit_log?: Array<{
+    action: string;
+    details?: string;
+    amount?: number;
+    invoice_id?: string | null;
+    at: string;
+    by?: string;
+  }>;
 
   createdAt: string;
   updatedAt: string;

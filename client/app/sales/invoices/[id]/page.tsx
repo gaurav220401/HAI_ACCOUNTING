@@ -54,6 +54,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   invoiceApi,
   type Invoice,
@@ -67,6 +77,8 @@ import {
 import { toast } from "sonner";
 import { InvoiceTemplateRenderer } from "@/components/invoice-template-renderer";
 import { DEFAULT_CONFIG } from "@/app/sales/invoices/[id]/edit-template/config";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 
 // ─── STYLES ──────────────────────────────────────────────────────────
 const printStyles = `
@@ -304,6 +316,13 @@ export default function InvoiceDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
+  // States for applying customer advances (excess payments)
+  const [unusedPayments, setUnusedPayments] = useState<PaymentReceived[]>([]);
+  const [applyCreditsOpen, setApplyCreditsOpen] = useState(false);
+  const [selectedCreditPaymentId, setSelectedCreditPaymentId] = useState("");
+  const [creditAmountToApply, setCreditAmountToApply] = useState(0);
+  const [applyingCredits, setApplyingCredits] = useState(false);
+
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
@@ -326,6 +345,7 @@ export default function InvoiceDetailPage() {
       setInvoice(res.data);
 
       // Parallel fetch extra data
+      const custId = typeof res.data.customerId === "object" ? res.data.customerId._id : res.data.customerId;
       Promise.all([
         salesOrderApi.list({ limit: 100 }).then((soRes) => {
           setLinkedSalesOrders(
@@ -340,6 +360,16 @@ export default function InvoiceDetailPage() {
         paymentReceivedApi
           .list({ invoice_id: id })
           .then((pRes) => setPayments(pRes.data)),
+        paymentReceivedApi
+          .list({ customer_id: custId, status: "PAID", limit: 300 })
+          .then((pRes) => {
+            const unused = pRes.data.filter(
+              (p) =>
+                p.amount_in_excess > 0 &&
+                p.receipt_type !== "previous-payment",
+            );
+            setUnusedPayments(unused);
+          }),
         invoiceApi
           .getJournalEntries(id)
           .then((jRes) => setJournalEntries(jRes.data)),
@@ -348,6 +378,34 @@ export default function InvoiceDetailPage() {
       toast.error("Failed to fetch invoice");
     } finally {
       setFetching(false);
+    }
+  }
+
+  async function handleApplyCredits() {
+    if (!invoice || !selectedCreditPaymentId || creditAmountToApply <= 0) return;
+    if (creditAmountToApply > (invoice.balanceDue || 0)) {
+      toast.error("Applied amount cannot exceed invoice balance due");
+      return;
+    }
+    const payment = unusedPayments.find((p) => p._id === selectedCreditPaymentId);
+    if (payment && creditAmountToApply > payment.amount_in_excess) {
+      toast.error("Applied amount cannot exceed available unused credits");
+      return;
+    }
+
+    setApplyingCredits(true);
+    try {
+      await paymentReceivedApi.apply(selectedCreditPaymentId, {
+        invoice_id: id,
+        applied_amount: creditAmountToApply,
+      });
+      toast.success("Advance credits applied successfully");
+      setApplyCreditsOpen(false);
+      await fetchInvoice();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to apply credits");
+    } finally {
+      setApplyingCredits(false);
     }
   }
 
@@ -452,12 +510,12 @@ export default function InvoiceDetailPage() {
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="font-semibold text-teal-700">Invoices</span>
-                <span className="text-slate-400">/</span>
-                <span className="font-semibold text-slate-700">
+              <div className="flex items-center gap-1.5 text-xs max-w-xs overflow-hidden">
+                <span className="font-semibold text-teal-700 shrink-0">Invoices</span>
+                <span className="text-slate-400 shrink-0">/</span>
+                <DraggableText className="font-semibold text-slate-700 max-w-[150px]">
                   {invoice.invoiceNumber}
-                </span>
+                </DraggableText>
               </div>
               <div className="ml-2">
                 <StatusPill status={invoice.status} />
@@ -682,8 +740,8 @@ export default function InvoiceDetailPage() {
                         <TableHeader className="bg-slate-50 border-b border-slate-200">
                           <TableRow>
                             <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Date</TableHead>
-                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Payment #</TableHead>
-                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Reference #</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Payment Voucher Number</TableHead>
+                            <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Reference Number</TableHead>
                             <TableHead className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Mode</TableHead>
                             <TableHead className="text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Amount</TableHead>
                           </TableRow>
@@ -831,10 +889,117 @@ export default function InvoiceDetailPage() {
                     <Mail className="h-3.5 w-3.5" /> Email Customer
                   </Button>
                 </div>
+
+                {invoice.status !== "Paid" && invoice.status !== "Void" && unusedPayments.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                    <div className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                      <PaymentIcon className="h-4 w-4 text-amber-600" />
+                      Unused Credits: {fmt(unusedPayments.reduce((sum, p) => sum + p.amount_in_excess, 0))}
+                    </div>
+                    <Button
+                      className="w-full text-xs font-bold bg-amber-650 hover:bg-amber-700 text-white rounded-md h-8 shadow-xs"
+                      onClick={() => {
+                        setApplyCreditsOpen(true);
+                        setSelectedCreditPaymentId(unusedPayments[0]._id);
+                        setCreditAmountToApply(Math.min(unusedPayments[0].amount_in_excess, invoice.balanceDue || 0));
+                      }}
+                    >
+                      Apply Credits
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        <Dialog open={applyCreditsOpen} onOpenChange={setApplyCreditsOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Apply Credits to Invoice</DialogTitle>
+            </DialogHeader>
+            {invoice && (
+              <div className="space-y-6">
+                <div className="rounded-md bg-muted/40 p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Invoice Number:</span>
+                    <span className="font-semibold text-slate-800">{invoice.invoiceNumber}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Invoice Balance Due:</span>
+                    <span className="font-semibold text-slate-850">{fmt(invoice.balanceDue || 0)}</span>
+                  </div>
+                </div>
+
+                {unusedPayments.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground">
+                    No unused advance credits found for this customer.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label>Select Advance Payment (Credits)*</Label>
+                      <Select
+                        value={selectedCreditPaymentId}
+                        onValueChange={(val) => {
+                          setSelectedCreditPaymentId(val);
+                          const target = unusedPayments.find((p) => p._id === val);
+                          if (target) {
+                            setCreditAmountToApply(Math.min(target.amount_in_excess, invoice.balanceDue || 0));
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Payment Receipt" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {unusedPayments.map((p) => (
+                            <SelectItem key={p._id} value={p._id}>
+                              PR-{p.payment_number} (Excess: {fmt(p.amount_in_excess)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Amount to Apply*</Label>
+                      <div className="flex">
+                        <span className="inline-flex items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm">INR</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={Math.min(unusedPayments.find((p) => p._id === selectedCreditPaymentId)?.amount_in_excess || 0, invoice.balanceDue || 0)}
+                          step="0.01"
+                          className="rounded-l-none"
+                          value={creditAmountToApply || ""}
+                          onChange={(e) => setCreditAmountToApply(Number(e.target.value || 0))}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        This amount will be deducted from the customer's advance and credited to the invoice balance due.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  {unusedPayments.length > 0 && (
+                    <Button
+                      className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                      onClick={() => void handleApplyCredits()}
+                      disabled={applyingCredits || creditAmountToApply <= 0}
+                    >
+                      {applyingCredits ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Apply Credits
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setApplyCreditsOpen(false)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </SidebarInset>
     </SidebarProvider>
   );

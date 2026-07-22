@@ -27,17 +27,39 @@ function orgId(req: AuthenticatedRequest) {
   return id;
 }
 
-function normalizeLineItems(lineItems: any[]) {
+async function normalizeLineItems(lineItems: any[]) {
   if (!Array.isArray(lineItems) || lineItems.length === 0) {
     throw new ValidationError("lineItems is required");
   }
 
-  const normalized = lineItems.map((l) => ({
-    accountId: l.accountId,
-    debit: Number(l.debit || 0),
-    credit: Number(l.credit || 0),
-    narration: String(l.narration || ""),
-  }));
+  // Collect unique contact IDs to fetch them in bulk
+  const contactIds = lineItems
+    .map((l) => l.contactId)
+    .filter((id) => id && typeof id === "string" && /^[a-fA-F0-9]{24}$/.test(id));
+
+  const contacts = contactIds.length > 0 ? await Contact.find({ _id: { $in: contactIds } }).lean() : [];
+  const contactMap = new Map(contacts.map((c) => [String(c._id), c]));
+
+  const normalized = lineItems.map((l) => {
+    const contactIdStr = l.contactId ? String(l.contactId) : "";
+    const contact = contactMap.get(contactIdStr);
+    let contactType: "Customer" | "Vendor" | "None" = "None";
+    if (contact) {
+      if (["Both", "Customer"].includes(contact.contactType)) {
+        contactType = "Customer";
+      } else if (contact.contactType === "Vendor") {
+        contactType = "Vendor";
+      }
+    }
+    return {
+      accountId: l.accountId,
+      debit: Number(l.debit || 0),
+      credit: Number(l.credit || 0),
+      narration: String(l.narration || ""),
+      contactId: contact ? contact._id : null,
+      contactType,
+    };
+  });
 
   const hasInvalid = normalized.some(
     (l) =>
@@ -181,6 +203,8 @@ async function postJournalLedger(journal: any, req: AuthenticatedRequest) {
       line.narration ||
       journal.description ||
       `Journal ${journal.journalNumber}`,
+    contactType: line.contactType || "None",
+    contactId: line.contactId || null,
   }));
 
   await postVoucher({
@@ -340,7 +364,7 @@ export const getOne = asyncHandler(
 /** POST /api/journals */
 export const create = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const { normalized, totalDebit, totalCredit } = normalizeLineItems(
+    const { normalized, totalDebit, totalCredit } = await normalizeLineItems(
       req.body.lineItems,
     );
     const organizationId = toOrgObjectId(orgId(req));
@@ -411,7 +435,7 @@ export const update = asyncHandler(
     }
 
     if (req.body.lineItems !== undefined) {
-      const { normalized, totalDebit, totalCredit } = normalizeLineItems(
+      const { normalized, totalDebit, totalCredit } = await normalizeLineItems(
         req.body.lineItems,
       );
       journal.lineItems = normalized as any;

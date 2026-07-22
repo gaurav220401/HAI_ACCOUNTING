@@ -44,13 +44,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { DraggableText } from "@/components/ui/draggable-text";
 import { billApi, type Bill } from "@/lib/api/bills";
 import { contactApi, type Contact } from "@/lib/api/contacts";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { uploadApi } from "@/lib/api/upload";
 import { paymentMadeApi, type PaymentBillMap, type PaymentMade } from "@/lib/api/payments-made";
 
-type PaymentEntryMode = "bill-payment" | "vendor-advance";
+type PaymentEntryMode = "bill-payment" | "vendor-advance" | "vendor-payable";
 
 interface BillAllocation {
   bill_id: string;
@@ -545,10 +546,10 @@ export default function PaymentsMadePage() {
                     <thead className="border-b bg-slate-50 text-[11px] uppercase text-slate-600">
                       <tr>
                         <th className="px-3 py-2 text-left">Date</th>
-                        <th className="px-3 py-2 text-left">Payment #</th>
-                        <th className="px-3 py-2 text-left">Reference#</th>
+                        <th className="px-3 py-2 text-left">Payment Voucher Number</th>
+                        <th className="px-3 py-2 text-left">Reference Number</th>
                         <th className="px-3 py-2 text-left">Vendor Name</th>
-                        <th className="px-3 py-2 text-left">Bill#</th>
+                        <th className="px-3 py-2 text-left">Bill Number</th>
                         <th className="px-3 py-2 text-left">Mode</th>
                         <th className="px-3 py-2 text-left">Status</th>
                         <th className="px-3 py-2 text-right">Amount</th>
@@ -566,9 +567,13 @@ export default function PaymentsMadePage() {
                           }}
                         >
                           <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(payment.payment_date)}</td>
-                          <td className="px-3 py-2 text-teal-700 hover:text-teal-800 hover:underline font-semibold">{payment.payment_number}</td>
+                          <td className="px-3 py-2 text-teal-700 hover:text-teal-800 hover:underline font-semibold max-w-[120px] overflow-hidden">
+                            <DraggableText alwaysActive className="block truncate">{payment.payment_number}</DraggableText>
+                          </td>
                           <td className="px-3 py-2">{payment.reference_number || "-"}</td>
-                          <td className="px-3 py-2 font-medium text-slate-700">{vendorName(payment.vendor_id)}</td>
+                          <td className="px-3 py-2 font-medium text-slate-700 max-w-[160px] overflow-hidden">
+                            <DraggableText alwaysActive className="block truncate">{vendorName(payment.vendor_id)}</DraggableText>
+                          </td>
                           <td className="px-3 py-2">-</td>
                           <td className="px-3 py-2 text-slate-600">{payment.payment_mode}</td>
                           <td className="px-3 py-2">
@@ -685,25 +690,25 @@ export default function PaymentsMadePage() {
                   </div>
 
                   <div className="text-xs text-muted-foreground">
-                    Payment #{selectedPayment.payment_number}
+                    Payment Voucher No. {selectedPayment.payment_number}
                   </div>
 
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 hover:bg-slate-200/50"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                     onClick={() => {
                       setSelectedPaymentId(null);
                       setSelectedPayment(null);
                       setSelectedPaymentMaps([]);
                     }}
-                    title="Close"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3.5 w-3.5" />
+                    Close
                   </Button>
                 </div>
 
-                <div className="rounded-lg border bg-white p-6 shadow-2xs">
+                <div className="rounded-lg border bg-white p-6 shadow-2xs statement-print-area">
                   <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-5 sm:flex-row">
                     <div className="flex items-start gap-4">
                       {activeOrganization?.logo ? (
@@ -732,7 +737,7 @@ export default function PaymentsMadePage() {
                   <h2 className="mb-4 text-center text-xl font-semibold tracking-wide text-slate-800">PAYMENTS MADE</h2>
 
                   <div className="grid gap-3 border-b pb-6 text-sm sm:grid-cols-[220px_1fr]">
-                    <p className="text-muted-foreground">Payment#</p>
+                    <p className="text-muted-foreground">Payment Voucher Number</p>
                     <p className="font-semibold text-slate-900">{selectedPayment.payment_number}</p>
 
                     <p className="text-muted-foreground">Payment Date</p>
@@ -802,7 +807,11 @@ export default function PaymentsMadePage() {
                         </thead>
                         <tbody>
                           <tr className="border-b">
-                            <td className="px-2 py-2">Prepaid Expenses</td>
+                            <td className="px-2 py-2">
+                              {selectedPayment.payment_type === "vendor-advance"
+                                ? "Advances to Suppliers"
+                                : "Accounts Payable"}
+                            </td>
                             <td className="px-2 py-2 text-right">{fmtCurrency(selectedPayment.total_amount_paid)}</td>
                             <td className="px-2 py-2 text-right">{fmtCurrency(0)}</td>
                           </tr>
@@ -912,7 +921,7 @@ function FormBody({
           </div>
 
           <div className="vendor-dependent space-y-1.5">
-            <Label>Payment #*</Label>
+            <Label>Payment Voucher Number*</Label>
             <Input
               disabled={vendorLocked}
               value={form.payment_number}
@@ -1019,7 +1028,7 @@ function FormBody({
           </div>
 
           <div className="vendor-dependent space-y-1.5">
-            <Label>Reference#</Label>
+            <Label>Reference Number</Label>
             <Input
               disabled={vendorLocked}
               value={form.reference_number}
@@ -1042,7 +1051,7 @@ function FormBody({
                 <thead className="bg-slate-50 text-xs uppercase text-slate-600">
                   <tr>
                     <th className="border-b px-3 py-2 text-left">Date</th>
-                    <th className="border-b px-3 py-2 text-left">Bill#</th>
+                    <th className="border-b px-3 py-2 text-left">Bill Number</th>
                     <th className="border-b px-3 py-2 text-right">Bill Amount</th>
                     <th className="border-b px-3 py-2 text-right">Amount Due</th>
                     <th className="border-b px-3 py-2 text-right">Payment</th>
@@ -1084,7 +1093,9 @@ function FormBody({
           </div>
         ) : (
           <div className="rounded-md border bg-amber-50/40 p-4 text-sm text-amber-900">
-            Vendor advance mode keeps the full amount in excess until bills are applied later.
+            {form.paymentType === "vendor-payable"
+              ? "Direct payable payment posts the full amount directly to decrease the vendor's accounts payable balance."
+              : "Vendor advance mode keeps the full amount in excess until bills are applied later."}
           </div>
         )}
 

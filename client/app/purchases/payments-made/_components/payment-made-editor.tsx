@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Loader2, Paperclip, X, ChevronDown } from "lucide-react";
+import { Calendar, Loader2, Paperclip, X, ChevronDown, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ import { uploadApi } from "@/lib/api/upload";
 import { paymentMadeApi, type PaymentBillMap } from "@/lib/api/payments-made";
 import { useOrganization } from "@/contexts/organization-context";
 
-type PaymentEntryMode = "bill-payment" | "vendor-advance";
+type PaymentEntryMode = "bill-payment" | "vendor-advance" | "vendor-payable";
 
 interface BillAllocation {
   bill_id: string;
@@ -108,6 +108,12 @@ export function PaymentMadeEditor({
   const [showDepositToDD, setShowDepositToDD] = useState(false);
   const [depositToSearch, setDepositToSearch] = useState("");
 
+  const [billSearchNo, setBillSearchNo] = useState("");
+  const [searchingBill, setSearchingBill] = useState(false);
+
+  const [allOpenBills, setAllOpenBills] = useState<Bill[]>([]);
+  const [showRefDD, setShowRefDD] = useState(false);
+
   const selectedVendor = useMemo(
     () => vendors.find((v) => v._id === form.vendor_id) || null,
     [vendors, form.vendor_id],
@@ -123,22 +129,99 @@ export function PaymentMadeEditor({
     [accounts, form.deposit_to_account],
   );
 
+  const suggestedBills = useMemo(() => {
+    if (form.vendor_id) {
+      return openBills;
+    }
+    return allOpenBills;
+  }, [form.vendor_id, openBills, allOpenBills]);
+
+  const filteredSuggestedBills = useMemo(() => {
+    const q = (form.reference_number || "").toLowerCase().trim();
+    if (!q) return suggestedBills;
+    return suggestedBills.filter((b) => {
+      const vName = typeof b.vendorId === "object" && b.vendorId ? (b.vendorId.displayName || b.vendorId.companyName || "").toLowerCase() : "";
+      return b.billNumber.toLowerCase().includes(q) || vName.includes(q);
+    });
+  }, [suggestedBills, form.reference_number]);
+
+function allocateAmountToBills(amount: number, bills: Bill[], refBillNo?: string): BillAllocation[] {
+  let remaining = Math.max(0, amount);
+  if (bills.length === 0) return [];
+
+  const orderedBills = [...bills];
+  if (refBillNo) {
+    const refIndex = orderedBills.findIndex(
+      (b) => b.billNumber.toLowerCase() === refBillNo.toLowerCase()
+    );
+    if (refIndex > 0) {
+      const [refBill] = orderedBills.splice(refIndex, 1);
+      orderedBills.unshift(refBill);
+    }
+  }
+
+  const payMap = new Map<string, number>();
+  for (const bill of orderedBills) {
+    const due = Number(bill.balanceDue || 0);
+    const pay = Math.min(remaining, due);
+    payMap.set(bill._id, pay);
+    remaining -= pay;
+  }
+
+  return bills.map((b) => ({
+    bill_id: b._id,
+    payment: payMap.get(b._id) || 0,
+  }));
+}
+
+  function selectBillReference(bill: Bill) {
+    const targetVendorId =
+      typeof bill.vendorId === "string" ? bill.vendorId : bill.vendorId?._id;
+
+    setForm((prev) => {
+      const newVendorId = targetVendorId || prev.vendor_id;
+      const targetBills = openBills.length > 0 ? openBills : allOpenBills;
+      const targetBillList = targetBills.some((b) => b._id === bill._id) ? targetBills : [...targetBills, bill];
+      const targetAmt = prev.total_amount_paid > 0 ? prev.total_amount_paid : Number(bill.balanceDue || 0);
+      const newAllocations = allocateAmountToBills(targetAmt, targetBillList, bill.billNumber);
+
+      return {
+        ...prev,
+        paymentType: "bill-payment",
+        vendor_id: newVendorId,
+        reference_number: bill.billNumber,
+        total_amount_paid: targetAmt,
+        billAllocations: newAllocations,
+      };
+    });
+
+    setShowRefDD(false);
+    toast.success(`Linked Bill ${bill.billNumber} (${bill.status})`);
+  }
+
   useEffect(() => {
     if (!activeOrganization?._id) return;
     let cancelled = false;
     const search = new URLSearchParams(window.location.search);
     const initialVendorId = search.get("vendorId");
+    const initialBillNo = search.get("billNumber");
 
     (async () => {
       setLoading(true);
       try {
-        const [vendorRes, accountRes] = await Promise.all([
+        const [vendorRes, accountRes, billRes] = await Promise.all([
           contactApi.list({ type: "Vendor", page: 1, limit: 200 }),
           accountApi.list({ excludeGroups: true }),
+          billApi.list({ page: 1, limit: 200 }),
         ]);
         if (cancelled) return;
         setVendors(vendorRes.data || []);
         setAccounts(accountRes.data || []);
+
+        const validBills = (billRes.data || []).filter(
+          (b) => !["Paid", "Void"].includes(b.status),
+        );
+        setAllOpenBills(validBills);
 
         if (mode === "create") {
           const nextNum = await paymentMadeApi.getNextNumber();
@@ -150,9 +233,9 @@ export function PaymentMadeEditor({
           }));
 
           if (initialBillId) {
-            const billRes = await billApi.getOne(initialBillId);
+            const singleBillRes = await billApi.getOne(initialBillId);
             if (cancelled) return;
-            const linkedBill = billRes.data;
+            const linkedBill = singleBillRes.data;
             const linkedVendorId =
               typeof linkedBill.vendorId === "string" ? linkedBill.vendorId : linkedBill.vendorId?._id;
 
@@ -176,7 +259,7 @@ export function PaymentMadeEditor({
 
           setAppliedMaps(maps);
           setForm({
-            paymentType: maps.length > 0 ? "bill-payment" : "vendor-advance",
+            paymentType: payment.payment_type || (maps.length > 0 ? "bill-payment" : "vendor-advance"),
             vendor_id: typeof payment.vendor_id === "string" ? payment.vendor_id : payment.vendor_id._id,
             payment_number: payment.payment_number,
             total_amount_paid: payment.total_amount_paid,
@@ -221,17 +304,29 @@ export function PaymentMadeEditor({
         if (cancelled) return;
         const bills = (res.data || []).filter((b) => !["Paid", "Void"].includes(b.status));
         setOpenBills(bills);
-        setForm((prev) => ({
-          ...prev,
-          billAllocations: bills.map((b) => ({
-            bill_id: b._id,
-            payment: initialBillId && b._id === initialBillId ? Number(b.balanceDue || 0) : 0,
-          })),
-          total_amount_paid:
-            initialBillId && prev.total_amount_paid <= 0
-              ? Number(bills.find((b) => b._id === initialBillId)?.balanceDue || 0)
-              : prev.total_amount_paid,
-        }));
+        setForm((prev) => {
+          const hasAllocations = prev.billAllocations.some((a) => a.payment > 0);
+          let newAllocations = bills.map((b) => {
+            const existing = prev.billAllocations.find((a) => a.bill_id === b._id);
+            if (existing && existing.payment > 0) return existing;
+            if (initialBillId && b._id === initialBillId) return { bill_id: b._id, payment: Number(b.balanceDue || 0) };
+            return { bill_id: b._id, payment: 0 };
+          });
+
+          const effectiveAmt = initialBillId && prev.total_amount_paid <= 0
+            ? Number(bills.find((b) => b._id === initialBillId)?.balanceDue || 0)
+            : prev.total_amount_paid;
+
+          if (!hasAllocations && effectiveAmt > 0) {
+            newAllocations = allocateAmountToBills(effectiveAmt, bills, prev.reference_number);
+          }
+
+          return {
+            ...prev,
+            billAllocations: newAllocations,
+            total_amount_paid: effectiveAmt,
+          };
+        });
       } catch {
         if (cancelled) return;
         setOpenBills([]);
@@ -269,12 +364,17 @@ export function PaymentMadeEditor({
   }
 
   function updateAllocation(billId: string, value: number) {
-    setForm((prev) => ({
-      ...prev,
-      billAllocations: prev.billAllocations.map((row) =>
+    setForm((prev) => {
+      const updated = prev.billAllocations.map((row) =>
         row.bill_id === billId ? { ...row, payment: Math.max(0, value) } : row,
-      ),
-    }));
+      );
+      const sumAllocated = updated.reduce((sum, r) => sum + (r.payment || 0), 0);
+      return {
+        ...prev,
+        billAllocations: updated,
+        total_amount_paid: Math.max(prev.total_amount_paid, sumAllocated),
+      };
+    });
   }
 
   function clearApplied() {
@@ -307,7 +407,7 @@ export function PaymentMadeEditor({
       .map((a) => ({ bill_id: a.bill_id, applied_amount: Number(a.payment) }));
 
     if (form.paymentType === "bill-payment" && status === "PAID" && selectedApps.length === 0) {
-      toast.error("Add bill allocation or switch to Vendor Advance");
+      toast.error("Add bill allocation or switch to Vendor Advance / Pay Payable");
       return;
     }
 
@@ -329,6 +429,7 @@ export function PaymentMadeEditor({
         status,
         total_amount_paid: Number(form.total_amount_paid),
         bill_applications: form.paymentType === "bill-payment" ? selectedApps : [],
+        payment_type: form.paymentType,
       });
 
       toast.success(status === "PAID" ? "Payment saved" : "Payment saved as draft");
@@ -379,7 +480,7 @@ export function PaymentMadeEditor({
     <div className="h-full overflow-auto bg-slate-50 p-3 sm:p-6">
       <div className="rounded-lg border bg-white">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <p className="text-sm font-semibold">{mode === "create" ? "New Payment Made" : `Edit Payment #${form.payment_number}`}</p>
+          <p className="text-sm font-semibold">{mode === "create" ? "New Payment Made" : `Edit Payment Voucher ${form.payment_number}`}</p>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push("/purchases/payments-made")}>
             <X className="h-4 w-4" />
           </Button>
@@ -393,6 +494,7 @@ export function PaymentMadeEditor({
           <TabsList variant="line" className="w-full justify-start rounded-none border-b px-3 py-2">
             <TabsTrigger value="bill-payment" className="px-3 text-sm" disabled={mode === "edit"}>Bill Payment</TabsTrigger>
             <TabsTrigger value="vendor-advance" className="px-3 text-sm" disabled={mode === "edit"}>Vendor Advance</TabsTrigger>
+            <TabsTrigger value="vendor-payable" className="px-3 text-sm" disabled={mode === "edit"}>Pay Payable</TabsTrigger>
           </TabsList>
 
           <TabsContent value={form.paymentType} className="space-y-6 p-4 sm:p-6">
@@ -431,12 +533,12 @@ export function PaymentMadeEditor({
                     )}
                   </div>
 
-                  <div className="vendor-dependent space-y-1.5">
-                    <Label>Payment #*</Label>
+                  <div className="space-y-1.5">
+                    <Label>Payment Voucher Number*</Label>
                     <Input
-                      disabled
                       value={form.payment_number}
                       onChange={(e) => setForm((prev) => ({ ...prev, payment_number: e.target.value }))}
+                      placeholder="e.g. PAY-00001"
                     />
                   </div>
 
@@ -447,7 +549,17 @@ export function PaymentMadeEditor({
                       type="number"
                       min={0}
                       value={form.total_amount_paid || ""}
-                      onChange={(e) => setForm((prev) => ({ ...prev, total_amount_paid: Number(e.target.value || 0) }))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value || 0);
+                        setForm((prev) => {
+                          const newAllocations = allocateAmountToBills(val, openBills, prev.reference_number);
+                          return {
+                            ...prev,
+                            total_amount_paid: val,
+                            billAllocations: openBills.length > 0 ? newAllocations : prev.billAllocations,
+                          };
+                        });
+                      }}
                       placeholder="INR"
                     />
                   </div>
@@ -539,132 +651,166 @@ export function PaymentMadeEditor({
                     )}
                   </div>
 
-                  <div className="vendor-dependent space-y-1.5">
-                    <Label>Deposit To</Label>
-                    {loading ? (
-                      <div className="w-full h-10 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
-                        <span className="text-slate-400 text-xs">Loading accounts...</span>
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
-                      </div>
-                    ) : (
-                      <DropdownMenu open={showDepositToDD} onOpenChange={(o) => { setShowDepositToDD(o); if (!o) setDepositToSearch(""); }}>
+                  <div className="space-y-1.5">
+                    <Label>Reference Number</Label>
+                    <DropdownMenu open={showRefDD} onOpenChange={setShowRefDD}>
+                      <div className="relative flex items-center">
+                        <Input
+                          value={form.reference_number}
+                          onChange={(e) => {
+                            setForm((prev) => ({ ...prev, reference_number: e.target.value }));
+                            setShowRefDD(true);
+                          }}
+                          onFocus={() => setShowRefDD(true)}
+                          placeholder="Select or enter bill number"
+                          className="pr-8"
+                        />
                         <DropdownMenuTrigger asChild>
-                          <button type="button" className="flex items-center justify-between w-full text-sm border bg-white rounded-md px-3 h-10 hover:bg-muted/30 text-muted-foreground transition-colors focus:border-teal-500 focus:ring-teal-500/20" disabled={vendorLocked}>
-                            <span className="truncate text-left flex-1 mr-2">{selectedDepositTo ? `${selectedDepositTo.code ? `[${selectedDepositTo.code}] ` : ""}${selectedDepositTo.name}` : "Select account"}</span>
-                            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                          <button
+                            type="button"
+                            className="absolute right-2 text-slate-400 hover:text-slate-600 focus:outline-none p-1"
+                            title="Select Bill Reference"
+                          >
+                            <ChevronDown className="h-4 w-4" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-80 p-0 overflow-hidden">
-                          <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-                            <Input className="h-7 text-xs" placeholder="Search accounts" value={depositToSearch} onChange={(e) => setDepositToSearch(e.target.value)} autoFocus />
-                          </div>
-                          <div className="max-h-56 overflow-y-auto">
-                            {accounts.filter((account) => 
-                              account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
-                              (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
-                            ).map((account) => (
-                              <button key={account._id} type="button" className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50 focus:bg-teal-50 focus:text-teal-700", form.deposit_to_account === account._id && "bg-teal-50 text-teal-700 font-medium")}
-                                onClick={() => { setForm((prev) => ({ ...prev, deposit_to_account: account._id })); setShowDepositToDD(false); setDepositToSearch(""); }}>
-                                {account.code ? `[${account.code}] ` : ""}{account.name}
-                              </button>
-                            ))}
-                            {accounts.filter((account) => 
-                              account.name.toLowerCase().includes(depositToSearch.toLowerCase()) || 
-                              (account.code && account.code.toLowerCase().includes(depositToSearch.toLowerCase()))
-                            ).length === 0 && (
-                              <p className="text-xs text-muted-foreground text-center py-5 uppercase tracking-wide font-medium">No Results Found</p>
-                            )}
-                          </div>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-
-                  <div className="vendor-dependent space-y-1.5">
-                    <Label>Reference#</Label>
-                    <Input
-                      disabled={vendorLocked}
-                      value={form.reference_number}
-                      onChange={(e) => setForm((prev) => ({ ...prev, reference_number: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className={cn("rounded-md border", vendorLocked && mode === "create" && "pointer-events-none opacity-40")}>
-                  <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
-                    <span>Apply to Bills</span>
-                    {mode === "create" ? (
-                      <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={clearApplied}>
-                        Clear Applied Amount
-                      </Button>
-                    ) : null}
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-slate-50 text-xs uppercase text-slate-600">
-                        <tr>
-                          <th className="border-b px-3 py-2 text-left">Date</th>
-                          <th className="border-b px-3 py-2 text-left">Bill#</th>
-                          <th className="border-b px-3 py-2 text-right">Bill Amount</th>
-                          <th className="border-b px-3 py-2 text-right">Amount Due</th>
-                          <th className="border-b px-3 py-2 text-right">Payment</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {mode === "create" ? (
-                          openBills.length === 0 ? (
-                            <tr>
-                              <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
-                                There are no bills for this vendor.
-                              </td>
-                            </tr>
+                      </div>
+                      <DropdownMenuContent align="start" sideOffset={4} className="z-[220] w-[340px] p-0 overflow-hidden">
+                        <div className="p-2 border-b bg-slate-50 flex items-center justify-between text-xs font-semibold text-slate-700">
+                          <span>{form.vendor_id ? "Suggested Bills for Vendor" : "Select Open Bill"}</span>
+                          <span className="text-[10px] font-normal text-slate-500">{filteredSuggestedBills.length} found</span>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto p-1">
+                          {filteredSuggestedBills.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-4">No matching open bills</p>
                           ) : (
-                            openBills.map((bill) => {
-                              const current = form.billAllocations.find((a) => a.bill_id === bill._id)?.payment || 0;
+                            filteredSuggestedBills.map((bill) => {
+                              const vName =
+                                typeof bill.vendorId === "object" && bill.vendorId
+                                  ? bill.vendorId.displayName || bill.vendorId.companyName
+                                  : "";
                               return (
-                                <tr key={bill._id}>
-                                  <td className="border-b px-3 py-2">{fmtDate(bill.billDate)}</td>
-                                  <td className="border-b px-3 py-2">{bill.billNumber}</td>
-                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.total)}</td>
-                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.balanceDue)}</td>
-                                  <td className="border-b px-3 py-2 text-right">
-                                    <Input
-                                      type="number"
-                                      min={0}
-                                      max={bill.balanceDue}
-                                      value={current || ""}
-                                      onChange={(e) => updateAllocation(bill._id, Number(e.target.value || 0))}
-                                      className="ml-auto h-8 w-28 text-right"
-                                    />
-                                  </td>
-                                </tr>
+                                <button
+                                  key={bill._id}
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 text-xs rounded hover:bg-teal-50/70 transition-colors flex items-center justify-between border-b border-slate-100 last:border-0"
+                                  onClick={() => selectBillReference(bill)}
+                                >
+                                  <div className="space-y-0.5">
+                                    <div className="font-semibold text-teal-800 flex items-center gap-1.5">
+                                      <span>{bill.billNumber}</span>
+                                      <span
+                                        className={cn(
+                                          "px-1.5 py-0.2 text-[9px] rounded font-medium border",
+                                          bill.status === "Overdue" && "bg-red-50 text-red-700 border-red-200",
+                                          bill.status === "Partially Paid" && "bg-amber-50 text-amber-700 border-amber-200",
+                                          bill.status === "Open" && "bg-blue-50 text-blue-700 border-blue-200",
+                                          bill.status === "Draft" && "bg-slate-50 text-slate-600 border-slate-200"
+                                        )}
+                                      >
+                                        {bill.status}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500">
+                                      {fmtDate(bill.billDate)} {vName ? `• ${vName}` : ""}
+                                    </div>
+                                  </div>
+                                  <div className="text-right font-medium text-slate-900">
+                                    {fmtCurrency(bill.balanceDue)}
+                                  </div>
+                                </button>
                               );
                             })
-                          )
-                        ) : (
-                          billRowsForEdit.length === 0 ? (
-                            <tr>
-                              <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
-                                No bill applications for this payment.
-                              </td>
-                            </tr>
-                          ) : (
-                            billRowsForEdit.map((row) => (
-                              <tr key={row.map._id}>
-                                <td className="border-b px-3 py-2">{fmtDate(row.bill?.billDate)}</td>
-                                <td className="border-b px-3 py-2">{row.bill?.billNumber || "-"}</td>
-                                <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.total || 0)}</td>
-                                <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.balanceDue || 0)}</td>
-                                <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.map.applied_amount)}</td>
-                              </tr>
-                            ))
-                          )
-                        )}
-                      </tbody>
-                    </table>
+                          )}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
+
+                {form.paymentType === "bill-payment" ? (
+                  <div className={cn("rounded-md border", vendorLocked && mode === "create" && "pointer-events-none opacity-40")}>
+                    <div className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground">
+                      <span>Apply to Bills</span>
+                      {mode === "create" ? (
+                        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={clearApplied}>
+                          Clear Applied Amount
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase text-slate-600">
+                          <tr>
+                            <th className="border-b px-3 py-2 text-left">Date</th>
+                            <th className="border-b px-3 py-2 text-left">Bill Number</th>
+                            <th className="border-b px-3 py-2 text-right">Bill Amount</th>
+                            <th className="border-b px-3 py-2 text-right">Amount Due</th>
+                            <th className="border-b px-3 py-2 text-right">Payment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mode === "create" ? (
+                            openBills.length === 0 ? (
+                              <tr>
+                                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
+                                  There are no bills for this vendor.
+                                </td>
+                              </tr>
+                            ) : (
+                              openBills.map((bill) => {
+                                const current = form.billAllocations.find((a) => a.bill_id === bill._id)?.payment || 0;
+                                return (
+                                  <tr key={bill._id}>
+                                    <td className="border-b px-3 py-2">{fmtDate(bill.billDate)}</td>
+                                    <td className="border-b px-3 py-2">{bill.billNumber}</td>
+                                    <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.total)}</td>
+                                    <td className="border-b px-3 py-2 text-right">{fmtCurrency(bill.balanceDue)}</td>
+                                    <td className="border-b px-3 py-2 text-right">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        max={bill.balanceDue}
+                                        value={current || ""}
+                                        onChange={(e) => updateAllocation(bill._id, Number(e.target.value || 0))}
+                                        className="ml-auto h-8 w-28 text-right"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )
+                          ) : (
+                            billRowsForEdit.length === 0 ? (
+                              <tr>
+                                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
+                                  No bill applications for this payment.
+                                </td>
+                              </tr>
+                            ) : (
+                              billRowsForEdit.map((row) => (
+                                <tr key={row.map._id}>
+                                  <td className="border-b px-3 py-2">{fmtDate(row.bill?.billDate)}</td>
+                                  <td className="border-b px-3 py-2">{row.bill?.billNumber || "-"}</td>
+                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.total || 0)}</td>
+                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.bill?.balanceDue || 0)}</td>
+                                  <td className="border-b px-3 py-2 text-right">{fmtCurrency(row.map.applied_amount)}</td>
+                                </tr>
+                              ))
+                            )
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-md border bg-amber-50/40 p-4 text-sm text-amber-900">
+                    {form.paymentType === "vendor-advance"
+                      ? "Vendor advance mode keeps the full amount in excess until bills are applied later."
+                      : "Direct payable payment posts the full amount directly to decrease the vendor's accounts payable balance."}
+                  </div>
+                )}
 
                 <div className={cn("space-y-1.5", vendorLocked && mode === "create" && "opacity-40")}>
                   <Label>Notes (Internal use. Not visible to vendor)</Label>

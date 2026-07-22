@@ -456,6 +456,18 @@ export default function NewSalesOrderPage() {
     } finally { setSaving(false); }
   }
 
+  async function onSaveApproved() {
+    const payload = buildPayload("APPROVED");
+    if (!payload) return;
+    setSaving(true);
+    try {
+      await salesOrderApi.create(payload);
+      router.push("/sales/orders");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to create sales order"));
+    } finally { setSaving(false); }
+  }
+
   async function onSaveAndSend() {
     const payload = buildPayload("APPROVED");
     if (!payload) return;
@@ -525,6 +537,17 @@ export default function NewSalesOrderPage() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 : null}
                 Save as Draft
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onSaveApproved}
+                disabled={saving}
+              >
+                {saving ?
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                : null}
+                Save
               </Button>
               <Button
                 size="sm"
@@ -624,7 +647,7 @@ export default function NewSalesOrderPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label htmlFor="salesOrderNumber" className="md:col-span-4">Sales Order#*</Label>
+                <Label htmlFor="salesOrderNumber" className="md:col-span-4">Sales Order Number*</Label>
                 <div className="md:col-span-8">
                   <Input
                     id="salesOrderNumber"
@@ -637,7 +660,7 @@ export default function NewSalesOrderPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <Label htmlFor="reference" className="md:col-span-4">Reference#</Label>
+                <Label htmlFor="reference" className="md:col-span-4">Reference Number</Label>
                 <div className="md:col-span-8">
                   <Input
                     id="reference"

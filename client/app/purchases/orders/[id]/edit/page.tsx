@@ -604,7 +604,9 @@ export default function EditPurchaseOrderPage() {
       setReferenceNumber(o.referenceNumber || "");
       setPoDate(o.purchaseOrderDate.slice(0, 10));
       setDeliveryDate(o.deliveryDate ? o.deliveryDate.slice(0, 10) : "");
-      const ptId = typeof o.paymentTermsId === "object" && o.paymentTermsId ? o.paymentTermsId._id : o.paymentTermsId || "";
+      const ptIdRaw = typeof o.paymentTermsId === "object" && o.paymentTermsId ? o.paymentTermsId._id : o.paymentTermsId || "";
+      const defaultPt = (ptRes.data ?? []).find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+      const ptId = ptIdRaw === "due_on_receipt" ? (defaultPt?._id || "") : ptIdRaw;
       setPaymentTermsId(ptId);
       setShipmentPreference(o.shipmentPreference || "");
       setDiscountLevel(o.discountLevel);
@@ -777,10 +779,13 @@ export default function EditPurchaseOrderPage() {
     setItemSelectorRow(null);
   }
 
-  async function handleSave(status: "Draft" | "Open") {
+  async function handleSave(status: "Draft" | "Open", sendEmail = true) {
     if (!poDate) { toast.error("Purchase order date is required"); return; }
     setSaving(true);
     try {
+      const defaultPt = paymentTermsList.find((pt: any) => pt.name.toLowerCase() === "due on receipt");
+      const resolvedPtId = paymentTermsId === "due_on_receipt" ? (defaultPt?._id || null) : (paymentTermsId || null);
+
       const payload: Partial<CreatePurchaseOrderInput> = {
         vendorId: vendorId || null,
         deliveryAddressType: deliveryAddrType,
@@ -788,7 +793,7 @@ export default function EditPurchaseOrderPage() {
         referenceNumber,
         purchaseOrderDate: poDate,
         deliveryDate: deliveryDate || null,
-        paymentTermsId: paymentTermsId || null,
+        paymentTermsId: resolvedPtId,
         shipmentPreference,
         discountLevel,
         discountAccountId: discountAccountId || null,
@@ -820,7 +825,7 @@ export default function EditPurchaseOrderPage() {
       };
       await purchaseOrderApi.update(orderId, payload);
       toast.success("Purchase order updated");
-      if (status === "Open") {
+      if (status === "Open" && sendEmail) {
         router.push(`/purchases/orders/${orderId}/send-email`);
       } else {
         router.push("/purchases/orders");
@@ -1001,7 +1006,6 @@ export default function EditPurchaseOrderPage() {
                   <Select value={paymentTermsId} onValueChange={setPaymentTermsId}>
                     <SelectTrigger className="h-9 text-sm flex-1"><SelectValue placeholder="Due on Receipt" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
                       {paymentTermsList.map((pt) => <SelectItem key={pt._id} value={pt._id}>{pt.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -1512,7 +1516,10 @@ export default function EditPurchaseOrderPage() {
                 <Button variant="outline" size="sm" className="border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md font-semibold" onClick={() => handleSave("Draft")} disabled={saving}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save as Draft
                 </Button>
-                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open")} disabled={saving}>
+                <Button variant="outline" size="sm" className="border-teal-200 text-teal-700 bg-white hover:bg-slate-50 rounded-md font-semibold" onClick={() => handleSave("Open", false)} disabled={saving}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save
+                </Button>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => handleSave("Open", true)} disabled={saving}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null} Save and Send
                 </Button>
                 <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md font-semibold" onClick={() => router.back()}>Cancel</Button>

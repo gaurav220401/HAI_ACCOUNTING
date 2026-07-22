@@ -8,6 +8,8 @@ import PurchaseOrder from "../models/purchase-order.model";
 import DeliveryChallan from "../models/delivery-challan.model";
 import MoveOrder from "../models/move-order.model";
 import Package from "../models/package.model";
+import InventoryAdjustment from "../models/inventory-adjustment.model";
+import Warehouse from "../models/warehouse.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
@@ -24,6 +26,7 @@ import {
   sumMoney,
 } from "../utils/money";
 import { Types } from "mongoose";
+import { Counter } from "../models/counter.model";
 
 const VALID_SALES_ORDER_STATUSES = new Set<SalesOrderStatus>([
   "DRAFT",
@@ -377,17 +380,12 @@ function normalizeLineItems(items: any[] = [], discountLevel: string = "transact
 }
 
 async function nextInvoiceNumber(organizationId: any): Promise<string> {
-  const last = await Invoice.findOne({ organizationId })
-    .sort({ invoiceNumber: -1 })
-    .select("invoiceNumber")
-    .lean();
-
-  if (!last) return "INV-000001";
-
-  const match = String(last.invoiceNumber || "").match(/INV-(\d+)/);
-  if (!match) return "INV-000001";
-  const next = parseInt(match[1], 10) + 1;
-  return `INV-${String(next).padStart(6, "0")}`;
+  const counter = await Counter.findByIdAndUpdate(
+    `invoice-${organizationId}`,
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true },
+  );
+  return `INV-${String(counter!.seq).padStart(6, "0")}`;
 }
 
 async function nextSalesOrderNumber(organizationId: any): Promise<string> {
@@ -763,6 +761,37 @@ async function transitionShipmentStatus(params: {
       item.stockOnHand = Math.max(0, (item.stockOnHand || 0) - qty);
       item.committedStock = Math.max(0, (item.committedStock || 0) - qty);
       await item.save();
+
+      // Resolve target warehouse
+      let warehouseId = item.warehouseId;
+      if (!warehouseId) {
+        const primaryWarehouse = await Warehouse.findOne({
+          organizationId: (order as any).organizationId,
+          isPrimary: true,
+        });
+        if (primaryWarehouse) warehouseId = primaryWarehouse._id;
+      }
+
+      // Log InventoryAdjustment Decrease
+      const adj = new InventoryAdjustment({
+        organizationId: (order as any).organizationId,
+        itemId: item._id,
+        warehouseId: warehouseId || null,
+        direction: "Decrease",
+        quantityDelta: -qty,
+        valueDelta: -round2(qty * (item.averageCost || item.costPrice || 0)),
+        reason: "Other",
+        referenceNumber: (order as any).salesOrderNumber || "",
+        notes: `Shipment Delivery for Sales Order ${(order as any).salesOrderNumber || ""}`,
+        resultingStockOnHand: item.stockOnHand,
+        resultingInventoryValue: item.inventoryValue,
+      });
+      try {
+        attachUser(adj, req);
+      } catch {
+        // Safe fallback
+      }
+      await adj.save();
     }
   } else if (!postedInvoiceExists && oldStatus === "Delivered" && shipmentStatus !== "Delivered") {
     const lineItems = (order as any).lineItems || [];
@@ -778,6 +807,37 @@ async function transitionShipmentStatus(params: {
       item.stockOnHand = round2((item.stockOnHand || 0) + qty);
       item.committedStock = round2((item.committedStock || 0) + qty);
       await item.save();
+
+      // Resolve target warehouse
+      let warehouseId = item.warehouseId;
+      if (!warehouseId) {
+        const primaryWarehouse = await Warehouse.findOne({
+          organizationId: (order as any).organizationId,
+          isPrimary: true,
+        });
+        if (primaryWarehouse) warehouseId = primaryWarehouse._id;
+      }
+
+      // Log InventoryAdjustment Reversal (Increase)
+      const adj = new InventoryAdjustment({
+        organizationId: (order as any).organizationId,
+        itemId: item._id,
+        warehouseId: warehouseId || null,
+        direction: "Increase",
+        quantityDelta: qty,
+        valueDelta: round2(qty * (item.averageCost || item.costPrice || 0)),
+        reason: "Other",
+        referenceNumber: (order as any).salesOrderNumber || "",
+        notes: `Shipment Reversal for Sales Order ${(order as any).salesOrderNumber || ""}`,
+        resultingStockOnHand: item.stockOnHand,
+        resultingInventoryValue: item.inventoryValue,
+      });
+      try {
+        attachUser(adj, req);
+      } catch {
+        // Safe fallback
+      }
+      await adj.save();
     }
   }
 

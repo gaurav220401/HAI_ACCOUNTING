@@ -295,11 +295,11 @@ export default function NewInventoryShipmentPage() {
       return;
     }
     if (!form.packageSlipNumber.trim()) {
-      toast.error("Package# is required");
+      toast.error("Package Number is required");
       return;
     }
     if (!form.shipmentOrderNumber.trim()) {
-      toast.error("Shipment Order# is required");
+      toast.error("Shipment Order Number is required");
       return;
     }
     if (!form.shipDate) {
@@ -422,7 +422,7 @@ export default function NewInventoryShipmentPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Sales Order#</Label>
+                <Label>Sales Order Number</Label>
                 <Select
                   value={form.salesOrderId || "__none"}
                   onValueChange={(value) =>
@@ -444,7 +444,7 @@ export default function NewInventoryShipmentPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Package#</Label>
+                <Label>Package Number</Label>
                 <Input
                   value={form.packageSlipNumber}
                   onChange={(event) =>
@@ -453,7 +453,7 @@ export default function NewInventoryShipmentPage() {
                       packageSlipNumber: event.target.value,
                     }))
                   }
-                  placeholder="Enter Package#"
+                  placeholder="Enter Package Number"
                 />
                 {selectedOrderPackages.length > 0 ?
                   <div className="flex flex-wrap gap-1.5 pt-1">
@@ -477,7 +477,7 @@ export default function NewInventoryShipmentPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Shipment Order#</Label>
+                <Label>Shipment Order Number</Label>
                 <Input
                   value={form.shipmentOrderNumber}
                   onChange={(event) =>
@@ -486,7 +486,7 @@ export default function NewInventoryShipmentPage() {
                       shipmentOrderNumber: event.target.value,
                     }))
                   }
-                  placeholder="Enter Shipment Order#"
+                  placeholder="Enter Shipment Order Number"
                 />
               </div>
 
@@ -519,7 +519,7 @@ export default function NewInventoryShipmentPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Tracking#</Label>
+                <Label>Tracking Number</Label>
                 <Input
                   value={form.trackingNumber}
                   onChange={(event) =>

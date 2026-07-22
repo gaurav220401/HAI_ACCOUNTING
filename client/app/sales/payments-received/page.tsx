@@ -15,8 +15,11 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  ExternalLink,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -25,6 +28,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -55,7 +59,14 @@ import {
   type PaymentReceived,
   type PaymentReceivedStatus,
 } from "@/lib/api/payments-received";
-import { cn } from "@/lib/utils";
+import { invoiceApi, type Invoice } from "@/lib/api/invoices";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const STATUS_FILTERS: Array<PaymentReceivedStatus | "All"> = ["All", "DRAFT", "PAID", "VOID"];
 
@@ -177,6 +188,13 @@ export default function PaymentsReceivedPage() {
   const [bulkDeleteTargets, setBulkDeleteTargets] = useState<PaymentReceived[]>([]);
   const [deleting, setDeleting] = useState(false);
 
+  // States for applying excess payment (customer advance) to invoices
+  const [applyInvoiceOpen, setApplyInvoiceOpen] = useState(false);
+  const [openInvoices, setOpenInvoices] = useState<Invoice[]>([]);
+  const [applyInvoiceId, setApplyInvoiceId] = useState("");
+  const [applyAmount, setApplyAmount] = useState(0);
+  const [applying, setApplying] = useState(false);
+
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
@@ -239,10 +257,49 @@ export default function PaymentsReceivedPage() {
     }
   }
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [modeFilter, setModeFilter] = useState("All");
+
+  type PayRecSortField = "date" | "number" | "reference" | "customer" | "invoice" | "mode" | "amount" | "unused";
+  type PayRecSortOrder = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<PayRecSortField>("date");
+  const [sortOrder, setSortOrder] = useState<PayRecSortOrder>("desc");
+
+  function toggleSort(field: PayRecSortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   const filtered = useMemo(() => {
+    let list = payments;
+
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter(
+        (row) => new Date(row.payment_date || 0).getTime() >= fromTime,
+      );
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter(
+        (row) => new Date(row.payment_date || 0).getTime() <= toTime,
+      );
+    }
+    if (modeFilter !== "All") {
+      list = list.filter(
+        (row) => (row.payment_mode || "").toLowerCase() === modeFilter.toLowerCase(),
+      );
+    }
+
     const q = search.trim().toLowerCase();
-    if (!q) return payments;
-    return payments.filter((row) => {
+    if (!q) return list;
+    return list.filter((row) => {
       return (
         row.payment_number.toLowerCase().includes(q) ||
         (row.reference_number || "").toLowerCase().includes(q) ||
@@ -251,7 +308,73 @@ export default function PaymentsReceivedPage() {
         invoiceNumbersForPayment(row).toLowerCase().includes(q)
       );
     });
-  }, [payments, search]);
+  }, [payments, search, fromDate, toDate, modeFilter]);
+
+  const summary = useMemo(() => {
+    const totalAmount = filtered.reduce(
+      (acc, row) => acc + Number(row.total_amount_received || 0),
+      0,
+    );
+    const totalUnused = filtered.reduce(
+      (acc, row) => acc + Number(row.amount_in_excess || 0),
+      0,
+    );
+    const totalApplied = Math.max(0, totalAmount - totalUnused);
+    return {
+      count: filtered.length,
+      totalAmount,
+      totalApplied,
+      totalUnused,
+    };
+  }, [filtered]);
+
+  const sortedPayments = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "date":
+          aVal = new Date(a.payment_date || 0).getTime();
+          bVal = new Date(b.payment_date || 0).getTime();
+          break;
+        case "number":
+          aVal = a.payment_number || "";
+          bVal = b.payment_number || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "reference":
+          aVal = (a.reference_number || "").toLowerCase();
+          bVal = (b.reference_number || "").toLowerCase();
+          break;
+        case "customer":
+          aVal = customerName(a.customer_id).toLowerCase();
+          bVal = customerName(b.customer_id).toLowerCase();
+          break;
+        case "invoice":
+          aVal = invoiceNumbersForPayment(a).toLowerCase();
+          bVal = invoiceNumbersForPayment(b).toLowerCase();
+          break;
+        case "mode":
+          aVal = (a.payment_mode || "").toLowerCase();
+          bVal = (b.payment_mode || "").toLowerCase();
+          break;
+        case "amount":
+          aVal = Number(a.total_amount_received || 0);
+          bVal = Number(b.total_amount_received || 0);
+          break;
+        case "unused":
+          aVal = Number(a.amount_in_excess || 0);
+          bVal = Number(b.amount_in_excess || 0);
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
 
   const activeListItem = useMemo(() => payments.find((p) => p._id === activeId), [payments, activeId]);
   const selectedDetail = activeDetail?.payment._id === activeId ? activeDetail : null;
@@ -358,6 +481,87 @@ export default function PaymentsReceivedPage() {
     window.print();
   }
 
+  async function openApplyDialog() {
+    if (!active) return;
+    const custId = typeof active.customer_id === "string" ? active.customer_id : active.customer_id?._id;
+    if (!custId) {
+      toast.error("Customer ID is missing from receipt");
+      return;
+    }
+
+    setApplyInvoiceOpen(true);
+    setOpenInvoices([]);
+    setApplyInvoiceId("");
+    setApplyAmount(0);
+
+    try {
+      const res = await invoiceApi.list({ page: 1, limit: 200, status: "All" });
+      const filteredInvoices = (res.data || []).filter((inv: any) => {
+        const cId = typeof inv.customerId === "string" ? inv.customerId : inv.customerId?._id;
+        return cId === custId && !["Paid", "Void"].includes(inv.status);
+      });
+      setOpenInvoices(filteredInvoices);
+      if (filteredInvoices.length > 0) {
+        setApplyInvoiceId(filteredInvoices[0]._id);
+        setApplyAmount(Math.min(active.amount_in_excess, filteredInvoices[0].balanceDue || 0));
+      } else {
+        toast.info("No open invoices found for this customer to allocate credits");
+      }
+    } catch (e: any) {
+      toast.error("Failed to load customer open invoices");
+    }
+  }
+
+  async function handleApply() {
+    if (!active || !applyInvoiceId || applyAmount <= 0) return;
+    if (applyAmount > active.amount_in_excess) {
+      toast.error("Applied amount cannot exceed unused payment amount");
+      return;
+    }
+    const targetInvoice = openInvoices.find((inv) => inv._id === applyInvoiceId);
+    if (targetInvoice && applyAmount > (targetInvoice.balanceDue || 0)) {
+      toast.error("Applied amount cannot exceed invoice balance due");
+      return;
+    }
+
+    setApplying(true);
+    try {
+      await paymentReceivedApi.apply(active._id, {
+        invoice_id: applyInvoiceId,
+        applied_amount: applyAmount,
+      });
+      toast.success("Payment applied to invoice successfully");
+      setApplyInvoiceOpen(false);
+      setActiveDetail(null);
+      await fetchPayments();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to apply payment to invoice");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function handleUnapply(app: PaymentInvoiceMap) {
+    if (!active) return;
+    const invId = invoiceIdFromApplication(app);
+    if (!invId) {
+      toast.error("Invoice ID is missing from application");
+      return;
+    }
+
+    try {
+      await paymentReceivedApi.unapply(active._id, {
+        invoice_id: invId,
+        applied_amount: app.applied_amount,
+      });
+      toast.success("Payment unapplied successfully");
+      setActiveDetail(null);
+      await fetchPayments();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to unapply payment");
+    }
+  }
+
   if (loading || orgLoading || !firebaseUser) {
     return (
       <div className="flex min-h-svh items-center justify-center">
@@ -372,68 +576,165 @@ export default function PaymentsReceivedPage() {
       <SidebarInset>
         <PageHeader
           breadcrumb={
-            <span className="text-sm text-muted-foreground">
-              Sales <span className="mx-1">/</span>
-              <span className="font-medium text-foreground">Payments Received</span>
-            </span>
-          }
-          actions={
-            <>
-              <div className="relative w-72">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search in Payments Received"
-                  className="h-8 bg-white pl-8 text-sm"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <Button variant="outline" size="sm" onClick={() => void fetchPayments()} disabled={fetching}>
-                <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin")} />
-              </Button>
-              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/payments-received/new")}>
-                <Plus className="mr-1 h-4 w-4" />
-                New
-              </Button>
-            </>
-          }
-        />
-
-        {viewMode === "list" ? (
-          <div className="flex flex-1 flex-col bg-white">
-            <div className="flex h-16 items-center justify-between border-b px-5">
+            <div className="flex flex-col">
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">
+                Sales
+              </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="px-2 text-base font-semibold">
-                    {statusFilter === "All" ? "All Received Payments" : statusFilter}
-                    <ChevronDown className="ml-1 h-4 w-4 text-teal-600" />
-                  </Button>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-teal-700"
+                  >
+                    {statusFilter === "All" ? "All Payments Received" : `${statusFilter} Payments`}
+                    <ChevronDown className="h-3 w-3 ml-0.5 opacity-70" />
+                  </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
+                <DropdownMenuContent align="start" className="w-52 bg-white">
                   {STATUS_FILTERS.map((status) => (
                     <DropdownMenuItem key={status} onClick={() => setStatusFilter(status)}>
-                      {status === "All" ? "All Received Payments" : status}
+                      {status === "All" ? "All Payments Received" : status}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+            </div>
+          }
+          actions={
+            <div className="flex items-center gap-2">
+              <div className="relative w-56">
+                <Search className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Search payments..."
+                  className="pl-8 h-8 text-xs bg-white border-slate-200"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
 
-              <div className="flex items-center gap-2">
-                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/payments-received/new")}>
-                  <Plus className="mr-1 h-4 w-4" />
-                  New
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" className="px-2">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => void fetchPayments()}>Refresh List</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => window.print()}>Print List</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {/* Payment Mode Filter */}
+              <Select value={modeFilter} onValueChange={setModeFilter}>
+                <SelectTrigger className="h-8 w-32 text-xs bg-white border-slate-200">
+                  <SelectValue placeholder="Payment Mode" />
+                </SelectTrigger>
+                <SelectContent className="bg-white">
+                  <SelectItem value="All" className="text-xs">All Modes</SelectItem>
+                  <SelectItem value="Cash" className="text-xs">Cash</SelectItem>
+                  <SelectItem value="Bank Transfer" className="text-xs">Bank Transfer</SelectItem>
+                  <SelectItem value="Cheque" className="text-xs">Cheque</SelectItem>
+                  <SelectItem value="UPI" className="text-xs">UPI</SelectItem>
+                  <SelectItem value="Credit Card" className="text-xs">Credit Card</SelectItem>
+                  <SelectItem value="Debit Card" className="text-xs">Debit Card</SelectItem>
+                  <SelectItem value="Online" className="text-xs">Online</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button variant="outline" size="sm" onClick={() => void fetchPayments()} disabled={fetching} className="h-8 px-2 border-slate-200 bg-white">
+                <RefreshCw className={cn("h-3.5 w-3.5", fetching && "animate-spin")} />
+              </Button>
+
+              <Button size="sm" className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => router.push("/sales/payments-received/new")}>
+                <Plus className="h-3.5 w-3.5" />
+                New
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="h-8 px-2 border-slate-200 bg-white">
+                    <MoreHorizontal className="h-4 w-4 text-slate-600" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-white">
+                  <DropdownMenuItem onClick={() => void fetchPayments()}>Refresh List</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => window.print()}>Print List</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          }
+        />
+
+        {viewMode === "list" ? (
+          <div className="flex flex-1 flex-col bg-white overflow-hidden">
+
+            {/* Sleek Ultra-Compact KPI Summary Strip */}
+            <div className="px-5 py-2.5 border-b bg-slate-50/50 shrink-0">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Payments</span>
+                  <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Collected</span>
+                  <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCurrency(summary.totalAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Applied</span>
+                  <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtCurrency(summary.totalApplied)}</span>
+                </div>
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                  <span className="text-[11px] font-semibold text-amber-500 uppercase tracking-wide">Unused</span>
+                  <span className="text-sm font-bold text-amber-600 tabular-nums">{fmtCurrency(summary.totalUnused)}</span>
+                </div>
               </div>
             </div>
 
@@ -473,26 +774,82 @@ export default function PaymentsReceivedPage() {
                         aria-label="Select all payments"
                       />
                     </th>
-                    <th className="px-3 py-3 text-left font-medium">Date</th>
-                    <th className="px-3 py-3 text-left font-medium">Payment #</th>
-                    <th className="px-3 py-3 text-left font-medium">Reference Number</th>
-                    <th className="px-3 py-3 text-left font-medium">Customer Name</th>
-                    <th className="px-3 py-3 text-left font-medium">Invoice#</th>
-                    <th className="px-3 py-3 text-left font-medium">Mode</th>
-                    <th className="px-3 py-3 text-right font-medium">Amount</th>
-                    <th className="px-3 py-3 text-right font-medium">Unused Amount</th>
+                    <th className="px-3 py-3 text-left font-medium">
+                      <button onClick={() => toggleSort("date")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Date
+                        <span className={cn("text-[10px]", sortField === "date" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "date" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-3 text-left font-medium">
+                      <button onClick={() => toggleSort("number")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Payment Voucher Number
+                        <span className={cn("text-[10px]", sortField === "number" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "number" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-3 text-left font-medium">
+                      <button onClick={() => toggleSort("reference")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Reference Number
+                        <span className={cn("text-[10px]", sortField === "reference" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "reference" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-3 text-left font-medium">
+                      <button onClick={() => toggleSort("customer")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Customer Name
+                        <span className={cn("text-[10px]", sortField === "customer" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "customer" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-3 text-left font-medium">
+                      <button onClick={() => toggleSort("invoice")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Invoice Number
+                        <span className={cn("text-[10px]", sortField === "invoice" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "invoice" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-3 text-left font-medium">
+                      <button onClick={() => toggleSort("mode")} className="group flex items-center gap-1 hover:text-teal-700">
+                        Mode
+                        <span className={cn("text-[10px]", sortField === "mode" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "mode" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <button onClick={() => toggleSort("amount")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                        Amount
+                        <span className={cn("text-[10px]", sortField === "amount" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "amount" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <button onClick={() => toggleSort("unused")} className="group flex items-center gap-1 ml-auto hover:text-teal-700">
+                        Unused Amount
+                        <span className={cn("text-[10px]", sortField === "unused" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                          {sortField === "unused" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
+                    </th>
                     <th className="w-12 px-3 py-3 text-right" />
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.length === 0 ? (
+                  {sortedPayments.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="px-4 py-16 text-center text-muted-foreground">
                         No payment receipts found.
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((payment) => (
+                    sortedPayments.map((payment) => (
                       <tr
                         key={payment._id}
                         className="border-b hover:bg-teal-50/20"
@@ -583,6 +940,12 @@ export default function PaymentsReceivedPage() {
                         Edit
                       </Button>
                     ) : null}
+                    {active.status === "PAID" && active.amount_in_excess > 0 ? (
+                      <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold shadow-xs" onClick={openApplyDialog}>
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Apply to Invoice
+                      </Button>
+                    ) : null}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="sm" variant="outline">
@@ -631,7 +994,7 @@ export default function PaymentsReceivedPage() {
                 </div>
 
                 <div className="mx-auto max-w-5xl p-8">
-                  <div className="relative overflow-hidden rounded border bg-white shadow-sm">
+                  <div className="relative overflow-hidden rounded border bg-white shadow-sm statement-print-area">
                     {active.status === "PAID" ? (
                       <div className="absolute left-0 top-0">
                         <div className="-translate-x-10 translate-y-4 -rotate-45 bg-[#22c55e] py-1.5 text-center text-xs font-bold text-white w-32">
@@ -719,6 +1082,7 @@ export default function PaymentsReceivedPage() {
                                   <th className="px-4 py-2 text-right font-normal">Invoice Amount</th>
                                   <th className="px-4 py-2 text-right font-normal">Balance Due</th>
                                   <th className="px-4 py-2 text-right font-normal">Payment Amount</th>
+                                  <th className="px-4 py-2 text-right font-normal no-print">Action</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -734,6 +1098,16 @@ export default function PaymentsReceivedPage() {
                                     <td className="px-4 py-3 text-right">{fmtCurrency(invoiceTotalFromApplication(app))}</td>
                                     <td className="px-4 py-3 text-right">{fmtCurrency(invoiceBalanceFromApplication(app))}</td>
                                     <td className="px-4 py-3 text-right font-medium text-gray-800">{fmtCurrency(app.applied_amount)}</td>
+                                    <td className="px-4 py-3 text-right no-print">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold"
+                                        onClick={() => void handleUnapply(app)}
+                                      >
+                                        Unapply
+                                      </Button>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -798,6 +1172,94 @@ export default function PaymentsReceivedPage() {
                     Save
                   </Button>
                   <Button variant="outline" onClick={() => setRefundTarget(null)}>Cancel</Button>
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={applyInvoiceOpen} onOpenChange={setApplyInvoiceOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Apply Credit to Invoice</DialogTitle>
+            </DialogHeader>
+            {active ? (
+              <div className="space-y-6">
+                <div className="rounded-md bg-muted/40 p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Customer Name:</span>
+                    <span className="font-semibold">{customerName(active.customer_id)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Unused Credits (Excess Amount):</span>
+                    <span className="font-semibold text-teal-700">{fmtCurrency(active.amount_in_excess)}</span>
+                  </div>
+                </div>
+
+                {openInvoices.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground">
+                    No open or unpaid invoices found for this customer.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label>Select Invoice*</Label>
+                      <Select
+                        value={applyInvoiceId}
+                        onValueChange={(val) => {
+                          setApplyInvoiceId(val);
+                          const target = openInvoices.find((inv) => inv._id === val);
+                          if (target) {
+                            setApplyAmount(Math.min(active.amount_in_excess, target.balanceDue || 0));
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Invoice" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {openInvoices.map((inv) => (
+                            <SelectItem key={inv._id} value={inv._id}>
+                              {inv.invoiceNumber} (Date: {fmtDate(inv.invoiceDate)} | Balance Due: {fmtCurrency(inv.balanceDue)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Amount to Apply*</Label>
+                      <div className="flex">
+                        <span className="inline-flex items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm">INR</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={Math.min(active.amount_in_excess, openInvoices.find((inv) => inv._id === applyInvoiceId)?.balanceDue || 0)}
+                          step="0.01"
+                          className="rounded-l-none"
+                          value={applyAmount || ""}
+                          onChange={(e) => setApplyAmount(Number(e.target.value || 0))}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        This amount will be deducted from the customer's advance and credited to the invoice balance due.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  {openInvoices.length > 0 && (
+                    <Button
+                      className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                      onClick={() => void handleApply()}
+                      disabled={applying || applyAmount <= 0}
+                    >
+                      {applying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Apply Credit
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setApplyInvoiceOpen(false)}>Cancel</Button>
                 </div>
               </div>
             ) : null}

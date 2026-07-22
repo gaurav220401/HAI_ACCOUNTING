@@ -12,6 +12,7 @@ import VendorCreditApplication from "../models/vendor-credit-application.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
+import { autoApplyVendorAdvancesToBill } from "./payment-made.controller";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
 import {
   applyStockDeltas,
@@ -27,6 +28,7 @@ import {
   syncBillCreationAccounting,
 } from "../services/bill-accounting.service";
 import { findAccountIdByName, postVoucher } from "../services/gl-posting.service";
+import { findTypeByAssetAccount } from "../services/fixed-asset-type.service";
 import {
   multiplyMoney,
   percentMoney,
@@ -507,17 +509,30 @@ async function createDraftFixedAssetsForBill(bill: any, req: AuthenticatedReques
 
   if (accountIds.length === 0) return [];
 
+  // Find all Fixed Asset type accounts used in this bill's line items.
   const accounts = await Account.find({
     _id: { $in: accountIds.map((id) => new Types.ObjectId(id)) },
     organizationId: bill.organizationId,
     accountType: "Fixed Asset",
-    createItemAsFixedAsset: true,
-    fixedAssetTypeId: { $ne: null },
-  }).populate("fixedAssetTypeId");
+  }).lean();
 
   if (accounts.length === 0) return [];
 
+  // For each FA account, look up the matching FixedAssetType to auto-link accounts
   const accountMap = new Map<string, any>(accounts.map((account: any) => [String(account._id), account]));
+
+  // Pre-load matching FixedAssetTypes for all FA accounts (one query per account)
+  const typeMap = new Map<string, any>();
+  await Promise.all(
+    accounts.map(async (account: any) => {
+      const matchingType = await findTypeByAssetAccount(
+        bill.organizationId,
+        account._id,
+      );
+      if (matchingType) typeMap.set(String(account._id), matchingType);
+    }),
+  );
+
   const createdIds: string[] = [];
 
   for (const line of lineItems) {
@@ -526,16 +541,18 @@ async function createDraftFixedAssetsForBill(bill: any, req: AuthenticatedReques
     if (!lineAccountId) continue;
 
     const account = accountMap.get(lineAccountId);
-    if (!account || !account.fixedAssetTypeId) continue;
-
-    const fixedAssetType: any = account.fixedAssetTypeId;
-    if (!fixedAssetType || fixedAssetType.isDeleted || fixedAssetType.isActive === false) continue;
+    if (!account) continue;
 
     const amount = round2(Number(line.amount || 0));
     if (amount <= 0) continue;
 
     const quantity = Math.max(1, Number(line.quantity || 1) || 1);
-    const assetName = String(line.name || line.description || `Fixed Asset from ${bill.billNumber}`).trim() || `Fixed Asset ${bill.billNumber}`;
+    const assetName =
+      String(line.name || line.description || `Fixed Asset from ${bill.billNumber}`).trim() ||
+      `Fixed Asset ${bill.billNumber}`;
+
+    // Use the FixedAssetType (if found) to auto-populate all 3 account IDs
+    const matchedType = typeMap.get(lineAccountId) ?? null;
 
     const asset = new FixedAsset({
       organizationId: bill.organizationId,
@@ -547,20 +564,21 @@ async function createDraftFixedAssetsForBill(bill: any, req: AuthenticatedReques
       currentQuantity: quantity,
       currentValue: amount,
       disposalValue: 0,
-      fixedAssetTypeId: fixedAssetType._id,
+      fixedAssetTypeId: matchedType?._id ?? null,
       purchaseDate: bill.billDate ? new Date(bill.billDate) : new Date(),
       warrantyExpirationDate: null,
       description: String(line.description || `Created from bill ${bill.billNumber}`).trim(),
-      depreciationMethod: fixedAssetType.depreciationMethod,
-      depreciationPercentage: fixedAssetType.depreciationPercentage ?? null,
-      depreciationFrequency: fixedAssetType.depreciationFrequency,
-      assetLifeValue: fixedAssetType.assetLifeValue,
-      assetLifeUnit: fixedAssetType.assetLifeUnit,
-      computationType: fixedAssetType.computationType,
+      depreciationMethod: matchedType?.depreciationMethod ?? "Straight Line",
+      depreciationPercentage: matchedType?.depreciationPercentage ?? null,
+      depreciationFrequency: matchedType?.depreciationFrequency ?? "Monthly",
+      assetLifeValue: matchedType?.assetLifeValue ?? 36,
+      assetLifeUnit: matchedType?.assetLifeUnit ?? "Months",
+      computationType: matchedType?.computationType ?? "Non Pro Rata",
       depreciationStartDate: bill.billDate ? new Date(bill.billDate) : new Date(),
-      fixedAssetAccountId: fixedAssetType.fixedAssetAccountId,
-      accumulatedDepreciationAccountId: fixedAssetType.accumulatedDepreciationAccountId,
-      depreciationExpenseAccountId: fixedAssetType.depreciationExpenseAccountId,
+      // Auto-populate all 3 account IDs from the matched FixedAssetType
+      fixedAssetAccountId: matchedType?.fixedAssetAccountId ?? account._id,
+      accumulatedDepreciationAccountId: matchedType?.accumulatedDepreciationAccountId ?? null,
+      depreciationExpenseAccountId: matchedType?.depreciationExpenseAccountId ?? null,
       status: "DRAFT",
       comments: [
         {
@@ -578,6 +596,7 @@ async function createDraftFixedAssetsForBill(bill: any, req: AuthenticatedReques
 
   return createdIds;
 }
+
 
 /** GET /api/bills/next-number */
 export const getNextNumber = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -844,6 +863,10 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   }
 
   await syncBillCreationAccounting({ bill, req });
+  
+  // Automatically apply any outstanding vendor advance payments
+  await autoApplyVendorAdvancesToBill({ bill, req });
+
   await syncPurchaseOrdersFromBillOrderNumbers({
     organizationId: bill.organizationId,
     orderNumbers: [bill.orderNumber],

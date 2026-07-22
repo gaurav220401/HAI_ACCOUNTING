@@ -33,6 +33,7 @@ export interface PaymentReceived {
   reference_number?: string;
   notes?: string;
   status: PaymentReceivedStatus;
+  receipt_type?: "invoice-payment" | "customer-advance" | "previous-payment";
   total_amount_received: number;
   amount_used_for_invoices: number;
   amount_refunded: number;
@@ -87,6 +88,7 @@ export interface CreatePaymentReceivedInput {
   notes?: string;
   status: "DRAFT" | "PAID";
   total_amount_received: number;
+  receipt_type?: "invoice-payment" | "customer-advance" | "previous-payment";
   invoice_applications?: Array<{
     invoice_id: string;
     applied_amount: number;

@@ -196,7 +196,7 @@ export default function NewPackagePage() {
           <div className="bg-card border rounded-xl p-6 shadow-sm mb-6 space-y-6">
             <div className="grid grid-cols-2 gap-x-8 gap-y-6">
               <div className="space-y-2">
-                <Label className="text-teal-700 font-semibold flex gap-1">Package Slip# *</Label>
+                <Label className="text-teal-700 font-semibold flex gap-1">Package Slip Number *</Label>
                 <Input 
                   value={packageSlipNumber} 
                   onChange={e => setPackageSlipNumber(e.target.value)} 

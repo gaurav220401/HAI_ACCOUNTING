@@ -217,32 +217,55 @@ async function postPaymentReceivedEvent(params: {
   }> = [];
 
   if (event === "create") {
-    if (total > 0) {
-      lines.push({
-        accountId: bankAccountId,
-        debit: total,
-        description: `Payment received ${payment.payment_number}`,
-        contactType: "Customer",
-        contactId: payment.customer_id,
-      });
-    }
-    if (used > 0) {
-      lines.push({
-        accountId: accountsReceivableId,
-        credit: used,
-        description: `Invoice settlement ${payment.payment_number}`,
-        contactType: "Customer",
-        contactId: payment.customer_id,
-      });
-    }
-    if (excess > 0) {
-      lines.push({
-        accountId: customerAdvanceId,
-        credit: excess,
-        description: `Customer advance ${payment.payment_number}`,
-        contactType: "Customer",
-        contactId: payment.customer_id,
-      });
+    // For previous-payment: DR Bank, CR Accounts Receivable directly (reduces AR)
+    if ((payment as any).receipt_type === "previous-payment") {
+      if (total > 0) {
+        lines.push(
+          {
+            accountId: bankAccountId,
+            debit: total,
+            description: `Previous payment received ${payment.payment_number}`,
+            contactType: "Customer",
+            contactId: payment.customer_id,
+          },
+          {
+            accountId: accountsReceivableId,
+            credit: total,
+            description: `Accounts Receivable reduced ${payment.payment_number}`,
+            contactType: "Customer",
+            contactId: payment.customer_id,
+          },
+        );
+      }
+    } else {
+      // Normal invoice-payment or customer-advance logic
+      if (total > 0) {
+        lines.push({
+          accountId: bankAccountId,
+          debit: total,
+          description: `Payment received ${payment.payment_number}`,
+          contactType: "Customer",
+          contactId: payment.customer_id,
+        });
+      }
+      if (used > 0) {
+        lines.push({
+          accountId: accountsReceivableId,
+          credit: used,
+          description: `Invoice settlement ${payment.payment_number}`,
+          contactType: "Customer",
+          contactId: payment.customer_id,
+        });
+      }
+      if (excess > 0) {
+        lines.push({
+          accountId: customerAdvanceId,
+          credit: excess,
+          description: `Customer advance ${payment.payment_number}`,
+          contactType: "Customer",
+          contactId: payment.customer_id,
+        });
+      }
     }
   }
 
@@ -468,6 +491,11 @@ export async function createPaymentReceivedEntry(params: {
       });
     }
 
+    const receipt_type = String(payload.receipt_type || "invoice-payment") as
+      | "invoice-payment"
+      | "customer-advance"
+      | "previous-payment";
+
     const payment = new PaymentReceived({
       organization_id,
       payment_id,
@@ -479,6 +507,7 @@ export async function createPaymentReceivedEntry(params: {
       reference_number: String(payload.reference_number || payload.referenceNumber || ""),
       notes: String(payload.notes || ""),
       status,
+      receipt_type,
       total_amount_received,
       amount_used_for_invoices: 0,
       amount_refunded: 0,

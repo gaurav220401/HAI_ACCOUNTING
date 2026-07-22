@@ -36,6 +36,7 @@ import {
   type RetainerInvoiceApplication,
   type RetainerInvoiceStatus,
 } from "@/lib/api/retainer-invoices";
+import { accountApi } from "@/lib/api/accounts";
 
 const STATUS_STYLES: Record<RetainerInvoiceStatus, string> = {
   Draft: "bg-slate-100 text-slate-700 border-slate-200",
@@ -114,6 +115,8 @@ export default function RetainerInvoiceDetailPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(isoToday());
   const [paymentMode, setPaymentMode] = useState("Cash");
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [depositedToAccount, setDepositedToAccount] = useState("");
 
   const [applyInvoiceId, setApplyInvoiceId] = useState("");
   const [applyAmount, setApplyAmount] = useState("");
@@ -136,10 +139,33 @@ export default function RetainerInvoiceDetailPage() {
 
     setFetching(true);
     try {
-      const retainerRes = await retainerInvoiceApi.getOne(retainerId);
+      const [retainerRes, accountRes] = await Promise.all([
+        retainerInvoiceApi.getOne(retainerId),
+        accountApi.list({ excludeGroups: true }),
+      ]);
       const retainerData = retainerRes.data;
       setRetainer(retainerData);
       setPaymentMode(retainerData.payment_mode || "Cash");
+      setAccounts(accountRes.data || []);
+
+      if (!retainerData.deposited_to_account && accountRes.data) {
+        const priority = ["petty cash", "cash", "undeposited funds", "bank"];
+        let defaultAcc = null;
+        for (const p of priority) {
+          defaultAcc = accountRes.data.find((a: any) =>
+            a.name.toLowerCase().includes(p) && a.rootType.toLowerCase() === "asset"
+          );
+          if (defaultAcc) break;
+        }
+        if (!defaultAcc) {
+          defaultAcc = accountRes.data.find((a: any) => a.rootType.toLowerCase() === "asset");
+        }
+        if (defaultAcc) {
+          setDepositedToAccount(defaultAcc._id);
+        }
+      } else {
+        setDepositedToAccount(retainerData.deposited_to_account || "");
+      }
 
       const customerId = asId(retainerData.customer_id);
       if (customerId) {
@@ -222,9 +248,23 @@ export default function RetainerInvoiceDetailPage() {
         amount,
         payment_date: new Date(`${paymentDate}T00:00:00`).toISOString(),
         payment_mode: paymentMode || "Cash",
+        deposited_to_account: depositedToAccount || undefined,
       });
       toast.success("Payment recorded");
     });
+  }
+
+  function selectApplyInvoice(invoiceId: string) {
+    setApplyInvoiceId(invoiceId);
+    if (!invoiceId) {
+      setApplyAmount("");
+      return;
+    }
+    const inv = invoices.find((i) => i._id === invoiceId);
+    if (inv && retainer) {
+      const maxApplicable = Math.min(Number(inv.balanceDue || 0), Number(retainer.amount_unapplied || 0));
+      setApplyAmount(maxApplicable > 0 ? String(maxApplicable) : "");
+    }
   }
 
   async function handleApply(event: FormEvent<HTMLFormElement>) {
@@ -492,6 +532,71 @@ export default function RetainerInvoiceDetailPage() {
                       </Table>
                     </div>
                   </section>
+
+                  {/* Payment & Refund History */}
+                  <section className="rounded-xl border bg-card p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-base font-semibold">Payment & Refund History</h2>
+                      <span className="text-xs text-muted-foreground">
+                        {
+                          (retainer.audit_log || []).filter((log) =>
+                            ["RECORD_PAYMENT", "REFUND"].includes(log.action)
+                          ).length
+                        } transaction(s)
+                      </span>
+                    </div>
+
+                    <div className="overflow-hidden rounded-lg border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Payment Mode</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(() => {
+                            const txs = (retainer.audit_log || []).filter((log) =>
+                              ["RECORD_PAYMENT", "REFUND"].includes(log.action)
+                            );
+                            if (txs.length === 0) {
+                              return (
+                                <TableRow>
+                                  <TableCell colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                                    No payment or refund records found.
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }
+                            return txs.map((log, idx) => (
+                              <TableRow key={`${log.action}-${log.at}-${idx}`}>
+                                <TableCell className="font-medium">
+                                  {log.action === "RECORD_PAYMENT" ? (
+                                    <span className="text-green-700">Payment Received</span>
+                                  ) : (
+                                    <span className="text-purple-700">Refund</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>{formatDate(log.at)}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {log.action === "RECORD_PAYMENT" ? (retainer.payment_mode || "Cash") : (retainer.payment_mode || "-")}
+                                </TableCell>
+                                <TableCell className="text-right font-medium">
+                                  {log.action === "RECORD_PAYMENT" ? (
+                                    <span className="text-green-700">+{formatCurrency(log.amount || 0)}</span>
+                                  ) : (
+                                    <span className="text-purple-700">-{formatCurrency(log.amount || 0)}</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ));
+                          })()}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </section>
                 </div>
 
                 <div className="space-y-5">
@@ -523,14 +628,53 @@ export default function RetainerInvoiceDetailPage() {
                         </div>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <Label htmlFor="paymentMode">Payment Mode</Label>
-                        <Input
-                          id="paymentMode"
-                          value={paymentMode}
-                          onChange={(event) => setPaymentMode(event.target.value)}
-                          disabled={working || retainer.status === "Void" || retainer.balance_due <= 0.009}
-                        />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="paymentMode">Payment Mode</Label>
+                          <Select
+                            value={paymentMode}
+                            onValueChange={setPaymentMode}
+                            disabled={working || retainer.status === "Void" || retainer.balance_due <= 0.009}
+                          >
+                            <SelectTrigger id="paymentMode" className="bg-white">
+                              <SelectValue placeholder="Select Mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Cash", "Bank Transfer", "Bank Check", "UPI", "Credit Card"].map((m) => (
+                                <SelectItem key={m} value={m}>{m}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="depositedToAccount">Deposited To Account</Label>
+                          <Select
+                            value={depositedToAccount}
+                            onValueChange={setDepositedToAccount}
+                            disabled={working || retainer.status === "Void" || retainer.balance_due <= 0.009}
+                          >
+                            <SelectTrigger id="depositedToAccount" className="bg-white">
+                              <SelectValue placeholder="Select Account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {accounts
+                                .filter((acc) =>
+                                  ["asset"].includes(acc.rootType?.toLowerCase()) &&
+                                  ["cash", "bank", "other current asset", "other asset"].includes(acc.accountType?.toLowerCase())
+                                )
+                                .map((acc) => (
+                                  <SelectItem key={acc._id} value={acc._id}>
+                                    {acc.code ? `${acc.code} - ` : ""}{acc.name}
+                                  </SelectItem>
+                                ))
+                              }
+                              {accounts.length === 0 && (
+                                <SelectItem value="__none" disabled>Loading accounts...</SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
 
                       <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" disabled={working || retainer.status === "Void" || retainer.balance_due <= 0.009}>
@@ -546,10 +690,10 @@ export default function RetainerInvoiceDetailPage() {
                         <Label htmlFor="applyInvoice">Invoice</Label>
                         <Select
                           value={applyInvoiceId}
-                          onValueChange={setApplyInvoiceId}
+                          onValueChange={selectApplyInvoice}
                           disabled={working || retainer.status === "Void" || retainer.amount_unapplied <= 0.009}
                         >
-                          <SelectTrigger id="applyInvoice">
+                          <SelectTrigger id="applyInvoice" className="bg-white">
                             <SelectValue placeholder="Select invoice" />
                           </SelectTrigger>
                           <SelectContent>

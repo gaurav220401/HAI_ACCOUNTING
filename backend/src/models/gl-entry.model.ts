@@ -11,6 +11,7 @@ export type GlVoucherType =
   | "PaymentReceived"
   | "RetainerInvoice"
   | "Journal"
+  | "FixedAsset"
   | "System";
 
 export interface IGlEntry extends Document {

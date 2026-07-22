@@ -9,6 +9,7 @@ router.get("/", MoveOrderController.list);
 router.get("/:id", MoveOrderController.getOne);
 router.post("/", MoveOrderController.create);
 router.put("/:id", MoveOrderController.update);
+router.post("/:id/status", MoveOrderController.updateStatus);
 router.patch("/:id/status", MoveOrderController.updateStatus);
 router.delete("/:id", MoveOrderController.remove);
 

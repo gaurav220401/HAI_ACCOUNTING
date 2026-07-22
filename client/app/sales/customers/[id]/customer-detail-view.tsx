@@ -20,6 +20,7 @@ import {
   Send,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -90,6 +91,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { DraggableText } from "@/components/ui/draggable-text";
+
 
 type CustomerTab = "overview" | "comments" | "transactions" | "mails" | "statement";
 type ChartPeriod = "6m" | "12m" | "fiscal" | "prev_fiscal";
@@ -1186,11 +1189,15 @@ export function CustomerDetailView({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-[34px] font-normal leading-none">{customer.displayName}</h1>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="min-w-0 max-w-xl">
+          <h1 className="text-[34px] font-normal leading-none max-w-full overflow-hidden">
+            <DraggableText className="text-[34px] font-normal leading-none py-0.5">{customer.displayName}</DraggableText>
+          </h1>
+          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground max-w-full overflow-hidden">
             {customer.isActive ? <span>Active</span> : <span className="text-orange-600">Inactive</span>}
-            {customer.companyName && customer.companyName !== customer.displayName ? <span>{customer.companyName}</span> : null}
+            {customer.companyName && customer.companyName !== customer.displayName ? (
+              <DraggableText className="max-w-[250px]">{customer.companyName}</DraggableText>
+            ) : null}
           </div>
         </div>
 
@@ -1248,8 +1255,14 @@ export function CustomerDetailView({
           </DropdownMenu>
 
           {onClose ? (
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close panel">
-              <Trash2 className="h-4 w-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-8 gap-1 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+              onClick={onClose}
+            >
+              <X className="h-3.5 w-3.5" />
+              Close
             </Button>
           ) : null}
         </div>
@@ -1287,8 +1300,8 @@ export function CustomerDetailView({
                       <UserRound className="h-8 w-8 text-muted-foreground" />
                     )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{primaryContact.name || customer.displayName}</p>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <DraggableText className="font-semibold text-foreground">{primaryContact.name || customer.displayName}</DraggableText>
                     <button
                       type="button"
                       className="mt-1 text-sm text-teal-600 hover:text-teal-700 hover:underline"
@@ -1670,7 +1683,7 @@ export function CustomerDetailView({
                     <thead>
                       <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="px-3 py-2 font-semibold">Date</th>
-                        <th className="px-3 py-2 font-semibold">Payment Number</th>
+                        <th className="px-3 py-2 font-semibold">Payment Voucher Number</th>
                         <th className="px-3 py-2 font-semibold">Reference Number</th>
                         <th className="px-3 py-2 font-semibold">Payment Mode</th>
                         <th className="px-3 py-2 font-semibold">Amount</th>

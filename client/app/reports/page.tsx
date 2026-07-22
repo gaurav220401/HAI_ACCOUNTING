@@ -157,7 +157,7 @@ function ReportsPageContent() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [datePreset, setDatePreset] = useState("today");
+  const [datePreset, setDatePreset] = useState("this-month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
@@ -174,26 +174,59 @@ function ReportsPageContent() {
   const [printOrientation, setPrintOrientation] = useState<"portrait" | "landscape">("portrait");
   const [fetching, setFetching] = useState(false);
   const [reportData, setReportData] = useState<GenericReportResponse | null>(null);
-
+ 
   const [trialBalance, setTrialBalance] = useState<TrialBalanceResponse | null>(null);
   const [profitLoss, setProfitLoss] = useState<ProfitLossResponse | null>(null);
   const [balanceSheet, setBalanceSheet] = useState<BalanceSheetResponse | null>(null);
   const [controlRec, setControlRec] = useState<ControlReconciliationResponse | null>(null);
-
+ 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
-
+ 
   useEffect(() => {
     if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
-
+ 
   useEffect(() => {
     const report = searchParams.get("report");
     if (report) {
       setActiveReportId(report);
       const def = REPORTS.find((r) => r.id === report);
       if (def) setActiveCategory(def.category);
+    }
+ 
+    const preset = searchParams.get("preset") || searchParams.get("datePreset");
+    if (preset) {
+      setDatePreset(preset);
+    }
+    const fromParam = searchParams.get("from");
+    if (fromParam) {
+      setCustomFrom(fromParam);
+    }
+    const toParam = searchParams.get("to");
+    if (toParam) {
+      setCustomTo(toParam);
+    }
+    const asOfParam = searchParams.get("asOf");
+    if (asOfParam) {
+      setAsOf(asOfParam);
+    }
+    const basis = searchParams.get("basis");
+    if (basis && (basis === "Accrual" || basis === "Cash")) {
+      setReportBasis(basis);
+    }
+    const status = searchParams.get("status");
+    if (status) {
+      setStatusFilter(status);
+    }
+    const vendorId = searchParams.get("vendorId");
+    if (vendorId) {
+      setVendorFilter(vendorId);
+    }
+    const customerId = searchParams.get("customerId");
+    if (customerId) {
+      setCustomerFilter(customerId);
     }
   }, [searchParams]);
 
@@ -757,10 +790,12 @@ function ReportsPageContent() {
 
       drawRow(exportPayload.columns.map((col) => col.label), true);
       for (const row of exportPayload.rows) {
-        drawRow(
-          exportPayload.columns.map((col) => formatDisplayValue(row[col.key], col.format)),
-          false,
+        // jsPDF built-in fonts (Helvetica) don't support the ₹ Unicode character;
+        // replace it with "Rs." to ensure proper rendering in the PDF.
+        const pdfCells = exportPayload.columns.map((col) =>
+          formatDisplayValue(row[col.key], col.format).replace(/₹/g, "Rs."),
         );
+        drawRow(pdfCells, false);
       }
 
       doc.save(`${fileNameStem}.pdf`);
@@ -822,7 +857,7 @@ function ReportsPageContent() {
       })
       .join("");
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+    const printWindow = window.open("", "_blank", "width=1200,height=900");
     if (!printWindow) {
       toast.error("Unable to open print window");
       return;
@@ -832,10 +867,13 @@ function ReportsPageContent() {
       <!doctype html>
       <html>
         <head>
+          <meta charset="UTF-8" />
           <title>${htmlEscape(activeReport.name)}</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
           <style>
             @page { size: A4 ${printOrientation}; margin: 10mm; }
-            body { font-family: Arial, sans-serif; color: #222; margin: 0; }
+            body { font-family: 'Noto Sans', Arial, sans-serif; color: #222; margin: 0; }
             h1 { font-size: 18px; margin: 0 0 6px; }
             p { margin: 0 0 12px; color: #666; font-size: 12px; }
             table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -1320,8 +1358,8 @@ function ReportsPageContent() {
               data={reportData}
               columns={activeReport.columns}
               title={activeReport.name}
-              from={from}
-              to={to}
+              from={activeReport.useAsOf ? "" : from}
+              to={activeReport.useAsOf ? "" : to}
             />
           )}
           {!fetching && activeReport?.id === "trial-balance" && trialBalance && (

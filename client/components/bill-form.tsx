@@ -633,6 +633,11 @@ function ItemSelectorPopup({
    );
 }
 
+const PRIORITY_ACCOUNT_TYPES_FOR_BILLS = [
+   "Fixed Asset", "Expense", "Cost Of Goods Sold", "Other Expense",
+   "Other Asset", "Non Current Asset", "Intangible Asset",
+];
+
 function AccountDropdown({
    value,
    onChange,
@@ -645,45 +650,88 @@ function AccountDropdown({
    const [open, setOpen] = useState(false);
    const [q, setQ] = useState("");
    const selected = accounts.find((a) => a._id === value);
+   const isFixedAsset = selected?.accountType === "Fixed Asset";
 
-   const grouped = accounts
-      .filter((a) => a.name.toLowerCase().includes(q.toLowerCase()))
-      .reduce<Record<string, Account[]>>((acc, a) => {
-         const g = a.accountType || "Other";
-         if (!acc[g]) acc[g] = [];
-         acc[g].push(a);
-         return acc;
-      }, {});
+   const filtered = accounts.filter((a) =>
+      a.name.toLowerCase().includes(q.toLowerCase())
+   );
+
+   // Sort: prioritised account types first, then alphabetically within each group
+   const grouped = filtered.reduce<Record<string, Account[]>>((acc, a) => {
+      const g = a.accountType || "Other";
+      if (!acc[g]) acc[g] = [];
+      acc[g].push(a);
+      return acc;
+   }, {});
+
+   // Put Fixed Asset & Expense types first for bills
+   const sortedGroupKeys = Object.keys(grouped).sort((a, b) => {
+      const ai = PRIORITY_ACCOUNT_TYPES_FOR_BILLS.indexOf(a);
+      const bi = PRIORITY_ACCOUNT_TYPES_FOR_BILLS.indexOf(b);
+      if (ai === -1 && bi === -1) return a.localeCompare(b);
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+   });
 
    return (
       <DropdownMenu open={open} onOpenChange={setOpen}>
          <DropdownMenuTrigger asChild>
-            <button type="button" className="flex items-center gap-1 text-sm text-left hover:text-primary">
-               <span className={selected ? "" : "text-muted-foreground"}>{selected ? selected.name : "Select an account"}</span>
-               <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            <button
+               type="button"
+               className="w-full h-8 px-2 text-xs border rounded-md bg-white text-left flex items-center justify-between gap-1 hover:bg-muted/20 focus:outline-none focus:ring-1 focus:ring-primary truncate"
+            >
+               <span className={cn("truncate flex-1", selected ? "text-slate-800" : "text-muted-foreground")}>
+                  {selected ? selected.name : "Select an account"}
+               </span>
+               <span className="flex items-center gap-1 shrink-0">
+                  {isFixedAsset && (
+                     <span className="px-1 py-0 text-[9px] font-bold rounded bg-orange-100 text-orange-700 border border-orange-200 uppercase tracking-wide leading-4">
+                        FA
+                     </span>
+                  )}
+                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
+               </span>
             </button>
          </DropdownMenuTrigger>
-         <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-64 p-0 overflow-hidden">
+         <DropdownMenuContent align="start" sideOffset={6} className="z-[220] w-72 p-0 overflow-hidden">
             <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
-               <Input className="h-7 text-xs" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+               <Input className="h-7 text-xs" placeholder="Search accounts…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
             </div>
-            <div className="max-h-64 overflow-y-auto">
-               {Object.entries(grouped).map(([group, accs]) => (
+            <div className="max-h-72 overflow-y-auto">
+               {sortedGroupKeys.map((group) => (
                   <div key={group}>
-                     <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/30">{group}</div>
-                     {accs.map((a) => (
+                     <div className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-2 ${
+                        group === "Fixed Asset"
+                           ? "bg-orange-50 text-orange-700"
+                           : "bg-muted/30 text-muted-foreground"
+                     }`}>
+                        {group}
+                        {group === "Fixed Asset" && (
+                           <span className="px-1 py-0 text-[9px] font-bold rounded bg-orange-200 text-orange-800 border border-orange-300 uppercase tracking-wide">
+                              Auto-creates Draft Asset
+                           </span>
+                        )}
+                     </div>
+                     {grouped[group].map((a) => (
                         <button
                            key={a._id}
                            type="button"
-                           className={cn("w-full text-left px-3 py-2 text-sm hover:bg-muted/50", value === a._id && "bg-primary/10 text-primary font-medium")}
+                           className={cn(
+                              "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 flex items-center justify-between gap-2",
+                              value === a._id && "bg-primary/10 text-primary font-medium"
+                           )}
                            onClick={() => { onChange(a._id, a.name); setOpen(false); setQ(""); }}
                         >
-                           {a.name}
+                           <span>{a.name}</span>
+                           {a.accountType === "Fixed Asset" && (
+                              <span className="text-[10px] font-medium text-orange-600 shrink-0">📦 FA</span>
+                           )}
                         </button>
                      ))}
                   </div>
                ))}
-               {Object.keys(grouped).length === 0 && (
+               {sortedGroupKeys.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">No accounts found</p>
                )}
             </div>
@@ -691,6 +739,7 @@ function AccountDropdown({
       </DropdownMenu>
    );
 }
+
 
 function LineTaxDropdown({
    value,
@@ -2179,32 +2228,40 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                   </Select>
                )}
             </div>
-            <div className="flex items-center gap-3">
-               <Label className="text-sm font-medium w-36 shrink-0">Accounts Payable</Label>
-               {loadingDropdowns ? (
-                  <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
-                     <span className="text-slate-400 text-xs">Loading accounts...</span>
-                     <ChevronDown className="h-4 w-4 text-slate-400" />
+            {/* Only show Accounts Payable selector when there are multiple AP accounts to choose from */}
+            {(() => {
+               const payableAccounts = accounts.filter((account) => account.accountType === "Accounts Payable");
+               if (payableAccounts.length <= 1) return null; // Auto-set silently, no need to show
+               return (
+                  <div className="flex items-center gap-3">
+                     <Label className="text-sm font-medium w-36 shrink-0">
+                        Accounts Payable
+                        <p className="text-[10px] text-muted-foreground font-normal mt-0.5">Choose payable account</p>
+                     </Label>
+                     {loadingDropdowns ? (
+                        <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3">
+                           <span className="text-slate-400 text-xs">Loading accounts...</span>
+                           <ChevronDown className="h-4 w-4 text-slate-400" />
+                        </div>
+                     ) : (
+                        <Select
+                           value={accountsPayableId || "__auto__"}
+                           onValueChange={(value) => setAccountsPayableId(value === "__auto__" ? "" : value)}
+                        >
+                           <SelectTrigger className="h-9 text-sm flex-1">
+                              <SelectValue placeholder="Auto from Vendor" />
+                           </SelectTrigger>
+                           <SelectContent>
+                              <SelectItem value="__auto__">Auto from Vendor</SelectItem>
+                              {payableAccounts.map((account) => (
+                                 <SelectItem key={account._id} value={account._id}>{account.name}</SelectItem>
+                              ))}
+                           </SelectContent>
+                        </Select>
+                     )}
                   </div>
-               ) : (
-                  <Select
-                     value={accountsPayableId || "__auto__"}
-                     onValueChange={(value) => setAccountsPayableId(value === "__auto__" ? "" : value)}
-                  >
-                     <SelectTrigger className="h-9 text-sm flex-1">
-                        <SelectValue placeholder="Auto from Vendor" />
-                     </SelectTrigger>
-                     <SelectContent>
-                        <SelectItem value="__auto__">Auto from Vendor</SelectItem>
-                        {accounts
-                           .filter((account) => account.accountType === "Accounts Payable")
-                           .map((account) => (
-                              <SelectItem key={account._id} value={account._id}>{account.name}</SelectItem>
-                           ))}
-                     </SelectContent>
-                  </Select>
-               )}
-            </div>
+               );
+            })()}
          </div>
 
          <div className="flex items-center gap-2 pt-2">
@@ -2445,6 +2502,20 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                </Button>
                <Button variant="ghost" size="sm" onClick={() => setRows((prev) => [...prev, newHeader()])}>Add Header</Button>
             </div>
+            {/* Fixed Asset auto-draft notice */}
+            {rows.some((r) => {
+               const acct = accounts.find((a) => a._id === r.accountId);
+               return acct?.accountType === "Fixed Asset";
+            }) && (
+               <div className="mx-4 mb-3 mt-1 flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+                  <span className="text-base leading-none">📦</span>
+                  <div>
+                     <span className="font-semibold">Fixed Asset accounts detected.</span>{" "}
+                     After saving this bill, a <strong>Draft Fixed Asset</strong> will be automatically created for each line with a Fixed Asset account.
+                     Go to <strong>Accountant → Fixed Assets → Draft Assets</strong> to view and activate them.
+                  </div>
+               </div>
+            )}
          </div>
 
          {/* Totals */}

@@ -117,6 +117,8 @@ export interface Contact {
   accountsPayableId?: string;
   openingBalance?: number;
   outstandingReceivable?: number;
+  outstandingPayable?: number;
+  unusedCredits?: number;
   tdsCategory?: string;
   msmeRegistered?: boolean;
   currency?: string;

@@ -402,7 +402,7 @@ export default function DeliveryChallanDetailPage() {
           </div>
 
           <div className="text-sm">
-            <span className="text-muted-foreground">Sales Order#: </span>
+            <span className="text-muted-foreground">Sales Order Number: </span>
             <span className="font-medium text-foreground">
               {challan.salesOrderNumber || "-"}
             </span>
@@ -448,7 +448,7 @@ export default function DeliveryChallanDetailPage() {
                     CHALLAN
                   </h2>
                   <p className="text-sm mt-2">
-                    <span className="font-semibold">Delivery Challan#</span>{" "}
+                    <span className="font-semibold">Delivery Challan Number</span>{" "}
                     {challan.challanNumber}
                   </p>
                 </div>
@@ -632,7 +632,7 @@ export default function DeliveryChallanDetailPage() {
             <div className="flex-1 overflow-auto flex justify-center py-8 px-4">
               <div
                 id="print-content"
-                className="bg-white shadow-2xl w-[210mm] min-h-[297mm] p-12 text-black print:shadow-none print:p-8"
+                className="bg-white shadow-2xl w-[210mm] min-h-[297mm] p-12 text-black print:shadow-none print:p-8 statement-print-area"
               >
                 {/* Header: Company + Title */}
                 <div className="flex justify-between items-start mb-10">

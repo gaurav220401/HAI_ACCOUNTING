@@ -15,6 +15,7 @@ import {
   startDocumentScanRecoveryCron,
 } from "./services/document-processing.service";
 import { startDocumentEmailIngestionWorker } from "./services/document-email-ingest.service";
+import { seedCountersFromExistingData } from "./utils/seed-counters";
 
 const DEFAULT_PORT = Number(process.env.PORT || 5000);
 
@@ -53,6 +54,10 @@ const startServer = async (): Promise<void> => {
 
     // Sync indexes (drops stale non-sparse indexes, etc.)
     await syncIndexes();
+
+    // Seed Counter documents from existing INV-/EXP- sequences so that
+    // the atomic counter generator won't re-issue already-used numbers.
+    await seedCountersFromExistingData();
 
     // Seed default roles on startup
     await seedDefaultRoles();
