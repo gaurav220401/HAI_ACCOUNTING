@@ -497,7 +497,7 @@ function AdvancedSearchDialog({
            {/* Left Column */}
            <div className="space-y-6">
               <div className="flex items-center gap-4">
-                 <Label className="w-40 text-sm font-normal text-gray-600">Purchase Order#</Label>
+                 <Label className="w-40 text-sm font-normal text-gray-600">Purchase Order Number</Label>
                  <Input 
                    value={filters.poNumber}
                    onChange={(e) => setFilters(f => ({ ...f, poNumber: e.target.value }))}
@@ -604,7 +604,7 @@ function AdvancedSearchDialog({
            {/* Right Column */}
            <div className="space-y-6">
               <div className="flex items-center gap-4">
-                 <Label className="w-40 text-sm font-normal text-gray-600">Reference#</Label>
+                 <Label className="w-40 text-sm font-normal text-gray-600">Reference Number</Label>
                  <Input className="flex-1 h-9 border-gray-300" />
               </div>
               <div className="flex items-center gap-4">

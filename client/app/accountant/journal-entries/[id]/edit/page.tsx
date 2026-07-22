@@ -296,7 +296,7 @@ export default function EditJournalPage() {
           breadcrumb={
             <span className="flex flex-col text-left">
               <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Accountant</span>
-              <span className="text-sm font-semibold text-slate-700 mt-0.5">Edit Journal #{journalNumber}</span>
+              <span className="text-sm font-semibold text-slate-700 mt-0.5">Edit Journal {journalNumber}</span>
             </span>
           }
         />
@@ -318,7 +318,7 @@ export default function EditJournalPage() {
 
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
                 <Label className="text-red-500 text-sm font-medium text-right">
-                  Journal# *
+                  Journal Number *
                 </Label>
                 <div className="relative max-w-xs">
                   <Input value={journalNumber} readOnly className="pr-9" />
@@ -328,7 +328,7 @@ export default function EditJournalPage() {
 
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
                 <Label className="text-sm font-medium text-right">
-                  Reference#
+                  Reference Number
                 </Label>
                 <Input
                   value={reference}

@@ -574,7 +574,7 @@ function BillPdfView({
               Bill
             </div>
             <div className="text-sm text-gray-600 mt-1">
-              # {bill.billNumber}
+              Bill Number {bill.billNumber}
             </div>
           </div>
         </div>
@@ -602,7 +602,7 @@ function BillPdfView({
             )}
             {bill.referenceNumber && (
               <div className="flex justify-end gap-8">
-                <span className="text-gray-500">Reference#</span>
+                <span className="text-gray-500">Reference Number</span>
                 <span className="font-medium">{bill.referenceNumber}</span>
               </div>
             )}
@@ -613,7 +613,7 @@ function BillPdfView({
         <table className="w-full mb-6" style={{ borderCollapse: "collapse" }}>
           <thead style={{ background: "#3a3a3a", color: "white" }}>
             <tr>
-              <th className="text-left px-3 py-2 text-xs font-medium w-8">#</th>
+              <th className="text-left px-3 py-2 text-xs font-medium w-8">Line</th>
               <th className="text-left px-3 py-2 text-xs font-medium">Item &amp; Description</th>
               <th className="text-right px-3 py-2 text-xs font-medium w-20">Qty</th>
               <th className="text-right px-3 py-2 text-xs font-medium w-24">Rate</th>
@@ -1607,7 +1607,7 @@ function BillDetailPanel({
                       Bill Details
                     </h3>
                     <div className="text-xs text-gray-500">
-                      #{bill.billNumber}
+                      Bill Number {bill.billNumber}
                     </div>
                   </div>
                   <div className="p-6">

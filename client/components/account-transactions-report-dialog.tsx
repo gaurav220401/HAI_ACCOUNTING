@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Calendar, ChevronDown, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -186,7 +187,7 @@ export function AccountTransactionsReportDialog({
 
   function exportCsv() {
     const csvRows: Array<Array<string | number>> = [
-      ["Date", "Account", "Transaction Details", "Transaction Type", "Transaction#", "Reference#", "Debit", "Credit"],
+      ["Date", "Account", "Transaction Details", "Transaction Type", "Transaction Number", "Reference Number", "Debit", "Credit"],
       [`As On ${headerFrom}`, "Opening Balance", "", "Opening Balance", "", "", openingBalance > 0 ? openingBalance : 0, openingBalance < 0 ? Math.abs(openingBalance) : 0],
       ...rows.map((r) => [r.date, r.account, r.details, r.type, r.transactionNo, r.referenceNo, r.debit, r.credit]),
       ["", "Total Debits and Credits", `${headerFrom} - ${headerTo}`, "", "", "", totalDebit, totalCredit],
@@ -217,8 +218,49 @@ export function AccountTransactionsReportDialog({
 
         <div className="border-b bg-muted/20 px-5 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-9 w-[170px]" />
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-9 w-[170px]" />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={[
+                    "h-9 gap-1.5 border-slate-200 bg-white text-xs font-medium text-slate-700 hover:bg-slate-50",
+                    (fromDate || toDate) ? "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold" : "",
+                  ].join(" ")}
+                >
+                  <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                  {fromDate || toDate ? `${fromDate || "Start"} - ${toDate || "End"}` : "Date Range"}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72 space-y-3 border-slate-200 bg-white p-4 shadow-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                  {(fromDate || toDate) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFromDate("");
+                        setToDate("");
+                      }}
+                      className="text-xs font-medium text-rose-600 hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-500">From Date</label>
+                    <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 border-slate-200 bg-slate-50 text-xs" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-500">To Date</label>
+                    <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 border-slate-200 bg-slate-50 text-xs" />
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
             <select
               value={reportBasis}
               onChange={(e) => setReportBasis(e.target.value as "Accrual" | "Cash")}
@@ -271,8 +313,8 @@ export function AccountTransactionsReportDialog({
                       <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-muted-foreground">Account</th>
                       <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-muted-foreground">Transaction Details</th>
                       <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-muted-foreground">Transaction Type</th>
-                      <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-muted-foreground">Transaction#</th>
-                      <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-muted-foreground">Reference#</th>
+                      <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-muted-foreground">Transaction Number</th>
+                      <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-muted-foreground">Reference Number</th>
                       <th className="px-4 py-3 text-right font-semibold uppercase tracking-wide text-muted-foreground">Debit</th>
                       <th className="px-4 py-3 text-right font-semibold uppercase tracking-wide text-muted-foreground">Credit</th>
                     </tr>

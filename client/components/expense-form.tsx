@@ -1008,9 +1008,9 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                     newLabel="+ New Vendor" onNew={() => router.push("/purchases/vendors/new")} loading={loadingData} />
                 </div>
 
-                {/* Invoice # */}
+                {/* Invoice Number */}
                 <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
-                  <Label className="text-sm text-right">Invoice #</Label>
+                  <Label className="text-sm text-right">Invoice Number</Label>
                   <Input className="h-9" value={expForm.invoiceNumber}
                     onChange={(e) => setExp("invoiceNumber", e.target.value)} />
                 </div>
@@ -1244,9 +1244,9 @@ function ExpenseFormInner({ mode, expenseNumber }: ExpenseFormProps) {
                     newLabel="+ New Vendor" onNew={() => router.push("/purchases/vendors/new")} loading={loadingData} />
                 </div>
 
-                {/* Invoice # */}
+                {/* Invoice Number */}
                 <div className="grid grid-cols-[140px_1fr] gap-4 items-center">
-                  <Label className="text-sm text-right">Invoice #</Label>
+                  <Label className="text-sm text-right">Invoice Number</Label>
                   <Input className="h-9" value={milForm.invoiceNumber}
                     onChange={(e) => setMil("invoiceNumber", e.target.value)} />
                 </div>

@@ -2154,11 +2154,11 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
          {/* Bill details */}
          <div className="grid grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
             <div className="flex items-center gap-3">
-               <Label className="text-sm font-medium text-red-500 w-36 shrink-0">Bill# *</Label>
+               <Label className="text-sm font-medium text-red-500 w-36 shrink-0">Bill Number *</Label>
                <Input className="h-9 text-sm flex-1" value={billNumber} onChange={(e) => setBillNumber(e.target.value)} />
             </div>
             <div className="flex items-center gap-3">
-               <Label className="text-sm font-medium w-24 shrink-0">Reference#</Label>
+               <Label className="text-sm font-medium w-24 shrink-0">Reference Number</Label>
                <Input className="h-9 text-sm flex-1" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
             </div>
             <div className="flex items-start gap-3">

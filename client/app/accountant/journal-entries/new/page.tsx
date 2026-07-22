@@ -290,7 +290,7 @@ function NewJournalPageInner() {
 
     const finalJournalNumber = journalNumber.trim();
     if (numberingMode === "manual" && !finalJournalNumber) {
-      toast.error("Journal# is required");
+      toast.error("Journal Number is required");
       return;
     }
 
@@ -395,10 +395,10 @@ function NewJournalPageInner() {
                 />
               </div>
 
-              {/* Journal # */}
+              {/* Journal Number */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
                 <Label className="text-red-500 text-sm font-medium text-right">
-                  Journal# *
+                  Journal Number *
                 </Label>
                 <div className="relative max-w-xs">
                   <Input
@@ -422,7 +422,7 @@ function NewJournalPageInner() {
               {/* Reference */}
               <div className="grid grid-cols-[180px_1fr] gap-x-6 items-center">
                 <Label className="text-sm font-medium text-right">
-                  Reference#
+                  Reference Number
                 </Label>
                 <Input
                   value={reference}

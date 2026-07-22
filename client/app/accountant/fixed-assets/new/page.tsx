@@ -848,7 +848,7 @@ function NewFixedAssetPageContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Fixed Asset#</Label>
+                  <Label>Asset Number</Label>
                   <Input
                     value="Auto Generated"
                     readOnly
@@ -1404,7 +1404,7 @@ function NewFixedAssetPageContent() {
                         {projection.rows.map((row, index) => (
                           <tr key={index} className="hover:bg-muted/10 transition-colors">
                             <td className="px-4 py-2.5 font-medium text-muted-foreground">
-                              #{index + 1}
+                              {index + 1}
                             </td>
                             <td className="px-4 py-2.5 text-foreground">
                               {new Date(row.depreciationDate).toLocaleDateString("en-IN", {
