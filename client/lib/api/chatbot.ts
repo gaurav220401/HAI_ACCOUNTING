@@ -1,9 +1,17 @@
 import { apiFetch } from "../api";
 
+export type ChatModelProvider = "gemini" | "groq";
+
+export interface ChatNavigationAction {
+  label: string;
+  url: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: Array<{ title: string; url: string }>;
+  actions?: ChatNavigationAction[];
   timestamp: number;
   isError?: boolean;
 }
@@ -13,8 +21,11 @@ export interface ChatResponse {
   data?: {
     answer: string;
     sources: Array<{ title: string; url: string }>;
+    actions?: ChatNavigationAction[];
     sessionId: string;
     responseTimeMs: number;
+    provider?: ChatModelProvider;
+    model?: string;
   };
   message?: string;
 }
@@ -24,11 +35,12 @@ export interface ChatResponse {
  */
 export async function sendChatMessage(
   question: string,
-  sessionId?: string
+  sessionId?: string,
+  provider?: ChatModelProvider
 ): Promise<ChatResponse> {
   const res = await apiFetch("/chat", {
     method: "POST",
-    body: JSON.stringify({ question, sessionId }),
+    body: JSON.stringify({ question, sessionId, provider }),
   });
 
   const data = await res.json();
@@ -42,3 +54,4 @@ export async function sendChatMessage(
 
   return data;
 }
+
