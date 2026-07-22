@@ -320,6 +320,15 @@ function NewPutawayContent() {
                 </div>
               )}
             </div>
+            {items.length > 0 && (
+              <div className="flex items-center justify-between p-3 bg-teal-50/50 border-t border-slate-200 text-xs font-semibold text-slate-700">
+                <span>Total Line Items: <strong className="text-teal-700">{items.length}</strong></span>
+                <div className="flex items-center gap-6">
+                  <span>Total Qty Received: <strong className="text-slate-800">{items.reduce((acc, i) => acc + Number(i.quantityReceived || 0), 0)}</strong></span>
+                  <span>Total Qty to Putaway: <strong className="text-teal-700">{items.reduce((acc, i) => acc + Number(i.quantityPutaway || 0), 0)}</strong></span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

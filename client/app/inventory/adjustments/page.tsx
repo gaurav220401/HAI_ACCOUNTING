@@ -162,7 +162,22 @@ export default function InventoryAdjustmentsPage() {
       return 0;
     });
     return list;
-  }, [adjustments, sortField, sortOrder]);
+  }, [filteredAdjustments, sortField, sortOrder]);
+
+  const summary = useMemo(() => {
+    const total = filteredAdjustments.length;
+    const increases = filteredAdjustments.filter((a) => a.direction === "Increase").length;
+    const decreases = filteredAdjustments.filter((a) => a.direction === "Decrease").length;
+    const netQtyDelta = filteredAdjustments.reduce((acc, a) => {
+      const qty = Number(a.quantityDelta || 0);
+      return acc + (a.direction === "Increase" ? qty : -qty);
+    }, 0);
+    const netValueDelta = filteredAdjustments.reduce((acc, a) => {
+      const val = Number(a.valueDelta || 0);
+      return acc + (a.direction === "Increase" ? val : -val);
+    }, 0);
+    return { total, increases, decreases, netQtyDelta, netValueDelta };
+  }, [filteredAdjustments]);
 
   const loadAdjustments = useCallback(async () => {
     const res = await inventoryApi.listAdjustments({ page: 1, limit: 100 });
@@ -317,6 +332,28 @@ export default function InventoryAdjustmentsPage() {
       )}
     >
       <div className="space-y-6">
+        {/* Sleek Ultra-Compact KPI Summary Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Adjustments</span>
+            <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.total}</span>
+          </div>
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Stock Increases</span>
+            <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.increases}</span>
+          </div>
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-rose-600 uppercase tracking-wide">Stock Decreases</span>
+            <span className="text-sm font-bold text-rose-700 tabular-nums">{summary.decreases}</span>
+          </div>
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Net Value Change</span>
+            <span className={cn("text-sm font-bold tabular-nums", summary.netValueDelta >= 0 ? "text-teal-700" : "text-rose-600")}>
+              {summary.netValueDelta >= 0 ? "+" : ""}₹{summary.netValueDelta.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>New Adjustment</CardTitle>
@@ -450,6 +487,18 @@ export default function InventoryAdjustmentsPage() {
                 />
               </div>
             </div>
+
+            {form.quantityDelta ? (
+              <div className="flex items-center justify-between mt-4 p-3 bg-teal-50/50 rounded-md border border-slate-200 text-xs font-semibold text-slate-700">
+                <span>Direction: <strong className={form.direction === "Increase" ? "text-emerald-700" : "text-rose-600"}>{form.direction}</strong></span>
+                <span>Qty Change: <strong className={form.direction === "Increase" ? "text-emerald-700" : "text-rose-600"}>{form.direction === "Increase" ? "+" : "-"}{form.quantityDelta}</strong></span>
+                {form.valueDelta ? (
+                  <span>Valuation Change: <strong className="text-teal-700">{form.direction === "Increase" ? "+" : "-"}₹{Number(form.valueDelta).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
+                ) : form.unitCost ? (
+                  <span>Est. Valuation Change: <strong className="text-teal-700">{form.direction === "Increase" ? "+" : "-"}₹{(Number(form.quantityDelta) * Number(form.unitCost)).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-4 flex justify-end">
               <Button onClick={handleSubmit} disabled={saving || fetching} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md">

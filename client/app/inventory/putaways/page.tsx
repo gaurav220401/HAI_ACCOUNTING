@@ -102,6 +102,17 @@ export default function InventoryPutawaysPage() {
     return list;
   }, [filteredRows, sortField, sortOrder]);
 
+  const summary = useMemo(() => {
+    const total = filteredRows.length;
+    const completed = filteredRows.filter((r) => r.status === "Completed").length;
+    const draft = filteredRows.filter((r) => r.status === "Draft" || !r.status).length;
+    const totalQty = filteredRows.reduce((acc, r) => {
+      const lineSum = (r.lineItems || []).reduce((lAcc, li) => lAcc + Number(li.quantityPutaway || 0), 0);
+      return acc + lineSum;
+    }, 0);
+    return { total, completed, draft, totalQty };
+  }, [filteredRows]);
+
   return (
     <InventoryShell
       title="All Putaways"
@@ -195,7 +206,29 @@ export default function InventoryPutawaysPage() {
         </div>
       }
     >
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        {/* Sleek Ultra-Compact KPI Summary Strip */}
+        {!loading && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Putaways</span>
+              <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.total}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Completed</span>
+              <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.completed}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Draft / Pending</span>
+              <span className="text-sm font-bold text-amber-700 tabular-nums">{summary.draft}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Total Qty Putaway</span>
+              <span className="text-sm font-bold text-teal-700 tabular-nums">{summary.totalQty.toLocaleString("en-IN")}</span>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
@@ -216,7 +249,7 @@ export default function InventoryPutawaysPage() {
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="grid grid-cols-[140px_140px_1fr_160px_120px_100px] gap-4 px-6 py-4 bg-slate-50 border-b text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <div className="grid grid-cols-[130px_110px_1fr_140px_100px_100px_80px] gap-4 px-6 py-4 bg-slate-50 border-b text-xs font-semibold text-slate-500 uppercase tracking-wider">
               <div>
                 <button onClick={() => toggleSort("putawayNumber")} className="group flex items-center gap-1 hover:text-teal-700">
                   Putaway Number
@@ -249,6 +282,7 @@ export default function InventoryPutawaysPage() {
                   </span>
                 </button>
               </div>
+              <div className="text-right">Total Qty</div>
               <div>
                 <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
                   Status
@@ -260,30 +294,36 @@ export default function InventoryPutawaysPage() {
               <div className="text-right">Action</div>
             </div>
             <div className="divide-y divide-slate-100">
-              {sortedRows.map((row) => (
-                <div key={row._id} className="grid grid-cols-[140px_140px_1fr_160px_120px_100px] gap-4 px-6 py-4 items-center hover:bg-teal-50/30 transition-colors">
-                  <div className="font-semibold text-teal-700 hover:text-teal-800 hover:underline cursor-pointer">{row.putawayNumber}</div>
-                  <div className="text-sm text-slate-500">{new Date(row.date).toLocaleDateString("en-IN")}</div>
-                  <div className="text-sm">
-                    <div className="font-medium text-slate-700">{row.purchaseReceiveNumber}</div>
-                    <div className="text-xs text-slate-400">Linked Purchase Receive</div>
+              {sortedRows.map((row) => {
+                const totalPutawayQty = (row.lineItems || []).reduce((acc, li) => acc + Number(li.quantityPutaway || 0), 0);
+                return (
+                  <div key={row._id} className="grid grid-cols-[130px_110px_1fr_140px_100px_100px_80px] gap-4 px-6 py-4 items-center hover:bg-teal-50/30 transition-colors">
+                    <div className="font-semibold text-teal-700 hover:text-teal-800 hover:underline cursor-pointer">{row.putawayNumber}</div>
+                    <div className="text-sm text-slate-500">{new Date(row.date).toLocaleDateString("en-IN")}</div>
+                    <div className="text-sm">
+                      <div className="font-medium text-slate-700">{row.purchaseReceiveNumber}</div>
+                      <div className="text-xs text-slate-400">Linked Purchase Receive</div>
+                    </div>
+                    <div className="text-sm text-slate-600">{(row.warehouseId as any)?.name || "Main Warehouse"}</div>
+                    <div className="text-right text-sm font-semibold text-slate-800 tabular-nums">{totalPutawayQty.toLocaleString("en-IN")}</div>
+                    <div>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-xs font-semibold border",
+                        row.status === "Completed" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"
+                      )}>
+                        {row.status}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <Button variant="ghost" size="sm" asChild className="h-8 text-xs text-teal-600 hover:text-teal-700 hover:bg-teal-50">
+                        <Link href="/purchases/receives">
+                          View <ArrowRight className="h-3 w-3 ml-1" />
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
-                  <div className="text-sm font-medium text-slate-600">
-                    {(row.warehouseId as any)?.name || "Main Warehouse"}
-                  </div>
-                  <div>
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                      <span className="h-1 w-1 rounded-full bg-emerald-500" />
-                      {row.status}
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-teal-700 hover:bg-slate-100 rounded-md">
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

@@ -15,7 +15,9 @@ import {
   FileUp,
   Upload,
   Download,
+  Calendar,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -190,10 +192,21 @@ export default function VendorsPage() {
     );
   }
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
   const filtered = contacts
     .filter((c) => {
       if (statusFilter === "Active") return c.isActive !== false;
       if (statusFilter === "Inactive") return c.isActive === false;
+      return true;
+    })
+    .filter((c) => {
+      if (fromDate || toDate) {
+        const d = (c as any).createdAt ? new Date((c as any).createdAt).toISOString().slice(0, 10) : "";
+        if (fromDate && d < fromDate) return false;
+        if (toDate && d > toDate) return false;
+      }
       return true;
     })
     .filter(
@@ -291,6 +304,66 @@ export default function VendorsPage() {
                     <option value="Inactive">Inactive</option>
                     <option value="All">All</option>
                   </select>
+
+                  {/* Compact Date Range Popover */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                          (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                        )}
+                      >
+                        <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                        {fromDate || toDate ? (
+                          <span>
+                            {fromDate || "Start"} - {toDate || "End"}
+                          </span>
+                        ) : (
+                          <span>Date Range</span>
+                        )}
+                        <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                        {(fromDate || toDate) && (
+                          <button
+                            onClick={() => {
+                              setFromDate("");
+                              setToDate("");
+                            }}
+                            className="text-xs text-rose-600 hover:underline font-medium"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                          <Input
+                            type="date"
+                            value={fromDate}
+                            onChange={(e) => setFromDate(e.target.value)}
+                            className="h-8 text-xs bg-slate-50 border-slate-200"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                          <Input
+                            type="date"
+                            value={toDate}
+                            onChange={(e) => setToDate(e.target.value)}
+                            className="h-8 text-xs bg-slate-50 border-slate-200"
+                          />
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchContacts} disabled={fetching} className="h-8 w-8 px-0 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50">
                   <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
