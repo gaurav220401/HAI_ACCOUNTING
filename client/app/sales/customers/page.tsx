@@ -857,6 +857,8 @@ export default function CustomersPage() {
       return 0;
     });
     return list;
+  }, [filtered, sortField, sortOrder]);
+
   const summary = useMemo(() => {
     const totalReceivables = filtered.reduce(
       (acc, row) => acc + Number((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0)),
