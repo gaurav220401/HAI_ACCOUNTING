@@ -222,7 +222,6 @@
   }
 }
 
-<<<<<<< HEAD
 /* ── Visual Agent Driver highlight ───────────────────────────── */
 .hai-agent-highlight {
   position: relative;
@@ -238,8 +237,8 @@
 
 .hai-agent-highlight:focus {
   animation: agentPulse 1.5s ease-in-out infinite;
-}
-=======
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -247,5 +246,3 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
->>>>>>> 1a2285c2b725e8f0a393858d90ea2927f2257f89
