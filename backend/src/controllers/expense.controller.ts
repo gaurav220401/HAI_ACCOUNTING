@@ -57,19 +57,33 @@ async function postExpenseLedger(expense: any, req: AuthenticatedRequest) {
 
   // Build debit lines from expense accounts
   const debitMap = new Map<string, number>();
+  let expenseTaxSum = 0;
 
   if (expense.isItemized && Array.isArray(expense.lineItems) && expense.lineItems.length > 0) {
     // Itemized expense — each line item has its own expense account
     for (const li of expense.lineItems) {
-      if (!li || !li.expenseAccountId) continue;
+      if (!li) continue;
+      const accountId = String(li.expenseAccountId?._id || li.expenseAccountId || li.accountId || "");
+      if (!accountId) continue;
       const amount = round2(toNum(li.amount));
       if (amount <= 0) continue;
-      const accountId = String(li.expenseAccountId);
-      debitMap.set(accountId, round2((debitMap.get(accountId) || 0) + amount));
+
+      const lineTaxRate = toNum(li.taxRate || expense.taxRate || 0);
+      const lineTax = lineTaxRate > 0 ? round2((amount * lineTaxRate) / (100 + lineTaxRate)) : 0;
+      const netAmount = round2(amount - lineTax);
+      expenseTaxSum = round2(expenseTaxSum + lineTax);
+
+      debitMap.set(accountId, round2((debitMap.get(accountId) || 0) + netAmount));
     }
   } else if (expense.expenseAccountId) {
     // Single expense account
-    debitMap.set(String(expense.expenseAccountId), total);
+    const accountId = String((expense.expenseAccountId as any)?._id || expense.expenseAccountId);
+    const taxRate = toNum(expense.taxRate || 0);
+    const totalTax = taxRate > 0 ? round2((total * taxRate) / (100 + taxRate)) : toNum(expense.taxAmount || 0);
+    const netAmount = round2(total - totalTax);
+    expenseTaxSum = totalTax;
+
+    debitMap.set(accountId, netAmount);
   }
 
   // Fallback: if no expense accounts found, find a default one
@@ -81,6 +95,50 @@ async function postExpenseLedger(expense: any, req: AuthenticatedRequest) {
       accountType: "Expense",
     });
     debitMap.set(String(defaultExpenseId), total);
+  }
+
+  // Post Input GST if tax present
+  let inputCgstId: string | null = null;
+  let inputSgstId: string | null = null;
+  let inputIgstId: string | null = null;
+
+  if (expenseTaxSum > 0.009) {
+    try {
+      inputCgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Input CGST", "Input GST", "Input Tax Receivable"],
+        rootType: "Asset",
+        accountType: "Other Current Asset",
+      }).then(id => String(id));
+    } catch {}
+
+    try {
+      inputSgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Input SGST", "Input GST", "Input Tax Receivable"],
+        rootType: "Asset",
+        accountType: "Other Current Asset",
+      }).then(id => String(id));
+    } catch {}
+
+    try {
+      inputIgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Input IGST", "Input GST", "Input Tax Receivable"],
+        rootType: "Asset",
+        accountType: "Other Current Asset",
+      }).then(id => String(id));
+    } catch {}
+
+    const cgstAmount = round2(expenseTaxSum / 2);
+    const sgstAmount = round2(expenseTaxSum - cgstAmount);
+
+    if (inputCgstId && inputSgstId) {
+      debitMap.set(inputCgstId, round2((debitMap.get(inputCgstId) || 0) + cgstAmount));
+      debitMap.set(inputSgstId, round2((debitMap.get(inputSgstId) || 0) + sgstAmount));
+    } else if (inputIgstId) {
+      debitMap.set(inputIgstId, round2((debitMap.get(inputIgstId) || 0) + expenseTaxSum));
+    }
   }
 
   // Balance debits against total
@@ -102,7 +160,7 @@ async function postExpenseLedger(expense: any, req: AuthenticatedRequest) {
     contactId?: any;
   }> = [];
 
-  // Debit expense account(s)
+  // Debit expense account(s) and tax account(s)
   for (const [accountId, amount] of debitMap.entries()) {
     const rounded = round2(amount);
     if (rounded <= 0) continue;

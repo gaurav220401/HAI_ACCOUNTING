@@ -113,7 +113,7 @@ const LINE_TAX_PRESETS: Array<{ name: string; description: string; rate: number 
    },
 ];
 
-const GST_GROUP_NAMES = ["GST0", "GST5", "GST12", "GST18", "GST28", "GST40"];
+const GST_GROUP_NAMES = ["GST0", "GST5", "GST12", "GST18", "GST28"];
 
 // --- Types ---
 export interface LineRow {
@@ -127,6 +127,7 @@ export interface LineRow {
   description: string;
    customerId: string;
    customerName: string;
+   hsnCode: string;
    taxId: string;
    taxName: string;
    taxRate: number;
@@ -139,7 +140,7 @@ export interface LineRow {
 }
 
 const newRow = (): LineRow => ({
-  id: Math.random().toString(36).slice(2),
+  id: Math.random().toString(36).substring(2, 9),
   isHeader: false,
   headerText: "",
   itemId: "",
@@ -149,6 +150,7 @@ const newRow = (): LineRow => ({
   description: "",
    customerId: "",
    customerName: "",
+   hsnCode: "",
    taxId: "",
    taxName: "",
    taxRate: 0,
@@ -1399,6 +1401,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
           customerName: typeof li.customerId === 'object'
              ? ((li.customerId as any)?.displayName || (li.customerId as any)?.companyName || "")
              : "",
+          hsnCode: (li as any).hsnCode || "",
           taxId: typeof li.taxId === 'object' ? (li.taxId as any)?._id : (li.taxId || ""),
           taxName: typeof li.taxId === 'object' ? ((li.taxId as any)?.name || li.taxName || "") : (li.taxName || ""),
           taxRate: typeof li.taxId === 'object'
@@ -1500,6 +1503,7 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
                 description: li.description || "",
                 customerId: typeof li.customerId === 'object' ? li.customerId?._id : (li.customerId || ""),
                 customerName: typeof li.customerId === 'object' ? (li.customerId?.displayName || li.customerId?.companyName || "") : "",
+                hsnCode: li.hsnCode || "",
                 taxId: typeof li.taxId === 'object' ? li.taxId?._id : (li.taxId || ""),
                 taxName: typeof li.taxId === 'object' ? (li.taxId?.name || li.taxName || "") : (li.taxName || ""),
                 taxRate: typeof li.taxId === 'object' ? Number(li.taxId?.rate ?? li.taxRate ?? 0) : Number(li.taxRate || 0),
@@ -1537,7 +1541,16 @@ export function BillFormInner({ initialData, onSuccess, onCancel, mode }: BillFo
   const taxableBase = Math.max(0, subtractMoney(subTotal, discountAmt));
   const tdsAmount = taxType === "TDS" && selectedTds ? percentMoney(taxableBase, selectedTds.rate) : 0;
   const tcsAmount = taxType === "TCS" && selectedTcs ? percentMoney(sumMoney([taxableBase, adjustmentAmount]), selectedTcs.rate) : 0;
-  const lineTaxesSum = sumMoney(rows.filter((r) => !r.isHeader).map((r) => percentMoney(r.amount, r.taxRate || 0)));
+  const lineTaxesSum = sumMoney(
+    rows.filter((r) => !r.isHeader).map((r) => {
+      const rowGross = r.amount || 0;
+      const rowDiscount = discountLevel === "transaction"
+        ? (subTotal > 0 ? (rowGross / subTotal) * discountAmt : 0)
+        : (r.discountAmount || 0);
+      const rowTaxable = Math.max(0, rowGross - rowDiscount);
+      return percentMoney(rowTaxable, r.taxRate || 0);
+    })
+  );
   const total = sumMoney([taxableBase, lineTaxesSum, -tdsAmount, tcsAmount, adjustmentAmount]);
 
    const gstGroupTaxes = useMemo(

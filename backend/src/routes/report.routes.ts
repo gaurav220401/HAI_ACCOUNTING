@@ -44,6 +44,7 @@ import {
   paymentsReceivedReport,
   dashboardSummary,
   hsnWiseSummary,
+  itcRegisterReport,
 } from "../controllers/report.controller";
 
 const router = Router();
@@ -110,6 +111,7 @@ router.get("/payments-received", paymentsReceivedReport);
 
 // GST Reports
 router.get("/hsn-wise-summary", hsnWiseSummary);
+router.get("/itc-register", itcRegisterReport);
 
 // Dashboard
 router.get("/dashboard-summary", dashboardSummary);

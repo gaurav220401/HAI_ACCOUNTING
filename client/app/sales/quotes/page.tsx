@@ -188,14 +188,6 @@ export default function QuotesPage() {
     }
   }
 
-  if (loading || orgLoading || !firebaseUser) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-white">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
-      </div>
-    );
-  }
-
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -304,6 +296,14 @@ export default function QuotesPage() {
     });
     return list;
   }, [filtered, sortField, sortOrder]);
+
+  if (loading || orgLoading || !firebaseUser) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-white">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>

@@ -103,8 +103,13 @@ export async function commitInvoiceAccounting(params: {
   }
 
   // 2. Ledger Posting
+  let lineDiscountsSum = 0;
+  for (const item of invoice.items || []) {
+    lineDiscountsSum += toNum(item.discountAmount);
+  }
+
   const receivableAmount = round2(toNum(invoice.total));
-  const recognizedRevenue = round2(toNum(invoice.subTotal) - toNum(invoice.discountAmount));
+  const recognizedRevenue = round2(toNum(invoice.subTotal) - toNum(invoice.discountAmount) - lineDiscountsSum);
   
   const lines: any[] = [];
 
@@ -138,22 +143,79 @@ export async function commitInvoiceAccounting(params: {
     description: `Sales Revenue - ${invoice.invoiceNumber}`,
   });
 
-  // Tax (Credit if any)
-  const taxDelta = round2(receivableAmount - recognizedRevenue);
-  if (Math.abs(taxDelta) > 0.009) {
-    // Basic heuristic: if receivable > revenue, it's usually tax payable
-    const taxPayableAccountId = await findAccountIdByName({
+  // Output Tax Posting (Credit)
+  let isIgst = false;
+  if (invoice.placeOfSupply && invoice.destinationOfSupply && invoice.placeOfSupply !== invoice.destinationOfSupply) {
+    isIgst = true;
+  }
+  for (const item of invoice.items || []) {
+    if (item.taxName && String(item.taxName).toUpperCase().includes("IGST")) isIgst = true;
+  }
+
+  const totalTaxAmount = round2(toNum(invoice.taxAmount) || (receivableAmount - recognizedRevenue));
+  if (totalTaxAmount > 0.009) {
+    let outputCgstId: string | null = null;
+    let outputSgstId: string | null = null;
+    let outputIgstId: string | null = null;
+
+    try {
+      outputCgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Output CGST", "Output GST", "Tax Payable"],
+        rootType: "Liability",
+        accountType: "Other Current Liability",
+        session,
+      }).then(id => String(id));
+    } catch {}
+
+    try {
+      outputSgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Output SGST", "Output GST", "Tax Payable"],
+        rootType: "Liability",
+        accountType: "Other Current Liability",
+        session,
+      }).then(id => String(id));
+    } catch {}
+
+    try {
+      outputIgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Output IGST", "Output GST", "Tax Payable"],
+        rootType: "Liability",
+        accountType: "Other Current Liability",
+        session,
+      }).then(id => String(id));
+    } catch {}
+
+    const fallbackTaxId = outputCgstId || outputIgstId || await findAccountIdByName({
       organizationId,
       names: ["Output Tax Payable", "GST Payable", "Tax Payable", "Duties & Taxes"],
       rootType: "Liability",
       accountType: "Other Current Liability",
       session,
     });
-    lines.push({
-      accountId: taxPayableAccountId,
-      credit: Math.abs(taxDelta),
-      description: `Tax on Invoice ${invoice.invoiceNumber}`,
-    });
+
+    if (isIgst) {
+      lines.push({
+        accountId: outputIgstId || fallbackTaxId,
+        credit: totalTaxAmount,
+        description: `Output IGST on Invoice ${invoice.invoiceNumber}`,
+      });
+    } else {
+      const cgst = round2(totalTaxAmount / 2);
+      const sgst = round2(totalTaxAmount - cgst);
+      lines.push({
+        accountId: outputCgstId || fallbackTaxId,
+        credit: cgst,
+        description: `Output CGST on Invoice ${invoice.invoiceNumber}`,
+      });
+      lines.push({
+        accountId: outputSgstId || fallbackTaxId,
+        credit: sgst,
+        description: `Output SGST on Invoice ${invoice.invoiceNumber}`,
+      });
+    }
   }
 
   // COGS & Inventory Asset

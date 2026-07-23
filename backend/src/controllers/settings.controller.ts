@@ -135,10 +135,6 @@ async function ensureDefaultTaxes(organization: any) {
     { name: "CGST 14%", taxType: "Tax", rate: 14, description: "Central GST 14% (for 28% slab)", taxAuthority: "CGST" },
     { name: "SGST 14%", taxType: "Tax", rate: 14, description: "State GST 14% (for 28% slab)", taxAuthority: "SGST" },
     { name: "IGST28", taxType: "Tax", rate: 28, description: "Integrated GST 28%", taxAuthority: "IGST" },
-    // 40% slab (Luxury/Demerit)
-    { name: "CGST 20%", taxType: "Tax", rate: 20, description: "Central GST 20% (for 40% slab)", taxAuthority: "CGST" },
-    { name: "SGST 20%", taxType: "Tax", rate: 20, description: "State GST 20% (for 40% slab)", taxAuthority: "SGST" },
-    { name: "IGST40", taxType: "Tax", rate: 40, description: "Integrated GST 40%", taxAuthority: "IGST" },
   ];
 
   for (const tax of baseTaxes) {
@@ -164,7 +160,6 @@ async function ensureDefaultTaxes(organization: any) {
     "CGST 6%", "SGST 6%",
     "CGST 9%", "SGST 9%",
     "CGST 14%", "SGST 14%",
-    "CGST 20%", "SGST 20%",
   ];
 
   const componentDocs = await Tax.find({
@@ -186,7 +181,6 @@ async function ensureDefaultTaxes(organization: any) {
     { name: "GST12", rate: 12, cgst: "CGST 6%", sgst: "SGST 6%" },
     { name: "GST18", rate: 18, cgst: "CGST 9%", sgst: "SGST 9%" },
     { name: "GST28", rate: 28, cgst: "CGST 14%", sgst: "SGST 14%" },
-    { name: "GST40", rate: 40, cgst: "CGST 20%", sgst: "SGST 20%" },
   ];
 
   for (const group of taxGroups) {

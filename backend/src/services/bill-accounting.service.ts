@@ -99,42 +99,80 @@ export async function postBillLedger(bill: any, req?: AuthenticatedRequest) {
     debitMap.set(accountId, round2((debitMap.get(accountId) || 0) + amount));
   }
 
-  // Sum up line-level taxes and debit them to an asset tax account
+  // Sum up line-level taxes (on post-discount taxable amount) and debit them to Input Tax asset accounts
   let lineTaxesSum = 0;
+  let isIgst = false;
+
   for (const line of bill.lineItems || []) {
     if (!line || line.isHeader) continue;
-    const lineAmount = toNum(line.amount);
-    const lineTax = round2((lineAmount * toNum(line.taxRate)) / 100);
+    const lineGross = toNum(line.amount);
+    const lineDiscount = bill.discountLevel === "transaction"
+      ? (bill.subTotal > 0 ? (lineGross / bill.subTotal) * toNum(bill.discountAmount) : 0)
+      : toNum(line.discountAmount);
+    const lineTaxable = Math.max(0, lineGross - lineDiscount);
+    const lineTax = round2((lineTaxable * toNum(line.taxRate)) / 100);
     lineTaxesSum = round2(lineTaxesSum + lineTax);
+
+    if (line.taxName && String(line.taxName).toUpperCase().includes("IGST")) {
+      isIgst = true;
+    }
   }
 
-  let inputTaxAccountId: string | null = null;
+  if (bill.sourceOfSupply && bill.destinationOfSupply && bill.sourceOfSupply !== bill.destinationOfSupply) {
+    isIgst = true;
+  }
+
   if (lineTaxesSum > 0.009) {
+    let inputCgstId: string | null = null;
+    let inputSgstId: string | null = null;
+    let inputIgstId: string | null = null;
+
     try {
-      inputTaxAccountId = await findAccountIdByName({
+      inputCgstId = await findAccountIdByName({
         organizationId,
-        names: ["Input Tax Receivable", "Input GST", "GST Input Tax", "Duties & Taxes", "Tax Payable"],
+        names: ["Input CGST", "Input GST", "Input Tax Receivable"],
         rootType: "Asset",
         accountType: "Other Current Asset",
       }).then(id => String(id));
-    } catch {
-      try {
-        inputTaxAccountId = await findAccountIdByName({
-          organizationId,
-          names: ["Duties & Taxes", "Tax Payable"],
-          rootType: "Liability",
-          accountType: "Other Current Liability",
-        }).then(id => String(id));
-      } catch {
-        inputTaxAccountId = String(defaultExpenseId);
-      }
-    }
-    
-    if (inputTaxAccountId) {
-      debitMap.set(
-        inputTaxAccountId,
-        round2((debitMap.get(inputTaxAccountId) || 0) + lineTaxesSum),
-      );
+    } catch {}
+
+    try {
+      inputSgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Input SGST", "Input GST", "Input Tax Receivable"],
+        rootType: "Asset",
+        accountType: "Other Current Asset",
+      }).then(id => String(id));
+    } catch {}
+
+    try {
+      inputIgstId = await findAccountIdByName({
+        organizationId,
+        names: ["Input IGST", "Input GST", "Input Tax Receivable"],
+        rootType: "Asset",
+        accountType: "Other Current Asset",
+      }).then(id => String(id));
+    } catch {}
+
+    const fallbackAccountId = inputCgstId || inputIgstId || (await findAccountIdByName({
+      organizationId,
+      names: ["Input Tax Receivable", "Input GST", "GST Input Tax", "Duties & Taxes"],
+      rootType: "Asset",
+      accountType: "Other Current Asset",
+    }).then(id => String(id)).catch(() => String(defaultExpenseId)));
+
+    if (isIgst) {
+      const targetId = inputIgstId || fallbackAccountId;
+      debitMap.set(targetId, round2((debitMap.get(targetId) || 0) + lineTaxesSum));
+    } else {
+      const cgstAmount = round2(lineTaxesSum / 2);
+      const sgstAmount = round2(lineTaxesSum - cgstAmount);
+
+      const cgstTarget = inputCgstId || fallbackAccountId;
+      const sgstTarget = inputSgstId || fallbackAccountId;
+
+      debitMap.set(cgstTarget, round2((debitMap.get(cgstTarget) || 0) + cgstAmount));
+      debitMap.set(sgstTarget, round2((debitMap.get(sgstTarget) || 0) + sgstAmount));
     }
   }
 
@@ -170,9 +208,7 @@ export async function postBillLedger(bill: any, req?: AuthenticatedRequest) {
       lines.push({
         accountId,
         debit: rounded,
-        description: inputTaxAccountId && accountId === String(inputTaxAccountId)
-          ? `Tax on Bill ${bill.billNumber}`
-          : `Bill expense ${bill.billNumber}`,
+        description: `Bill item/tax ${bill.billNumber}`,
         contactType: "Vendor",
         contactId: bill.vendorId,
       });

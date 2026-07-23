@@ -339,10 +339,16 @@ export function getIndianCoATemplate(): ChartTemplateNode[] {
     { name: "Machinery and Equipment", rootType: "Asset", accountType: "Fixed Asset", description: "Industrial machinery and heavy equipment used in operations." },
     { name: "Accumulated Depreciation - Machinery", rootType: "Asset", accountType: "Contra Asset", description: "Accumulated depreciation for Machinery and Equipment." },
     { name: "Inventory Asset", rootType: "Asset", accountType: "Stock", description: "Value of goods held in inventory." },
+    { name: "Input CGST", rootType: "Asset", accountType: "Other Current Asset", description: "Input Central GST credit on purchases." },
+    { name: "Input SGST", rootType: "Asset", accountType: "Other Current Asset", description: "Input State GST credit on purchases." },
+    { name: "Input IGST", rootType: "Asset", accountType: "Other Current Asset", description: "Input Integrated GST credit on inter-state purchases." },
 
 
     // Liabilities
     { name: "Tax Payable", rootType: "Liability", accountType: "Other Current Liability", description: "Taxes owed to the government that are due within a year." },
+    { name: "Output CGST", rootType: "Liability", accountType: "Other Current Liability", description: "Output Central GST collected on sales." },
+    { name: "Output SGST", rootType: "Liability", accountType: "Other Current Liability", description: "Output State GST collected on sales." },
+    { name: "Output IGST", rootType: "Liability", accountType: "Other Current Liability", description: "Output Integrated GST collected on inter-state sales." },
     { name: "Employee Reimbursements", rootType: "Liability", accountType: "Other Current Liability", description: "Amounts owed to employees for business expenses." },
     { name: "Opening Balance Adjustments", rootType: "Liability", accountType: "Other Current Liability", description: "Adjustments made to opening balances during migration." },
     { name: "Unearned Revenue", rootType: "Liability", accountType: "Other Current Liability", description: "Revenue received in advance for undelivered goods or services." },

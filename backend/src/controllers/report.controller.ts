@@ -3902,3 +3902,72 @@ export const purchasesByVendor = asyncHandler(async (req: AuthenticatedRequest, 
 
   res.json({ success: true, data: { from, to, rows, totals } });
 });
+
+// ─── ITC REGISTER (PURCHASE GST REPORT) ────────────────────────────────────
+export const itcRegisterReport = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const organizationId = orgId(req);
+  const from = parseDate(req.query.from, "from") || defaultFrom();
+  const to = parseDate(req.query.to, "to") || defaultTo();
+  ensureFromBeforeTo(from, to);
+
+  const bills = await Bill.find({
+    organizationId,
+    isDeleted: false,
+    status: { $nin: ["Draft", "Void"] },
+    billDate: { $gte: startOfDay(from), $lte: endOfDay(to) },
+  })
+    .populate("vendorId", "displayName companyName gstin")
+    .sort({ billDate: -1 })
+    .lean();
+
+  const rows = bills.map((bill: any) => {
+    let lineTaxesSum = 0;
+    let isIgst = false;
+    for (const line of bill.lineItems || []) {
+      if (!line || line.isHeader) continue;
+      const lineGross = toNum(line.amount);
+      const lineDiscount = bill.discountLevel === "transaction"
+        ? (bill.subTotal > 0 ? (lineGross / bill.subTotal) * toNum(bill.discountAmount) : 0)
+        : toNum(line.discountAmount);
+      const lineTaxable = Math.max(0, lineGross - lineDiscount);
+      const lineTax = round2((lineTaxable * toNum(line.taxRate)) / 100);
+      lineTaxesSum = round2(lineTaxesSum + lineTax);
+      if (line.taxName && String(line.taxName).toUpperCase().includes("IGST")) isIgst = true;
+    }
+
+    if (bill.sourceOfSupply && bill.destinationOfSupply && bill.sourceOfSupply !== bill.destinationOfSupply) {
+      isIgst = true;
+    }
+
+    const cgst = isIgst ? 0 : round2(lineTaxesSum / 2);
+    const sgst = isIgst ? 0 : round2(lineTaxesSum - cgst);
+    const igst = isIgst ? lineTaxesSum : 0;
+    const vendorName = bill.vendorId?.displayName || bill.vendorId?.companyName || "Unknown Vendor";
+    const vendorGstin = bill.vendorId?.gstin || "";
+
+    return {
+      billId: bill._id,
+      billNumber: bill.billNumber,
+      billDate: bill.billDate,
+      vendorName,
+      vendorGstin,
+      taxableAmount: round2(toNum(bill.subTotal) - toNum(bill.discountAmount)),
+      cgstAmount: cgst,
+      sgstAmount: sgst,
+      igstAmount: igst,
+      totalTax: lineTaxesSum,
+      totalAmount: round2(toNum(bill.total)),
+    };
+  });
+
+  const totals = {
+    totalTaxable: round2(rows.reduce((s, r) => s + r.taxableAmount, 0)),
+    totalCgst: round2(rows.reduce((s, r) => s + r.cgstAmount, 0)),
+    totalSgst: round2(rows.reduce((s, r) => s + r.sgstAmount, 0)),
+    totalIgst: round2(rows.reduce((s, r) => s + r.igstAmount, 0)),
+    totalTax: round2(rows.reduce((s, r) => s + r.totalTax, 0)),
+    totalAmount: round2(rows.reduce((s, r) => s + r.totalAmount, 0)),
+  };
+
+  res.json({ success: true, data: { from, to, rows, totals } });
+});

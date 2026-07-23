@@ -16,6 +16,7 @@ const billLineItemSchema = new Schema(
     amount: { type: Number, required: true, default: 0 },
     accountId: { type: Schema.Types.ObjectId, ref: "Account", default: null },
     customerId: { type: Schema.Types.ObjectId, ref: "Contact", default: null },
+    hsnCode: { type: String, default: "" },
     taxId: { type: Schema.Types.ObjectId, ref: "Tax", default: null },
     taxName: { type: String, default: "" },
     taxRate: { type: Number, default: 0 },

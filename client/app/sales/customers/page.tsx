@@ -787,14 +787,6 @@ export default function CustomersPage() {
     router.push("/sales/customers");
   }
 
-  if (loading || orgLoading || !firebaseUser) {
-    return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
-      </div>
-    );
-  }
-
   type CustSortField = "displayName" | "companyName" | "email" | "phone" | "receivables";
   type CustSortOrder = "asc" | "desc";
 
@@ -866,6 +858,14 @@ export default function CustomersPage() {
     });
     return list;
   }, [filtered, sortField, sortOrder]);
+
+  if (loading || orgLoading || !firebaseUser) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+      </div>
+    );
+  }
   const summary = useMemo(() => {
     const totalReceivables = filtered.reduce(
       (acc, row) => acc + Number((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0)),
