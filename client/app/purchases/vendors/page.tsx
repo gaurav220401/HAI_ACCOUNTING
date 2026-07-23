@@ -184,14 +184,6 @@ export default function VendorsPage() {
     router.push("/purchases/vendors");
   }
 
-  if (loading || orgLoading || !firebaseUser) {
-    return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -270,6 +262,14 @@ export default function VendorsPage() {
     if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
     return 0;
   });
+
+  if (loading || orgLoading || !firebaseUser) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>

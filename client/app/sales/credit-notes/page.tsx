@@ -487,14 +487,6 @@ export default function CreditNotesPage() {
     });
   }
 
-  if (loading || orgLoading || !firebaseUser) {
-    return (
-      <div className="flex min-h-svh items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   type CreditSortField = "date" | "number" | "reference" | "customer" | "status" | "total" | "applied" | "balance";
   type CreditSortOrder = "asc" | "desc";
 
@@ -557,6 +549,14 @@ export default function CreditNotesPage() {
     });
     return list;
   }, [filteredCredits, sortField, sortOrder]);
+
+  if (loading || orgLoading || !firebaseUser) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>

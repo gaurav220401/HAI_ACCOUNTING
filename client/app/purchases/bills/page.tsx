@@ -822,10 +822,11 @@ function BillDetailPanel({
   onRecordPayment: (id: string) => void;
   orgName: string;
   orgAddress: string;
-  orgPhone: string;
-  orgEmail: string;
-  orgCurrency: string;
+  orgPhone?: string;
+  orgEmail?: string;
+  orgCurrency?: string;
 }) {
+  const router = useRouter();
   const journalRef = useRef<HTMLDivElement>(null);
   const [showPdf, setShowPdf] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -1114,7 +1115,7 @@ function BillDetailPanel({
               <DropdownMenuItem
                 className="text-xs py-2.5 cursor-pointer"
                 onClick={() => {
-                  window.location.href = `/purchases/vendor-credits/new?billId=${bill._id}`;
+                  router.push(`/purchases/vendor-credits/new?billId=${bill._id}`);
                 }}
               >
                 <PackageCheck className="h-3.5 w-3.5 mr-2.5 text-muted-foreground" />{" "}
@@ -1596,8 +1597,8 @@ function BillDetailPanel({
                   bill={bill}
                   orgName={orgName}
                   orgAddress={orgAddress}
-                  orgPhone={orgPhone}
-                  orgEmail={orgEmail}
+                  orgPhone={orgPhone || ""}
+                  orgEmail={orgEmail || ""}
                 />
               </div>
             : <div className="max-w-[700px] mx-auto space-y-4">
