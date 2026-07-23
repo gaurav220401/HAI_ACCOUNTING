@@ -113,7 +113,7 @@ async function generateChatAnswer(params: {
       throw new Error(`Groq API request failed (${response.status}): ${errorText}`);
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     const answer = data?.choices?.[0]?.message?.content;
 
     if (typeof answer !== "string" || !answer.trim()) {
