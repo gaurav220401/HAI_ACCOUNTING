@@ -42,6 +42,8 @@ const NUM_CANDIDATES = 150;
 const MAX_QUESTION_LENGTH = 500;
 const MAX_CONTEXT_TOKENS = 3000;
 
+type ChatProvider = "gemini" | "groq";
+
 // ─── Gemini LLM Client ────────────────────────────────────────────────
 
 let genaiClient: GoogleGenAI | null = null;
@@ -55,6 +57,86 @@ function getGenAIClient(): GoogleGenAI {
     genaiClient = new GoogleGenAI({ apiKey });
   }
   return genaiClient;
+}
+
+function normalizeChatProvider(provider?: string): ChatProvider {
+  return provider?.toLowerCase() === "groq" ? "groq" : "gemini";
+}
+
+function resolveChatModel(provider: ChatProvider, requestedModel?: string): string {
+  const trimmedModel = requestedModel?.trim();
+  if (trimmedModel) {
+    return trimmedModel;
+  }
+
+  if (provider === "groq") {
+    return process.env.CHATBOT_GROQ_MODEL || "llama-3.1-70b-versatile";
+  }
+
+  return process.env.CHATBOT_GEMINI_MODEL || process.env.CHATBOT_LLM_MODEL || "gemini-3.5-flash";
+}
+
+async function generateChatAnswer(params: {
+  provider: ChatProvider;
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+}): Promise<string> {
+  const { provider, model, systemPrompt, userPrompt } = params;
+
+  if (provider === "groq") {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error("GROQ_API_KEY environment variable is not set.");
+    }
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 1500,
+        top_p: 0.8,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API request failed (${response.status}): ${errorText}`);
+    }
+
+    const data: any = await response.json();
+    const answer = data?.choices?.[0]?.message?.content;
+
+    if (typeof answer !== "string" || !answer.trim()) {
+      throw new Error("Groq API returned an empty response.");
+    }
+
+    return answer.trim();
+  }
+
+  const client = getGenAIClient();
+  const response = await client.models.generateContent({
+    model,
+    contents: userPrompt,
+    config: {
+      systemInstruction: systemPrompt,
+      temperature: 0.3,
+      maxOutputTokens: 1500,
+      topP: 0.8,
+    },
+  });
+
+  const answer = response.text || "I'm sorry, I couldn't generate a response. Please try again.";
+  return answer;
 }
 
 // ─── Intent Detection ──────────────────────────────────────────────────
@@ -760,6 +842,115 @@ async function fetchOrgBusinessContext(
   return `\n\n═══ LIVE BUSINESS DATA (Organization-Scoped) ═══\n\n${sections.join("\n\n---\n\n")}\n\n═══ END LIVE BUSINESS DATA ═══`;
 }
 
+// ─── App Routing Map (injected into Nemo's system prompt) ──────────────
+
+const APP_ROUTING_MAP = `
+APP NAVIGATION MAP — Use these exact URLs when suggesting page navigation:
+
+== HOME ==
+- Dashboard: /dashboard
+
+== ITEMS ==
+- All Items: /items
+- Create New Item: /items/new
+
+== INVENTORY ==
+- Inventory Overview: /inventory
+- Inventory Adjustments: /inventory/adjustments
+- Packages: /inventory/packages
+- Shipments: /inventory/shipments
+- Move Orders: /inventory/move-orders
+- Putaways: /inventory/putaways
+
+== SALES ==
+- All Customers: /sales/customers
+- Create New Customer: /sales/customers/new
+- All Quotes / Estimates: /sales/quotes
+- Create New Quote: /sales/quotes/new
+- All Sales Orders: /sales/orders
+- Create New Sales Order: /sales/orders/new
+- All Invoices: /sales/invoices
+- Create New Invoice: /sales/invoices/new
+- Retainer Invoices: /sales/retainer-invoices
+- Create New Retainer Invoice: /sales/retainer-invoices/new
+- Recurring Invoices: /sales/recurring-invoices
+- Delivery Challans: /sales/delivery-challans
+- Create New Delivery Challan: /sales/delivery-challans/new
+- Payments Received: /sales/payments-received
+- Record New Payment Received: /sales/payments-received/new
+- Credit Notes: /sales/credit-notes
+- Create New Credit Note: /sales/credit-notes/new
+
+== PURCHASES ==
+- All Vendors: /purchases/vendors
+- Create New Vendor: /purchases/vendors/new
+- All Expenses: /purchases/expenses
+- Record New Expense: /purchases/expenses/new
+- Recurring Expenses: /purchases/recurring-expenses
+- All Purchase Orders: /purchases/orders
+- Create New Purchase Order: /purchases/orders/new
+- Purchase Receives: /purchases/receives
+- All Bills: /purchases/bills
+- Create New Bill: /purchases/bills/new
+- Recurring Bills: /purchases/recurring-bills
+- Payments Made: /purchases/payments-made
+- Record New Payment Made: /purchases/payments-made/new
+- Vendor Credits: /purchases/vendor-credits
+- Create New Vendor Credit: /purchases/vendor-credits/new
+
+== TIME TRACKING ==
+- Projects: /time-tracking/projects
+- Timesheet: /time-tracking/timesheet
+
+== BANKING ==
+- Banking Overview: /banking
+
+== ACCOUNTANT ==
+- Manual Journals: /accountant/journal-entries
+- Create New Journal Entry: /accountant/journal-entries/new
+- Bulk Update: /accountant/bulk-update
+- Currency Adjustments: /accountant/currency-adjustments
+- Chart of Accounts: /accountant/chart-of-accounts
+- Fixed Assets: /accountant/fixed-assets
+- Transaction Locking: /accountant/transaction-locking
+
+== REPORTS ==
+- All Reports: /reports
+
+== DOCUMENTS ==
+- Documents Hub: /documents
+
+== SETTINGS ==
+- General Settings: /settings/general
+`;
+
+// ─── Parse [ACTION:url|label] markers from LLM response ────────────────
+
+interface NavigationAction {
+  label: string;
+  url: string;
+}
+
+function parseNavigationActions(text: string): { cleanedText: string; actions: NavigationAction[] } {
+  const actions: NavigationAction[] = [];
+  const actionRegex = /\[ACTION:([^|\]]+)\|([^\]]+)\]/g;
+  let match;
+
+  while ((match = actionRegex.exec(text)) !== null) {
+    const url = match[1].trim();
+    const label = match[2].trim();
+    // Deduplicate by url
+    if (!actions.some((a) => a.url === url)) {
+      actions.push({ label, url });
+    }
+  }
+
+  // Remove the [ACTION:...] markers from the visible text
+  const cleanedText = text.replace(actionRegex, "").replace(/\n{3,}/g, "\n\n").trim();
+
+  return { cleanedText, actions };
+}
+
 // ─── System Prompt ─────────────────────────────────────────────────────
 
 function buildSystemPrompt(orgName?: string): string {
@@ -771,16 +962,38 @@ CRITICAL RULES:
 - When asked about customers, vendors, invoices, payments, balances, sales, purchases, or ANY business data — look at the LIVE BUSINESS DATA section and answer directly with real numbers and names.
 - For "greatest/best/top customer" questions, analyze the "Top Customers by Total Sales Volume" section and also cross-reference with outstanding receivables and recent invoices to give a comprehensive answer.
 - For any question about the user's business, always provide specific data points (amounts, counts, names) from the LIVE BUSINESS DATA.
-- When answering questions about how features work or how to do something, use the KNOWLEDGE BASE CONTEXT section.
+- When answering questions about how features work or how to do something, use the KNOWLEDGE BASE CONTEXT section and explain the steps instead of performing the action yourself.
 - Keep answers concise, accurate, and professional.
 - Use markdown formatting: **bold** for emphasis, bullet lists for data, and clean structure. Do NOT use raw markdown symbols like #, *, or ** in visible text — they should render as formatting.
 - When presenting monetary amounts, always use the ₹ symbol and Indian number format (e.g., ₹1,23,456.00).
 - When referencing features, be specific about navigation paths (e.g., "Go to Sales → Invoices → New Invoice").
+- If a relevant page exists for the user's question, include a navigation action so they can jump directly to that page.
 - Do not make up data. Only present numbers and names that appear in the context.
 - Never expose raw database IDs — use human-readable names and numbers instead.
 - Do not reveal information about other organizations or other users' data.
 - If the user greets you, respond warmly and mention you can help with both feature questions and their business data.
-- If asked about data that is not present in the LIVE BUSINESS DATA section, tell the user what data you CAN see and offer to help with that instead.`;
+- If asked about data that is not present in the LIVE BUSINESS DATA section, tell the user what data you CAN see and offer to help with that instead.
+
+NAVIGATION ACTIONS:
+- You can help users navigate to any page in the application.
+- When the user asks HOW to do something (e.g., "how do I create an invoice?"), explain the process briefly AND include one or more navigation action markers so the user can jump directly to the relevant page.
+- When the user asks to GO somewhere or TAKE them to a page (e.g., "take me to expenses", "go to invoices"), provide a short acknowledgment AND include the navigation action marker.
+- For create, add, update, record, or similar requests, never claim you completed the operation; instead explain the steps and add the best matching navigation action(s).
+- When explaining a workflow that involves multiple pages, include action markers for each relevant page.
+- To include a navigation action, use this EXACT format at the END of your response (after all text): [ACTION:url|label]
+- You may include MULTIPLE action markers, one per line.
+- ONLY use URLs from the APP NAVIGATION MAP below. NEVER invent URLs.
+- The label should be a short, friendly call-to-action (e.g., "Create New Invoice", "View All Customers", "Go to Reports").
+- For general informational questions that don't involve an action (e.g., "what is my bank balance?"), do NOT include action markers unless the user would benefit from visiting a related page.
+
+Example:
+User: "How do I create an invoice?"
+Assistant: "To create a new invoice, go to **Sales → Invoices** and click the **+ New Invoice** button. You'll need to select a customer, add line items, and set the due date. Here's a quick link to get started:
+
+[ACTION:/sales/invoices/new|Create New Invoice]
+[ACTION:/sales/invoices|View All Invoices]"
+
+${APP_ROUTING_MAP}`;
 }
 
 // ─── Helper: Build Context from Chunks ─────────────────────────────────
@@ -821,7 +1034,7 @@ function buildKBContext(chunks: any[]): { context: string; sources: Array<{ titl
 export const handleChat = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const startTime = Date.now();
-    const { question, sessionId: clientSessionId } = req.body;
+    const { question, sessionId: clientSessionId, provider: requestedProvider, model: requestedModel } = req.body;
 
     // ── Input Validation ──
     if (!question || typeof question !== "string") {
@@ -846,6 +1059,8 @@ export const handleChat = asyncHandler(
     const sessionId = clientSessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const userId = req.user?._id?.toString() || req.firebaseUser?.uid || "anonymous";
     const organizationId = req.user?.activeOrganization;
+    const provider = normalizeChatProvider(requestedProvider);
+    const model = resolveChatModel(provider, requestedModel);
 
     try {
       // ── Step 1: Always fetch ALL live business data ──
@@ -954,24 +1169,22 @@ export const handleChat = asyncHandler(
         }
 
         // ── Step 8: Call Gemini LLM ──
-        const client = getGenAIClient();
-        const llmModel = process.env.CHATBOT_LLM_MODEL || "gemini-3.5-flash";
-
         const userPrompt = `${fullContext}\n\nUSER QUESTION: ${trimmedQuestion}`;
 
-        const response = await client.models.generateContent({
-          model: llmModel,
-          contents: userPrompt,
-          config: {
-            systemInstruction: buildSystemPrompt(orgName),
-            temperature: 0.3,
-            maxOutputTokens: 1500,
-            topP: 0.8,
-          },
+        answer = await generateChatAnswer({
+          provider,
+          model,
+          systemPrompt: buildSystemPrompt(orgName),
+          userPrompt,
         });
 
-        answer = response.text || "I'm sorry, I couldn't generate a response. Please try again.";
+        // Also check for navigation actions in fallback text
+        // (actions will be parsed below after the if-else block)
       }
+
+      // ── Parse navigation actions from the LLM response ──
+      const { cleanedText: cleanAnswer, actions } = parseNavigationActions(answer);
+      answer = cleanAnswer;
 
       const responseTimeMs = Date.now() - startTime;
 
@@ -998,8 +1211,11 @@ export const handleChat = asyncHandler(
         data: {
           answer,
           sources: sources.map((s) => ({ title: s.title, url: s.url })),
+          actions: actions.length > 0 ? actions : undefined,
           sessionId,
           responseTimeMs,
+          provider,
+          model,
         },
       });
     } catch (error: any) {
@@ -1013,10 +1229,14 @@ export const handleChat = asyncHandler(
         return;
       }
 
-      if (error.message?.includes("GEMINI_API_KEY") || error.message?.includes("API key")) {
+      if (
+        error.message?.includes("GEMINI_API_KEY") ||
+        error.message?.includes("GROQ_API_KEY") ||
+        error.message?.includes("API key")
+      ) {
         res.status(503).json({
           success: false,
-          message: "AI service is temporarily unavailable. Please try again later.",
+          message: "AI service is temporarily unavailable. Please check your Gemini or Groq API key and try again later.",
         });
         return;
       }

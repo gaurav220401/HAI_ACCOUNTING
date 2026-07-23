@@ -26,6 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { LinkField } from "@/components/link-field";
+import { useAgentAutofill } from "@/hooks/use-agent-autofill";
 import { accountApi, type Account } from "@/lib/api/accounts";
 import { apiFetch } from "@/lib/api/client";
 import {
@@ -554,6 +555,27 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
 
   const treatmentMeta = useMemo(() => optionByTreatment(taxTreatment), [taxTreatment]);
 
+  const { autofillData } = useAgentAutofill("customer");
+
+  useEffect(() => {
+    if (!autofillData) return;
+    if (autofillData.companyName) {
+      setCompanyName(autofillData.companyName);
+      setCustomerType("Business");
+    }
+    if (autofillData.firstName) setFirstName(autofillData.firstName);
+    if (autofillData.lastName) setLastName(autofillData.lastName);
+    if (autofillData.displayName) {
+      setDisplayName(autofillData.displayName);
+      setDisplayNameManual(true);
+    }
+    if (autofillData.email) setEmail(autofillData.email);
+    if (autofillData.phone) setPhone(autofillData.phone);
+    if (autofillData.gstin) setGstin(autofillData.gstin);
+    if (autofillData.pan) setPan(autofillData.pan);
+    if (autofillData.taxTreatment) setTaxTreatment(normalizeTreatment(autofillData.taxTreatment));
+  }, [autofillData]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -983,12 +1005,18 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
               </SelectContent>
             </Select>
             <Input
+              id="firstName"
+              name="firstName"
+              data-agent-field="firstName"
               className="h-9"
               placeholder={customerType === "Individual" ? "First Name *" : "First Name"}
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
             />
             <Input
+              id="lastName"
+              name="lastName"
+              data-agent-field="lastName"
               className="h-9"
               placeholder="Last Name"
               value={lastName}
@@ -999,6 +1027,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
 
         <Row label="Company Name" required={customerType === "Business"}>
           <Input
+            id="companyName"
+            name="companyName"
+            data-agent-field="companyName"
             className="h-9"
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
@@ -1008,6 +1039,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
         <Row label="Display Name" required>
           <div className="relative w-full" ref={displayNameRef}>
             <Input
+              id="displayName"
+              name="displayName"
+              data-agent-field="displayName"
               className="h-9"
               placeholder="Select or type to add"
               value={displayName}
@@ -1108,6 +1142,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
 
         <Row label="Email Address">
           <Input
+            id="email"
+            name="email"
+            data-agent-field="email"
             className="h-9"
             type="email"
             value={email}
@@ -1120,6 +1157,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
             <div className="flex h-9 overflow-hidden rounded-md border border-input">
               <span className="flex items-center border-r border-input bg-muted px-2.5 text-xs text-muted-foreground">+91</span>
               <input
+                id="phone"
+                name="phone"
+                data-agent-field="phone"
                 type="tel"
                 className="flex-1 bg-background px-2.5 text-sm outline-none"
                 placeholder="Work Phone"
@@ -1130,6 +1170,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
             <div className="flex h-9 overflow-hidden rounded-md border border-input">
               <span className="flex items-center border-r border-input bg-muted px-2.5 text-xs text-muted-foreground">+91</span>
               <input
+                id="mobile"
+                name="mobile"
+                data-agent-field="mobile"
                 type="tel"
                 className="flex-1 bg-background px-2.5 text-sm outline-none"
                 placeholder="Mobile"
@@ -1191,6 +1234,9 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
               <Row label="GSTIN / UIN" required>
                 <div className="flex items-center gap-3">
                   <Input
+                    id="gstin"
+                    name="gstin"
+                    data-agent-field="gstin"
                     className="h-9 max-w-[430px] font-mono uppercase"
                     value={gstin}
                     onChange={(e) => setGstin(e.target.value.toUpperCase())}
@@ -1589,7 +1635,7 @@ export function CustomerForm({ mode, initialData, onCancel, onSaved }: CustomerF
       ) : null}
 
       <div className="sticky bottom-0 z-10 flex items-center gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur">
-        <Button className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void handleSave()} disabled={saving || documentUploading || profilePhotoUploading}>
+        <Button id="save-customer-btn" className="bg-teal-600 hover:bg-teal-700 text-white font-semibold" onClick={() => void handleSave()} disabled={saving || documentUploading || profilePhotoUploading}>
           {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-white" /> : null}
           {isEdit ? "Save Changes" : "Save"}
         </Button>

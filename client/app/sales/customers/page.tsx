@@ -857,15 +857,6 @@ export default function CustomersPage() {
       return 0;
     });
     return list;
-  }, [filtered, sortField, sortOrder]);
-
-  if (loading || orgLoading || !firebaseUser) {
-    return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
-      </div>
-    );
-  }
   const summary = useMemo(() => {
     const totalReceivables = filtered.reduce(
       (acc, row) => acc + Number((row.outstandingReceivable ?? 0) + (row.openingBalance ?? 0)),
@@ -880,6 +871,14 @@ export default function CustomersPage() {
       inactiveCount,
     };
   }, [filtered]);
+
+  if (loading || orgLoading || !firebaseUser) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>

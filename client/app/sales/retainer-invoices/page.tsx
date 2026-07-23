@@ -249,14 +249,6 @@ export default function RetainerInvoicesPage() {
     };
   }, [filteredRows]);
 
-  if (loading || orgLoading || !firebaseUser) {
-    return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
-      </div>
-    );
-  }
-
   type RetainerSortField = "date" | "number" | "customer" | "total" | "received" | "applied" | "unapplied" | "status";
   type RetainerSortOrder = "asc" | "desc";
 
@@ -319,6 +311,14 @@ export default function RetainerInvoicesPage() {
     });
     return list;
   }, [filteredRows, sortField, sortOrder]);
+
+  if (loading || orgLoading || !firebaseUser) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>

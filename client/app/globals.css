@@ -222,6 +222,23 @@
   }
 }
 
+/* ── Visual Agent Driver highlight ───────────────────────────── */
+.hai-agent-highlight {
+  position: relative;
+  z-index: 50;
+  outline: none !important;
+  transition: box-shadow 0.3s ease;
+}
+
+@keyframes agentPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.4), 0 0 15px rgba(20, 184, 166, 0.15); }
+  50% { box-shadow: 0 0 0 5px rgba(20, 184, 166, 0.6), 0 0 25px rgba(20, 184, 166, 0.3); }
+}
+
+.hai-agent-highlight:focus {
+  animation: agentPulse 1.5s ease-in-out infinite;
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -229,4 +246,3 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
