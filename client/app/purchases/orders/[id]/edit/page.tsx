@@ -977,14 +977,14 @@ export default function EditPurchaseOrderPage() {
               </div>
             </div>
 
-            {/* ── PO #, Reference, Date ────────────────────────────── */}
+            {/* ── PO Number, Reference, Date ────────────────────────────── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 py-4 border-b">
               <div className="grid grid-cols-[140px_1fr] items-center gap-4">
-                <Label className="text-sm font-medium text-red-500">Purchase Order# *</Label>
+                <Label className="text-sm font-medium text-red-500">Purchase Order Number *</Label>
                 <Input className="h-9 text-sm flex-1" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
               </div>
               <div className="grid grid-cols-[140px_1fr] items-center gap-4">
-                <Label className="text-sm font-medium">Reference#</Label>
+                <Label className="text-sm font-medium">Reference Number</Label>
                 <Input className="h-9 text-sm flex-1" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
               </div>
               <div className="grid grid-cols-[140px_1fr] items-center gap-4">

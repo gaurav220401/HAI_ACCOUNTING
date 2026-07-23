@@ -434,7 +434,7 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
               )}
             </div>
             <div>
-              <Label>Bill#</Label>
+              <Label>Bill Number</Label>
               {loadingDropdowns ? (
                 <div className="w-full h-9 bg-slate-100/80 animate-pulse border border-slate-200 rounded-md flex items-center justify-between px-3 mt-1">
                   <span className="text-slate-400 text-xs">Loading bills...</span>
@@ -472,7 +472,7 @@ export function VendorCreditForm({ mode, initialData, onSuccess, onCancel }: Ven
       <div className="px-6 py-5 border-b">
         <div className="max-w-[900px] grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="vendorCreditNumber" className="text-red-500">Credit Note#*</Label>
+            <Label htmlFor="vendorCreditNumber" className="text-red-500">Credit Note Number *</Label>
             <Input
               id="vendorCreditNumber"
               name="vendorCreditNumber"

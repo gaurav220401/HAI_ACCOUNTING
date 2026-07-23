@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import {
   ChevronLeft,
+  ChevronDown,
   Edit,
   Loader2,
   MessageSquare,
@@ -22,7 +23,9 @@ import {
   Search,
   Trash2,
   X,
+  Calendar,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -31,6 +34,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -640,6 +644,22 @@ export default function FixedAssetsPage() {
   const [tab, setTab] = useState<TabFilter>("All");
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  type SortField = "assetName" | "assetNumber" | "purchaseValue" | "status" | "purchaseDate";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("purchaseDate");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
   const [markingActive, setMarkingActive] = useState(false);
   const [postingDepreciation, setPostingDepreciation] = useState(false);
   const [showTypeManager, setShowTypeManager] = useState(false);
@@ -703,6 +723,61 @@ export default function FixedAssetsPage() {
     fetchRows,
     fetchTypes,
   ]);
+
+  const filteredAndSortedRows = useMemo(() => {
+    let result = [...rows];
+    
+    // Date Range filtering
+    if (fromDate || toDate) {
+      result = result.filter((asset) => {
+        const d = asset.purchaseDate ? new Date(asset.purchaseDate).toISOString().slice(0, 10) : "";
+        if (fromDate && d < fromDate) return false;
+        if (toDate && d > toDate) return false;
+        return true;
+      });
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "assetName":
+          aVal = (a.assetName || "").toLowerCase();
+          bVal = (b.assetName || "").toLowerCase();
+          break;
+        case "assetNumber":
+          aVal = (a.assetNumber || "").toLowerCase();
+          bVal = (b.assetNumber || "").toLowerCase();
+          break;
+        case "purchaseValue":
+          aVal = a.purchaseValue || 0;
+          bVal = b.purchaseValue || 0;
+          break;
+        case "status":
+          aVal = (a.status || "").toLowerCase();
+          bVal = (b.status || "").toLowerCase();
+          break;
+        case "purchaseDate":
+          aVal = new Date(a.purchaseDate || 0).getTime();
+          bVal = new Date(b.purchaseDate || 0).getTime();
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [rows, sortField, sortOrder, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    const total = filteredAndSortedRows.length;
+    const active = filteredAndSortedRows.filter((r) => r.status === "ACTIVE").length;
+    const draft = filteredAndSortedRows.filter((r) => r.status === "DRAFT").length;
+    const totalValue = filteredAndSortedRows.reduce((acc, r) => acc + (r.purchaseValue || 0), 0);
+    return { total, active, draft, totalValue };
+  }, [filteredAndSortedRows]);
 
   const filteredCountLabel = useMemo(() => {
     if (tab === "DRAFT") return "Draft Assets";
@@ -914,6 +989,107 @@ export default function FixedAssetsPage() {
               <span className="text-sm font-semibold text-slate-700 mt-0.5">Fixed Assets</span>
             </span>
           }
+          actions={
+            <div className="flex items-center gap-2">
+              {/* Top Search Input */}
+              <div className="relative w-48 sm:w-56">
+                <Search className="h-4 w-4 text-slate-400 absolute left-2.5 top-2" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void fetchRows();
+                  }}
+                  placeholder="Search fixed assets..."
+                  className="pl-8 h-8 text-xs bg-white border-slate-200 focus-visible:ring-1 focus-visible:ring-teal-600"
+                />
+              </div>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50 rounded-md",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Purchase Date</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {/* Sort Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs border-slate-200 text-slate-600 bg-white hover:bg-slate-50 gap-1">
+                    Sort: <span className="font-semibold text-slate-700 capitalize">{sortField.replace(/([A-Z])/g, ' $1')}</span>
+                    <span className="text-[10px] text-teal-700 font-bold ml-0.5">{sortOrder === "asc" ? "▲" : "▼"}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-white">
+                  {(["assetName", "assetNumber", "purchaseValue", "status", "purchaseDate"] as SortField[]).map((f) => (
+                    <DropdownMenuItem
+                      key={f}
+                      onClick={() => toggleSort(f)}
+                      className="text-xs cursor-pointer flex justify-between items-center"
+                    >
+                      <span className="capitalize">{f.replace(/([A-Z])/g, ' $1')}</span>
+                      {sortField === f && (
+                        <span className="text-[9px] bg-teal-50 text-teal-700 font-bold px-1 rounded">{sortOrder === "asc" ? "ASC" : "DESC"}</span>
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          }
         />
 
         <main className="p-4 md:p-6 space-y-4">
@@ -1041,23 +1217,30 @@ export default function FixedAssetsPage() {
             </div>
           </div>
 
-          <div className="relative max-w-md">
-            <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void fetchRows();
-              }}
-              placeholder="Search in Fixed Assets"
-              className="pl-9 focus-visible:ring-teal-600/20 focus-visible:border-teal-500"
-            />
+          {/* Sleek Ultra-Compact KPI Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0 bg-white p-4 border rounded-md">
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Assets</span>
+              <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.total}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Active</span>
+              <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.active}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Draft</span>
+              <span className="text-sm font-bold text-amber-700 tabular-nums">{summary.draft}</span>
+            </div>
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+              <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Purchase Value</span>
+              <span className="text-sm font-bold text-teal-700 tabular-nums">{formatCurrency(summary.totalValue)}</span>
+            </div>
           </div>
 
           <div className="rounded-md border bg-background">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <h2 className="font-semibold text-sm">{filteredCountLabel}</h2>
-              <Badge variant="secondary">{rows.length}</Badge>
+              <Badge variant="secondary">{filteredAndSortedRows.length}</Badge>
             </div>
 
             {fetching ?
@@ -1083,7 +1266,7 @@ export default function FixedAssetsPage() {
               <div className="grid grid-cols-1 xl:grid-cols-[360px,1fr] min-h-160">
                 <div className="border-r">
                   <div className="overflow-y-auto max-h-185">
-                    {rows.map((asset) => {
+                    {filteredAndSortedRows.map((asset) => {
                       const active = asset._id === selectedId;
                       return (
                         <button
@@ -1327,7 +1510,7 @@ export default function FixedAssetsPage() {
                 </div>
               </div>
             : <div className="overflow-y-auto">
-                 {rows.map((asset) => (
+                 {filteredAndSortedRows.map((asset) => (
                    <button
                      key={asset._id}
                      type="button"

@@ -16,7 +16,7 @@ import {
   Plus,
   Printer,
   Search,
-  X,  FileUp} from "lucide-react";
+  X,  FileUp, Calendar} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import RichTextEditor from "@/components/ui/rich-text-editor";
@@ -25,6 +25,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -250,7 +251,7 @@ function VendorCreditStandardPreview({
                 {previewTitle}
               </h1>
             )}
-            <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "3px 0 0" }}>Credit Note#: {credit.vendorCreditNumber}</p>
+            <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "3px 0 0" }}>Credit Note Number: {credit.vendorCreditNumber}</p>
             <p style={{ fontSize: "8.5pt", color: "#6b7280", margin: "1px 0 0" }}>Credits Remaining: {fmtCurrency(credit.balanceAmount)}</p>
           </div>
         </div>
@@ -564,17 +565,101 @@ export default function VendorCreditsPage() {
     }
   }
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"All" | "OPEN" | "PARTIALLY_APPLIED" | "CLOSED" | "DRAFT" | "VOID">("All");
+  const [showFilterDD, setShowFilterDD] = useState(false);
+
+  type SortField = "vendorCreditDate" | "vendorCreditNumber" | "vendor" | "status" | "total" | "balanceAmount";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("vendorCreditDate");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return credits;
-    const q = search.toLowerCase();
-    return credits.filter((c) => {
+    let list = credits;
+    if (statusFilter !== "All") {
+      list = list.filter((c) => c.status === statusFilter);
+    }
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter((c) => new Date(c.vendorCreditDate || 0).getTime() >= fromTime);
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter((c) => new Date(c.vendorCreditDate || 0).getTime() <= toTime);
+    }
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((c) => {
       return (
         (c.vendorCreditNumber || "").toLowerCase().includes(q) ||
         getName(c.vendorId).toLowerCase().includes(q) ||
-        (c.orderNumber || "").toLowerCase().includes(q)
+        (c.orderNumber || "").toLowerCase().includes(q) ||
+        (c.status || "").toLowerCase().includes(q) ||
+        String(c.total || "").includes(q)
       );
     });
-  }, [credits, search]);
+  }, [credits, search, statusFilter, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    const totalAmount = filtered.reduce((acc, c) => acc + Number(c.total || 0), 0);
+    const creditsRemaining = filtered.reduce((acc, c) => acc + Number(c.balanceAmount || 0), 0);
+    return {
+      count: filtered.length,
+      totalAmount,
+      creditsRemaining,
+      appliedAmount: Math.max(0, totalAmount - creditsRemaining),
+    };
+  }, [filtered]);
+
+  const sortedCredits = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a: any, b: any) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "vendorCreditDate":
+          aVal = new Date(a.vendorCreditDate || 0).getTime();
+          bVal = new Date(b.vendorCreditDate || 0).getTime();
+          break;
+        case "vendorCreditNumber":
+          aVal = a.vendorCreditNumber || "";
+          bVal = b.vendorCreditNumber || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "vendor":
+          aVal = getName(a.vendorId).toLowerCase();
+          bVal = getName(b.vendorId).toLowerCase();
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "status":
+          aVal = a.status || "";
+          bVal = b.status || "";
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "total":
+          aVal = Number(a.total || 0);
+          bVal = Number(b.total || 0);
+          break;
+        case "balanceAmount":
+          aVal = Number(a.balanceAmount || 0);
+          bVal = Number(b.balanceAmount || 0);
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
 
   async function handleApply() {
     if (!selectedCredit?._id || !applyBillId || applyAmount <= 0) {
@@ -803,21 +888,96 @@ export default function VendorCreditsPage() {
         <PageHeader
           breadcrumb={
             <div className="flex flex-col">
-              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
-              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">Vendor Credits</span>
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-teal-700">
+                    {statusFilter === "All" ? "All Vendor Credits" : `${statusFilter} Credits`} <ChevronDown className="h-3 w-3 ml-0.5 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem onClick={() => { setStatusFilter("All"); setShowFilterDD(false); }}>All Vendor Credits</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("OPEN"); setShowFilterDD(false); }}>Open</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("PARTIALLY_APPLIED"); setShowFilterDD(false); }}>Partially Applied</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("CLOSED"); setShowFilterDD(false); }}>Closed</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("DRAFT"); setShowFilterDD(false); }}>Draft</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("VOID"); setShowFilterDD(false); }}>Void</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           }
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <div className="relative w-56">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-8 h-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Input className="pl-8 h-8 text-sm border-slate-200 focus-visible:ring-teal-600" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search credits..." />
               </div>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <Button
-                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-9 px-3 text-sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md h-8 px-3 text-xs"
                 onClick={() => router.push("/purchases/vendor-credits/new")}
               >
-                <Plus className="h-4 w-4 mr-1" /> New
+                <Plus className="h-3.5 w-3.5 mr-1" /> New
               </Button>
               <Link href="/batch-import?section=purchases&type=Vendor Credits&back=/purchases/vendor-credits">
                 <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-200 text-slate-600 bg-white">
@@ -1226,61 +1386,123 @@ export default function VendorCreditsPage() {
         ) : fetching ? (
           <TableSkeleton />
         ) : (
-          <div className="h-[calc(100vh-120px)] border-t bg-white overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
-              <span>{filtered.length} vendor credits</span>
-              <Button size="icon" variant="ghost" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
+          <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3">
+            {/* Sleek Ultra-Compact KPI Summary Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Credits</span>
+                <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Amount</span>
+                <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCurrency(summary.totalAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Applied Amount</span>
+                <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtCurrency(summary.appliedAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Credits Remaining</span>
+                <span className="text-sm font-bold text-amber-700 tabular-nums">{fmtCurrency(summary.creditsRemaining)}</span>
+              </div>
             </div>
-            <div className="grid grid-cols-[1.1fr_1fr_1.5fr_1fr_1fr_1fr] px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b">
-              <div>Date</div>
-              <div>Credit Note#</div>
-              <div>Vendor Name</div>
-              <div>Status</div>
-              <div className="text-right">Amount</div>
-              <div className="text-right">Balance</div>
-            </div>
-            <div className="divide-y">
-              {filtered.map((credit) => (
-                <button
-                  key={credit._id}
-                  type="button"
-                  className="w-full text-left px-4 py-3.5 hover:bg-teal-50/10 transition-colors border-b border-slate-100"
-                  onClick={() => loadDetail(credit._id)}
-                >
-                  <div className="grid grid-cols-[1.1fr_1fr_1.5fr_1fr_1fr_1fr] items-center text-sm gap-2">
-                    <div className="text-xs text-muted-foreground">{fmtDate(credit.vendorCreditDate)}</div>
-                    <div className="text-teal-700 font-semibold hover:underline cursor-pointer">{credit.vendorCreditNumber}</div>
-                    <div className="font-semibold text-slate-700">{getName(credit.vendorId)}</div>
-                    <div>
-                      <span className={cn(
-                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
-                        credit.status === "OPEN" && "bg-emerald-50 text-emerald-700 border-emerald-100",
-                        credit.status === "PARTIALLY_APPLIED" && "bg-teal-50 text-teal-700 border-teal-100",
-                        credit.status === "VOID" && "bg-slate-100 text-slate-500 border-slate-200",
-                        credit.status === "CLOSED" && "bg-slate-100 text-slate-600 border-slate-200",
-                        credit.status === "DRAFT" && "bg-amber-50 text-amber-700 border-amber-100"
-                      )}>
-                        <span className={cn(
-                          "h-1 w-1 rounded-full",
-                          credit.status === "OPEN" && "bg-emerald-500",
-                          credit.status === "PARTIALLY_APPLIED" && "bg-teal-500",
-                          credit.status === "VOID" && "bg-slate-400",
-                          credit.status === "CLOSED" && "bg-slate-500",
-                          credit.status === "DRAFT" && "bg-amber-500"
-                        )} />
-                        {credit.status}
+
+            <div className="flex-1 rounded-xl border border-slate-200 overflow-hidden bg-white shadow-2xs flex flex-col">
+              <div className="flex-1 overflow-auto">
+                <div className="grid grid-cols-[1.1fr_1fr_1.5fr_1fr_1fr_1fr] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b sticky top-0 items-center z-10">
+                  <div>
+                    <button onClick={() => toggleSort("vendorCreditDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Date
+                      <span className={cn("text-[10px]", sortField === "vendorCreditDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "vendorCreditDate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
                       </span>
-                    </div>
-                    <div className="text-right font-semibold text-slate-900">{fmtCurrency(credit.total)}</div>
-                    <div className="text-right text-muted-foreground">{fmtCurrency(credit.balanceAmount)}</div>
+                    </button>
                   </div>
-                </button>
-              ))}
-              {filtered.length === 0 && (
-                <div className="py-16 text-center text-sm text-muted-foreground bg-white">
-                  No vendor credits yet. Create your first vendor credit.
+                  <div>
+                    <button onClick={() => toggleSort("vendorCreditNumber")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Vendor Credit Number
+                      <span className={cn("text-[10px]", sortField === "vendorCreditNumber" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "vendorCreditNumber" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button onClick={() => toggleSort("vendor")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Vendor Name
+                      <span className={cn("text-[10px]", sortField === "vendor" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "vendor" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </div>
+                  <div>
+                    <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                      Status
+                      <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="text-right">
+                    <button onClick={() => toggleSort("total")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                      Amount
+                      <span className={cn("text-[10px]", sortField === "total" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "total" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="text-right">
+                    <button onClick={() => toggleSort("balanceAmount")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                      Balance
+                      <span className={cn("text-[10px]", sortField === "balanceAmount" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                        {sortField === "balanceAmount" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  </div>
                 </div>
-              )}
+                <div className="divide-y">
+                  {sortedCredits.map((credit) => (
+                    <button
+                      key={credit._id}
+                      type="button"
+                      className="w-full text-left px-4 py-3.5 hover:bg-teal-50/30 transition-colors border-b border-slate-100"
+                      onClick={() => loadDetail(credit._id)}
+                    >
+                      <div className="grid grid-cols-[1.1fr_1fr_1.5fr_1fr_1fr_1fr] items-center text-sm gap-2">
+                        <div className="text-xs text-muted-foreground">{fmtDate(credit.vendorCreditDate)}</div>
+                        <div className="text-teal-700 font-semibold hover:underline cursor-pointer">{credit.vendorCreditNumber}</div>
+                        <div className="font-semibold text-slate-700">{getName(credit.vendorId)}</div>
+                        <div>
+                          <span className={cn(
+                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                            credit.status === "OPEN" && "bg-emerald-50 text-emerald-700 border-emerald-100",
+                            credit.status === "PARTIALLY_APPLIED" && "bg-teal-50 text-teal-700 border-teal-100",
+                            credit.status === "VOID" && "bg-slate-100 text-slate-500 border-slate-200",
+                            credit.status === "CLOSED" && "bg-slate-100 text-slate-600 border-slate-200",
+                            credit.status === "DRAFT" && "bg-amber-50 text-amber-700 border-amber-100"
+                          )}>
+                            <span className={cn(
+                              "h-1 w-1 rounded-full",
+                              credit.status === "OPEN" && "bg-emerald-500",
+                              credit.status === "PARTIALLY_APPLIED" && "bg-teal-500",
+                              credit.status === "VOID" && "bg-slate-400",
+                              credit.status === "CLOSED" && "bg-slate-500",
+                              credit.status === "DRAFT" && "bg-amber-500"
+                            )} />
+                            {credit.status}
+                          </span>
+                        </div>
+                        <div className="text-right font-semibold text-slate-900">{fmtCurrency(credit.total)}</div>
+                        <div className="text-right text-muted-foreground">{fmtCurrency(credit.balanceAmount)}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {sortedCredits.length === 0 && (
+                    <div className="py-16 text-center text-sm text-muted-foreground bg-white">
+                      No vendor credits yet. Create your first vendor credit.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}

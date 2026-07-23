@@ -109,7 +109,7 @@ function printExpense(e: Expense) {
   if (paidThrough !== "—") rows.push(`<div class="row"><div class="label">Paid Through</div><div class="val">${paidThrough}</div></div>`);
   if (customer !== "—")    rows.push(`<div class="row"><div class="label">Customer</div><div class="val link">${customer}</div></div>`);
   if (vendor !== "—")      rows.push(`<div class="row"><div class="label">Paid To</div><div class="val link">${vendor}</div></div>`);
-  if (e.invoiceNumber)     rows.push(`<div class="row"><div class="label">Reference #</div><div class="val">${e.invoiceNumber}</div></div>`);
+  if (e.invoiceNumber)     rows.push(`<div class="row"><div class="label">Reference Number</div><div class="val">${e.invoiceNumber}</div></div>`);
   if (e.notes)             rows.push(`<div class="row"><div class="label">Notes</div><div class="val">${e.notes}</div></div>`);
 
   const html = `<!DOCTYPE html>
@@ -516,10 +516,10 @@ export default function ExpenseDetailPage() {
                     </div>
                   )}
 
-                  {/* Invoice # */}
+                  {/* Invoice Number */}
                   {expense.invoiceNumber && (
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Invoice #</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Invoice Number</p>
                       <p className="text-sm font-medium">{expense.invoiceNumber}</p>
                     </div>
                   )}

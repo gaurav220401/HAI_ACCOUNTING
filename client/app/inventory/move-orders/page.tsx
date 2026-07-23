@@ -299,6 +299,17 @@ export default function InventoryMoveOrdersPage() {
     return item.name || "-";
   };
 
+  const summary = useMemo(() => {
+    const total = filteredMoveOrders.length;
+    const inTransit = filteredMoveOrders.filter((mo) => mo.status === "In Transit" || mo.status === "Sent").length;
+    const received = filteredMoveOrders.filter((mo) => mo.status === "Received").length;
+    const totalQtyMoved = filteredMoveOrders.reduce((acc, mo) => {
+      const sumItems = (mo.items || []).reduce((iAcc, item) => iAcc + Number(item.quantity || 0), 0);
+      return acc + sumItems;
+    }, 0);
+    return { total, inTransit, received, totalQtyMoved };
+  }, [filteredMoveOrders]);
+
   return (
     <InventoryShell
       title="Move Orders"
@@ -374,13 +385,38 @@ export default function InventoryMoveOrdersPage() {
             </PopoverContent>
           </Popover>
 
-          <Button variant="outline" size="sm" className="h-8 px-2 border-slate-200 bg-white" onClick={loadData} disabled={fetching}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 border-slate-200 bg-white"
+            onClick={loadData}
+            disabled={fetching}
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
           </Button>
         </div>
       )}
     >
       <div className="space-y-6">
+        {/* Sleek Ultra-Compact KPI Summary Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Move Orders</span>
+            <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.total}</span>
+          </div>
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">In Transit / Sent</span>
+            <span className="text-sm font-bold text-amber-700 tabular-nums">{summary.inTransit}</span>
+          </div>
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Received</span>
+            <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.received}</span>
+          </div>
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+            <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Total Qty Moved</span>
+            <span className="text-sm font-bold text-teal-700 tabular-nums">{summary.totalQtyMoved.toLocaleString("en-IN")}</span>
+          </div>
+        </div>
         <Card>
           <CardHeader>
             <CardTitle>New Move Order</CardTitle>
@@ -452,9 +488,14 @@ export default function InventoryMoveOrdersPage() {
                   </Button>
                 </div>
               ))}
-              <Button variant="outline" size="sm" onClick={addItemRow} className="mt-2 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
+              <Button type="button" variant="outline" size="sm" onClick={addItemRow} className="mt-2 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
                 <Plus className="h-4 w-4 mr-1" /> Add Item
               </Button>
+
+              <div className="flex items-center justify-between mt-3 p-2.5 bg-teal-50/50 rounded-md border border-slate-200 text-xs font-semibold text-slate-700">
+                <span>Total Items: <strong className="text-teal-700">{form.items.length}</strong></span>
+                <span>Total Quantity to Transfer: <strong className="text-teal-700">{form.items.reduce((acc, i) => acc + Number(i.quantity || 0), 0)}</strong></span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
@@ -534,6 +575,7 @@ export default function InventoryMoveOrdersPage() {
                         </button>
                       </th>
                       <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">Items</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right">Total Qty</th>
                       <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5">
                         <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
                           Status
@@ -548,28 +590,32 @@ export default function InventoryMoveOrdersPage() {
                   <tbody>
                     {sortedMoveOrders.length === 0 && (
                       <tr>
-                        <td className="px-4 py-6 text-muted-foreground text-center" colSpan={7}>
+                        <td className="px-4 py-6 text-muted-foreground text-center" colSpan={8}>
                           No move orders recorded yet.
                         </td>
                       </tr>
                     )}
-                    {sortedMoveOrders.map((order) => (
-                      <tr key={order._id} className="border-t border-slate-100 hover:bg-teal-50/30 transition-colors">
-                        <td className="px-4 py-2 font-medium text-teal-700 hover:text-teal-800 hover:underline cursor-pointer" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>{order.orderNumber}</td>
-                        <td className="px-4 py-2 text-slate-500">{new Date(order.date).toLocaleDateString("en-IN")}</td>
-                        <td className="px-4 py-2 text-slate-700">{getWarehouseName(order.fromWarehouseId)}</td>
-                        <td className="px-4 py-2 text-slate-700">{getWarehouseName(order.toWarehouseId)}</td>
-                        <td className="px-4 py-2 text-slate-600">
-                           <div className="max-w-xs truncate">
-                              {order.items.map(i => `${getItemName(i.itemId)} (${i.quantity})`).join(", ")}
-                           </div>
-                        </td>
-                        <td className="px-4 py-2">{getStatusBadge(order.status)}</td>
-                        <td className="px-4 py-2 text-right">
-                           <Button variant="ghost" size="sm" className="h-8 text-xs text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-md" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>View</Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {sortedMoveOrders.map((order) => {
+                      const totalQty = (order.items || []).reduce((acc, i) => acc + Number(i.quantity || 0), 0);
+                      return (
+                        <tr key={order._id} className="border-t border-slate-100 hover:bg-teal-50/30 transition-colors">
+                          <td className="px-4 py-2 font-medium text-teal-700 hover:text-teal-800 hover:underline cursor-pointer" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>{order.orderNumber}</td>
+                          <td className="px-4 py-2 text-slate-500">{new Date(order.date).toLocaleDateString("en-IN")}</td>
+                          <td className="px-4 py-2 text-slate-700">{getWarehouseName(order.fromWarehouseId)}</td>
+                          <td className="px-4 py-2 text-slate-700">{getWarehouseName(order.toWarehouseId)}</td>
+                          <td className="px-4 py-2 text-slate-600">
+                             <div className="max-w-xs truncate">
+                                {order.items.map(i => `${getItemName(i.itemId)} (${i.quantity})`).join(", ")}
+                             </div>
+                          </td>
+                          <td className="px-4 py-2 text-right font-semibold text-slate-800 tabular-nums">{totalQty.toLocaleString("en-IN")}</td>
+                          <td className="px-4 py-2">{getStatusBadge(order.status)}</td>
+                          <td className="px-4 py-2 text-right">
+                             <Button variant="ghost" size="sm" className="h-8 text-xs text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-md" onClick={() => router.push(`/inventory/move-orders/${order._id}`)}>View</Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

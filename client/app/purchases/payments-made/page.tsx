@@ -26,6 +26,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -284,19 +285,113 @@ export default function PaymentsMadePage() {
     };
   }, [createOpen, form.vendor_id, form.paymentType]);
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"All" | "PAID" | "DRAFT" | "VOID">("All");
+  const [showFilterDD, setShowFilterDD] = useState(false);
+
+  type SortField = "payment_date" | "payment_number" | "reference_number" | "vendor" | "payment_mode" | "status" | "total_amount_paid" | "amount_in_excess";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("payment_date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   const filteredPayments = useMemo(() => {
+    let list = payments;
+    if (statusFilter !== "All") {
+      list = list.filter((p) => p.status === statusFilter);
+    }
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter((p) => new Date(p.payment_date || 0).getTime() >= fromTime);
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter((p) => new Date(p.payment_date || 0).getTime() <= toTime);
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return payments;
-    return payments.filter((p) => {
+    if (!q) return list;
+    return list.filter((p) => {
       const vendor = vendorName(p.vendor_id).toLowerCase();
       return (
         p.payment_number.toLowerCase().includes(q) ||
         (p.reference_number || "").toLowerCase().includes(q) ||
         vendor.includes(q) ||
-        p.payment_mode.toLowerCase().includes(q)
+        p.payment_mode.toLowerCase().includes(q) ||
+        String(p.total_amount_paid || "").includes(q)
       );
     });
-  }, [payments, search]);
+  }, [payments, search, statusFilter, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    const totalAmount = filteredPayments.reduce((acc, p) => acc + Number(p.total_amount_paid || 0), 0);
+    const unusedAmount = filteredPayments.reduce((acc, p) => acc + Number(p.amount_in_excess || 0), 0);
+    const usedAmount = Math.max(0, totalAmount - unusedAmount);
+    return {
+      count: filteredPayments.length,
+      totalAmount,
+      usedAmount,
+      unusedAmount,
+    };
+  }, [filteredPayments]);
+
+  const sortedPayments = useMemo(() => {
+    const list = [...filteredPayments];
+    list.sort((a: any, b: any) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "payment_date":
+          aVal = new Date(a.payment_date || 0).getTime();
+          bVal = new Date(b.payment_date || 0).getTime();
+          break;
+        case "payment_number":
+          aVal = a.payment_number || "";
+          bVal = b.payment_number || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "reference_number":
+          aVal = a.reference_number || "";
+          bVal = b.reference_number || "";
+          return sortOrder === "asc"
+            ? aVal.localeCompare(bVal, undefined, { numeric: true })
+            : bVal.localeCompare(aVal, undefined, { numeric: true });
+        case "vendor":
+          aVal = vendorName(a.vendor_id).toLowerCase();
+          bVal = vendorName(b.vendor_id).toLowerCase();
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "payment_mode":
+          aVal = a.payment_mode || "";
+          bVal = b.payment_mode || "";
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "status":
+          aVal = a.status || "";
+          bVal = b.status || "";
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        case "total_amount_paid":
+          aVal = Number(a.total_amount_paid || 0);
+          bVal = Number(b.total_amount_paid || 0);
+          break;
+        case "amount_in_excess":
+          aVal = Number(a.amount_in_excess || 0);
+          bVal = Number(b.amount_in_excess || 0);
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filteredPayments, sortField, sortOrder]);
 
   const appliedTotal = useMemo(() => {
     return form.billAllocations.reduce((sum, row) => sum + (Number.isFinite(row.payment) ? row.payment : 0), 0);
@@ -495,22 +590,95 @@ export default function PaymentsMadePage() {
         <PageHeader
           breadcrumb={
             <div className="flex flex-col">
-              <span className="text-[11px] font-medium text-teal-700 uppercase tracking-wide">Purchases</span>
-              <span className="text-sm font-bold text-slate-900 leading-none mt-0.5">Payments Made</span>
+              <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
+              <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-teal-700">
+                    {statusFilter === "All" ? "All Payments Made" : `${statusFilter} Payments`} <ChevronDown className="h-3 w-3 ml-0.5 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem onClick={() => { setStatusFilter("All"); setShowFilterDD(false); }}>All Payments Made</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("PAID"); setShowFilterDD(false); }}>Paid</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("DRAFT"); setShowFilterDD(false); }}>Draft</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setStatusFilter("VOID"); setShowFilterDD(false); }}>Void</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           }
           actions={
-            <>
+            <div className="flex items-center gap-1.5">
               <div className="relative w-56">
-                <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                 <Input
-                  className="h-8 pl-8 text-sm"
+                  className="h-8 pl-8 text-sm border-slate-200 focus-visible:ring-teal-600"
                   placeholder="Search payments..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Button variant="outline" size="sm" onClick={() => void loadPayments()}>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-slate-200" onClick={() => void loadPayments()}>
                 <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
               </Button>
               <Button
@@ -520,44 +688,121 @@ export default function PaymentsMadePage() {
               >
                 <Plus className="mr-1 h-4 w-4" /> New
               </Button>
-            </>
+            </div>
           }
         />
 
-        <div className="flex h-[calc(100svh-56px)] overflow-hidden">
-          <section className={cn("border-r bg-white", selectedPaymentId ? "w-[320px]" : "w-full")}>
-            <div className="flex h-11 items-center justify-between border-b px-3">
-              <button className="flex items-center gap-1 text-sm font-semibold">
-                All Payments <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </button>
-              <span className="text-xs text-muted-foreground">{filteredPayments.length}</span>
+        <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3">
+          {/* Sleek Ultra-Compact KPI Summary Strip */}
+          {!selectedPaymentId && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Payments</span>
+                <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Amount</span>
+                <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCurrency(summary.totalAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Amount Used</span>
+                <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtCurrency(summary.usedAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Unused Balance</span>
+                <span className="text-sm font-bold text-amber-700 tabular-nums">{fmtCurrency(summary.unusedAmount)}</span>
+              </div>
             </div>
+          )}
 
-            <div className="h-[calc(100%-44px)] overflow-auto">
-              {isLoading ? (
-                selectedPaymentId ? <ListSkeleton /> : <TableSkeleton />
-              ) : filteredPayments.length === 0 ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">
-                  No payments found.
-                </div>
-              ) : !selectedPaymentId ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="border-b bg-slate-50 text-[11px] uppercase text-slate-600">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Date</th>
-                        <th className="px-3 py-2 text-left">Payment Voucher Number</th>
-                        <th className="px-3 py-2 text-left">Reference Number</th>
-                        <th className="px-3 py-2 text-left">Vendor Name</th>
-                        <th className="px-3 py-2 text-left">Bill Number</th>
-                        <th className="px-3 py-2 text-left">Mode</th>
-                        <th className="px-3 py-2 text-left">Status</th>
-                        <th className="px-3 py-2 text-right">Amount</th>
-                        <th className="px-3 py-2 text-right">Unused Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPayments.map((payment) => (
+          <div className="flex flex-1 overflow-hidden border border-slate-200 rounded-xl bg-white shadow-2xs">
+            <section className={cn("border-r bg-white flex flex-col min-h-0", selectedPaymentId ? "w-[320px]" : "w-full")}>
+              <div className="flex h-11 items-center justify-between border-b px-3 shrink-0">
+                <span className="text-xs font-semibold text-slate-700">All Payments</span>
+                <span className="text-xs text-muted-foreground">{filteredPayments.length}</span>
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                {isLoading ? (
+                  selectedPaymentId ? <ListSkeleton /> : <TableSkeleton />
+                ) : filteredPayments.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-muted-foreground">
+                    No payments found.
+                  </div>
+                ) : !selectedPaymentId ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="border-b bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-semibold sticky top-0 z-10">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left">
+                            <button onClick={() => toggleSort("payment_date")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Date
+                              <span className={cn("text-[10px]", sortField === "payment_date" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "payment_date" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2.5 text-left">
+                            <button onClick={() => toggleSort("payment_number")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Payment Voucher Number
+                              <span className={cn("text-[10px]", sortField === "payment_number" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "payment_number" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2.5 text-left">
+                            <button onClick={() => toggleSort("reference_number")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Reference Number
+                              <span className={cn("text-[10px]", sortField === "reference_number" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "reference_number" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2.5 text-left">
+                            <button onClick={() => toggleSort("vendor")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Vendor Name
+                              <span className={cn("text-[10px]", sortField === "vendor" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "vendor" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2.5 text-left">Bill Number</th>
+                          <th className="px-3 py-2.5 text-left">
+                            <button onClick={() => toggleSort("payment_mode")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Mode
+                              <span className={cn("text-[10px]", sortField === "payment_mode" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "payment_mode" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2.5 text-left">
+                            <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                              Status
+                              <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2.5 text-right">
+                            <button onClick={() => toggleSort("total_amount_paid")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                              Amount
+                              <span className={cn("text-[10px]", sortField === "total_amount_paid" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "total_amount_paid" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                          <th className="px-3 py-2.5 text-right">
+                            <button onClick={() => toggleSort("amount_in_excess")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                              Unused Amount
+                              <span className={cn("text-[10px]", sortField === "amount_in_excess" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                {sortField === "amount_in_excess" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                              </span>
+                            </button>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedPayments.map((payment) => (
                         <tr
                           key={payment._id}
                           className="cursor-pointer border-b hover:bg-teal-50/30 transition-colors"
@@ -600,7 +845,7 @@ export default function PaymentsMadePage() {
                   </table>
                 </div>
               ) : (
-                filteredPayments.map((payment) => {
+                sortedPayments.map((payment) => {
                   const isActive = selectedPaymentId === payment._id;
                   return (
                     <button
@@ -829,6 +1074,7 @@ export default function PaymentsMadePage() {
             )}
           </section>
         </div>
+      </div>
 
         <AlertDialog open={voidOpen} onOpenChange={setVoidOpen}>
           <AlertDialogContent>
@@ -895,11 +1141,6 @@ function FormBody({
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
       <div className="space-y-4">
-        <div className={cn("rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900", vendorLocked && "opacity-70")}>
-          Initiate payments for your bills directly by integrating with one of our partner banks.
-          <span className="ml-1 font-semibold text-blue-600">Set Up Now</span>
-        </div>
-
         <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-2", vendorLocked && "[&_.vendor-dependent]:opacity-40")}>
           <div className="space-y-1.5">
             <Label>Vendor Name*</Label>

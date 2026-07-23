@@ -198,7 +198,7 @@ function NewPurchaseReceivePageContent() {
           <div className="p-6 space-y-6 max-w-5xl">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Purchase Receive #</Label>
+                <Label className="text-xs font-semibold text-slate-700">Purchase Receive Number</Label>
                 <Input value={purchaseReceiveNumber} onChange={(e) => setPurchaseReceiveNumber(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1.5">
@@ -206,7 +206,7 @@ function NewPurchaseReceivePageContent() {
                 <Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Purchase Order #</Label>
+                <Label className="text-xs font-semibold text-slate-700">Purchase Order Number</Label>
                 <Input value={poData?.purchaseOrder?.purchaseOrderNumber || ""} disabled className="h-9 text-sm bg-slate-50" />
               </div>
             </div>

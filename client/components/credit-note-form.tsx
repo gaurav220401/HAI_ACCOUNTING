@@ -596,7 +596,7 @@ export function CreditNoteForm({
           </div>
 
           <div>
-            <Label htmlFor="creditNoteNumber" className="text-red-500">Credit Note#*</Label>
+            <Label htmlFor="creditNoteNumber" className="text-red-500">Credit Note Number *</Label>
             <Input
               id="creditNoteNumber"
               name="creditNoteNumber"
@@ -608,7 +608,7 @@ export function CreditNoteForm({
           </div>
 
           <div>
-            <Label htmlFor="referenceNumber">Reference#</Label>
+            <Label htmlFor="referenceNumber">Reference Number</Label>
             <Input
               id="referenceNumber"
               name="referenceNumber"

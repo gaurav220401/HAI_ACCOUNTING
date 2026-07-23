@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -8,7 +8,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +36,7 @@ import {
   ChevronLeft,
   RefreshCw,
   Info,
+  Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -408,7 +411,7 @@ function AdjustmentDetailPanel({
             Reconciled
           </span>
         )}
-        <p className="text-xs text-slate-400">#{adj.adjustmentNumber}</p>
+        <p className="text-xs text-slate-400">{adj.adjustmentNumber}</p>
       </div>
     </div>
   );
@@ -427,6 +430,76 @@ export default function CurrencyAdjustmentsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectedAdj, setSelectedAdj] = useState<CurrencyAdjustment | null>(null);
   const [fetching, setFetching] = useState(false);
+
+  type SortField = "date" | "currency" | "exchangeRate" | "gainLoss" | "status";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
+  const filtered = useMemo(() => {
+    return adjustments.filter((a) => {
+      const matchStatus = statusFilter === "All" ? true : a.status === statusFilter;
+      if (fromDate || toDate) {
+        const d = a.date ? new Date(a.date).toISOString().slice(0, 10) : "";
+        if (fromDate && d < fromDate) return false;
+        if (toDate && d > toDate) return false;
+      }
+      return matchStatus;
+    });
+  }, [adjustments, statusFilter, fromDate, toDate]);
+
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "date":
+          aVal = new Date(a.date || 0).getTime();
+          bVal = new Date(b.date || 0).getTime();
+          break;
+        case "currency":
+          aVal = (a.currency || "").toLowerCase();
+          bVal = (b.currency || "").toLowerCase();
+          break;
+        case "exchangeRate":
+          aVal = a.exchangeRate || 0;
+          bVal = b.exchangeRate || 0;
+          break;
+        case "gainLoss":
+          aVal = a.lines.reduce((s, l) => s + l.gainOrLoss, 0);
+          bVal = b.lines.reduce((s, l) => s + l.gainOrLoss, 0);
+          break;
+        case "status":
+          aVal = (a.status || "").toLowerCase();
+          bVal = (b.status || "").toLowerCase();
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
+
+  const summary = useMemo(() => {
+    const total = filtered.length;
+    const open = filtered.filter((a) => a.status === "Open").length;
+    const reconciled = filtered.filter((a) => a.status === "Reconciled").length;
+    const totalGainLoss = filtered.reduce((acc, a) => acc + a.lines.reduce((s, l) => s + l.gainOrLoss, 0), 0);
+    return { total, open, reconciled, totalGainLoss };
+  }, [filtered]);
 
   useEffect(() => { if (!loading && !firebaseUser) router.push("/login"); }, [loading, firebaseUser, router]);
   useEffect(() => {
@@ -458,9 +531,6 @@ export default function CurrencyAdjustmentsPage() {
   }
 
   // ── Filter / select ──────────────────────────────────────────────────────────
-  const filtered = adjustments.filter((a) =>
-    statusFilter === "All" ? true : a.status === statusFilter
-  );
   const allChecked = filtered.length > 0 && filtered.every((a) => selected.has(a._id));
   const someChecked = filtered.some((a) => selected.has(a._id));
 
@@ -539,6 +609,66 @@ export default function CurrencyAdjustmentsPage() {
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
+
+                  {/* Compact Date Range Popover */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-7 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50 rounded-md",
+                          (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                        )}
+                      >
+                        <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                        {fromDate || toDate ? (
+                          <span>
+                            {fromDate || "Start"} - {toDate || "End"}
+                          </span>
+                        ) : (
+                          <span>Date Range</span>
+                        )}
+                        <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-800">Filter by Date</span>
+                        {(fromDate || toDate) && (
+                          <button
+                            onClick={() => {
+                              setFromDate("");
+                              setToDate("");
+                            }}
+                            className="text-xs text-rose-600 hover:underline font-medium"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                          <Input
+                            type="date"
+                            value={fromDate}
+                            onChange={(e) => setFromDate(e.target.value)}
+                            className="h-8 text-xs bg-slate-50 border-slate-200"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                          <Input
+                            type="date"
+                            value={toDate}
+                            onChange={(e) => setToDate(e.target.value)}
+                            className="h-8 text-xs bg-slate-50 border-slate-200"
+                          />
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   {fetching && <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-600 ml-1" />}
                   {selected.size > 0 && (
                     <span className="ml-auto text-xs text-teal-700 font-semibold">{selected.size} selected</span>
@@ -547,12 +677,38 @@ export default function CurrencyAdjustmentsPage() {
               )}
             </div>
 
+            {/* Sleek Ultra-Compact KPI Summary Strip */}
+            {!panelOpen && (
+              <div className="px-5 py-2 bg-white">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Adjustments</span>
+                    <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.total}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Open</span>
+                    <span className="text-sm font-bold text-amber-700 tabular-nums">{summary.open}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Reconciled</span>
+                    <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.reconciled}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                    <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Total Gain / Loss</span>
+                    <span className={cn("text-sm font-bold tabular-nums", summary.totalGainLoss < 0 ? "text-rose-700" : "text-emerald-700")}>
+                      {fmtNumber(summary.totalGainLoss)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Table / Narrow list */}
             <div className="flex-1 overflow-auto">
               {panelOpen ? (
                 /* Narrow list when panel is open */
                 <div className="divide-y">
-                  {filtered.map((adj) => {
+                  {sorted.map((adj) => {
                     const isSel = selectedAdj?._id === adj._id;
                     return (
                       <div key={adj._id} onClick={() => setSelectedAdj(adj)}
@@ -595,23 +751,53 @@ export default function CurrencyAdjustmentsPage() {
                           ref={(el) => { if (el) el.indeterminate = !allChecked && someChecked; }}
                           onChange={toggleAll} />
                       </th>
-                      {[
-                        { label: "Date", cls: "text-left" },
-                        { label: "Currency", cls: "text-left" },
-                        { label: "Exchange Rate", cls: "text-right" },
-                        { label: "Gain or Loss", cls: "text-right" },
-                        { label: "Notes", cls: "text-center" },
-                      ].map(({ label, cls }) => (
-                        <th key={label} className={cn(
-                          "text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 whitespace-nowrap",
-                          cls
-                        )}>{label}</th>
-                      ))}
-                      <th className="w-24 text-right px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left whitespace-nowrap">
+                        <button onClick={() => toggleSort("date")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Date
+                          <span className={sortField === "date" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "date" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-left whitespace-nowrap">
+                        <button onClick={() => toggleSort("currency")} className="group flex items-center gap-1 hover:text-teal-700">
+                          Currency
+                          <span className={sortField === "currency" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "currency" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => toggleSort("exchangeRate")} className="group flex items-center gap-1 hover:text-teal-700 justify-end w-full">
+                          Exchange Rate
+                          <span className={sortField === "exchangeRate" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "exchangeRate" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => toggleSort("gainLoss")} className="group flex items-center gap-1 hover:text-teal-700 justify-end w-full">
+                          Gain or Loss
+                          <span className={sortField === "gainLoss" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "gainLoss" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
+                      <th className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-center whitespace-nowrap">
+                        Notes
+                      </th>
+                      <th className="w-24 text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700 justify-end w-full">
+                          Status
+                          <span className={sortField === "status" ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                            {sortField === "status" ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {fetching && filtered.length === 0 ? (
+                    {fetching && sorted.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="text-center py-20">
                           <div className="flex justify-center">
@@ -619,7 +805,7 @@ export default function CurrencyAdjustmentsPage() {
                           </div>
                         </td>
                       </tr>
-                    ) : filtered.length === 0 ? (
+                    ) : sorted.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="text-center py-20 text-slate-500 bg-white">
                           <div className="flex flex-col items-center gap-2">
@@ -633,7 +819,7 @@ export default function CurrencyAdjustmentsPage() {
                         </td>
                       </tr>
                     ) : (
-                      filtered.map((adj) => {
+                      sorted.map((adj) => {
                         const totalGL = adj.lines.reduce((s, l) => s + l.gainOrLoss, 0);
                         return (
                           <tr key={adj._id}

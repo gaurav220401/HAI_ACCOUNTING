@@ -500,11 +500,6 @@ function allocateAmountToBills(amount: number, bills: Bill[], refBillNo?: string
           <TabsContent value={form.paymentType} className="space-y-6 p-4 sm:p-6">
             <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
               <div className="space-y-4">
-                <div className={cn("rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900", vendorLocked && "opacity-70")}>
-                  Initiate payments for your bills directly by integrating with one of our partner banks.
-                  <span className="ml-1 font-semibold text-blue-600">Set Up Now</span>
-                </div>
-
                 <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-2", vendorLocked && "[&_.vendor-dependent]:opacity-40")}>
                   <div className="space-y-1.5">
                     <Label>Vendor Name*</Label>

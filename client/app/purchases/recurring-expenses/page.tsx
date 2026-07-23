@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Search, RefreshCw, MoreHorizontal, X, ChevronDown,
   Square, Receipt, Loader2, Trash2, Clock, CheckCircle2,
-  ArrowUpDown, Upload, Download, ChevronRight, Eye, EyeOff,
+  ArrowUpDown, Upload, Download, ChevronRight, Eye, EyeOff, Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DraggableText } from "@/components/ui/draggable-text";
@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -578,7 +579,7 @@ function RecurringDetailPanel({
 // ─── Import Dialog ────────────────────────────────────────────────────────────
 
 const SAMPLE_CSV_HEADERS = [
-  "Recurring Expense#", "Recurrence Frequency", "Repeat Every", "Start Date", "End Date",
+  "Recurring Expense Number", "Recurrence Frequency", "Repeat Every", "Start Date", "End Date",
   "Expense Category", "Expense Type", "HSN/SAC", "Currency Code", "Exchange Rate",
   "Expense Amount", "GST Treatment", "GST Identification Number", "Destination of Supply",
   "Tax Name", "Tax Percentage", "Tax Type", "Item Tax Exemption", "Is Inclusive Tax",
@@ -749,7 +750,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
                     </tr>
                   </thead>
                   <tbody>
-                    {["Recurring Expense#", "Recurrence Frequency", "Repeat Every", "Start Date", "End Date",
+                    {["Recurring Expense Number", "Recurrence Frequency", "Repeat Every", "Start Date", "End Date",
                       "Expense Category", "Currency Code", "Expense Amount", "Vendor", "Customer Name"].map((col, i) => (
                       <tr key={i} className="border-b hover:bg-muted/20">
                         <td className="px-4 py-2">{col}</td>
@@ -1068,9 +1069,24 @@ export default function RecurringExpensesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RecurringExpense | null>(null);
 
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [showFilterDD, setShowFilterDD] = useState(false);
+
   // Sort
-  const [sortField, setSortField] = useState<"profileName" | "amount" | "nextExpenseDate" | "status">("profileName");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  type SortField = "profileName" | "expenseAccount" | "vendor" | "frequency" | "lastExpenseDate" | "nextExpenseDate" | "status" | "amount";
+  type SortDir = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("nextExpenseDate");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  }
 
   // Bulk selection
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
@@ -1112,17 +1128,74 @@ export default function RecurringExpensesPage() {
     setItems((prev) => prev.map((i) => (i._id === updated._id ? updated : i)));
   }
 
+  const filteredItems = useMemo(() => {
+    let list = items;
+    if (fromDate) {
+      const fromTime = new Date(fromDate).getTime();
+      list = list.filter((i) => new Date(i.nextExpenseDate || 0).getTime() >= fromTime);
+    }
+    if (toDate) {
+      const toTime = new Date(toDate).getTime() + 86399999;
+      list = list.filter((i) => new Date(i.nextExpenseDate || 0).getTime() <= toTime);
+    }
+    return list;
+  }, [items, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    return {
+      count: filteredItems.length,
+      activeCount: filteredItems.filter((i) => i.status === "Active").length,
+      stoppedCount: filteredItems.filter((i) => i.status === "Stopped").length,
+      totalAmount: filteredItems.reduce((acc, i) => acc + Number(i.amount || 0), 0),
+    };
+  }, [filteredItems]);
+
   // Sort + derive displayed list
-  const displayItems = [...items].sort((a, b) => {
-    let av: string | number = "", bv: string | number = "";
-    if (sortField === "profileName") { av = a.profileName.toLowerCase(); bv = b.profileName.toLowerCase(); }
-    else if (sortField === "amount") { av = a.amount; bv = b.amount; }
-    else if (sortField === "nextExpenseDate") { av = a.nextExpenseDate ?? ""; bv = b.nextExpenseDate ?? ""; }
-    else if (sortField === "status") { av = a.status; bv = b.status; }
-    if (av < bv) return sortDir === "asc" ? -1 : 1;
-    if (av > bv) return sortDir === "asc" ? 1 : -1;
-    return 0;
-  });
+  const displayItems = useMemo(() => {
+    const list = [...filteredItems];
+    list.sort((a: any, b: any) => {
+      let av: any = "";
+      let bv: any = "";
+      switch (sortField) {
+        case "profileName":
+          av = (a.profileName || "").toLowerCase();
+          bv = (b.profileName || "").toLowerCase();
+          return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+        case "expenseAccount":
+          av = (getName(a.expenseAccountId) || "").toLowerCase();
+          bv = (getName(b.expenseAccountId) || "").toLowerCase();
+          return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+        case "vendor":
+          av = (getName(a.vendorId) || "").toLowerCase();
+          bv = (getName(b.vendorId) || "").toLowerCase();
+          return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+        case "frequency":
+          av = (a.frequency || "").toLowerCase();
+          bv = (b.frequency || "").toLowerCase();
+          return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+        case "lastExpenseDate":
+          av = new Date(a.lastExpenseDate || 0).getTime();
+          bv = new Date(b.lastExpenseDate || 0).getTime();
+          break;
+        case "nextExpenseDate":
+          av = new Date(a.nextExpenseDate || 0).getTime();
+          bv = new Date(b.nextExpenseDate || 0).getTime();
+          break;
+        case "status":
+          av = (a.status || "").toLowerCase();
+          bv = (b.status || "").toLowerCase();
+          return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+        case "amount":
+          av = Number(a.amount || 0);
+          bv = Number(b.amount || 0);
+          break;
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filteredItems, sortField, sortDir]);
 
   // Checkbox helpers
   const allChecked = displayItems.length > 0 && displayItems.every((i) => checkedIds.has(i._id));
@@ -1154,11 +1227,6 @@ export default function RecurringExpensesPage() {
     setCheckedIds(new Set()); toast.success(`${ids.length} profile(s) deleted`);
   }
 
-  function setSortBy(field: typeof sortField) {
-    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortField(field); setSortDir("asc"); }
-  }
-
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -1167,34 +1235,93 @@ export default function RecurringExpensesPage() {
           breadcrumb={
             <div className="flex flex-col">
               <span className="text-[11px] font-medium text-teal-700 leading-none mb-0.5">Purchases</span>
-              <span className="text-sm font-semibold text-slate-700">Recurring Expenses</span>
+              <DropdownMenu open={showFilterDD} onOpenChange={setShowFilterDD}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="flex items-center gap-1 text-sm font-semibold text-slate-700 hover:text-teal-700">
+                    {filterStatus ? `${filterStatus} Profiles` : "All Recurring Expenses"} <ChevronDown className="h-3 w-3 ml-0.5 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem onClick={() => { setFilterStatus(""); setShowFilterDD(false); }}>All Recurring Expenses</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setFilterStatus("Active"); setShowFilterDD(false); }}>Active</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setFilterStatus("Stopped"); setShowFilterDD(false); }}>Stopped</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setFilterStatus("Expired"); setShowFilterDD(false); }}>Expired</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           }
           actions={
             <div className="flex items-center gap-1.5">
               <div className="relative w-52">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                 <Input
-                  className="pl-8 h-8 text-xs"
+                  className="pl-8 h-8 text-xs border-slate-200 focus-visible:ring-teal-600"
                   placeholder="Search profiles..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                    {filterStatus || "All Profiles"} <ChevronDown className="h-3 w-3" />
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-40">
-                  <DropdownMenuItem onClick={() => setFilterStatus("")}>All Profiles</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterStatus("Active")}>Active</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterStatus("Stopped")}>Stopped</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterStatus("Expired")}>Expired</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Separator orientation="vertical" className="h-5" />
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Next Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <Button size="sm" className="h-8 text-xs gap-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-md" onClick={() => router.push("/purchases/recurring-expenses/new")}>
                 <Plus className="h-3.5 w-3.5" /> New
               </Button>
@@ -1205,27 +1332,6 @@ export default function RecurringExpensesPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger className="gap-2 text-xs">
-                      <ArrowUpDown className="h-3.5 w-3.5" /> Sort by
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-48">
-                      {([
-                        { field: "profileName", label: "Profile Name" },
-                        { field: "amount",      label: "Amount" },
-                        { field: "nextExpenseDate", label: "Next Expense Date" },
-                        { field: "status",      label: "Status" },
-                      ] as const).map(({ field, label }) => (
-                        <DropdownMenuItem key={field} className="text-xs gap-2" onClick={() => setSortBy(field)}>
-                          {label}
-                          {sortField === field && (
-                            <span className="ml-auto text-teal-600 font-semibold">{sortDir === "asc" ? "↑" : "↓"}</span>
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                  <DropdownMenuSeparator />
                   <DropdownMenuItem className="gap-2 text-xs" onClick={() => setShowImport(true)}>
                     <Upload className="h-3.5 w-3.5" /> Import Recurring Expenses
                   </DropdownMenuItem>
@@ -1385,65 +1491,145 @@ export default function RecurringExpensesPage() {
                 </div>
               ) : (
                 /* Table when no panel open */
-                <div className="flex-1 overflow-auto">
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
-                      <tr className="border-b">
-                        <th className="px-4 py-2.5 w-8">
-                          <Checkbox
-                            checked={allChecked}
-                            onCheckedChange={toggleAll}
-                            className="h-3.5 w-3.5"
-                          />
-                        </th>
-                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Profile Name</th>
-                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Expense Account</th>
-                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Vendor Name</th>
-                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Frequency</th>
-                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Last Expense Date</th>
-                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Next Expense Date</th>
-                        <th className="text-left px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Status</th>
-                        <th className="text-right px-4 py-2.5 font-semibold text-slate-500 uppercase text-[11px] tracking-wide">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayItems.map((rec) => (
-                        <tr
-                          key={rec._id}
-                          className={cn(
-                            "border-b hover:bg-teal-50/20 cursor-pointer transition-colors",
-                            checkedIds.has(rec._id) && "bg-teal-50/40"
-                          )}
-                        >
-                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={checkedIds.has(rec._id)}
-                              onCheckedChange={() => toggleOne(rec._id)}
-                              className="h-3.5 w-3.5"
-                            />
-                          </td>
-                          <td className="px-4 py-3 font-medium text-teal-700 hover:text-teal-800 hover:underline max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
-                            <DraggableText alwaysActive className="block truncate">{rec.profileName}</DraggableText>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
-                            <DraggableText alwaysActive className="block truncate">{getName(rec.expenseAccountId) || "—"}</DraggableText>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
-                            <DraggableText alwaysActive className="block truncate">{getName(rec.vendorId) || "—"}</DraggableText>
-                          </td>
-                          <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{freqLabel(rec)}</td>
-                          <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.lastExpenseDate)}</td>
-                          <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.nextExpenseDate)}</td>
-                          <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>
-                            <StatusPill status={rec.status} />
-                          </td>
-                          <td className="px-4 py-3 text-right font-medium" onClick={() => setSelectedId(rec._id)}>
-                            {fmtCurrency(rec.amount, rec.currency)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3 bg-white">
+                  {/* Sleek Ultra-Compact KPI Summary Strip */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Profiles</span>
+                      <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.count}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Active Profiles</span>
+                      <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.activeCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Stopped Profiles</span>
+                      <span className="text-sm font-bold text-amber-700 tabular-nums">{summary.stoppedCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">Total Amount</span>
+                      <span className="text-sm font-bold text-teal-700 tabular-nums">{fmtCurrency(summary.totalAmount)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 border border-slate-100 rounded-xl overflow-hidden bg-white shadow-2xs flex flex-col">
+                    <div className="flex-1 overflow-auto">
+                      <table className="w-full text-xs min-w-[860px]">
+                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
+                          <tr className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+                            <th className="px-4 py-2.5 w-8">
+                              <Checkbox
+                                checked={allChecked}
+                                onCheckedChange={toggleAll}
+                                className="h-3.5 w-3.5"
+                              />
+                            </th>
+                            <th className="px-4 py-2.5 text-left">
+                              <button onClick={() => toggleSort("profileName")} className="group flex items-center gap-1 hover:text-teal-700">
+                                Profile Name
+                                <span className={cn("text-[10px]", sortField === "profileName" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "profileName" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                            <th className="px-4 py-2.5 text-left">
+                              <button onClick={() => toggleSort("expenseAccount")} className="group flex items-center gap-1 hover:text-teal-700">
+                                Expense Account
+                                <span className={cn("text-[10px]", sortField === "expenseAccount" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "expenseAccount" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                            <th className="px-4 py-2.5 text-left">
+                              <button onClick={() => toggleSort("vendor")} className="group flex items-center gap-1 hover:text-teal-700">
+                                Vendor Name
+                                <span className={cn("text-[10px]", sortField === "vendor" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "vendor" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                            <th className="px-4 py-2.5 text-left">
+                              <button onClick={() => toggleSort("frequency")} className="group flex items-center gap-1 hover:text-teal-700">
+                                Frequency
+                                <span className={cn("text-[10px]", sortField === "frequency" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "frequency" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                            <th className="px-4 py-2.5 text-left">
+                              <button onClick={() => toggleSort("lastExpenseDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                                Last Expense Date
+                                <span className={cn("text-[10px]", sortField === "lastExpenseDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "lastExpenseDate" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                            <th className="px-4 py-2.5 text-left">
+                              <button onClick={() => toggleSort("nextExpenseDate")} className="group flex items-center gap-1 hover:text-teal-700">
+                                Next Expense Date
+                                <span className={cn("text-[10px]", sortField === "nextExpenseDate" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "nextExpenseDate" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                            <th className="px-4 py-2.5 text-left">
+                              <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 hover:text-teal-700">
+                                Status
+                                <span className={cn("text-[10px]", sortField === "status" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "status" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                            <th className="px-4 py-2.5 text-right">
+                              <button onClick={() => toggleSort("amount")} className="group flex items-center justify-end gap-1 w-full hover:text-teal-700">
+                                Amount
+                                <span className={cn("text-[10px]", sortField === "amount" ? "text-teal-700 font-bold" : "text-slate-300 group-hover:text-slate-500")}>
+                                  {sortField === "amount" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                                </span>
+                              </button>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {displayItems.map((rec) => (
+                            <tr
+                              key={rec._id}
+                              className={cn(
+                                "border-b border-slate-100 hover:bg-slate-100/70 cursor-pointer transition-colors",
+                                checkedIds.has(rec._id) && "bg-teal-50/40"
+                              )}
+                            >
+                              <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={checkedIds.has(rec._id)}
+                                  onCheckedChange={() => toggleOne(rec._id)}
+                                  className="h-3.5 w-3.5"
+                                />
+                              </td>
+                              <td className="px-4 py-3 font-medium text-teal-700 hover:text-teal-800 hover:underline max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
+                                <DraggableText alwaysActive className="block truncate">{rec.profileName}</DraggableText>
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
+                                <DraggableText alwaysActive className="block truncate">{getName(rec.expenseAccountId) || "—"}</DraggableText>
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground max-w-[160px] overflow-hidden" onClick={() => setSelectedId(rec._id)}>
+                                <DraggableText alwaysActive className="block truncate">{getName(rec.vendorId) || "—"}</DraggableText>
+                              </td>
+                              <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{freqLabel(rec)}</td>
+                              <td className="px-4 py-3 text-muted-foreground" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.lastExpenseDate)}</td>
+                              <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>{fmtDate(rec.nextExpenseDate)}</td>
+                              <td className="px-4 py-3" onClick={() => setSelectedId(rec._id)}>
+                                <StatusPill status={rec.status} />
+                              </td>
+                              <td className="px-4 py-3 text-right font-semibold tabular-nums" onClick={() => setSelectedId(rec._id)}>
+                                {fmtCurrency(rec.amount, rec.currency)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

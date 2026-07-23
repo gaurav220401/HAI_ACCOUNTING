@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus, Settings2, ChevronDown, TreePine, RefreshCw, MoreHorizontal,
-  Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown,  FileUp, Upload, Download} from "lucide-react";
+  Lock, X, Search, GripVertical, SlidersHorizontal, WrapText, ChevronsUpDown, FileUp, Upload, Download, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
@@ -19,6 +19,8 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -420,6 +422,23 @@ export default function ChartOfAccountsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
+  type SortField = "name" | "code" | "accountType" | "parentAccount";
+  type SortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
   // ─── Auth guards ─────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -629,7 +648,7 @@ export default function ChartOfAccountsPage() {
   const accountMap = useMemo(() => new Map(accounts.map((a) => [a._id, a])), [accounts]);
 
   const displayed = useMemo(() => {
-    return accounts.filter((a) => {
+    const list = accounts.filter((a) => {
       // Filter by status
       if (viewFilter === "Active" && a.isActive === false) return false;
       if (viewFilter === "Inactive" && a.isActive !== false) return false;
@@ -637,16 +656,63 @@ export default function ChartOfAccountsPage() {
       // Filter by search term
       if (searchTerm) {
         const s = searchTerm.toLowerCase();
-        return (
+        const matches = (
           a.name.toLowerCase().includes(s) ||
           (a.code && a.code.toLowerCase().includes(s)) ||
           a.accountType.toLowerCase().includes(s)
         );
+        if (!matches) return false;
       }
       
+      // Filter by date range
+      if (fromDate || toDate) {
+        const rawDate = (a as any).createdAt || (a as any).date;
+        if (rawDate) {
+          const d = new Date(rawDate).toISOString().slice(0, 10);
+          if (fromDate && d < fromDate) return false;
+          if (toDate && d > toDate) return false;
+        }
+      }
+
       return true;
     });
-  }, [accounts, viewFilter, searchTerm]);
+
+    list.sort((a, b) => {
+      let aVal: any = "";
+      let bVal: any = "";
+      switch (sortField) {
+        case "name":
+          aVal = a.name.toLowerCase();
+          bVal = b.name.toLowerCase();
+          break;
+        case "code":
+          aVal = (a.code || "").toLowerCase();
+          bVal = (b.code || "").toLowerCase();
+          break;
+        case "accountType":
+          aVal = a.accountType.toLowerCase();
+          bVal = b.accountType.toLowerCase();
+          break;
+        case "parentAccount":
+          aVal = parentName(a, accountMap).toLowerCase();
+          bVal = parentName(b, accountMap).toLowerCase();
+          break;
+      }
+      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [accounts, viewFilter, searchTerm, sortField, sortOrder, accountMap, fromDate, toDate]);
+
+  const summary = useMemo(() => {
+    const total = displayed.length;
+    const active = displayed.filter((a) => a.isActive !== false).length;
+    const inactive = displayed.filter((a) => a.isActive === false).length;
+    const system = displayed.filter((a) => a.isSystemAccount).length;
+    return { total, active, inactive, system };
+  }, [displayed]);
 
   const panelOpen = Boolean(selectedAccountId);
 
@@ -748,6 +814,77 @@ export default function ChartOfAccountsPage() {
           }
           actions={
             <>
+              {/* Top Search Input */}
+              <div className="relative w-48 sm:w-60">
+                <Search className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Search accounts..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 h-8 text-xs bg-white border-slate-200 focus-visible:ring-1 focus-visible:ring-teal-600"
+                />
+              </div>
+
+              {/* Compact Date Range Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs gap-1.5 border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50 rounded-md",
+                      (fromDate || toDate) && "border-teal-500 bg-teal-50/60 text-teal-700 font-semibold"
+                    )}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    {fromDate || toDate ? (
+                      <span>
+                        {fromDate || "Start"} - {toDate || "End"}
+                      </span>
+                    ) : (
+                      <span>Date Range</span>
+                    )}
+                    <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-4 space-y-3 bg-white border border-slate-200 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800">Filter by Date Range</span>
+                    {(fromDate || toDate) && (
+                      <button
+                        onClick={() => {
+                          setFromDate("");
+                          setToDate("");
+                        }}
+                        className="text-xs text-rose-600 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">From Date</label>
+                      <Input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-500 block mb-1">To Date</label>
+                      <Input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 text-xs bg-slate-50 border-slate-200"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 bg-white hover:bg-slate-50 rounded-md">
@@ -852,142 +989,189 @@ export default function ChartOfAccountsPage() {
               </div>
             </div>
           ) : (
-            /* ── Table layout ────────────────────────────────────── */
-            <div className="flex flex-1 min-h-0 overflow-hidden">
-              <div
-                className={`flex flex-col min-h-0 overflow-hidden transition-all duration-200 ${panelOpen ? "flex-1 lg:w-[350px] lg:flex-none lg:shrink-0 lg:border-r" : "flex-1"}`}
-              >
-
-              {/* Bulk selection toolbar — replaces sub-header when items selected */}
-              {/* Top Bar: Either Bulk Actions or the Standard Header */}
-              {!panelOpen && selectedIds.size > 0 ? (
-                <BulkActionToolbar
-                  count={selectedIds.size}
-                  onMarkActive={bulkMarkActive}
-                  onMarkInactive={bulkMarkInactive}
-                  onDelete={() => setBulkDeleteOpen(true)}
-                  onClear={clearSelection}
-                />
-              ) : null}
-
-              {/* Main Content: Split View or Full Table */}
-              {panelOpen ? (
-                <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-background">
-                  {/* Side-panel Header with Filter Dropdown */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="flex items-center gap-1.5 font-bold text-sm uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors">
-                          {viewFilter} Accounts
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-48">
-                        {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
-                          <DropdownMenuItem
-                            key={f}
-                            className={`text-xs ${viewFilter === f ? "font-semibold bg-muted" : ""}`}
-                            onClick={() => setViewFilter(f)}
-                          >
-                            {f} Accounts
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={openCreate}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  {/* Fixed Search Bar */}
-                  <div className="p-3 border-b bg-slate-50/50">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input
-                        placeholder="Filter accounts..."
-                        className="pl-8 h-9 text-xs bg-background border-slate-200 focus-visible:ring-1 focus-visible:ring-primary shadow-none"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                      />
+            // ── Table layout ──
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {!panelOpen && (
+                <div className="px-4 py-2 bg-white">
+                  {/* Sleek Ultra-Compact KPI Summary Strip */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Accounts</span>
+                      <span className="text-sm font-bold text-slate-800 tabular-nums">{summary.total}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Active</span>
+                      <span className="text-sm font-bold text-emerald-700 tabular-nums">{summary.active}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide">Inactive</span>
+                      <span className="text-sm font-bold text-amber-700 tabular-nums">{summary.inactive}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-slate-200 bg-white shadow-2xs">
+                      <span className="text-[11px] font-semibold text-teal-600 uppercase tracking-wide">System Accounts</span>
+                      <span className="text-sm font-bold text-teal-700 tabular-nums">{summary.system}</span>
                     </div>
                   </div>
-
-                  {/* Scrollable Account List */}
-                  <div className="flex-1 overflow-y-auto divide-y scrollbar-thin scrollbar-thumb-slate-200">
-                    {displayed.length === 0 ? (
-                      <div className="px-4 py-10 text-sm text-muted-foreground text-center">No accounts found.</div>
-                    ) : (
-                      displayed.map((account) => (
-                        <button
-                          key={account._id}
-                          className={`w-full border-l-4 px-4 py-3 text-left transition-colors hover:bg-muted/30 ${selectedAccountId === account._id ? "border-l-primary bg-primary/5" : "border-l-transparent"}`}
-                          onClick={() => openDetails(account)}
-                        >
-                          <div className="flex justify-between items-start gap-2">
-                            <p className={`text-sm font-semibold truncate ${selectedAccountId === account._id ? "text-primary" : "text-foreground"}`}>
-                              {account.name}
-                            </p>
-                            {account.code && <span className="text-[10px] bg-muted px-1 rounded text-muted-foreground shrink-0">{account.code}</span>}
-                          </div>
-                          <p className="mt-1 text-[11px] text-muted-foreground uppercase tracking-tight">{account.accountType}</p>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                  {/* Side-panel Footer */}
-                  <div className="px-4 py-2 border-t bg-slate-50/50">
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                      Total: {displayed.length} Accounts
-                    </p>
-                  </div>
                 </div>
-              ) : (
-                <div className="flex-1 overflow-auto scrollbar-thin">
-                  <table className="w-full border-collapse text-sm">
-                    <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
-                      <tr className="border-b">
-                        {/* Column-header dropdown trigger */}
-                        <th className="w-9 px-3 py-2.5">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button className="p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors">
-                                <SlidersHorizontal className="h-3.5 w-3.5" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="w-52">
-                              <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
-                                <SlidersHorizontal className="h-4 w-4 mr-2 text-primary" />
-                                Customize Columns
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setWrapText((w) => !w)}>
-                                <WrapText className="h-4 w-4 mr-2" />
-                                {wrapText ? "No Wrap" : "Wrap Text"}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </th>
+              )}
 
-                        {visibleColumns.map((col) => (
-                          <th
-                            key={col.id}
-                            className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide"
+              <div className="flex flex-1 min-h-0 overflow-hidden">
+                <div
+                  className={`flex flex-col min-h-0 overflow-hidden transition-all duration-200 ${panelOpen ? "flex-1 lg:w-[350px] lg:flex-none lg:shrink-0 lg:border-r" : "flex-1"}`}
+                >
+
+                {/* Bulk selection toolbar — replaces sub-header when items selected */}
+                {/* Top Bar: Either Bulk Actions or the Standard Header */}
+                {!panelOpen && selectedIds.size > 0 ? (
+                  <BulkActionToolbar
+                    count={selectedIds.size}
+                    onMarkActive={bulkMarkActive}
+                    onMarkInactive={bulkMarkInactive}
+                    onDelete={() => setBulkDeleteOpen(true)}
+                    onClear={clearSelection}
+                  />
+                ) : null}
+
+                {/* Main Content: Split View or Full Table */}
+                {panelOpen ? (
+                  <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-background">
+                    {/* Side-panel Header with Filter Dropdown */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="flex items-center gap-1.5 font-bold text-sm uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors">
+                            {viewFilter} Accounts
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-48">
+                          {(["Active", "Inactive", "All"] as ViewFilter[]).map((f) => (
+                            <DropdownMenuItem
+                              key={f}
+                              className={`text-xs ${viewFilter === f ? "font-semibold bg-muted" : ""}`}
+                              onClick={() => setViewFilter(f)}
+                            >
+                              {f} Accounts
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={openCreate}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Fixed Search Bar */}
+                    <div className="p-3 border-b bg-slate-50/50">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          ref={searchInputRef}
+                          placeholder="Filter accounts..."
+                          className="pl-8 h-9 text-xs bg-background border-slate-200 focus-visible:ring-1 focus-visible:ring-primary shadow-none"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Scrollable Account List */}
+                    <div className="flex-1 overflow-y-auto divide-y scrollbar-thin scrollbar-thumb-slate-200">
+                      {displayed.length === 0 ? (
+                        <div className="px-4 py-10 text-sm text-muted-foreground text-center">No accounts found.</div>
+                      ) : (
+                        displayed.map((account) => (
+                          <button
+                            key={account._id}
+                            className={`w-full border-l-4 px-4 py-3 text-left transition-colors hover:bg-muted/30 ${selectedAccountId === account._id ? "border-l-primary bg-primary/5" : "border-l-transparent"}`}
+                            onClick={() => openDetails(account)}
                           >
-                            <span className="flex items-center gap-1">
-                              {col.label}
-                              {col.id === "accountType" && (
-                                <ChevronsUpDown className="h-3 w-3 text-muted-foreground/60" />
-                              )}
-                            </span>
+                            <div className="flex justify-between items-start gap-2">
+                              <p className={`text-sm font-semibold truncate ${selectedAccountId === account._id ? "text-primary" : "text-foreground"}`}>
+                                {account.name}
+                              </p>
+                              {account.code && <span className="text-[10px] bg-muted px-1 rounded text-muted-foreground shrink-0">{account.code}</span>}
+                            </div>
+                            <p className="mt-1 text-[11px] text-muted-foreground uppercase tracking-tight">{account.accountType}</p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    {/* Side-panel Footer */}
+                    <div className="px-4 py-2 border-t bg-slate-50/50">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Total: {displayed.length} Accounts
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-auto scrollbar-thin">
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
+                        <tr className="border-b">
+                          {/* Column-header dropdown trigger */}
+                          <th className="w-9 px-3 py-2.5">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button className="p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors">
+                                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-52">
+                                <DropdownMenuItem onClick={() => setCustomizeOpen(true)}>
+                                  <SlidersHorizontal className="h-4 w-4 mr-2 text-primary" />
+                                  Customize Columns
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setWrapText((w) => !w)}>
+                                  <WrapText className="h-4 w-4 mr-2" />
+                                  {wrapText ? "No Wrap" : "Wrap Text"}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </th>
-                        ))}
+
+                          {visibleColumns.map((col) => {
+                            const isSortable = ["name", "code", "accountType", "parentAccount"].includes(col.id);
+                            if (isSortable) {
+                              const field = col.id as SortField;
+                              const isSorted = sortField === field;
+                              return (
+                                <th
+                                  key={col.id}
+                                  className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer select-none"
+                                  onClick={() => toggleSort(field)}
+                                >
+                                  <button className="group flex items-center gap-1 hover:text-teal-700">
+                                    {col.label}
+                                    <span className={isSorted ? "text-teal-700 font-bold text-[10px]" : "text-slate-300 group-hover:text-slate-500 text-[10px]"}>
+                                      {isSorted ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}
+                                    </span>
+                                  </button>
+                                </th>
+                              );
+                            }
+                            return (
+                              <th
+                                key={col.id}
+                                className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide"
+                              >
+                                {col.label}
+                              </th>
+                            );
+                          })}
 
                         {/* Search icon in header */}
-                        <th className="w-12 px-2 py-2.5 text-right">
-                          <button className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors">
+                        {/* <th className="w-12 px-2 py-2.5 text-right">
+                          <button
+                            type="button"
+                            className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+                            onClick={() => searchInputRef.current?.focus()}
+                            aria-label="Focus account search"
+                          >
                             <Search className="h-3.5 w-3.5" />
                           </button>
-                        </th>
+                        </th> */}
                       </tr>
                     </thead>
                     <tbody>
@@ -1078,6 +1262,7 @@ export default function ChartOfAccountsPage() {
                 </SheetContent>
               </Sheet>
             </div>
+          </div>
           )}
         </div>
 
