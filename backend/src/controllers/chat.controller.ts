@@ -17,7 +17,7 @@
  * No cross-org data leakage is possible.
  */
 
-import { Response } from "express";
+import { Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
 import { Types } from "mongoose";
 import { getKBChunkModel, getChatbotConnection } from "../models/kb-chunk.model";
@@ -1248,3 +1248,88 @@ export const handleChat = asyncHandler(
     }
   }
 );
+
+export const getAvailableModels = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const defaultGemini = process.env.CHATBOT_GEMINI_MODEL || process.env.CHATBOT_LLM_MODEL || "gemini-3.5-flash";
+    const defaultGroq = process.env.CHATBOT_GROQ_MODEL || "openai/gpt-oss-120b";
+
+    const models = [
+      {
+        id: defaultGemini,
+        name: defaultGemini === "gemini-3.5-flash" ? "Gemini 3.5 Flash" : defaultGemini,
+        provider: "gemini",
+        description: "Google Next-Gen Multimodal AI",
+        badge: "Default",
+        isDefault: true,
+      },
+      {
+        id: "gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        provider: "gemini",
+        description: "Fast reasoning & balanced accuracy",
+        badge: "Balanced",
+      },
+      {
+        id: "gemini-2.0-flash",
+        name: "Gemini 2.0 Flash",
+        provider: "gemini",
+        description: "Ultra-fast low latency processing",
+        badge: "Ultra Fast",
+      },
+      {
+        id: "gemini-2.0-flash-lite",
+        name: "Gemini 2.0 Flash Lite",
+        provider: "gemini",
+        description: "Lightweight efficient processing",
+        badge: "Lite",
+      },
+      {
+        id: defaultGroq,
+        name: defaultGroq === "openai/gpt-oss-120b" ? "Groq • GPT-OSS 120B" : defaultGroq,
+        provider: "groq",
+        description: "High-reasoning open weights LLM",
+        badge: "Groq Speed",
+        isDefault: true,
+      },
+      {
+        id: "llama-3.3-70b-versatile",
+        name: "Groq • Llama 3.3 70B",
+        provider: "groq",
+        description: "Meta AI 70B high capability model",
+        badge: "Meta AI",
+      },
+      {
+        id: "llama-3.1-70b-versatile",
+        name: "Groq • Llama 3.1 70B",
+        provider: "groq",
+        description: "Versatile reasoning & code generation",
+        badge: "70B Versatile",
+      },
+      {
+        id: "llama-3.1-8b-instant",
+        name: "Groq • Llama 3.1 8B Instant",
+        provider: "groq",
+        description: "Sub-second instant responses",
+        badge: "Instant",
+      },
+    ];
+
+    const uniqueModelsMap = new Map<string, typeof models[0]>();
+    for (const m of models) {
+      if (!uniqueModelsMap.has(m.id)) {
+        uniqueModelsMap.set(m.id, m);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        activeProvider: "gemini",
+        activeModel: defaultGemini,
+        models: Array.from(uniqueModelsMap.values()),
+      },
+    });
+  }
+);
+

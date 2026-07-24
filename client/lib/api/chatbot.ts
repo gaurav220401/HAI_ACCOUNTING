@@ -2,6 +2,15 @@ import { apiFetch } from "../api";
 
 export type ChatModelProvider = "gemini" | "groq";
 
+export interface ChatModelOption {
+  id: string;
+  name: string;
+  provider: ChatModelProvider;
+  description: string;
+  badge?: string;
+  isDefault?: boolean;
+}
+
 export interface ChatNavigationAction {
   label: string;
   url: string;
@@ -36,11 +45,12 @@ export interface ChatResponse {
 export async function sendChatMessage(
   question: string,
   sessionId?: string,
-  provider?: ChatModelProvider
+  provider?: ChatModelProvider,
+  model?: string
 ): Promise<ChatResponse> {
   const res = await apiFetch("/chat", {
     method: "POST",
-    body: JSON.stringify({ question, sessionId, provider }),
+    body: JSON.stringify({ question, sessionId, provider, model }),
   });
 
   const data = await res.json();
@@ -54,4 +64,25 @@ export async function sendChatMessage(
 
   return data;
 }
+
+export interface ChatModelsResponse {
+  success: boolean;
+  data?: {
+    activeProvider: ChatModelProvider;
+    activeModel: string;
+    models: ChatModelOption[];
+  };
+  message?: string;
+}
+
+/**
+ * Fetch available chat models from the backend.
+ */
+export async function getChatModels(): Promise<ChatModelsResponse> {
+  const res = await apiFetch("/chat/models");
+  const data = await res.json();
+  return data;
+}
+
+
 

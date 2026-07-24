@@ -1,9 +1,12 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { authenticate } from "../middlewares/auth";
-import { handleChat } from "../controllers/chat.controller";
+import { handleChat, getAvailableModels } from "../controllers/chat.controller";
 
 const router = Router();
+
+// GET /api/chat/models — List available chat models
+router.get("/models", authenticate, getAvailableModels as any);
 
 // Stricter rate limit for chat endpoint — 20 requests per minute per user
 const chatRateLimit = rateLimit({

@@ -21,10 +21,20 @@ import {
   FileText,
   PackagePlus,
   Receipt,
+  ChevronDown,
+  Check,
+  Cpu,
 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendChatMessage, type ChatMessage, type ChatNavigationAction, type ChatModelProvider } from "@/lib/api/chatbot";
+import {
+  sendChatMessage,
+  getChatModels,
+  type ChatMessage,
+  type ChatNavigationAction,
+  type ChatModelProvider,
+  type ChatModelOption,
+} from "@/lib/api/chatbot";
 import type { AgentExecutionStep, AgentMessage, AgentToolStep } from "@/lib/api/agent";
 import { dispatchAgentAutofill } from "@/hooks/use-agent-autofill";
 import { cn } from "@/lib/utils";
@@ -58,6 +68,67 @@ const STARTER_TASKS = [
     icon: PackagePlus,
     label: "How do I add an item?",
     prompt: "How do I add a new inventory item 'Mechanical Keyboard' with SKU 'KB-MK01', selling price ₹2,499, and initial stock of 15 units?",
+  },
+];
+
+const DEFAULT_MODEL_OPTIONS: ChatModelOption[] = [
+  {
+    id: "gemini-3.5-flash",
+    name: "Gemini 3.5 Flash",
+    provider: "gemini",
+    description: "Google Next-Gen Multimodal AI",
+    badge: "Recommended",
+    isDefault: true,
+  },
+  {
+    id: "gemini-2.5-flash",
+    name: "Gemini 2.5 Flash",
+    provider: "gemini",
+    description: "Fast reasoning & low latency",
+    badge: "Balanced",
+  },
+  {
+    id: "gemini-2.0-flash",
+    name: "Gemini 2.0 Flash",
+    provider: "gemini",
+    description: "Ultra-fast lightweight generation",
+    badge: "Ultra Fast",
+  },
+  {
+    id: "gemini-2.0-flash-lite",
+    name: "Gemini 2.0 Flash Lite",
+    provider: "gemini",
+    description: "Lightweight efficient processing",
+    badge: "Lite",
+  },
+  {
+    id: "openai/gpt-oss-120b",
+    name: "Groq • GPT-OSS 120B",
+    provider: "groq",
+    description: "High-reasoning open weights LLM",
+    badge: "Groq Speed",
+    isDefault: true,
+  },
+  {
+    id: "llama-3.3-70b-versatile",
+    name: "Groq • Llama 3.3 70B",
+    provider: "groq",
+    description: "Meta AI 70B high capability model",
+    badge: "Meta AI",
+  },
+  {
+    id: "llama-3.1-70b-versatile",
+    name: "Groq • Llama 3.1 70B",
+    provider: "groq",
+    description: "Versatile reasoning & code generation",
+    badge: "70B Versatile",
+  },
+  {
+    id: "llama-3.1-8b-instant",
+    name: "Groq • Llama 3.1 8B Instant",
+    provider: "groq",
+    description: "Sub-second instant response",
+    badge: "Instant",
   },
 ];
 
@@ -480,14 +551,68 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+
+  // Model selection state
+  const [modelOptions, setModelOptions] = useState<ChatModelOption[]>(DEFAULT_MODEL_OPTIONS);
   const [selectedProvider, setSelectedProvider] = useState<ChatModelProvider>(() => {
     if (typeof window === "undefined") return "gemini";
     const savedProvider = window.localStorage.getItem("hai_chat_provider");
     return savedProvider === "groq" ? "groq" : "gemini";
   });
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    if (typeof window === "undefined") return "gemini-3.5-flash";
+    const savedModel = window.localStorage.getItem("hai_chat_model");
+    if (savedModel) return savedModel;
+    return selectedProvider === "groq" ? "openai/gpt-oss-120b" : "gemini-3.5-flash";
+  });
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch available models from backend when chat panel opens
+  useEffect(() => {
+    let isMounted = true;
+    async function loadModels() {
+      try {
+        const res = await getChatModels();
+        if (isMounted && res.success && res.data?.models?.length) {
+          setModelOptions(res.data.models);
+        }
+      } catch {
+        // Fallback to DEFAULT_MODEL_OPTIONS
+      }
+    }
+    if (isOpen) {
+      loadModels();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
+
+  // Persist provider and model preferences
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("hai_chat_provider", selectedProvider);
+    window.localStorage.setItem("hai_chat_model", selectedModel);
+  }, [selectedProvider, selectedModel]);
+
+  // Click-outside listener for model dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    if (isModelDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isModelDropdownOpen]);
 
   // Simulate initialization complete
   useEffect(() => {
@@ -509,10 +634,26 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
     }
   }, [isOpen, isInitializing]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("hai_chat_provider", selectedProvider);
-  }, [selectedProvider]);
+  const handleSelectModel = (option: ChatModelOption) => {
+    setSelectedProvider(option.provider);
+    setSelectedModel(option.id);
+    setIsModelDropdownOpen(false);
+  };
+
+  const currentModelOption = modelOptions.find((m) => m.id === selectedModel) || {
+    id: selectedModel,
+    name: selectedModel.includes("gpt")
+      ? "Groq • GPT-OSS 120B"
+      : selectedModel.includes("llama-3.3")
+      ? "Groq • Llama 3.3 70B"
+      : selectedModel.includes("llama")
+      ? "Groq • Llama 3"
+      : selectedModel === "gemini-3.5-flash"
+      ? "Gemini 3.5 Flash"
+      : selectedModel,
+    provider: selectedProvider,
+    description: "",
+  };
 
   // Handle navigation from action buttons
   const handleNavigate = useCallback(
@@ -559,7 +700,7 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
       setIsLoading(true);
 
       try {
-        const response = await sendChatMessage(question, sessionId, selectedProvider);
+        const response = await sendChatMessage(question, sessionId, selectedProvider, selectedModel);
 
         if (response.success && response.data) {
           if (response.data.sessionId) {
@@ -596,7 +737,7 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
         setIsLoading(false);
       }
     },
-    [handleAutofill, input, isLoading, selectedProvider, sessionId]
+    [handleAutofill, input, isLoading, selectedProvider, selectedModel, sessionId]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -609,11 +750,17 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
   // Close on Escape
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) onClose();
+      if (e.key === "Escape" && isOpen) {
+        if (isModelDropdownOpen) {
+          setIsModelDropdownOpen(false);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [isOpen, onClose]);
+  }, [isOpen, isModelDropdownOpen, onClose]);
 
   return (
     <>
@@ -633,32 +780,192 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
         )}
       >
         {/* ── Header ── */}
-        <div className="flex h-14 shrink-0 items-center justify-between bg-linear-to-r from-teal-600 to-teal-700 px-4">
+        <div className="relative flex h-14 shrink-0 items-center justify-between bg-linear-to-r from-teal-600 to-teal-700 px-4 shadow-xs z-30">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 backdrop-blur-sm">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 backdrop-blur-sm shadow-inner">
               <Bot className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Nemo</h2>
+              <h2 className="text-sm font-semibold text-white tracking-wide">Nemo</h2>
               <div className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-                <span className="text-[10px] text-teal-100">Online</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 animate-pulse" />
+                <span className="text-[10px] text-teal-100 font-medium">Online</span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1 rounded-md border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-sm">
-              <span className="uppercase tracking-wide text-white/70">Model</span>
-              <select
-                value={selectedProvider}
-                onChange={(e) => setSelectedProvider(e.target.value as ChatModelProvider)}
-                className="bg-transparent text-[10px] font-semibold text-white outline-none"
-                aria-label="Select chat model provider"
-              >
-                <option value="gemini" className="text-slate-900">Gemini</option>
-                <option value="groq" className="text-slate-900">Groq</option>
-              </select>
-            </label>
+
+          <div className="flex items-center gap-2" ref={modelDropdownRef}>
+            {/* Modern Glassmorphic Model Selector Button */}
+            <button
+              type="button"
+              onClick={() => setIsModelDropdownOpen((prev) => !prev)}
+              className={cn(
+                "group flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-2.5 py-1 text-xs font-semibold text-white shadow-xs backdrop-blur-md transition-all duration-200 hover:bg-white/20 hover:border-white/30 cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/40",
+                isModelDropdownOpen && "bg-white/25 border-white/40 ring-2 ring-white/30"
+              )}
+              title="Select AI Model"
+              aria-expanded={isModelDropdownOpen}
+            >
+              {currentModelOption.provider === "gemini" ? (
+                <Sparkles className="h-3.5 w-3.5 text-amber-300 animate-pulse shrink-0" />
+              ) : (
+                <Zap className="h-3.5 w-3.5 text-cyan-300 shrink-0" />
+              )}
+              <span className="max-w-[130px] truncate text-[11px] font-semibold tracking-tight">
+                {currentModelOption.name}
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 text-white/70 transition-transform duration-200 shrink-0 group-hover:text-white",
+                  isModelDropdownOpen && "rotate-180 text-white"
+                )}
+              />
+            </button>
+
+            {/* Modern Model Selector Dropdown Menu */}
+            {isModelDropdownOpen && (
+              <div className="absolute right-3 top-12.5 z-50 w-80 origin-top-right rounded-2xl border border-slate-700/80 bg-slate-900/95 p-2.5 shadow-2xl backdrop-blur-xl transition-all animate-in fade-in zoom-in-95 duration-150 text-slate-100">
+                <div className="flex items-center justify-between border-b border-slate-800 px-2 pb-2 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Cpu className="h-3.5 w-3.5 text-teal-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                      Select AI Model
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {modelOptions.length} available
+                  </span>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto space-y-3 pr-0.5 custom-scrollbar">
+                  {/* Google Gemini */}
+                  <div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-400/90">
+                      <Sparkles className="h-3 w-3" />
+                      Google Gemini
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      {modelOptions
+                        .filter((m) => m.provider === "gemini")
+                        .map((option) => {
+                          const isSelected = selectedModel === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => handleSelectModel(option)}
+                              className={cn(
+                                "w-full text-left rounded-xl p-2 transition-all flex items-center justify-between cursor-pointer border",
+                                isSelected
+                                  ? "bg-teal-500/15 border-teal-500/40 text-white shadow-xs"
+                                  : "border-transparent text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                              )}
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-semibold tracking-tight text-white truncate">
+                                    {option.name}
+                                  </span>
+                                  {option.badge && (
+                                    <span
+                                      className={cn(
+                                        "text-[9px] px-1.5 py-0.2 rounded-md font-medium shrink-0",
+                                        isSelected
+                                          ? "bg-teal-500/30 text-teal-200 border border-teal-500/40"
+                                          : "bg-slate-800 text-slate-400 border border-slate-700"
+                                      )}
+                                    >
+                                      {option.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-400 truncate mt-0.5">
+                                  {option.id}
+                                </div>
+                                {option.description && (
+                                  <div className="text-[10px] text-slate-400/80 truncate mt-0.5 font-normal">
+                                    {option.description}
+                                  </div>
+                                )}
+                              </div>
+                              {isSelected && (
+                                <Check className="h-4 w-4 text-teal-400 shrink-0 ml-1" />
+                              )}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {/* Groq */}
+                  <div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-400/90">
+                      <Zap className="h-3 w-3" />
+                      Groq Acceleration
+                    </div>
+                    <div className="mt-1 space-y-1">
+                      {modelOptions
+                        .filter((m) => m.provider === "groq")
+                        .map((option) => {
+                          const isSelected = selectedModel === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => handleSelectModel(option)}
+                              className={cn(
+                                "w-full text-left rounded-xl p-2 transition-all flex items-center justify-between cursor-pointer border",
+                                isSelected
+                                  ? "bg-cyan-500/15 border-cyan-500/40 text-white shadow-xs"
+                                  : "border-transparent text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                              )}
+                            >
+                              <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-semibold tracking-tight text-white truncate">
+                                    {option.name}
+                                  </span>
+                                  {option.badge && (
+                                    <span
+                                      className={cn(
+                                        "text-[9px] px-1.5 py-0.2 rounded-md font-medium shrink-0",
+                                        isSelected
+                                          ? "bg-cyan-500/30 text-cyan-200 border border-cyan-500/40"
+                                          : "bg-slate-800 text-slate-400 border border-slate-700"
+                                      )}
+                                    >
+                                      {option.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-400 truncate mt-0.5">
+                                  {option.id}
+                                </div>
+                                {option.description && (
+                                  <div className="text-[10px] text-slate-400/80 truncate mt-0.5 font-normal">
+                                    {option.description}
+                                  </div>
+                                )}
+                              </div>
+                              {isSelected && (
+                                <Check className="h-4 w-4 text-cyan-400 shrink-0 ml-1" />
+                              )}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2.5 border-t border-slate-800 pt-2 px-1 flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Selected Engine</span>
+                  <span className="font-mono text-teal-300 font-semibold truncate max-w-[160px]">
+                    {selectedModel}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={onClose}
