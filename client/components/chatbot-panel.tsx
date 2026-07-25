@@ -76,7 +76,7 @@ const DEFAULT_MODEL_OPTIONS: ChatModelOption[] = [
     id: "gemini-3.5-flash",
     name: "Gemini 3.5 Flash",
     provider: "gemini",
-    description: "Google Next-Gen Multimodal AI",
+    description: "",
     badge: "Recommended",
     isDefault: true,
   },
@@ -84,51 +84,51 @@ const DEFAULT_MODEL_OPTIONS: ChatModelOption[] = [
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
     provider: "gemini",
-    description: "Fast reasoning & low latency",
-    badge: "Balanced",
+    description: "",
+    badge: "",
   },
   {
     id: "gemini-2.0-flash",
     name: "Gemini 2.0 Flash",
     provider: "gemini",
-    description: "Ultra-fast lightweight generation",
-    badge: "Ultra Fast",
+    description: "",
+    badge: "",
   },
   {
     id: "gemini-2.0-flash-lite",
     name: "Gemini 2.0 Flash Lite",
     provider: "gemini",
-    description: "Lightweight efficient processing",
-    badge: "Lite",
+    description: "",
+    badge: "",
   },
   {
     id: "openai/gpt-oss-120b",
-    name: "Groq • GPT-OSS 120B",
+    name: "GPT-OSS 120B",
     provider: "groq",
-    description: "High-reasoning open weights LLM",
-    badge: "Groq Speed",
+    description: "",
+    badge: "",
     isDefault: true,
   },
   {
     id: "llama-3.3-70b-versatile",
-    name: "Groq • Llama 3.3 70B",
+    name: "Llama 3.3 70B",
     provider: "groq",
-    description: "Meta AI 70B high capability model",
-    badge: "Meta AI",
+    description: "",
+    badge: "",
   },
   {
     id: "llama-3.1-70b-versatile",
-    name: "Groq • Llama 3.1 70B",
+    name: "Llama 3.1 70B",
     provider: "groq",
-    description: "Versatile reasoning & code generation",
-    badge: "70B Versatile",
+    description: "",
+    badge: "",
   },
   {
     id: "llama-3.1-8b-instant",
-    name: "Groq • Llama 3.1 8B Instant",
+    name: "Llama 3.1 8B Instant",
     provider: "groq",
-    description: "Sub-second instant response",
-    badge: "Instant",
+    description: "",
+    badge: "",
   },
 ];
 
@@ -344,7 +344,7 @@ function MessageBubble({
             <p>{message.content}</p>
           ) : (
             <div className="prose-chatbot prose prose-sm max-w-none">
-              <ReactMarkdown 
+              <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
                   strong: ({ node, ...props }) => {
@@ -645,12 +645,12 @@ export function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
     name: selectedModel.includes("gpt")
       ? "Groq • GPT-OSS 120B"
       : selectedModel.includes("llama-3.3")
-      ? "Groq • Llama 3.3 70B"
-      : selectedModel.includes("llama")
-      ? "Groq • Llama 3"
-      : selectedModel === "gemini-3.5-flash"
-      ? "Gemini 3.5 Flash"
-      : selectedModel,
+        ? "Groq • Llama 3.3 70B"
+        : selectedModel.includes("llama")
+          ? "Groq • Llama 3"
+          : selectedModel === "gemini-3.5-flash"
+            ? "Gemini 3.5 Flash"
+            : selectedModel,
     provider: selectedProvider,
     description: "",
   };
