@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
@@ -163,6 +164,7 @@ function getPreviewKind(
 }
 
 export default function DocumentsPage() {
+  const router = useRouter();
   const { loading: authLoading, dbUser } = useAuth();
   const { loading: orgLoading, activeOrganization } = useOrganization();
 
@@ -541,29 +543,16 @@ export default function DocumentsPage() {
     }
   };
 
-  const onAddToBank = async () => {
+  // Posting a statement requires choosing which bank account it belongs to and
+  // categorising each line, so both entry points hand off to the Banking review
+  // screen rather than posting blindly.
+  const onAddToBank = () => {
     if (!selectedDocument) return;
-    try {
-      const res = await documentsApi.addToBank(selectedDocument._id);
-      const count = res.data.journalsCreated || 0;
-      toast.success(`${count} journal entries created`);
-      await loadData();
-    } catch (error) {
-      console.error(error);
-      toast.error("Add to bank failed");
-    }
+    router.push(`/banking?document=${selectedDocument._id}`);
   };
 
-  const onAddToBankById = async (documentId: string) => {
-    try {
-      const res = await documentsApi.addToBank(documentId);
-      const count = res.data.journalsCreated || 0;
-      toast.success(`${count} journal entries created`);
-      await loadData();
-    } catch (error) {
-      console.error(error);
-      toast.error("Add to bank failed");
-    }
+  const onAddToBankById = (documentId: string) => {
+    router.push(`/banking?document=${documentId}`);
   };
 
   const onReprocess = async (pdfPassword?: string) => {

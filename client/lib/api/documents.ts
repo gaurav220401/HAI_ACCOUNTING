@@ -189,14 +189,35 @@ export const documentsApi = {
       body: JSON.stringify(payload),
     }),
 
-  addToBank: (documentId: string, transactionIds?: string[]) =>
-    apiFetch<{ data: { journalsCreated: number; message?: string } }>(
-      `/documents/${documentId}/add-to-bank`,
-      {
-        method: "POST",
-        body: JSON.stringify({ transactionIds }),
-      },
-    ),
+  addToBank: (
+    documentId: string,
+    payload: {
+      bankAccountId: string;
+      /** Per-line category choice. Omitted accountId posts the line to suspense. */
+      lines: Array<{ transactionId: string; accountId?: string | null }>;
+    },
+  ) =>
+    apiFetch<{
+      data: {
+        journalsCreated: number;
+        posted: Array<{
+          transactionId: string;
+          journalNumber: string;
+          amount: number;
+          direction: "in" | "out";
+        }>;
+        skipped: Array<{
+          transactionId: string;
+          reason: "duplicate" | "zero_amount" | "invalid_account";
+          message: string;
+        }>;
+        bankAccount?: { _id: string; name: string };
+        message?: string;
+      };
+    }>(`/documents/${documentId}/add-to-bank`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   getEventsUrl: (token: string) => `${API_BASE}/documents/events?token=${encodeURIComponent(token)}`,
 };

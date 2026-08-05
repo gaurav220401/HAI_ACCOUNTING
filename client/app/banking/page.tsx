@@ -1,53 +1,345 @@
 "use client";
-import Link from "next/link";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
-  CreditCard,
-  Shield,
-  Cpu,
-  Sparkles,
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
   CheckCircle2,
-  ArrowRight,
-  Send,
-  Building,
-  RefreshCw,
-  TrendingUp,
+  FileUp,
+  Info,
+  Landmark,
   Loader2,
-  Lock,
-  Zap,
-  Check,  FileUp} from "lucide-react";
+  RefreshCw,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useOrganization } from "@/contexts/organization-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { documentsApi, type DocumentItem } from "@/lib/api/documents";
+import { accountApi, type Account } from "@/lib/api/accounts";
 
-export default function BankingPage() {
+/** Suspense account name — mirrors BANK_SUSPENSE_ACCOUNT_NAME on the backend. */
+const SUSPENSE_LABEL = "Uncategorised (review later)";
+
+const POLL_INTERVAL_MS = 3000;
+
+type RowSelection = {
+  selected: boolean;
+  accountId: string | null;
+};
+
+function formatAmount(value: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(value || 0));
+}
+
+function formatDate(value?: string): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * useSearchParams requires a Suspense boundary in the App Router, so the page
+ * body lives in its own component (see the default export at the bottom).
+ */
+function BankingPageContent() {
   const router = useRouter();
-  const { firebaseUser, dbUser, loading } = useAuth();
+  const searchParams = useSearchParams();
+  const { firebaseUser, loading } = useAuth();
   const { needsOrgSetup, loading: orgLoading } = useOrganization();
 
-  // Notification States
-  const [email, setEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [bankAccounts, setBankAccounts] = useState<Account[]>([]);
+  const [categoryAccounts, setCategoryAccounts] = useState<Account[]>([]);
+  const [bankAccountId, setBankAccountId] = useState<string>("");
 
-  // Reconciliation Simulator States
-  const [simStatus, setSimStatus] = useState<"idle" | "matching" | "success">("idle");
+  const [statements, setStatements] = useState<DocumentItem[]>([]);
+  const [activeDoc, setActiveDoc] = useState<DocumentItem | null>(null);
+  const [rows, setRows] = useState<Record<string, RowSelection>>({});
+
+  const [loadingData, setLoadingData] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [posting, setPosting] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const preselectedDocId = searchParams.get("document");
 
   useEffect(() => {
     if (!loading && !firebaseUser) router.push("/login");
   }, [loading, firebaseUser, router]);
 
   useEffect(() => {
-    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) router.push("/org-setup");
+    if (!loading && !orgLoading && firebaseUser && needsOrgSetup) {
+      router.push("/org-setup");
+    }
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
+
+  // ─── Data loading ─────────────────────────────────────────────────────
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      const [banks, categories] = await Promise.all([
+        accountApi.list({ accountType: "Bank,Credit Card", excludeGroups: true }),
+        accountApi.list({ rootType: "Expense,Income", excludeGroups: true }),
+      ]);
+      setBankAccounts(banks.data || []);
+      setCategoryAccounts(categories.data || []);
+      if (!bankAccountId && (banks.data || []).length === 1) {
+        setBankAccountId(banks.data[0]._id);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not load your accounts");
+    }
+  }, [bankAccountId]);
+
+  const loadStatements = useCallback(async () => {
+    try {
+      const res = await documentsApi.list({ inbox: "bank_statements", limit: 50 });
+      const items = res.data || [];
+      setStatements(items);
+      return items;
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not load statements");
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingData(true);
+      await loadAccounts();
+      const items = await loadStatements();
+      if (cancelled) return;
+
+      const preselected = preselectedDocId
+        ? items.find((doc) => doc._id === preselectedDocId)
+        : null;
+      if (preselected) setActiveDoc(preselected);
+
+      setLoadingData(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll while anything is still being read by the extractor.
+  useEffect(() => {
+    const anyProcessing = statements.some(
+      (doc) =>
+        doc.processingStatus === "PROCESSING" ||
+        doc.processingStatus === "SCAN_IN_PROGRESS",
+    );
+
+    if (!anyProcessing) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+
+    if (pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      const items = await loadStatements();
+      setActiveDoc((current) => {
+        if (!current) return current;
+        return items.find((doc) => doc._id === current._id) || current;
+      });
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [statements, loadStatements]);
+
+  // Reset row state whenever a different statement is opened.
+  useEffect(() => {
+    if (!activeDoc) {
+      setRows({});
+      return;
+    }
+    const next: Record<string, RowSelection> = {};
+    for (const txn of activeDoc.bankTransactions || []) {
+      if (!txn._id || txn.addedToBank) continue;
+      next[txn._id] = { selected: true, accountId: null };
+    }
+    setRows(next);
+  }, [activeDoc]);
+
+  // ─── Actions ──────────────────────────────────────────────────────────
+
+  const onUpload = async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await documentsApi.upload(file, {
+        source: "manual",
+        inboxType: "bank_statements",
+        processingMode: "advanced",
+      });
+      toast.success("Statement uploaded — reading transactions…");
+      const items = await loadStatements();
+      const created = items.find((doc) => doc._id === res.data._id) || res.data;
+      setActiveDoc(created);
+    } catch (error) {
+      console.error(error);
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const onReprocess = async () => {
+    if (!activeDoc) return;
+    try {
+      await documentsApi.reprocess(activeDoc._id);
+      toast.success("Re-reading statement…");
+      await loadStatements();
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not re-read this statement");
+    }
+  };
+
+  const onPost = async () => {
+    if (!activeDoc) return;
+    if (!bankAccountId) {
+      toast.error("Choose which bank account this statement belongs to");
+      return;
+    }
+
+    const lines = Object.entries(rows)
+      .filter(([, row]) => row.selected)
+      .map(([transactionId, row]) => ({ transactionId, accountId: row.accountId }));
+
+    if (lines.length === 0) {
+      toast.error("Select at least one transaction to post");
+      return;
+    }
+
+    setPosting(true);
+    try {
+      const res = await documentsApi.addToBank(activeDoc._id, {
+        bankAccountId,
+        lines,
+      });
+
+      const { journalsCreated, skipped } = res.data;
+      const duplicates = (skipped || []).filter((s) => s.reason === "duplicate").length;
+
+      if (journalsCreated > 0) {
+        toast.success(
+          `${journalsCreated} transaction${journalsCreated === 1 ? "" : "s"} posted to your books`,
+        );
+      }
+      if (duplicates > 0) {
+        toast.info(
+          `${duplicates} transaction${duplicates === 1 ? " was" : "s were"} already imported and skipped`,
+        );
+      }
+      if (journalsCreated === 0 && duplicates === 0) {
+        toast.info("Nothing was posted");
+      }
+
+      const items = await loadStatements();
+      setActiveDoc(items.find((doc) => doc._id === activeDoc._id) || null);
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error ? error.message : "Could not post these transactions";
+      toast.error(message);
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  // ─── Derived ──────────────────────────────────────────────────────────
+
+  const pendingTxns = useMemo(
+    () => (activeDoc?.bankTransactions || []).filter((t) => !t.addedToBank && t._id),
+    [activeDoc],
+  );
+
+  const postedTxns = useMemo(
+    () => (activeDoc?.bankTransactions || []).filter((t) => t.addedToBank),
+    [activeDoc],
+  );
+
+  const selectedCount = useMemo(
+    () => Object.values(rows).filter((r) => r.selected).length,
+    [rows],
+  );
+
+  const uncategorisedCount = useMemo(
+    () => Object.values(rows).filter((r) => r.selected && !r.accountId).length,
+    [rows],
+  );
+
+  const allSelected = pendingTxns.length > 0 && selectedCount === pendingTxns.length;
+
+  const toggleAll = (checked: boolean) => {
+    setRows((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        next[key] = { ...next[key], selected: checked };
+      }
+      return next;
+    });
+  };
+
+  const isProcessing =
+    activeDoc?.processingStatus === "PROCESSING" ||
+    activeDoc?.processingStatus === "SCAN_IN_PROGRESS";
 
   if (loading || orgLoading || !firebaseUser || (firebaseUser && needsOrgSetup)) {
     return (
@@ -57,32 +349,6 @@ export default function BankingPage() {
     );
   }
 
-  const handleNotifyMe = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !email.includes("@")) {
-      toast.error("Please enter a valid email address");
-      return;
-    }
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setIsSubscribed(true);
-      toast.success("Spot reserved successfully!");
-    }, 1200);
-  };
-
-  const startReconciliationSimulation = () => {
-    setSimStatus("matching");
-    setTimeout(() => {
-      setSimStatus("success");
-      toast.success("AI auto-matched and reconciled successfully!");
-    }, 2000);
-  };
-
-  const resetSimulation = () => {
-    setSimStatus("idle");
-  };
-
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -91,285 +357,399 @@ export default function BankingPage() {
           breadcrumb={<span className="text-sm font-medium">Banking</span>}
           actions={
             <Link href="/batch-import?section=banking&type=Bank Statements&back=/banking">
-              <Button variant="outline" size="sm" className="flex items-center gap-1.5 h-8 text-xs border-slate-300 text-slate-700 hover:text-slate-900 bg-white">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1.5 h-8 text-xs"
+              >
                 <FileUp className="h-3.5 w-3.5" /> Batch Import
               </Button>
             </Link>
           }
         />
 
-        <div className="flex flex-1 flex-col gap-6 p-6 bg-slate-50/50 dark:bg-slate-950/40">
-          
-          {/* Header Section */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-8 text-white shadow-xl border border-indigo-900/30">
-            <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
-            <div className="absolute left-1/3 bottom-0 h-40 w-40 rounded-full bg-cyan-500/10 blur-3xl" />
-            
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="max-w-2xl space-y-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-300 border border-indigo-500/30 animate-pulse">
-                  <Sparkles className="h-3 w-3" /> Coming Soon
-                </span>
-                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
-                  Automated Bank Feed & Smart Reconciliation
-                </h1>
-                <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-                  Connect your business accounts directly to HAI Accounting. Fetch real-time feeds, auto-categorize expenses, issue smart virtual cards, and reconcile financial statements in seconds.
-                </p>
-              </div>
-
-              {/* VIP Beta Access Sign Up */}
-              <div className="w-full md:w-auto shrink-0 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-5 md:max-w-xs">
-                {isSubscribed ? (
-                  <div className="text-center space-y-2 py-2">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      <Check className="h-5 w-5" />
-                    </div>
-                    <h3 className="font-semibold text-sm">VIP Spot Reserved!</h3>
-                    <p className="text-xs text-slate-400">
-                      We've queued {email} for early beta access keys.
-                    </p>
-                  </div>
-                ) : (
-                  <form onSubmit={handleNotifyMe} className="space-y-3">
-                    <div>
-                      <h3 className="font-semibold text-sm text-slate-100">Join the VIP Beta List</h3>
-                      <p className="text-xs text-slate-400">Be first to test real-time banking integrations.</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Input
-                        type="email"
-                        placeholder="business@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="h-9 bg-slate-950/60 border-slate-800 text-white text-xs placeholder:text-slate-500 focus-visible:ring-indigo-500"
-                        disabled={isSubmitting}
-                      />
-                      <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white h-9 px-3 shrink-0" disabled={isSubmitting}>
-                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                      </Button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Features Grid and Holographic Virtual Card */}
-          <div className="grid gap-6 md:grid-cols-3">
-            
-            {/* Left side: Premium Virtual Card Visualization */}
-            <div className="flex flex-col items-center justify-center rounded-xl bg-gradient-to-b from-slate-900 to-indigo-950 p-6 shadow-md border border-indigo-900/20 md:col-span-1 relative overflow-hidden min-h-[320px] group">
-              <div className="absolute top-0 right-0 h-40 w-40 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all duration-500" />
-              
-              {/* Virtual Holographic Card container */}
-              <div className="w-full max-w-[280px] aspect-[1.586/1] rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-600 to-cyan-500 p-5 shadow-2xl flex flex-col justify-between text-white relative overflow-hidden border border-white/20 transform hover:-translate-y-2 hover:rotate-2 hover:shadow-cyan-500/10 transition-all duration-300">
-                {/* Holographic light layer overlay */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/20 pointer-events-none" />
-                
-                {/* Card Top */}
-                <div className="flex justify-between items-start z-10">
-                  <div className="space-y-1">
-                    <span className="text-[10px] tracking-widest text-indigo-100/80 font-bold uppercase">HAI VIRTUAL</span>
-                    <h2 className="text-sm font-black tracking-wider">PLATINUM</h2>
-                  </div>
-                  <div className="h-7 w-9 bg-yellow-400/80 rounded-md border border-yellow-300/40 relative overflow-hidden shadow-inner flex items-center justify-center">
-                    {/* Golden chip lines */}
-                    <div className="absolute inset-x-0 top-1/2 h-px bg-yellow-800/40" />
-                    <div className="absolute inset-y-0 left-1/2 w-px bg-yellow-800/40" />
-                  </div>
-                </div>
-
-                {/* Card Middle */}
-                <div className="z-10 py-1">
-                  <span className="text-xs text-indigo-100/70 font-mono">Card Number</span>
-                  <div className="text-base font-bold tracking-widest font-mono select-all">••••  ••••  ••••  4290</div>
-                </div>
-
-                {/* Card Bottom */}
-                <div className="flex justify-between items-end z-10">
-                  <div>
-                    <span className="text-[9px] text-indigo-100/60 uppercase block">Cardholder</span>
-                    <span className="text-xs font-semibold tracking-wide uppercase">{dbUser?.name || "VALUED MEMBER"}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[9px] text-indigo-100/60 uppercase block">Expires</span>
-                    <span className="text-xs font-semibold tracking-wide font-mono">08/30</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card Meta Stats below the card */}
-              <div className="w-full mt-6 space-y-2 text-center relative z-10">
-                <span className="text-xs text-indigo-300/80 font-medium">Virtual Card Issuing & Expense Controls</span>
-                <div className="flex justify-center gap-4 text-slate-400 text-xs">
-                  <span className="flex items-center gap-1"><Lock className="h-3.5 w-3.5 text-indigo-400" /> Instant Lock</span>
-                  <span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5 text-indigo-400" /> Spend Limits</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right side: 4 Key Feature Cards Grid */}
-            <div className="md:col-span-2 grid gap-4 sm:grid-cols-2">
-              
-              {/* Feature 1 */}
-              <Card className="hover:shadow-md transition-all duration-300 group hover:border-indigo-200">
-                <CardHeader className="pb-2">
-                  <div className="h-9 w-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-all duration-300">
-                    <Building className="h-4 w-4" />
-                  </div>
-                  <CardTitle className="text-base">10,000+ Banks Supported</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                    Direct integration with major private and public sector banks including SBI, ICICI, HDFC, Axis, and global services via highly secure financial APIs.
-                  </CardDescription>
-                </CardContent>
-              </Card>
-
-              {/* Feature 2 */}
-              <Card className="hover:shadow-md transition-all duration-300 group hover:border-indigo-200">
-                <CardHeader className="pb-2">
-                  <div className="h-9 w-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-all duration-300">
-                    <Sparkles className="h-4 w-4" />
-                  </div>
-                  <CardTitle className="text-base">AI Matching Engine</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                    Our machine learning pipeline scans incoming transaction descriptions, matching them automatically with outstanding customer invoices or recurring vendor bills.
-                  </CardDescription>
-                </CardContent>
-              </Card>
-
-              {/* Feature 3 */}
-              <Card className="hover:shadow-md transition-all duration-300 group hover:border-indigo-200">
-                <CardHeader className="pb-2">
-                  <div className="h-9 w-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-all duration-300">
-                    <Shield className="h-4 w-4" />
-                  </div>
-                  <CardTitle className="text-base">Bank-Grade Security</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                    Read-only data connections encrypted with TLS 1.3, multi-factor authentication, and SOC2-compliant hosting environments to guarantee account privacy.
-                  </CardDescription>
-                </CardContent>
-              </Card>
-
-              {/* Feature 4 */}
-              <Card className="hover:shadow-md transition-all duration-300 group hover:border-indigo-200">
-                <CardHeader className="pb-2">
-                  <div className="h-9 w-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-all duration-300">
-                    <TrendingUp className="h-4 w-4" />
-                  </div>
-                  <CardTitle className="text-base">Real-time Cash Insights</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                    Interactive dashboards automatically adjust cash flow forecasts, runway counts, and liquid asset charts as soon as a transaction clears.
-                  </CardDescription>
-                </CardContent>
-              </Card>
-
-            </div>
-          </div>
-
-          {/* Interactive AI Reconciliation Simulator Panel */}
-          <Card className="border border-indigo-100 dark:border-indigo-950/60 overflow-hidden shadow-sm">
-            <CardHeader className="bg-slate-100/50 dark:bg-slate-900/30 border-b pb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Cpu className="h-5 w-5 text-indigo-600 dark:text-indigo-400" /> Interactive AI Reconciliation Simulator
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Experience firsthand how HAI will automate matching bank receipts with outstanding documents.
-                  </CardDescription>
-                </div>
-                {simStatus === "success" && (
-                  <Button variant="outline" size="sm" onClick={resetSimulation} className="text-xs gap-1.5 h-8">
-                    <RefreshCw className="h-3 w-3" /> Reset Simulator
-                  </Button>
-                )}
-              </div>
+        <div className="flex flex-1 flex-col gap-6 p-6">
+          {/* ─── Upload ─────────────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Landmark className="h-5 w-5 text-muted-foreground" />
+                Import a bank statement
+              </CardTitle>
+              <CardDescription>
+                Upload your statement as PDF, image, CSV or Excel. Transactions are read
+                automatically, then you confirm each one before it reaches your books.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-6">
-              
-              {/* Simulator Grid */}
-              <div className="grid gap-6 md:grid-cols-2.5 items-stretch">
-                
-                {/* Left Side: Simulation flow container */}
-                <div className="space-y-4 flex-1">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    
-                    {/* Bank Feed Card */}
-                    <div className="rounded-xl border p-4 bg-white dark:bg-slate-950 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500" />
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">BANK STATEMENT RECEIPT</span>
-                        <Building className="h-3.5 w-3.5 text-slate-400" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="text-xs text-slate-500">Incoming Feed</div>
-                        <div className="text-sm font-bold text-slate-800 dark:text-slate-200">ACME CORP IND PVT LTD</div>
-                        <div className="text-lg font-black text-slate-950 dark:text-white">₹1,42,500.00</div>
-                        <div className="text-[10px] text-slate-400 font-mono">REF: TXN-94827104B-AXIS</div>
-                      </div>
-                    </div>
-
-                    {/* Invoice Card */}
-                    <div className="rounded-xl border p-4 bg-white dark:bg-slate-950 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500" />
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wide">UNPAID SALES INVOICE</span>
-                        <CreditCard className="h-3.5 w-3.5 text-slate-400" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="text-xs text-slate-500">Invoice Ref</div>
-                        <div className="text-sm font-bold text-slate-800 dark:text-slate-200">Acme Corp (#INV-2026-0084)</div>
-                        <div className="text-lg font-black text-slate-950 dark:text-white">₹1,42,500.00</div>
-                        <div className="text-[10px] text-slate-400 font-mono">DUE DATE: 15-JUN-2026</div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* Connect and run matching actions */}
-                  <div className="rounded-lg bg-slate-50 dark:bg-slate-900/60 p-4 border border-dashed flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
-                      {simStatus === "idle" && "Click below to execute our intelligent invoice-to-bank-feed matching algorithm."}
-                      {simStatus === "matching" && "Scanning transactions. Matching date ranges, amounts, names, and reference codes..."}
-                      {simStatus === "success" && "Verification complete! Ledgers balanced. The invoice status has been updated to Paid."}
-                    </div>
-
-                    {simStatus === "idle" && (
-                      <Button onClick={startReconciliationSimulation} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs gap-1.5 shrink-0 h-9">
-                        <Cpu className="h-3.5 w-3.5" /> Reconcile Match <ArrowRight className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-
-                    {simStatus === "matching" && (
-                      <Button disabled className="bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400 text-xs gap-1.5 shrink-0 h-9">
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Analyzing feeds...
-                      </Button>
-                    )}
-
-                    {simStatus === "success" && (
-                      <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Fully Reconciled
-                      </div>
-                    )}
-                  </div>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,320px)_1fr] sm:items-end">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Which account is this statement for?
+                  </label>
+                  <Select value={bankAccountId} onValueChange={setBankAccountId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select bank account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bankAccounts.map((account) => (
+                        <SelectItem key={account._id} value={account._id}>
+                          {account.name}
+                          {account.accountNumber ? ` — ${account.accountNumber}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.csv,.xls,.xlsx,image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) onUpload(file);
+                    }}
+                  />
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="gap-1.5"
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    {uploading ? "Uploading…" : "Upload statement"}
+                  </Button>
+                </div>
               </div>
 
+              {bankAccounts.length === 0 && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    You don&apos;t have a bank account set up yet. Add one under{" "}
+                    <Link
+                      href="/accountant/chart-of-accounts"
+                      className="underline underline-offset-2 font-medium"
+                    >
+                      Chart of Accounts
+                    </Link>{" "}
+                    (account type &ldquo;Bank&rdquo;) before importing.
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 
+          {/* ─── Statement list ─────────────────────────────────────── */}
+          {loadingData ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,300px)_1fr]">
+              <Card className="h-fit">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Your statements</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {statements.length === 0 ? (
+                    <p className="px-6 pb-6 text-sm text-muted-foreground">
+                      No statements imported yet.
+                    </p>
+                  ) : (
+                    <ul className="divide-y">
+                      {statements.map((doc) => {
+                        const pending = (doc.bankTransactions || []).filter(
+                          (t) => !t.addedToBank,
+                        ).length;
+                        const isActive = activeDoc?._id === doc._id;
+                        return (
+                          <li key={doc._id}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveDoc(doc)}
+                              className={cn(
+                                "w-full px-6 py-3 text-left transition-colors hover:bg-muted/50",
+                                isActive && "bg-muted",
+                              )}
+                            >
+                              <p className="truncate text-sm font-medium">
+                                {doc.fileName}
+                              </p>
+                              <div className="mt-1 flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {formatDate(doc.uploadedAt)}
+                                </span>
+                                {doc.processingStatus === "PROCESSING" ||
+                                doc.processingStatus === "SCAN_IN_PROGRESS" ? (
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    Reading…
+                                  </Badge>
+                                ) : doc.processingStatus === "UNREADABLE" ? (
+                                  <Badge variant="destructive" className="text-[10px]">
+                                    Unreadable
+                                  </Badge>
+                                ) : pending > 0 ? (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {pending} to review
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    Done
+                                  </Badge>
+                                )}
+                              </div>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* ─── Review table ─────────────────────────────────────── */}
+              <Card>
+                {!activeDoc ? (
+                  <CardContent className="py-16 text-center text-sm text-muted-foreground">
+                    Select a statement to review its transactions.
+                  </CardContent>
+                ) : (
+                  <>
+                    <CardHeader className="pb-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <CardTitle className="text-base">{activeDoc.fileName}</CardTitle>
+                          <CardDescription>
+                            {isProcessing
+                              ? "Reading transactions from this statement…"
+                              : `${pendingTxns.length} to review · ${postedTxns.length} already posted`}
+                          </CardDescription>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onReprocess}
+                          disabled={isProcessing}
+                          className="gap-1.5 h-8 text-xs"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" /> Re-read
+                        </Button>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="space-y-4">
+                      {isProcessing && (
+                        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Extracting transactions…
+                        </div>
+                      )}
+
+                      {!isProcessing && activeDoc.processingStatus === "UNREADABLE" && (
+                        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                          <span>
+                            {activeDoc.extraction?.amount
+                              ? "Some fields could not be read."
+                              : "Couldn't read this file. If it's a password-protected PDF, remove the password and upload again."}
+                          </span>
+                        </div>
+                      )}
+
+                      {!isProcessing && pendingTxns.length > 0 && (
+                        <>
+                          <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              Set a category for each line. Anything you leave blank posts to{" "}
+                              <strong className="font-medium text-foreground">
+                                {SUSPENSE_LABEL}
+                              </strong>{" "}
+                              so your accountant can sort it later. If a line is a customer
+                              payment or a vendor bill you already recorded, leave it
+                              uncategorised rather than treating it as new income or expense.
+                            </span>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-10">
+                                    <Checkbox
+                                      checked={allSelected}
+                                      onCheckedChange={(v) => toggleAll(Boolean(v))}
+                                      aria-label="Select all"
+                                    />
+                                  </TableHead>
+                                  <TableHead className="w-28">Date</TableHead>
+                                  <TableHead>Description</TableHead>
+                                  <TableHead className="w-32 text-right">Amount</TableHead>
+                                  <TableHead className="w-56">Category</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {pendingTxns.map((txn) => {
+                                  const id = txn._id as string;
+                                  const row = rows[id];
+                                  const isMoneyIn = Number(txn.credit || 0) > 0;
+                                  const amount = isMoneyIn ? txn.credit : txn.debit;
+
+                                  return (
+                                    <TableRow key={id} className={cn(!row?.selected && "opacity-50")}>
+                                      <TableCell>
+                                        <Checkbox
+                                          checked={row?.selected ?? false}
+                                          onCheckedChange={(v) =>
+                                            setRows((prev) => ({
+                                              ...prev,
+                                              [id]: {
+                                                ...prev[id],
+                                                selected: Boolean(v),
+                                              },
+                                            }))
+                                          }
+                                          aria-label="Select transaction"
+                                        />
+                                      </TableCell>
+                                      <TableCell className="text-xs whitespace-nowrap">
+                                        {formatDate(txn.txnDate)}
+                                      </TableCell>
+                                      <TableCell className="text-xs">
+                                        <span className="line-clamp-2">
+                                          {txn.description || "—"}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center gap-1 text-xs font-medium tabular-nums",
+                                            isMoneyIn
+                                              ? "text-emerald-600 dark:text-emerald-400"
+                                              : "text-foreground",
+                                          )}
+                                        >
+                                          {isMoneyIn ? (
+                                            <ArrowDownLeft className="h-3 w-3" />
+                                          ) : (
+                                            <ArrowUpRight className="h-3 w-3" />
+                                          )}
+                                          {formatAmount(amount)}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Select
+                                          value={row?.accountId ?? "__suspense__"}
+                                          onValueChange={(value) =>
+                                            setRows((prev) => ({
+                                              ...prev,
+                                              [id]: {
+                                                ...prev[id],
+                                                accountId:
+                                                  value === "__suspense__" ? null : value,
+                                              },
+                                            }))
+                                          }
+                                        >
+                                          <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="__suspense__">
+                                              {SUSPENSE_LABEL}
+                                            </SelectItem>
+                                            {categoryAccounts.map((account) => (
+                                              <SelectItem key={account._id} value={account._id}>
+                                                {account.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                            <p className="text-xs text-muted-foreground">
+                              {selectedCount} selected
+                              {uncategorisedCount > 0 && (
+                                <>
+                                  {" · "}
+                                  <span className="text-amber-600 dark:text-amber-400">
+                                    {uncategorisedCount} will go to {SUSPENSE_LABEL}
+                                  </span>
+                                </>
+                              )}
+                            </p>
+                            <Button
+                              onClick={onPost}
+                              disabled={posting || selectedCount === 0 || !bankAccountId}
+                              className="gap-1.5"
+                            >
+                              {posting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-4 w-4" />
+                              )}
+                              {posting ? "Posting…" : `Post ${selectedCount} to books`}
+                            </Button>
+                          </div>
+                        </>
+                      )}
+
+                      {!isProcessing &&
+                        pendingTxns.length === 0 &&
+                        activeDoc.processingStatus === "PROCESSED" && (
+                          <div className="flex flex-col items-center gap-2 py-12 text-center">
+                            <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                            <p className="text-sm font-medium">
+                              Everything on this statement is posted
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {postedTxns.length} transaction
+                              {postedTxns.length === 1 ? "" : "s"} are in your books.{" "}
+                              <Link
+                                href="/accountant/journal-entries"
+                                className="underline underline-offset-2"
+                              >
+                                View journal entries
+                              </Link>
+                            </p>
+                          </div>
+                        )}
+                    </CardContent>
+                  </>
+                )}
+              </Card>
+            </div>
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+export default function BankingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-svh items-center justify-center bg-background">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <BankingPageContent />
+    </Suspense>
   );
 }

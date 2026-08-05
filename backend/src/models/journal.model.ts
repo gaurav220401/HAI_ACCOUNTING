@@ -25,6 +25,12 @@ export interface IJournal extends Document {
   totalCredit: number;
   status: JournalStatus;
   notes?: string;
+  /**
+   * Set only for journals created by bank-statement import. Deterministic hash of
+   * (bank account, date, amount, description) so re-importing an overlapping
+   * statement cannot post the same line twice. See bank-statement.service.ts.
+   */
+  bankImportKey?: string | null;
   isDeleted: boolean;
   deletedAt?: Date | null;
   createdBy?: Types.ObjectId;
@@ -72,6 +78,7 @@ const journalSchema = new Schema<IJournal>(
       default: "Draft",
     },
     notes: { type: String, default: "" },
+    bankImportKey: { type: String, default: null },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
   },
@@ -81,6 +88,17 @@ const journalSchema = new Schema<IJournal>(
 journalSchema.plugin(auditTrailPlugin);
 journalSchema.index({ organizationId: 1, date: -1 });
 journalSchema.index({ organizationId: 1, journalNumber: 1 }, { unique: true });
+
+// Database-level guarantee that one bank statement line posts at most once, even
+// under concurrent imports. Partial (not sparse) so only import-created journals
+// participate — ordinary journals leave bankImportKey null and are unaffected.
+journalSchema.index(
+  { organizationId: 1, bankImportKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { bankImportKey: { $type: "string" } },
+  },
+);
 
 journalSchema.pre("save", async function () {
   if (this.isNew && !this.journalNumber) {

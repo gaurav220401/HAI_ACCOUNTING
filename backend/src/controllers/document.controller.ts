@@ -21,6 +21,7 @@ import Invoice from "../models/invoice.model";
 import Journal from "../models/journal.model";
 import Account from "../models/account.model";
 import { enqueueDocumentProcessing } from "../services/document-processing.service";
+import { postStatementLines, resolveBankAccount } from "../services/bank-statement.service";
 
 function orgId(req: AuthenticatedRequest): mongoose.Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -1003,7 +1004,17 @@ export const addToEntity = asyncHandler(async (req: AuthenticatedRequest, res: R
   });
 });
 
-/** POST /api/documents/:id/add-to-bank */
+/**
+ * POST /api/documents/:id/add-to-bank
+ *
+ * Posts reviewed bank statement lines to the ledger.
+ *
+ * Body:
+ *   bankAccountId  required — which bank/credit-card account this statement belongs to
+ *   lines          optional — [{ transactionId, accountId }] per-line category choice.
+ *                  Lines omitted from this array are posted to the suspense account.
+ *                  When absent entirely, every un-posted line is posted to suspense.
+ */
 export const addStatementToBank = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const organizationId = orgId(req);
   const document = await DocumentModel.findOne({ _id: req.params.id, organizationId, isDeleted: false });
@@ -1012,94 +1023,83 @@ export const addStatementToBank = asyncHandler(async (req: AuthenticatedRequest,
     throw new ValidationError("This document is not a bank statement");
   }
 
-  const selectedIds = Array.isArray(req.body.transactionIds)
-    ? (req.body.transactionIds as string[])
+  const bankAccount = await resolveBankAccount({
+    organizationId,
+    bankAccountId: String(req.body.bankAccountId || ""),
+  });
+
+  const requestedLines = Array.isArray(req.body.lines)
+    ? (req.body.lines as Array<{ transactionId?: string; accountId?: string | null }>)
     : [];
 
-  const bankAccount = await Account.findOne({
-    organizationId,
-    isDeleted: false,
-    accountType: "Bank",
-  });
-  if (!bankAccount) {
-    throw new ValidationError("No bank account found. Create a bank account first.");
-  }
-
-  let clearingAccount = await Account.findOne({
-    organizationId,
-    isDeleted: false,
-    name: "Documents Clearing",
-  });
-
-  if (!clearingAccount) {
-    clearingAccount = new Account({
-      organizationId,
-      name: "Documents Clearing",
-      rootType: "Expense",
-      accountType: "Expense",
-      isGroup: false,
-      currency: "INR",
-    });
-    await clearingAccount.save();
+  const accountByTxn = new Map<string, string | null>();
+  for (const entry of requestedLines) {
+    if (!entry?.transactionId) continue;
+    accountByTxn.set(String(entry.transactionId), entry.accountId ? String(entry.accountId) : null);
   }
 
   const picked = document.bankTransactions.filter((txn) => {
     if (txn.addedToBank) return false;
-    if (selectedIds.length === 0) return true;
-    return selectedIds.includes(String((txn as unknown as { _id?: unknown })._id));
+    if (accountByTxn.size === 0) return true;
+    return accountByTxn.has(String((txn as unknown as { _id?: unknown })._id));
   });
 
   if (picked.length === 0) {
-    return res.json({ success: true, data: { journalsCreated: 0, message: "No transactions selected" } });
-  }
-
-  let createdCount = 0;
-  for (const txn of picked) {
-    const debit = Number(txn.debit || 0);
-    const credit = Number(txn.credit || 0);
-    const amount = credit > 0 ? credit : debit;
-    if (!amount || amount <= 0) continue;
-
-    const lines =
-      credit > 0
-        ? [
-            { accountId: bankAccount._id, debit: amount, credit: 0, narration: txn.description },
-            { accountId: clearingAccount._id, debit: 0, credit: amount, narration: txn.description },
-          ]
-        : [
-            { accountId: clearingAccount._id, debit: amount, credit: 0, narration: txn.description },
-            { accountId: bankAccount._id, debit: 0, credit: amount, narration: txn.description },
-          ];
-
-    const journal = new Journal({
-      organizationId,
-      date: txn.txnDate || document.extraction?.statementDate || new Date(),
-      description: txn.description,
-      referenceNumber: `DOC-${document._id}`,
-      lineItems: lines,
-      totalDebit: amount,
-      totalCredit: amount,
-      status: "Posted",
-      notes: `Created from bank statement document ${document.fileName}`,
+    return res.json({
+      success: true,
+      data: { journalsCreated: 0, skipped: [], message: "No transactions selected" },
     });
-    attachUser(journal as unknown as { $locals?: Record<string, unknown> }, req);
-    await journal.save();
-
-    txn.addedToBank = true;
-    txn.ledgerJournalId = journal._id;
-    createdCount += 1;
   }
+
+  const { posted, skipped } = await postStatementLines({
+    organizationId,
+    bankAccountId: bankAccount._id as mongoose.Types.ObjectId,
+    sourceLabel: document.fileName,
+    req,
+    lines: picked.map((txn) => {
+      const transactionId = String((txn as unknown as { _id?: unknown })._id);
+      return {
+        transactionId,
+        txnDate: txn.txnDate || document.extraction?.statementDate || null,
+        description: txn.description,
+        debit: Number(txn.debit || 0),
+        credit: Number(txn.credit || 0),
+        accountId: accountByTxn.get(transactionId) ?? null,
+      };
+    }),
+  });
+
+  const postedByTxn = new Map(posted.map((entry) => [entry.transactionId, entry]));
+  for (const txn of picked) {
+    const transactionId = String((txn as unknown as { _id?: unknown })._id);
+    const result = postedByTxn.get(transactionId);
+    if (!result) continue;
+    txn.addedToBank = true;
+    txn.ledgerJournalId = result.journalId;
+  }
+
+  const duplicateCount = skipped.filter((entry) => entry.reason === "duplicate").length;
 
   document.activityLogs.push({
     eventType: "add_to_bank",
-    message: `${createdCount} transaction(s) converted to journal entries`,
+    message:
+      `${posted.length} transaction(s) posted to ${bankAccount.name}` +
+      (duplicateCount > 0 ? ` — ${duplicateCount} skipped as already imported` : ""),
     actorId: req.user?._id,
     createdAt: new Date(),
   });
   attachUser(document as unknown as { $locals?: Record<string, unknown> }, req);
   await document.save();
 
-  res.json({ success: true, data: { journalsCreated: createdCount } });
+  res.json({
+    success: true,
+    data: {
+      journalsCreated: posted.length,
+      posted,
+      skipped,
+      bankAccount: { _id: String(bankAccount._id), name: bankAccount.name },
+    },
+  });
 });
 
 /** GET /api/documents/:id/signed-url */
