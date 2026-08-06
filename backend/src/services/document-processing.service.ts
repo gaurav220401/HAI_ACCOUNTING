@@ -6,6 +6,7 @@ import DocumentModel, { IDocument, DocumentType, ProcessingMode } from "../model
 import Contact from "../models/contact.model";
 import Expense from "../models/expense.model";
 import { buildSignedAssetUrl, getCloudinaryResourceType } from "../utils/cloudinary";
+import { isSpreadsheetStatement, parseStatementWorkbook } from "./bank-statement-parser.service";
 
 interface ProcessJobPayload {
   documentId: string;
@@ -293,15 +294,7 @@ class DocumentUnreadableError extends Error {
   }
 }
 
-async function loadInlineDocumentPart(document: IDocument): Promise<{
-  mimeType: string;
-  data: string;
-}> {
-  const maxInlineBytes = Math.max(
-    1024 * 512,
-    Number(process.env.DOCUMENTS_GEMINI_MAX_INLINE_BYTES || 18 * 1024 * 1024),
-  );
-
+async function downloadDocumentBytes(document: IDocument): Promise<Buffer> {
   // Prefer a signed URL — required for "authenticated" delivery-type assets.
   let fetchUrl = document.url;
   if (document.cloudinaryPublicId) {
@@ -342,19 +335,33 @@ async function loadInlineDocumentPart(document: IDocument): Promise<{
   if (!bytes.length) {
     throw new DocumentUnreadableError("Downloaded file was empty");
   }
+
+  return bytes;
+}
+
+async function loadInlineDocumentPart(document: IDocument): Promise<{
+  mimeType: string;
+  data: string;
+}> {
+  const maxInlineBytes = Math.max(
+    1024 * 512,
+    Number(process.env.DOCUMENTS_GEMINI_MAX_INLINE_BYTES || 18 * 1024 * 1024),
+  );
+
+  const bytes = await downloadDocumentBytes(document);
+
   if (bytes.length > maxInlineBytes) {
     throw new DocumentUnreadableError(
       `File is ${(bytes.length / 1024 / 1024).toFixed(1)} MB, larger than the ` +
-      `${(maxInlineBytes / 1024 / 1024).toFixed(0)} MB limit. Split the statement into smaller files and upload separately.`,
+      `${(maxInlineBytes / 1024 / 1024).toFixed(0)} MB limit for AI reading. ` +
+      "Download the statement as CSV or Excel instead — those are read directly, with no size limit.",
     );
   }
 
-  const mimeType =
-    document.mimeType ||
-    response.headers.get("content-type") ||
-    "application/octet-stream";
-
-  return { mimeType, data: bytes.toString("base64") };
+  return {
+    mimeType: document.mimeType || "application/octet-stream",
+    data: bytes.toString("base64"),
+  };
 }
 
 function parseGeminiJsonPayload(text: string): GeminiExtraction | null {
@@ -521,6 +528,55 @@ async function extractStatementPage(
 
   const payload = parseGeminiJsonPayload(text) as { transactions?: RawTxn[] } | null;
   return Array.isArray(payload?.transactions) ? payload!.transactions! : [];
+}
+
+/**
+ * Deterministic extraction for CSV / Excel statements.
+ *
+ * Returns the same shape as the AI path so everything downstream — balance
+ * validation, storage, the review screen — is identical. No API key, no
+ * network call, no token cost, and no possibility of invented rows.
+ */
+async function extractStatementFromSpreadsheet(
+  document: IDocument,
+): Promise<GeminiExtraction> {
+  const bytes = await downloadDocumentBytes(document);
+
+  let parsed;
+  try {
+    parsed = parseStatementWorkbook(bytes, document.fileName);
+  } catch (error: any) {
+    throw new DocumentUnreadableError(error?.message || "Could not read this spreadsheet");
+  }
+
+  for (const warning of parsed.warnings) {
+    document.processingLogs.push(nowLog("parse", "warn", warning));
+  }
+  document.processingLogs.push(
+    nowLog(
+      "parse",
+      "ok",
+      `Read ${parsed.transactions.length} transactions directly from the spreadsheet (no AI used).`,
+    ),
+  );
+
+  return {
+    confidence: 0.99,
+    rawText: "",
+    transactions: parsed.transactions.map((t) => ({
+      date: t.txnDate.toISOString().slice(0, 10),
+      description: t.description,
+      debit: t.debit,
+      credit: t.credit,
+      balance: t.balance,
+    })),
+    statementMeta: {
+      accountNumber: parsed.accountNumber,
+      openingBalance: parsed.openingBalance,
+      closingBalance: parsed.closingBalance,
+      totalTransactions: parsed.transactions.length,
+    },
+  };
 }
 
 async function extractWithGemini(
@@ -701,17 +757,23 @@ async function processDocument(document: IDocument, pdfPassword?: string): Promi
     `${document.emailSubject || ""} ${document.emailSender || ""}`,
   );
 
+  const isStatement = document.documentType === "bank_statement";
+  const isSpreadsheet = isSpreadsheetStatement(document.extension, document.mimeType);
+
+  // A CSV/Excel statement is already structured. Parsing it directly is exact,
+  // free and private, so the AI path is reserved for PDFs and scans.
   // Throws DocumentUnreadableError when the file cannot be read; the caller
   // records that as a real failure instead of substituting invented data.
-  const gemini = await extractWithGemini(document, document.processingMode, pdfPassword);
+  const gemini =
+    isStatement && isSpreadsheet
+      ? await extractStatementFromSpreadsheet(document)
+      : await extractWithGemini(document, document.processingMode, pdfPassword);
 
   if (gemini?.unreadable) {
     throw new DocumentUnreadableError(
       "The document AI reported it could not read this file. If it is password-protected, remove the password and upload again.",
     );
   }
-
-  const isStatement = document.documentType === "bank_statement";
 
   const amount = gemini?.amount ?? fallback.amount;
   const vendorName = gemini?.vendorName || "";
