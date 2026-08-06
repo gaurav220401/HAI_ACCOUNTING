@@ -327,6 +327,25 @@ function BankingPageContent() {
 
   const allSelected = pendingTxns.length > 0 && selectedCount === pendingTxns.length;
 
+  /**
+   * The backend logs a "validate" entry recording how many rows reconcile
+   * against the statement's own running balance. Surfacing it here is what
+   * lets you tell a faithful import from a bad one at a glance.
+   */
+  const validationNote = useMemo(() => {
+    const entry = (activeDoc?.processingLogs || [])
+      .filter((log) => log.stage === "validate")
+      .slice(-1)[0];
+    if (!entry) return null;
+    return {
+      status: entry.status === "ok" ? "ok" : "warn",
+      message:
+        entry.status === "ok"
+          ? `${entry.message} These rows reconcile against the statement's own balance column.`
+          : `${entry.message} Check these rows against your statement before posting.`,
+    };
+  }, [activeDoc]);
+
   const toggleAll = (checked: boolean) => {
     setRows((prev) => {
       const next = { ...prev };
@@ -556,10 +575,29 @@ function BankingPageContent() {
                         <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
                           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                           <span>
-                            {activeDoc.extraction?.amount
-                              ? "Some fields could not be read."
-                              : "Couldn't read this file. If it's a password-protected PDF, remove the password and upload again."}
+                            {activeDoc.errorMessage ||
+                              "Couldn't read this file. If it's a password-protected PDF, remove the password and upload again."}
                           </span>
+                        </div>
+                      )}
+
+                      {/* Extraction quality — the balance-chain check tells you
+                          whether the rows below actually reconcile. */}
+                      {!isProcessing && validationNote && (
+                        <div
+                          className={cn(
+                            "flex items-start gap-2 rounded-md border p-3 text-xs",
+                            validationNote.status === "ok"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+                              : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200",
+                          )}
+                        >
+                          {validationNote.status === "ok" ? (
+                            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          )}
+                          <span>{validationNote.message}</span>
                         </div>
                       )}
 

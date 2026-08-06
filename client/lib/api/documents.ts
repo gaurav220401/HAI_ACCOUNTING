@@ -66,6 +66,8 @@ export interface DocumentItem {
   links: Array<{ entityType: string; entityId: string }>;
   activityLogs: Array<{ eventType: string; message: string; createdAt: string }>;
   processingLogs: Array<{ stage: string; status: string; message: string; createdAt: string }>;
+  /** Why processing failed, when processingStatus is UNREADABLE. */
+  errorMessage?: string;
   emailSender?: string;
   emailSubject?: string;
 }
