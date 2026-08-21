@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# keep the template tracked; real env files stay ignored
+!.env.example
+
+# playwright run output (regenerated on every run — not source)
+test-results/
+playwright-report/
+e2e/__shots__/

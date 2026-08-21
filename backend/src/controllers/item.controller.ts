@@ -281,31 +281,130 @@ async function syncInventoryAccountOpening(params: {
 
 // ─── Items ─────────────────────────────────────────────────────────────────
 
-/** GET /api/items?search=...&type=Goods|Service&page=1&limit=25 */
+/**
+ * Forces the only valuation method the costing engine actually implements.
+ *
+ * `computeInvoiceCostLines()` values every stock issue at `Item.averageCost`
+ * and never reads `valuationMethod`; there is no cost-lot collection for FIFO
+ * to draw on. Accepting "FIFO" therefore recorded an accounting policy that was
+ * silently not applied, so COGS and reported profit disagreed with the item's
+ * stated method. Reject it at the edge until a real stock ledger exists.
+ *
+ * The schema enum still allows "FIFO" so pre-existing documents keep loading.
+ */
+export function supportedValuationMethod(requested: unknown): "MovingAverage" {
+  const value = String(requested || "").trim().toLowerCase();
+  if (value && value !== "movingaverage" && value !== "moving average" && value !== "wac") {
+    console.warn(
+      `[items] valuationMethod "${requested}" is not implemented; storing MovingAverage instead.`,
+    );
+  }
+  return "MovingAverage";
+}
+
+/** Fields the item list may be sorted by, mapped to their document paths. */
+const ITEM_SORT_FIELDS: Record<string, string> = {
+  name: "name",
+  sku: "sku",
+  description: "description",
+  purchaseDescription: "purchaseDescription",
+  rate: "sellingPrice",
+  purchaseRate: "costPrice",
+  stock: "stockOnHand",
+  hsn: "hsnSacCode",
+  createdAt: "createdAt",
+};
+
+const ITEM_LIST_MAX_LIMIT = 200;
+
+/**
+ * GET /api/items
+ *   ?search=      matches name, sku, description, brand, manufacturer
+ *   &type=        Goods | Service
+ *   &fromDate=    createdAt >= (YYYY-MM-DD)
+ *   &toDate=      createdAt <= (YYYY-MM-DD, inclusive)
+ *   &sortBy=      see ITEM_SORT_FIELDS
+ *   &sortOrder=   asc | desc
+ *   &page=&limit= limit is capped at 200
+ *
+ * Filtering, sorting and paging all happen in the database. The client must not
+ * fetch a slice and filter it locally — that silently hides matches once an
+ * organization has more items than the page size.
+ */
 export const list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { type, search, page = 1, limit = 25 } = req.query;
+  const { type, search, fromDate, toDate, sortBy, sortOrder } = req.query;
+
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(ITEM_LIST_MAX_LIMIT, Math.max(1, Number(req.query.limit) || 25));
+
   const filter: any = { organizationId: orgId(req), isDeleted: false };
   if (type) filter.itemType = type;
-  if (search) filter.$or = [
-    { name: { $regex: search, $options: "i" } },
-    { sku: { $regex: search, $options: "i" } },
-    { description: { $regex: search, $options: "i" } },
-    { brand: { $regex: search, $options: "i" } },
-    { manufacturer: { $regex: search, $options: "i" } },
-  ];
+
+  const term = String(search || "").trim();
+  if (term) {
+    const rx = { $regex: escapeRegex(term), $options: "i" };
+    filter.$or = [
+      { name: rx },
+      { sku: rx },
+      { description: rx },
+      { brand: rx },
+      { manufacturer: rx },
+    ];
+  }
+
+  if (fromDate || toDate) {
+    filter.createdAt = {};
+    if (fromDate) {
+      const from = new Date(String(fromDate));
+      if (!Number.isNaN(from.getTime())) filter.createdAt.$gte = from;
+    }
+    if (toDate) {
+      const to = new Date(String(toDate));
+      if (!Number.isNaN(to.getTime())) {
+        to.setHours(23, 59, 59, 999);
+        filter.createdAt.$lte = to;
+      }
+    }
+    if (Object.keys(filter.createdAt).length === 0) delete filter.createdAt;
+  }
+
+  const sortPath = ITEM_SORT_FIELDS[String(sortBy || "")] || "name";
+  const direction = String(sortOrder || "asc").toLowerCase() === "desc" ? -1 : 1;
 
   const total = await Item.countDocuments(filter);
   const items = await Item.find(filter)
     .populate("unit itemGroupId taxId intraStateTaxId interStateTaxId")
-    .sort({ name: 1 })
-    .skip((+page - 1) * +limit)
-    .limit(+limit)
+    .sort({ [sortPath]: direction, _id: 1 })
+    .skip((page - 1) * limit)
+    .limit(limit)
     .lean();
+
+  // Headline figures describe the whole filtered result set, not the current
+  // page — otherwise "Total items" reads 50 when the filter matched 137.
+  // Note: softDeletePlugin does not hook aggregate(), so `filter` must (and
+  // does) carry isDeleted explicitly.
+  const [totals] = await Item.aggregate([
+    { $match: filter },
+    {
+      $group: {
+        _id: null,
+        totalStock: { $sum: { $ifNull: ["$stockOnHand", 0] } },
+        goodsCount: { $sum: { $cond: [{ $eq: ["$itemType", "Goods"] }, 1, 0] } },
+        servicesCount: { $sum: { $cond: [{ $eq: ["$itemType", "Service"] }, 1, 0] } },
+      },
+    },
+  ]);
 
   res.json({
     success: true,
     data: items,
-    pagination: { total, page: +page, limit: +limit, pages: Math.ceil(total / +limit) },
+    pagination: { total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) },
+    summary: {
+      totalItems: total,
+      totalStock: round2(Number(totals?.totalStock || 0)),
+      goodsCount: Number(totals?.goodsCount || 0),
+      servicesCount: Number(totals?.servicesCount || 0),
+    },
   });
 });
 
@@ -674,7 +773,7 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (payload.inventoryTracked) {
     const stockOnHand = Number(payload.stockOnHand || 0);
     const averageCost = Number(payload.averageCost || payload.costPrice || 0);
-    payload.valuationMethod = payload.valuationMethod || "MovingAverage";
+    payload.valuationMethod = supportedValuationMethod(payload.valuationMethod);
     payload.stockOnHand = round2(stockOnHand);
     payload.averageCost = round2(Math.max(0, averageCost));
     payload.inventoryValue = round2(
@@ -766,7 +865,7 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     (item as any).inventoryValue = 0;
   } else {
     item.stockOnHand = round2(Number(item.stockOnHand || 0));
-    (item as any).valuationMethod = (item as any).valuationMethod || "MovingAverage";
+    (item as any).valuationMethod = supportedValuationMethod((item as any).valuationMethod);
     (item as any).averageCost = round2(Number((item as any).averageCost || item.costPrice || 0));
     (item as any).inventoryValue = round2(Number((item as any).inventoryValue || item.stockOnHand * (item as any).averageCost || 0));
 
@@ -1285,12 +1384,15 @@ async function mapRowToItem(
   const inventoryTracked = stockOnHand > 0;
   const inventoryValue = inventoryTracked ? round2(stockOnHand * averageCost) : 0;
 
-  // Inventory valuation method
-  let valuationMethod = "MovingAverage";
-  const valMethodInput = getMappedValue("valuationMethod").toLowerCase();
-  if (valMethodInput.includes("fifo")) {
-    valuationMethod = "FIFO";
-  }
+  // Inventory valuation method.
+  //
+  // Only weighted average is actually implemented: computeInvoiceCostLines()
+  // costs every issue at Item.averageCost and never reads valuationMethod, and
+  // no cost-lot/layer collection exists to drive FIFO. Importing "FIFO" used to
+  // store a policy the engine silently ignored, so COGS and reported profit did
+  // not match the item's stated method. Until a real stock ledger exists,
+  // imports are normalised to the method that is honoured.
+  const valuationMethod = "MovingAverage";
 
   const itemData: any = {
     organizationId,

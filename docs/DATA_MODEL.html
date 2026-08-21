@@ -1,0 +1,1369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HAI Accounting — Data Model Reference</title>
+<style>
+  :root {
+    --ground: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #f0f2f5;
+    --ink: #131922;
+    --ink-2: #3d4855;
+    --muted: #5b6674;
+    --line: #dde2e8;
+    --line-strong: #c3cad3;
+    --accent: #2b5ce6;
+    --accent-soft: #e8edfd;
+    --hazard: #a4501b;
+    --hazard-soft: #fbeee3;
+    --critical: #b3352a;
+    --critical-soft: #fbeae8;
+    --ok: #1f6b4d;
+    --ok-soft: #e6f2ec;
+
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0d1117;
+      --surface: #161c24;
+      --surface-2: #1c232d;
+      --ink: #e3e8ee;
+      --ink-2: #c2cad4;
+      --muted: #8a94a2;
+      --line: #262e39;
+      --line-strong: #3a4553;
+      --accent: #7ea2ff;
+      --accent-soft: #1a2540;
+      --hazard: #e0965c;
+      --hazard-soft: #2b1f14;
+      --critical: #f0705f;
+      --critical-soft: #2e1715;
+      --ok: #5fc79a;
+      --ok-soft: #12261e;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0d1117;
+    --surface: #161c24;
+    --surface-2: #1c232d;
+    --ink: #e3e8ee;
+    --ink-2: #c2cad4;
+    --muted: #8a94a2;
+    --line: #262e39;
+    --line-strong: #3a4553;
+    --accent: #7ea2ff;
+    --accent-soft: #1a2540;
+    --hazard: #e0965c;
+    --hazard-soft: #2b1f14;
+    --critical: #f0705f;
+    --critical-soft: #2e1715;
+    --ok: #5fc79a;
+    --ok-soft: #12261e;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 48px;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  /* ── Rail ─────────────────────────────────────────── */
+  .rail {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 40px 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  .rail-title {
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 10.5px;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .rail nav { display: flex; flex-direction: column; gap: 2px; margin-bottom: 26px; }
+  .rail a {
+    color: var(--ink-2);
+    text-decoration: none;
+    padding: 3px 8px;
+    border-left: 2px solid var(--line);
+    line-height: 1.45;
+  }
+  .rail a:hover { color: var(--accent); border-left-color: var(--accent); background: var(--surface-2); }
+  .rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ── Main ─────────────────────────────────────────── */
+  main { padding: 40px 0 96px; min-width: 0; }
+
+  header.masthead { padding-bottom: 28px; border-bottom: 2px solid var(--ink); margin-bottom: 12px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(30px, 4vw, 44px);
+    line-height: 1.1;
+    letter-spacing: -0.022em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+    font-weight: 660;
+  }
+  .standfirst { font-size: 18px; color: var(--ink-2); margin: 0; max-width: 66ch; }
+
+  .meta-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--surface);
+    margin: 26px 0 44px;
+    overflow: hidden;
+  }
+  .meta-strip div { padding: 10px 16px; border-right: 1px solid var(--line); }
+  .meta-strip div:last-child { border-right: 0; }
+  .meta-strip b { color: var(--muted); font-weight: 400; }
+
+  h2 {
+    font-size: 25px;
+    letter-spacing: -0.015em;
+    margin: 64px 0 6px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line-strong);
+    font-weight: 640;
+    text-wrap: balance;
+  }
+  h2:first-of-type { margin-top: 0; }
+  h3 { font-size: 17px; margin: 34px 0 8px; font-weight: 620; letter-spacing: -0.008em; }
+  h4 { font-size: 14px; margin: 22px 0 6px; font-weight: 640; font-family: var(--mono); }
+
+  p { max-width: 74ch; margin: 0 0 14px; }
+  .lede { color: var(--muted); margin-bottom: 22px; max-width: 74ch; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.08em 0.34em;
+    color: var(--ink);
+  }
+  a { color: var(--accent); }
+
+  ul, ol { max-width: 74ch; padding-left: 22px; margin: 0 0 16px; }
+  li { margin-bottom: 7px; }
+
+  /* ── Callouts ─────────────────────────────────────── */
+  .note {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 16px 20px;
+    margin: 22px 0;
+    border-radius: 0 3px 3px 0;
+  }
+  .note.hazard { border-left-color: var(--hazard); background: var(--hazard-soft); }
+  .note.critical { border-left-color: var(--critical); background: var(--critical-soft); }
+  .note > :last-child { margin-bottom: 0; }
+  .note-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 7px;
+  }
+  .note.hazard .note-label { color: var(--hazard); }
+  .note.critical .note-label { color: var(--critical); }
+
+  /* ── Tables ───────────────────────────────────────── */
+  .tw { overflow-x: auto; margin: 18px 0 26px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 500;
+    background: var(--surface-2);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.m, th.m { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+  td.wrap { min-width: 260px; }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 2px;
+    border: 1px solid var(--line-strong);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .tag.org { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .tag.global { color: var(--hazard); border-color: var(--hazard); background: var(--hazard-soft); }
+  .tag.bad { color: var(--critical); border-color: var(--critical); background: var(--critical-soft); }
+  .tag.ok { color: var(--ok); border-color: var(--ok); background: var(--ok-soft); }
+
+  /* ── Figures / mermaid ────────────────────────────── */
+  figure { margin: 24px 0 30px; }
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 10px;
+    max-width: 74ch;
+    font-family: var(--sans);
+  }
+  figcaption b { color: var(--ink-2); font-weight: 600; }
+  .mermaid {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 0;
+  }
+  svg.fig { max-width: 100%; height: auto; display: block; color: var(--ink); }
+
+  .domain-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .domain-count { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 940px) {
+    .shell { grid-template-columns: 1fr; gap: 0; padding: 0 20px; }
+    .rail { position: static; max-height: none; padding: 28px 0 0; }
+    .rail nav { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+    .rail a { border-left: 0; border: 1px solid var(--line); border-radius: 3px; }
+  }
+</style>
+<style>
+  /* Standalone-only: mermaid renders client-side here, so give it room. */
+  pre.mermaid { text-align: center; }
+  pre.mermaid:not([data-processed]) {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: pre;
+    color: var(--muted);
+  }
+  .offline-note {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    border: 1px dashed var(--line-strong);
+    border-radius: 3px;
+    padding: 10px 14px;
+    margin: 0 0 26px;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <p class="rail-title">Contents</p>
+    <nav>
+      <a href="#hazards">00 · Read first</a>
+      <a href="#conventions">01 · Conventions</a>
+      <a href="#map">02 · System map</a>
+      <a href="#ledger-mech">03 · GL mechanism</a>
+      <a href="#core">04 · Core &amp; identity</a>
+      <a href="#masters">05 · Masters</a>
+      <a href="#sales">06 · Sales / O2C</a>
+      <a href="#purchases">07 · Purchases / P2P</a>
+      <a href="#ledger">08 · Ledger &amp; tax</a>
+      <a href="#inventory">09 · Inventory ops</a>
+      <a href="#documents">10 · Documents</a>
+      <a href="#ai">11 · AI &amp; projects</a>
+      <a href="#softlinks">12 · Soft links</a>
+      <a href="#index">13 · Entity index</a>
+      <a href="#defects">14 · Defect register</a>
+    </nav>
+    <p class="rail-title">Legend</p>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;color:var(--muted)">
+      <span><span class="tag org">org</span> tenant&#8209;scoped</span>
+      <span><span class="tag global">global</span> no org field</span>
+      <span><span class="tag bad">risk</span> known defect</span>
+    </div>
+  </aside>
+
+  <main>
+    <header class="masthead">
+      <p class="eyebrow">Schema reference · reverse-engineered from source</p>
+      <h1>HAI Accounting — Data Model</h1>
+      <p class="standfirst">
+        Every collection, foreign key and hidden relationship in the platform, mapped from the
+        Mongoose schemas so a new team can build against it without reading all 61 model files.
+      </p>
+    </header>
+
+    <div class="meta-strip">
+      <div><b>Collections</b> 61 (+1 stray)</div>
+      <div><b>Datastore</b> MongoDB / Mongoose</div>
+      <div><b>Tenancy</b> per&#8209;organization</div>
+      <div><b>Source</b> backend/src/models</div>
+      <div><b>Ledger</b> double&#8209;entry, immutable</div>
+    </div>
+
+    <p>
+      This is a reverse-engineered map, not a designed spec — it documents what the code
+      <em>does</em>, including the parts that are wrong. Sections 00 and 14 exist because several
+      findings will change how you write queries on day one. Read those before writing anything.
+    </p>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="hazards">00 · Read first</h2>
+    <p class="lede">Four facts that invalidate the obvious assumptions about this schema.</p>
+
+    <div class="note critical">
+      <span class="note-label">Data loss · active in production</span>
+      <p>
+        <strong>Six collections spell tenancy <code>organization_id</code>, not
+        <code>organizationId</code></strong> — <code>IdempotencyKey</code>,
+        <code>PaymentReceived</code>, <code>PaymentMade</code>, <code>RetainerInvoice</code>,
+        <code>PaymentInvoiceMap</code>, <code>PaymentBillMap</code>. They use snake_case
+        throughout (<code>customer_id</code>, <code>bill_id</code>, <code>paid_through_account</code>).
+      </p>
+      <p>
+        <code>db.ts</code> sets <code>strictQuery: true</code>, which <em>silently strips</em> query
+        paths absent from the schema. <code>settings.controller.ts:451</code> builds
+        <code>{ organizationId }</code> and calls <code>deleteMany(query)</code> against
+        <code>PaymentReceived</code>, <code>PaymentMade</code>, <code>RetainerInvoice</code>,
+        <code>Project</code>, <code>TimeLog</code>, <code>TimesheetEntry</code> and
+        <code>Counter</code> — none of which have that path. The filter collapses to <code>{}</code>,
+        so “reset my organization’s data” <strong>deletes those seven collections for every tenant
+        in the database</strong>.
+      </p>
+      <p>
+        Only <code>PaymentInvoiceMap</code>, <code>PaymentBillMap</code> and
+        <code>IdempotencyKey</code> were hand-special-cased with <code>organization_id</code> and
+        behave correctly. Any generic org-scoping helper keyed on the literal string
+        <code>"organizationId"</code> inherits this blind spot.
+      </p>
+    </div>
+
+    <div class="note hazard">
+      <span class="note-label">Half the foreign keys are invisible in the model files</span>
+      <p>
+        <code>createdBy</code>, <code>updatedBy</code> and <code>deletedBy</code> are injected by
+        schema plugins, not declared inline: <code>auditTrailPlugin</code> adds two
+        <code>User</code> refs to <strong>43 schemas</strong>, <code>softDeletePlugin</code> adds
+        <code>deletedBy</code> to <strong>28</strong>, and <code>activityLogPlugin</code> adds
+        <code>activityLog[].userId</code> to three. That is roughly <strong>117 extra edges to
+        <code>User</code></strong> that never appear in a grep for <code>ref:</code>.
+      </p>
+      <p>
+        <code>softDeletePlugin</code> also installs pre-hooks that append
+        <code>isDeleted: {$ne: true}</code> to <code>find</code>, <code>findOne</code>,
+        <code>findOneAndUpdate</code> and <code>countDocuments</code> — but <strong>not to
+        <code>aggregate</code>, <code>distinct</code> or <code>updateMany</code></strong>. Every
+        reporting pipeline built on <code>$match</code> silently includes deleted rows.
+      </p>
+    </div>
+
+    <div class="note hazard">
+      <span class="note-label">The general ledger cannot be joined</span>
+      <p>
+        <code>GlEntry.voucherId</code> is a plain <code>String</code> with no <code>ref</code>,
+        discriminated at runtime by <code>voucherType</code>. The same pattern appears on
+        <code>DocumentInbox.links[].entityId</code>. Neither uses <code>refPath</code>, so neither
+        can be <code>populate()</code>d or <code>$lookup</code>-joined on ObjectId. Drilling from a
+        ledger line back to its source document needs a hand-written type→collection switch.
+        See <a href="#ledger-mech">§03</a>.
+      </p>
+    </div>
+
+    <div class="note hazard">
+      <span class="note-label">Model registration is an import side effect</span>
+      <p>
+        There is no <code>models/index.ts</code>. Models register only when some route or controller
+        happens to import them, so <code>mongoose.modelNames()</code> — and therefore the
+        <code>syncIndexes()</code> loop in <code>config/db.ts:52</code> — covers only what has
+        already been loaded. A <code>populate()</code> into a not-yet-imported model throws
+        <code>MissingSchemaError</code> at runtime.
+      </p>
+      <p>
+        Relatedly: <code>plugins/organizationScoped.plugin.ts</code> exists and is exported, but is
+        applied to <strong>zero</strong> schemas. Every model hand-declares its tenancy field, which
+        is exactly how the six snake_case outliers above drifted apart.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="conventions">01 · Conventions</h2>
+    <p class="lede">How to read everything below.</p>
+
+    <h3>Naming</h3>
+    <p>
+      Model names are the string passed to <code>model("Name", schema)</code>, which is not always
+      derivable from the filename. Two traps:
+    </p>
+    <div class="tw">
+      <table>
+        <thead><tr><th class="m">File</th><th class="m">Registered as</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="m">document.model.ts</td>
+            <td class="m">DocumentInbox</td>
+            <td>Collection is <code>documentinboxes</code>, not <code>documents</code>. Worse, <code>DocumentInbox</code> is <em>also</em> a TypeScript union type in the same file for the unrelated <code>inboxType</code> field.</td>
+          </tr>
+          <tr>
+            <td class="m">unit.model.ts</td>
+            <td class="m">UnitOfMeasurement</td>
+            <td><code>ref: "UnitOfMeasurement"</code>, not <code>"Unit"</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Relationship notation in the ER diagrams</h3>
+    <div class="tw">
+      <table>
+        <thead><tr><th class="m">Mark</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="m">||--o{</td><td>One-to-many via a real <code>ObjectId</code> ref — populatable.</td></tr>
+          <tr><td class="m">||..o{</td><td><b>Soft link.</b> Related by a number/code <em>string</em>, not an id. Not populatable; joins are string matches. These are real relationships the schema does not enforce.</td></tr>
+          <tr><td class="m">}o--o{</td><td>Many-to-many, realised through a junction collection.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      To keep the diagrams readable, plugin-injected audit refs
+      (<code>createdBy</code>/<code>updatedBy</code>/<code>deletedBy</code> → <code>User</code>) and
+      the near-universal <code>organizationId</code> → <code>Organization</code> edge are
+      <strong>omitted from every domain diagram</strong>. Assume both are present unless the entity
+      is tagged <span class="tag global">global</span>.
+    </p>
+
+    <h3>Money and numbering</h3>
+    <ul>
+      <li>Amounts are <code>Number</code> (floating point) on all accounting models — no decimal type. Rounding is done in application code via a shared <code>roundMoney</code> helper.</li>
+      <li>Document numbers (<code>invoiceNumber</code>, <code>billNumber</code>, …) are generated from the <code>Counter</code> collection, whose <code>_id</code> is a composite string such as <code>invoice-&lt;orgId&gt;</code>. That composite key is the only reason <code>Counter</code> is tenant-safe despite having no org field.</li>
+      <li><code>TimesheetEntry</code> stores <code>duration</code>, <code>hourlyRate</code> and <code>totalAmount</code> as <strong>Strings</strong>, not Numbers. Arithmetic requires parsing.</li>
+    </ul>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="map">02 · System map</h2>
+    <p class="lede">
+      Eight domains. Both trading cycles converge on one immutable ledger.
+    </p>
+
+    <figure>
+      <svg class="fig" viewBox="0 0 900 470" role="img"
+           aria-label="Domain map: master data feeds the sales and purchase cycles, both of which post into the general ledger, which feeds reporting. Inventory is driven by both cycles. Documents feed purchases and the ledger.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#2b5ce6"/>
+          </marker>
+        </defs>
+
+        <!-- Core substrate -->
+        <rect x="20" y="20" width="860" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 3" opacity="0.55"/>
+        <text x="34" y="41" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">CORE &amp; IDENTITY</text>
+        <text x="34" y="59" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">Organization · User · Role · Counter · Currency · PaymentTerms · Tax</text>
+
+        <!-- Masters -->
+        <rect x="20" y="98" width="180" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="34" y="120" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">MASTERS</text>
+        <text x="34" y="139" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">Contact · Item</text>
+        <text x="34" y="156" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">Warehouse</text>
+
+        <!-- Sales -->
+        <rect x="270" y="90" width="220" height="86" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="284" y="112" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">SALES / O2C</text>
+        <text x="284" y="131" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">Quote → SalesOrder →</text>
+        <text x="284" y="148" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">Invoice → PaymentReceived</text>
+        <text x="284" y="165" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">CreditNote · Challan</text>
+
+        <!-- Purchases -->
+        <rect x="270" y="290" width="220" height="86" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="284" y="312" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">PURCHASES / P2P</text>
+        <text x="284" y="331" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">PO → Receive → Bill →</text>
+        <text x="284" y="348" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">PaymentMade</text>
+        <text x="284" y="365" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">VendorCredit · Expense</text>
+
+        <!-- Inventory -->
+        <rect x="20" y="215" width="180" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="34" y="237" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">INVENTORY OPS</text>
+        <text x="34" y="256" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">Adjustment</text>
+        <text x="34" y="273" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">MoveOrder · Putaway</text>
+
+        <!-- Documents -->
+        <rect x="270" y="400" width="220" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="284" y="421" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">DOCUMENTS / BANKING</text>
+        <text x="284" y="440" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">DocumentInbox · Folder</text>
+
+        <!-- Ledger (accent — the convergence point) -->
+        <rect x="580" y="180" width="200" height="106" rx="3" fill="#e8edfd" stroke="#2b5ce6" stroke-width="2"/>
+        <text x="594" y="203" font-family="ui-monospace,monospace" font-size="11" fill="#2b5ce6">GENERAL LEDGER</text>
+        <text x="594" y="224" font-family="ui-monospace,monospace" font-size="13" fill="#16213d" font-weight="600">GlEntry</text>
+        <text x="594" y="243" font-family="ui-monospace,monospace" font-size="12" fill="#16213d">Account · Journal</text>
+        <text x="594" y="262" font-family="ui-monospace,monospace" font-size="12" fill="#16213d">FixedAsset · Tax</text>
+        <text x="594" y="279" font-family="ui-monospace,monospace" font-size="11" fill="#2b5ce6">immutable · reversal-only</text>
+
+        <!-- Reports -->
+        <rect x="580" y="60" width="200" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="594" y="81" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">REPORTING</text>
+        <text x="594" y="100" font-family="ui-monospace,monospace" font-size="12" fill="currentColor">Trial balance · P&amp;L · BS</text>
+
+        <!-- Arrows: masters into cycles -->
+        <line x1="200" y1="126" x2="264" y2="126" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+        <line x1="200" y1="152" x2="264" y2="320" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+
+        <!-- cycles into ledger (accent) -->
+        <path d="M 490 140 C 545 140, 545 205, 574 205" fill="none" stroke="#2b5ce6" stroke-width="2" marker-end="url(#arA)"/>
+        <path d="M 490 330 C 545 330, 545 262, 574 262" fill="none" stroke="#2b5ce6" stroke-width="2" marker-end="url(#arA)"/>
+        <text x="512" y="163" font-family="ui-monospace,monospace" font-size="10.5" fill="#2b5ce6">postVoucher()</text>
+        <text x="512" y="309" font-family="ui-monospace,monospace" font-size="10.5" fill="#2b5ce6">postVoucher()</text>
+
+        <!-- ledger to reports -->
+        <line x1="680" y1="180" x2="680" y2="118" stroke="#2b5ce6" stroke-width="2" marker-end="url(#arA)"/>
+        <text x="690" y="152" font-family="ui-monospace,monospace" font-size="10.5" fill="#2b5ce6">aggregate</text>
+
+        <!-- cycles to inventory -->
+        <path d="M 268 165 C 230 180, 220 200, 202 232" fill="none" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+        <path d="M 268 318 C 230 300, 220 285, 202 268" fill="none" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+        <text x="196" y="200" font-family="ui-monospace,monospace" font-size="10.5" fill="currentColor" opacity="0.7">stock moves</text>
+
+        <!-- documents to purchases + ledger -->
+        <line x1="380" y1="400" x2="380" y2="382" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+        <path d="M 490 426 C 640 426, 700 340, 700 292" fill="none" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar)"/>
+        <text x="520" y="418" font-family="ui-monospace,monospace" font-size="10.5" fill="currentColor" opacity="0.7">bank import → Journal</text>
+      </svg>
+      <figcaption>
+        <b>Every financial event converges on <code>GlEntry</code>.</b> Both trading cycles reach it
+        through the same <code>postVoucher()</code> service rather than writing ledger rows
+        themselves, and reports read only from the ledger — never from document totals. The blue
+        path is the one that must never be bypassed: a document saved without its
+        <code>postVoucher()</code> call is invisible to every financial report.
+      </figcaption>
+    </figure>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="ledger-mech">03 · The ledger mechanism</h2>
+    <p class="lede">
+      The single most important thing to understand before touching this codebase.
+    </p>
+
+    <p>
+      Business documents do not carry their own accounting. Posting is centralised in
+      <code>gl-posting.service.ts</code>, which validates that debits equal credits and then writes
+      immutable <code>GlEntry</code> rows. Corrections are made by writing further rows
+      (<code>isReversal</code>, <code>reversalOf</code>), never by editing.
+    </p>
+
+    <figure>
+      <svg class="fig" viewBox="0 0 880 300" role="img"
+           aria-label="An invoice posts through postVoucher into GlEntry rows. The link back from GlEntry to the source document is a string voucherId discriminated by voucherType, which cannot be populated.">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar2h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#a4501b"/>
+          </marker>
+        </defs>
+
+        <!-- sources -->
+        <rect x="14" y="20" width="150" height="26" rx="2" fill="none" stroke="currentColor"/>
+        <text x="24" y="38" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">Invoice</text>
+        <rect x="14" y="54" width="150" height="26" rx="2" fill="none" stroke="currentColor"/>
+        <text x="24" y="72" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">Bill · Expense</text>
+        <rect x="14" y="88" width="150" height="26" rx="2" fill="none" stroke="currentColor"/>
+        <text x="24" y="106" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">PaymentReceived/Made</text>
+        <rect x="14" y="122" width="150" height="26" rx="2" fill="none" stroke="currentColor"/>
+        <text x="24" y="140" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">Journal · CreditNote</text>
+        <text x="14" y="172" font-family="ui-monospace,monospace" font-size="10.5" fill="currentColor" opacity="0.7">10 voucher types</text>
+
+        <!-- service -->
+        <rect x="230" y="52" width="160" height="84" rx="3" fill="#e8edfd" stroke="#2b5ce6" stroke-width="1.8"/>
+        <text x="244" y="76" font-family="ui-monospace,monospace" font-size="12" fill="#16213d" font-weight="600">postVoucher()</text>
+        <text x="244" y="96" font-family="ui-monospace,monospace" font-size="10.5" fill="#16213d">asserts Dr = Cr</text>
+        <text x="244" y="112" font-family="ui-monospace,monospace" font-size="10.5" fill="#16213d">tolerance 0.009</text>
+        <text x="244" y="128" font-family="ui-monospace,monospace" font-size="10.5" fill="#16213d">rejects unbalanced</text>
+
+        <!-- gl rows -->
+        <rect x="460" y="34" width="200" height="120" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <text x="474" y="55" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">GlEntry rows</text>
+        <line x1="460" y1="64" x2="660" y2="64" stroke="currentColor" opacity="0.3"/>
+        <text x="474" y="82" font-family="ui-monospace,monospace" font-size="11" fill="currentColor">accountId  → Account</text>
+        <text x="474" y="100" font-family="ui-monospace,monospace" font-size="11" fill="currentColor">debit / credit</text>
+        <text x="474" y="118" font-family="ui-monospace,monospace" font-size="11" fill="currentColor">postingDate</text>
+        <text x="474" y="140" font-family="ui-monospace,monospace" font-size="11" fill="#a4501b">voucherId : String</text>
+
+        <!-- reports -->
+        <rect x="716" y="60" width="150" height="68" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="730" y="82" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity="0.75">REPORTS</text>
+        <text x="730" y="101" font-family="ui-monospace,monospace" font-size="11" fill="currentColor">Trial balance</text>
+        <text x="730" y="118" font-family="ui-monospace,monospace" font-size="11" fill="currentColor">P&amp;L · Balance sheet</text>
+
+        <!-- arrows -->
+        <line x1="164" y1="34" x2="224" y2="70" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+        <line x1="164" y1="67" x2="224" y2="84" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+        <line x1="164" y1="101" x2="224" y2="104" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+        <line x1="164" y1="135" x2="224" y2="120" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+        <line x1="390" y1="94" x2="454" y2="94" stroke="#2b5ce6" stroke-width="2" marker-end="url(#arA)"/>
+        <line x1="660" y1="94" x2="710" y2="94" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar2)"/>
+
+        <!-- the broken return path -->
+        <path d="M 560 154 C 560 215, 300 215, 90 200 L 90 154" fill="none" stroke="#a4501b" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ar2h)"/>
+        <text x="300" y="238" font-family="ui-monospace,monospace" font-size="11" fill="#a4501b">drill-down: voucherType + voucherId string — no ref, no populate, no $lookup</text>
+        <text x="300" y="256" font-family="ui-monospace,monospace" font-size="11" fill="#a4501b">requires a hand-written type → collection switch</text>
+      </svg>
+      <figcaption>
+        <b>The forward path is enforced; the return path is not.</b> Posting is balanced and
+        validated, but the link from a ledger row back to its source is an unindexed-by-type string
+        pair. The dashed edge is the one you will have to implement yourself every time a report
+        needs to drill through to a document.
+      </figcaption>
+    </figure>
+
+    <div class="note">
+      <span class="note-label">Voucher types</span>
+      <p>
+        <code>Invoice · CreditNote · Bill · Expense · VendorCredit · PaymentMade · PaymentReceived ·
+        RetainerInvoice · Journal · System</code>
+      </p>
+      <p>
+        <code>voucherId</code> is stored as <code>&lt;type&gt;:&lt;objectId&gt;</code>, e.g.
+        <code>invoice:665f…</code>. <code>Account.balance</code> is additionally maintained as a
+        denormalised running total, incremented alongside each posting — but all financial
+        <em>reports</em> aggregate <code>GlEntry</code> directly, so the two can drift without any
+        report noticing.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="core">04 · Core &amp; identity</h2>
+    <div class="domain-head"><span class="domain-count">12 collections · the tenancy and configuration substrate</span></div>
+    <p>
+      <code>Organization</code> is the tenant root and the single most-referenced model (53 inbound
+      refs). Note the bootstrap cycle: <code>Organization.defaultAccounts.*</code> points at nine
+      <code>Account</code> rows, while every <code>Account</code> points back at its
+      <code>Organization</code> — the org row must be inserted first, its accounts created second,
+      then the org updated.
+    </p>
+
+    <pre class="mermaid">
+erDiagram
+    Organization ||--o{ Account : "defaultAccounts (9 refs)"
+    Organization }o--o{ User : "owner + members[]"
+    User ||--o| Organization : "activeOrganization"
+    Organization ||--o{ Role : "organizationId (nullable)"
+    Organization ||--o{ PaymentTerms : ""
+    Organization ||--o{ PaymentMode : ""
+    Organization ||--o{ UnitOfMeasurement : ""
+    Organization ||--o{ ReportingTag : ""
+    Organization ||--o{ SalesPerson : ""
+    Organization ||--o{ ExchangeRate : ""
+    PaymentMode ||--o| Account : "accountId"
+    Currency ||..o{ Organization : "baseCurrency (code string)"
+    Currency ||..o{ ExchangeRate : "from/toCurrency (code strings)"
+    User ||..o{ Role : "roles[] (name strings, NOT refs)"
+
+    Organization {
+        ObjectId owner FK "User"
+        ObjectId_arr members FK "User[]"
+        String name UK "unique per owner, case-insensitive"
+        String baseCurrency "code string"
+        Number fiscalYearStart "default 4 (April)"
+        Subdoc defaultAccounts "9 nullable Account refs"
+        Subdoc smtpSettings "contains plaintext pass"
+    }
+    User {
+        String firebaseUid UK "external identity"
+        String email UK "sparse"
+        String_arr roles "plain names, no FK"
+        ObjectId activeOrganization FK "drives ALL org scoping"
+    }
+    Role {
+        ObjectId organizationId FK "NULLABLE - system roles are global"
+        Boolean isSystemRole
+        Subdoc_arr permissions "per-module CRUD flags"
+    }
+    Counter {
+        String _id PK "composite: invoice-orgId"
+        Number seq
+    }
+    </pre>
+
+    <div class="note hazard">
+      <span class="note-label">Authorisation is weaker than it looks</span>
+      <p>
+        <code>User.roles</code> is <code>[String]</code> — plain names, not refs to
+        <code>Role</code>. There is no foreign key from a user to a role anywhere; resolution is
+        string matching in application code. And <code>Role.organizationId</code> is nullable, so
+        global system roles and per-org roles share one collection with no partial unique index
+        separating them. A role name reused across tenants resolves ambiguously.
+      </p>
+      <p>
+        All tenant scoping derives from <code>User.activeOrganization</code>, read server-side.
+        That part is sound — no client-supplied org id is ever trusted.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="masters">05 · Master data</h2>
+    <div class="domain-head"><span class="domain-count">5 collections · shared by both trading cycles</span></div>
+    <p>
+      <code>Contact</code> is a unified customer/vendor record discriminated by
+      <code>contactType</code> — there is no separate Customer or Vendor collection. Both
+      <code>GlEntry.contactType</code> and <code>Journal.lineItems[].contactType</code> layer a
+      Customer/Vendor/None discriminator over this single model.
+    </p>
+
+    <pre class="mermaid">
+erDiagram
+    Contact ||--o| Contact : "linkedContactId (self)"
+    Contact ||--o| PaymentTerms : ""
+    Contact ||--o| Account : "accountsPayableId / accountsReceivableId"
+    Contact ||--o| SalesPerson : ""
+    Contact }o--o{ ReportingTag : "reportingTags[]"
+    ItemGroup ||--o| ItemGroup : "parentId (self, tree)"
+    Item ||--o| ItemGroup : ""
+    Item ||--o| UnitOfMeasurement : "unit"
+    Item ||--o| Tax : "taxId / intraStateTaxId / interStateTaxId"
+    Item ||--o| Account : "sales / purchase / inventory account"
+    Item ||--o| Contact : "preferredVendorId"
+    Item ||--o| Warehouse : ""
+    PriceList ||--o{ Item : "items[].itemId"
+
+    Contact {
+        String contactType "Customer or Vendor"
+        String displayName
+        String gstin
+        Number outstandingReceivable "denormalised"
+        Number outstandingPayable "denormalised"
+        Subdoc_arr contactPersons
+        Subdoc_arr bankDetails
+    }
+    Item {
+        String name
+        Number stockOnHand "denormalised"
+        Number committedStock "reserved by sales orders"
+        String valuationMethod "MovingAverage or FIFO"
+        Number costRate
+    }
+    </pre>
+
+    <p>
+      <code>Item.stockOnHand</code> and <code>committedStock</code> are denormalised counters
+      mutated by the sales and purchase cycles; <code>InventoryAdjustment</code> is the audit trail
+      that explains each change. <code>Contact.outstandingReceivable</code> and
+      <code>outstandingPayable</code> are likewise recomputed by a service rather than derived on
+      read.
+    </p>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="sales">06 · Sales — order to cash</h2>
+    <div class="domain-head"><span class="domain-count">11 collections · Quote → SalesOrder → Invoice → PaymentReceived</span></div>
+
+    <pre class="mermaid">
+erDiagram
+    Contact ||--o{ Quote : "customerId"
+    Contact ||--o{ SalesOrder : "customerId"
+    Contact ||--o{ Invoice : "customerId"
+    Contact ||--o{ CreditNote : "customerId"
+    Quote ||--o| Invoice : "invoiceId (converted to)"
+    Invoice ||--o| Quote : "quoteId (back-pointer)"
+    SalesOrder ||--o| Invoice : "invoiceId (one-way)"
+    SalesOrder ||..o{ Invoice : "salesOrderNumber (SOFT)"
+    SalesOrder ||..o{ DeliveryChallan : "salesOrderNumber (SOFT)"
+    SalesOrder ||--o{ Package : "salesOrderId"
+    DeliveryChallan ||--o| Invoice : "invoiceId"
+    Invoice ||--o{ PaymentInvoiceMap : "invoice_id"
+    PaymentReceived ||--o{ PaymentInvoiceMap : "payment_id"
+    Invoice ||--o{ CreditNoteApplication : "invoiceId"
+    CreditNote ||--o{ CreditNoteApplication : "creditNoteId"
+    CreditNote ||--o| Invoice : "referenceInvoiceId"
+    RecurringInvoice ||--o{ Invoice : "generates"
+    Invoice ||--o| RecurringInvoice : "recurringProfileId"
+    RetainerInvoice ||--o{ Invoice : "applications[].invoice_id"
+
+    Invoice {
+        String invoiceNumber UK "unique per org"
+        String status "Draft Sent Viewed Overdue PartiallyPaid Paid Void"
+        String orderNumber "SOFT LINK to SalesOrder"
+        Number total
+        Number balanceDue
+        ObjectId pdfTemplateId FK "DANGLING - no such model"
+        Subdoc_arr items "itemId taxId accountId projectId"
+    }
+    PaymentReceived {
+        String organization_id FK "SNAKE_CASE"
+        String customer_id FK "SNAKE_CASE"
+        String payment_number
+        String status "DRAFT PAID VOID"
+        Number amount_received
+        Number amount_in_excess
+    }
+    PaymentInvoiceMap {
+        String payment_id FK "SNAKE_CASE junction"
+        String invoice_id FK
+        Number applied_amount
+        Boolean is_deleted "hand-rolled, NOT the plugin"
+    }
+    </pre>
+
+    <div class="note hazard">
+      <span class="note-label">Two allocation ledgers, two deletion conventions</span>
+      <p>
+        Payment allocation lives in a separate junction collection, not on the invoice.
+        <code>PaymentInvoiceMap</code> hand-rolls <code>is_deleted</code>/<code>deleted_at</code>
+        and does <strong>not</strong> apply <code>softDeletePlugin</code> — so there is no automatic
+        query filter. Callers must add <code>is_deleted: false</code> themselves or they
+        double-count applied payments. <code>CreditNoteApplication</code>, by contrast, uses the
+        plugin's <code>isDeleted</code> and filters automatically. Same job, opposite behaviour.
+      </p>
+    </div>
+
+    <p>
+      <strong>Conversion is traceable forward but not backward.</strong> <code>SalesOrder.invoiceId</code>
+      and <code>DeliveryChallan.invoiceId</code> point at the invoice, but <code>Invoice</code> has
+      no <code>salesOrderId</code> field — only the <code>orderNumber</code> string. Finding “which
+      SO produced this invoice” is a string match, and it is what the stock-deduction logic keys
+      off.
+    </p>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="purchases">07 · Purchases — procure to pay</h2>
+    <div class="domain-head"><span class="domain-count">11 collections · mirrors the sales cycle</span></div>
+
+    <pre class="mermaid">
+erDiagram
+    Contact ||--o{ PurchaseOrder : "vendorId"
+    Contact ||--o{ Bill : "vendorId"
+    Contact ||--o{ VendorCredit : "vendorId"
+    PurchaseOrder ||--o{ PurchaseReceive : "purchaseOrderId"
+    PurchaseOrder ||..o{ Bill : "orderNumber (SOFT)"
+    PurchaseReceive ||--o{ Bill : "linkedBillIds[]"
+    PurchaseReceive ||--o{ Putaway : "purchaseReceiveId"
+    Bill ||--o{ PaymentBillMap : "bill_id"
+    PaymentMade ||--o{ PaymentBillMap : "payment_id"
+    Bill ||--o{ VendorCreditApplication : "billId"
+    VendorCredit ||--o{ VendorCreditApplication : "vendorCreditId"
+    VendorCredit ||--o| Bill : "referenceBillId"
+    RecurringBill ||--o{ Bill : "generatedBillIds[]"
+    Bill ||--o| RecurringBill : "recurringId"
+    Bill ||--o{ FixedAsset : "fixedAssetIds[]"
+    FixedAsset ||--o| Bill : "sourceBillId"
+    RecurringExpense ||--o{ Expense : "generatedExpenseIds[]"
+    Expense ||--o| DocumentInbox : "sourceDocumentId"
+    Expense ||--o| Project : "projectId (CROSS-TENANT RISK)"
+
+    Bill {
+        String billNumber
+        String status "Draft Open Overdue PartiallyPaid Paid Void"
+        String orderNumber "SOFT LINK to PurchaseOrder"
+        Number total
+        Number balanceDue
+    }
+    Expense {
+        String expenseNumber
+        String expenseType "Regular or Mileage"
+        String status "Draft Submitted Approved Rejected Reimbursed"
+        ObjectId expenseAccountId FK
+        ObjectId paidThroughAccountId FK
+        Boolean isBillable "rechargeable to customerId"
+    }
+    ExpenseCategory {
+        String name "ORPHANED - nothing references this"
+        ObjectId accountId FK
+    }
+    </pre>
+
+    <div class="note hazard">
+      <span class="note-label">Orphaned collection</span>
+      <p>
+        <code>ExpenseCategory</code> maps a category name to a GL account, but neither
+        <code>Expense</code> nor <code>RecurringExpense</code> has an
+        <code>expenseCategoryId</code> field. Nothing in the schema references it. It is a
+        standalone lookup list today, not a live foreign key — either wire it up or drop it.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="ledger">08 · Ledger, tax &amp; fixed assets</h2>
+    <div class="domain-head"><span class="domain-count">10 collections · <code>Account</code> is the second-biggest hub at 51 inbound refs</span></div>
+
+    <pre class="mermaid">
+erDiagram
+    Account ||--o| Account : "parentId (CoA tree)"
+    Account ||--o{ GlEntry : "accountId"
+    GlEntry ||--o| GlEntry : "reversalOf (self)"
+    GlEntry ||--o| Contact : "contactId"
+    Journal ||--o{ Account : "lineItems[].accountId"
+    Journal ||--o| Contact : "vendorId"
+    Tax ||--o{ Tax : "components[].taxId (composite)"
+    TdsTax ||--o| Account : "payable / receivable"
+    TcsTax ||--o| Account : "payable / receivable"
+    FixedAssetType ||--o{ FixedAsset : "fixedAssetTypeId"
+    FixedAsset ||--o| Account : "asset / accumDep / depExpense"
+    Account ||--o| FixedAssetType : "fixedAssetTypeId"
+    CurrencyAdjustment ||--o{ Account : "lines[].accountId"
+
+    Account {
+        String name UK "unique per org+parent"
+        String rootType "Asset Liability Equity Income Expense"
+        String accountType "Bank Cash AR AP Stock etc"
+        ObjectId parentId FK "self - tree"
+        Boolean isGroup "non-postable node"
+        Number balance "DENORMALISED running total"
+        Number openingBalance
+    }
+    GlEntry {
+        String voucherType "10-value enum - discriminator"
+        String voucherId "POLYMORPHIC string, no ref"
+        String voucherNo
+        ObjectId accountId FK
+        Number debit "min 0"
+        Number credit "min 0"
+        Date postingDate
+        Boolean isReversal
+        ObjectId reversalOf FK "self"
+    }
+    Journal {
+        String journalNumber UK
+        String status "Draft Posted Voided"
+        Number totalDebit
+        Number totalCredit
+        String bankImportKey UK "dedupe for statement import"
+    }
+    </pre>
+
+    <p>
+      Reports (<code>trialBalance</code>, <code>profitAndLoss</code>, <code>balanceSheet</code>)
+      aggregate <code>GlEntry</code> by <code>accountId</code> and <code>postingDate</code>, adding
+      <code>Account.openingBalance</code>. They deliberately ignore <code>Account.balance</code> —
+      which is the correct design, and means that denormalised field is effectively decorative.
+    </p>
+
+    <div class="note critical">
+      <span class="note-label">Depreciation never reaches the ledger</span>
+      <p>
+        The TypeScript union <code>GlVoucherType</code> includes <code>"FixedAsset"</code>, but the
+        runtime Mongoose enum at <code>gl-entry.model.ts:44</code> omits it.
+        <code>fixed-asset-depreciation.service.ts</code> posts with
+        <code>voucherType: "FixedAsset"</code> at four call sites. Every one fails enum validation
+        at save, so depreciation posts nothing — and TypeScript reports no error, because the union
+        and the enum are declared separately in the same file.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="inventory">09 · Inventory operations</h2>
+    <div class="domain-head"><span class="domain-count">3 collections · driven by both trading cycles</span></div>
+
+    <pre class="mermaid">
+erDiagram
+    Item ||--o{ InventoryAdjustment : "itemId"
+    Warehouse ||--o{ InventoryAdjustment : "warehouseId"
+    Warehouse ||--o{ MoveOrder : "fromWarehouseId / toWarehouseId"
+    Item ||--o{ MoveOrder : "items[].itemId"
+    SalesOrder ||--o| MoveOrder : "salesOrderId"
+    PurchaseReceive ||--o{ Putaway : "purchaseReceiveId"
+    Warehouse ||--o{ Putaway : "warehouseId"
+    Item ||--o{ Putaway : "lineItems[].itemId"
+
+    InventoryAdjustment {
+        String referenceNumber
+        Number quantityChange "the delta, signed"
+        Number resultingStock "on-hand AFTER this change"
+        String reason "count damage loss found return"
+    }
+    MoveOrder {
+        String orderNumber
+        String status "Draft Sent InTransit Received Cancelled"
+    }
+    Putaway {
+        String putawayNumber
+        String status "Draft Completed Cancelled"
+    }
+    </pre>
+
+    <p>
+      <code>InventoryAdjustment</code> is append-only and records
+      <code>resultingStock</code> alongside the delta, so it doubles as a reconstruction log for
+      <code>Item.stockOnHand</code> — useful when the denormalised counter drifts.
+    </p>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="documents">10 · Documents &amp; banking</h2>
+    <div class="domain-head"><span class="domain-count">3 collections · file ingestion, OCR and bank statement import</span></div>
+
+    <pre class="mermaid">
+erDiagram
+    DocumentFolder ||--o{ DocumentInbox : "folderId"
+    DocumentMailbox ||--o{ DocumentInbox : "email ingestion"
+    DocumentInbox ||--o{ Journal : "bankTransactions[].ledgerJournalId"
+    DocumentInbox ||--o{ Expense : "auto-created from receipts"
+    DocumentInbox ||..o{ Contact : "links[].entityId (POLYMORPHIC)"
+    DocumentInbox ||..o{ Bill : "links[].entityId (POLYMORPHIC)"
+    DocumentInbox ||..o{ Invoice : "links[].entityId (POLYMORPHIC)"
+
+    DocumentInbox {
+        String fileName
+        String documentType "generic invoice receipt bank_statement other"
+        String source "manual drag_drop email api"
+        String processingStatus "PROCESSING PROCESSED UNREADABLE SCAN_IN_PROGRESS"
+        Subdoc extraction "OCR + AI fields, confidenceScore"
+        Subdoc_arr bankTransactions "parsed statement rows"
+        Subdoc_arr links "entityType + entityId STRING"
+    }
+    DocumentFolder {
+        String name
+        String visibilityType "all_users or custom"
+        Subdoc_arr permissions "principalType user|role, principalId STRING"
+    }
+    </pre>
+
+    <div class="note hazard">
+      <span class="note-label">The link enum is not a model list</span>
+      <p>
+        <code>DocumentInbox.links[].entityType</code> uses lowercase aliases —
+        <code>expense · bill · purchase_order · sales_invoice · vendor · customer · account</code> —
+        which do <em>not</em> match model names. <code>sales_invoice</code> maps to
+        <code>Invoice</code>, and both <code>vendor</code> and <code>customer</code> map to the
+        single <code>Contact</code> model. Any resolver needs an explicit alias table.
+      </p>
+      <p>
+        <code>DocumentFolder.permissions[].principalId</code> is likewise a bare String pointing at
+        either a <code>User</code> or a <code>Role</code> depending on
+        <code>principalType</code>.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="ai">11 · AI assistant &amp; project time</h2>
+    <div class="domain-head"><span class="domain-count">6 collections · the weakest area of the schema</span></div>
+
+    <pre class="mermaid">
+erDiagram
+    Project ||--o{ TimeLog : "projectId"
+    Project ||--o{ TimesheetEntry : "projectId"
+    User ||--o{ TimeLog : "userId"
+    User ||--o{ TimesheetEntry : "userId"
+    Project }o--o{ User : "owner + members[]"
+    Project ||--o{ Invoice : "items[].projectId"
+    Project ||--o{ Expense : "projectId"
+    Project ||..o{ Contact : "customerName (STRING ONLY)"
+
+    Project {
+        String name "NO organizationId"
+        ObjectId owner FK "User"
+        String customerName "no customer FK at all"
+        String status "active completed archived"
+    }
+    TimesheetEntry {
+        String duration "STRING not Number"
+        String hourlyRate "STRING not Number"
+        String totalAmount "STRING not Number"
+        String billingStatus "Invoiced Unbilled Draft"
+    }
+    AgentLog {
+        ObjectId organizationId FK
+        String instruction
+        Subdoc_arr toolSteps
+    }
+    ChatLog {
+        String userId "bare String, not a ref"
+        Subdoc_arr sources "cited KB chunks"
+    }
+    </pre>
+
+    <div class="note critical">
+      <span class="note-label">Tenant isolation is missing here</span>
+      <p>
+        <code>Project</code>, <code>TimeLog</code> and <code>TimesheetEntry</code> carry
+        <strong>no organization field</strong>. <code>routes/projects.ts</code> scopes list queries
+        only by <code>{$or: [{owner: userId}, {members: userId}]}</code>, so a user who belongs to
+        two organizations sees one merged project list. Worse,
+        <code>Invoice.items[].projectId</code>, <code>Expense.projectId</code>,
+        <code>RecurringInvoice.items[].projectId</code> and
+        <code>RecurringExpense.projectId</code> can all point at a project owned by a
+        <em>different tenant</em>, with nothing at the database or query layer preventing it.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="note-label">KBChunk is not part of this database</span>
+      <p>
+        <code>kb-chunk.model.ts</code> registers lazily on a <em>separate</em>
+        <code>mongoose.createConnection()</code> (a distinct chatbot cluster, falling back to
+        <code>&lt;mainUri&gt;/chatbot_db</code>). It never appears in
+        <code>mongoose.modelNames()</code>, is not covered by the <code>syncIndexes()</code> loop,
+        cannot be populated or <code>$lookup</code>-ed from any main-connection document, and only
+        exists after <code>getKBChunkModel()</code> is first called. Treat it as a separate
+        datastore.
+      </p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="softlinks">12 · Soft links — relationships the schema does not enforce</h2>
+    <p class="lede">
+      These behave like foreign keys in the business logic but are stored as strings. None can be
+      populated; all break silently if the referenced value is edited.
+    </p>
+
+    <div class="tw">
+      <table>
+        <thead>
+          <tr><th class="m">From</th><th class="m">Field</th><th class="m">Matches</th><th>Consequence</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="m">Invoice</td><td class="m">orderNumber</td><td class="m">SalesOrder.salesOrderNumber</td><td>Drives whether stock is deducted. The only SO→Invoice trace that exists.</td></tr>
+          <tr><td class="m">DeliveryChallan</td><td class="m">salesOrderNumber</td><td class="m">SalesOrder.salesOrderNumber</td><td>Same pattern on the fulfilment path.</td></tr>
+          <tr><td class="m">Bill</td><td class="m">orderNumber</td><td class="m">PurchaseOrder.purchaseOrderNumber</td><td>Decides whether a bill re-applies stock already received.</td></tr>
+          <tr><td class="m">RecurringBill</td><td class="m">orderNumber</td><td class="m">PurchaseOrder.purchaseOrderNumber</td><td>Inherited by every generated bill.</td></tr>
+          <tr><td class="m">VendorCredit</td><td class="m">orderNumber</td><td class="m">PurchaseOrder.purchaseOrderNumber</td><td>—</td></tr>
+          <tr><td class="m">CreditNote</td><td class="m">referenceOrderNumber</td><td class="m">SalesOrder.salesOrderNumber</td><td>—</td></tr>
+          <tr><td class="m">PurchaseReceive</td><td class="m">purchaseOrderNumber</td><td class="m">PurchaseOrder.purchaseOrderNumber</td><td>Duplicates the real <code>purchaseOrderId</code> ref beside it.</td></tr>
+          <tr><td class="m">Putaway</td><td class="m">purchaseReceiveNumber</td><td class="m">PurchaseReceive.purchaseReceiveNumber</td><td>Duplicates the real ref beside it.</td></tr>
+          <tr><td class="m">Organization</td><td class="m">baseCurrency</td><td class="m">Currency.code</td><td>Currency is a global table joined by code, by design.</td></tr>
+          <tr><td class="m">Contact</td><td class="m">currency</td><td class="m">Currency.code</td><td>Same.</td></tr>
+          <tr><td class="m">GlEntry</td><td class="m">voucherId</td><td class="m">10 possible models</td><td>Polymorphic. See <a href="#ledger-mech">§03</a>.</td></tr>
+          <tr><td class="m">DocumentInbox</td><td class="m">links[].entityId</td><td class="m">7 aliased types</td><td>Polymorphic with a non-model alias enum.</td></tr>
+          <tr><td class="m">Project</td><td class="m">customerName</td><td class="m">Contact.displayName</td><td>No customer id exists anywhere on Project.</td></tr>
+          <tr><td class="m">TimesheetEntry</td><td class="m">customerName</td><td class="m">Contact.displayName</td><td>Customer reporting depends on exact string equality.</td></tr>
+          <tr><td class="m">User</td><td class="m">roles[]</td><td class="m">Role.name</td><td>The entire RBAC join.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Reference cycles</h3>
+    <p>Populate depth guards and write-order care are needed on these.</p>
+    <ul>
+      <li><strong>Self-referencing:</strong> <code>Account.parentId</code>, <code>ItemGroup.parentId</code>, <code>Contact.linkedContactId</code>, <code>Tax.components[].taxId</code>, <code>GlEntry.reversalOf</code>.</li>
+      <li><strong>Bidirectional (both sides stored, must be kept in sync):</strong> Organization ↔ Account, User ↔ Organization, Quote ↔ Invoice, Invoice ↔ RecurringInvoice, Bill ↔ RecurringBill, Expense ↔ RecurringExpense, Bill ↔ FixedAsset.</li>
+    </ul>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="index">13 · Entity index</h2>
+    <p class="lede">All 61 registered models, plus one that registers from outside the models directory.</p>
+
+    <div class="tw">
+      <table>
+        <thead>
+          <tr><th class="m">Model</th><th class="m">Scope</th><th class="m">Plugins</th><th class="wrap">Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="m">Account</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Chart-of-accounts node; the ledger head every posting hits. Tree via <code>parentId</code>.</td></tr>
+          <tr><td class="m">AgentLog</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">One record per AI-agent run: instruction, answer, tool calls, duration.</td></tr>
+          <tr><td class="m">Bill</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Vendor bill (AP invoice) with lines, taxes and running balance due.</td></tr>
+          <tr><td class="m">ChatLog</td><td><span class="tag global">global</span></td><td class="m">—</td><td class="wrap">RAG chatbot Q&amp;A with cited sources. <code>userId</code> is a bare String.</td></tr>
+          <tr><td class="m">Contact</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Unified customer/vendor master: GST profile, addresses, terms, outstanding balances.</td></tr>
+          <tr><td class="m">Counter</td><td><span class="tag global">global</span></td><td class="m">—</td><td class="wrap">Atomic document-number sequences. Tenant-safe only via composite <code>_id</code>.</td></tr>
+          <tr><td class="m">CreditNote</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Customer credit note; balance applies to invoices or is refunded.</td></tr>
+          <tr><td class="m">CreditNoteApplication</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Junction: how much of a credit note was applied to one invoice.</td></tr>
+          <tr><td class="m">Currency</td><td><span class="tag global">global</span></td><td class="m">—</td><td class="wrap">Global ISO currency reference. Joined by code string, never by id.</td></tr>
+          <tr><td class="m">CurrencyAdjustment</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">Period-end FX revaluation run and its per-account unrealised gain/loss.</td></tr>
+          <tr><td class="m">DeliveryChallan</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Goods delivery note against a sales order; convertible to invoice.</td></tr>
+          <tr><td class="m">DocumentFolder</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Folders for the document inbox with per-user/role permissions.</td></tr>
+          <tr><td class="m">DocumentInbox</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Uploaded/emailed files + OCR extraction + parsed bank rows. File is <code>document.model.ts</code>.</td></tr>
+          <tr><td class="m">DocumentMailbox</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">The tenant's inbound email address and secret token for document forwarding.</td></tr>
+          <tr><td class="m">ExchangeRate</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Per-org FX rate for a currency pair on a date.</td></tr>
+          <tr><td class="m">Expense</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Business expense (regular or mileage), optionally billable to a customer.</td></tr>
+          <tr><td class="m">ExpenseCategory</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap"><span class="tag bad">orphaned</span> Category→account lookup that nothing references.</td></tr>
+          <tr><td class="m">FixedAsset</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Capitalised asset with its own depreciation schedule and three GL accounts.</td></tr>
+          <tr><td class="m">FixedAssetType</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Reusable depreciation template (asset class) that assets inherit from.</td></tr>
+          <tr><td class="m">GlEntry</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">The immutable ledger line. One debit-or-credit row per account per voucher.</td></tr>
+          <tr><td class="m">IdempotencyKey</td><td><span class="tag bad">snake</span></td><td class="m">—</td><td class="wrap">Dedupes retried mutations per org+scope, TTL 7 days.</td></tr>
+          <tr><td class="m">InventoryAdjustment</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">Append-only record of every stock delta and the resulting on-hand figure.</td></tr>
+          <tr><td class="m">Invoice</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">The central A/R document. Payments, credit notes and retainers apply against it.</td></tr>
+          <tr><td class="m">Item</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Product/service master with pricing, tax, GL mappings and stock counters.</td></tr>
+          <tr><td class="m">ItemGroup</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Hierarchical item category tree.</td></tr>
+          <tr><td class="m">Journal</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">Manual journal voucher; also the target of bank-statement import.</td></tr>
+          <tr><td class="m">JournalNumberingPreference</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Per-org journal numbering scheme (auto prefix+counter, or manual).</td></tr>
+          <tr><td class="m">KBChunk</td><td><span class="tag bad">other DB</span></td><td class="m">—</td><td class="wrap">Vector-searchable KB chunks with 768-dim embeddings. Separate connection.</td></tr>
+          <tr><td class="m">MoveOrder</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Inter-warehouse stock transfer with in-transit lifecycle.</td></tr>
+          <tr><td class="m">Organization</td><td><span class="tag global">tenant root</span></td><td class="m">soft·audit</td><td class="wrap">The tenant. Ownership, membership, locale, and nine default GL accounts.</td></tr>
+          <tr><td class="m">Package</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Packing slip: which SO quantities have been physically packed.</td></tr>
+          <tr><td class="m">PaymentBillMap</td><td><span class="tag bad">snake</span></td><td class="m">audit</td><td class="wrap">Junction: allocates a PaymentMade amount to a Bill. Hand-rolled deletion flag.</td></tr>
+          <tr><td class="m">PaymentInvoiceMap</td><td><span class="tag bad">snake</span></td><td class="m">audit</td><td class="wrap">Junction: allocates a PaymentReceived amount to an Invoice. Hand-rolled deletion flag.</td></tr>
+          <tr><td class="m">PaymentMade</td><td><span class="tag bad">snake</span></td><td class="m">audit</td><td class="wrap">Outgoing vendor payment header; allocation lives in PaymentBillMap.</td></tr>
+          <tr><td class="m">PaymentMode</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Payment method (Cash, UPI…) optionally wired to a GL account.</td></tr>
+          <tr><td class="m">PaymentReceived</td><td><span class="tag bad">snake</span></td><td class="m">audit</td><td class="wrap">Customer receipt header; allocation lives in PaymentInvoiceMap.</td></tr>
+          <tr><td class="m">PaymentTerms</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Net-30 style terms driving due-date calculation.</td></tr>
+          <tr><td class="m">PriceList</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">Per-currency price book overriding item rates for sales and/or purchases.</td></tr>
+          <tr><td class="m">Project</td><td><span class="tag bad">no tenant</span></td><td class="m">—</td><td class="wrap">Billable client project. No org field — cross-tenant leak risk.</td></tr>
+          <tr><td class="m">PurchaseOrder</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">PO raised to a vendor; receives and bills match against it.</td></tr>
+          <tr><td class="m">PurchaseReceive</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Goods receipt against a PO: what actually arrived, and which bills followed.</td></tr>
+          <tr><td class="m">Putaway</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Shelving of received goods into warehouse locations.</td></tr>
+          <tr><td class="m">Quote</td><td><span class="tag org">org</span></td><td class="m">soft·audit·activity</td><td class="wrap">Sales quotation, convertible to an invoice.</td></tr>
+          <tr><td class="m">RecurringBill</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Schedule + bill payload the scheduler clones into real Bills.</td></tr>
+          <tr><td class="m">RecurringExpense</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Schedule + expense template cloned into Expenses.</td></tr>
+          <tr><td class="m">RecurringInvoice</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Recurring billing profile generating Invoices on a schedule.</td></tr>
+          <tr><td class="m">ReportingTag</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">Dimensional label (cost centre, department) attachable to transactions.</td></tr>
+          <tr><td class="m">RetainerInvoice</td><td><span class="tag bad">snake</span></td><td class="m">audit</td><td class="wrap">Customer advance tracked from receipt through application to invoices.</td></tr>
+          <tr><td class="m">Role</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Named permission set. <code>organizationId</code> nullable — system roles are global.</td></tr>
+          <tr><td class="m">SalesOrder</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Confirmed customer order driving invoicing, packing and shipment.</td></tr>
+          <tr><td class="m">SalesPerson</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">Sales rep for attribution and commission.</td></tr>
+          <tr><td class="m">Tax</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">GST/sales tax rate: simple, group (composed) or compound.</td></tr>
+          <tr><td class="m">TcsTax</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Tax Collected at Source rate with payable/receivable accounts.</td></tr>
+          <tr><td class="m">TdsTax</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Tax Deducted at Source rate under an Income Tax section.</td></tr>
+          <tr><td class="m">TimeLog</td><td><span class="tag bad">no tenant</span></td><td class="m">—</td><td class="wrap">Raw start/stop timer against a project.</td></tr>
+          <tr><td class="m">TimesheetEntry</td><td><span class="tag bad">no tenant</span></td><td class="m">—</td><td class="wrap">Finalised billable work line. Money and duration stored as Strings.</td></tr>
+          <tr><td class="m">UnitOfMeasurement</td><td><span class="tag org">org</span></td><td class="m">—</td><td class="wrap">Unit of measure (pcs, kg, hrs). File is <code>unit.model.ts</code>.</td></tr>
+          <tr><td class="m">User</td><td><span class="tag global">platform</span></td><td class="m">—</td><td class="wrap">Firebase-backed login. <code>activeOrganization</code> drives all tenant scoping.</td></tr>
+          <tr><td class="m">VendorCredit</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Vendor-issued credit note applied against bills or refunded.</td></tr>
+          <tr><td class="m">VendorCreditApplication</td><td><span class="tag org">org</span></td><td class="m">soft·audit</td><td class="wrap">Junction: allocates vendor credit to a specific bill.</td></tr>
+          <tr><td class="m">Warehouse</td><td><span class="tag org">org</span></td><td class="m">audit</td><td class="wrap">Physical stock location with address and primary flag.</td></tr>
+          <tr><td class="m">NamingSeries</td><td><span class="tag bad">stray</span></td><td class="m">—</td><td class="wrap">Registered in <code>utils/namingSeries.ts</code>, not the models directory. <code>generateName()</code> has zero callers — dead code that still registers and index-syncs.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <h2 id="defects">14 · Defect register</h2>
+    <p class="lede">
+      Schema-level defects found while mapping. Ordered by blast radius. None of these are
+      stylistic.
+    </p>
+
+    <div class="tw">
+      <table>
+        <thead>
+          <tr><th class="m">#</th><th class="wrap">Defect</th><th class="m">Location</th><th class="m">Severity</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="m">1</td>
+            <td class="wrap"><strong>Cross-tenant deletion.</strong> <code>strictQuery</code> strips <code>organizationId</code> from <code>deleteMany</code> filters on the six snake_case collections, reducing them to <code>{}</code>. The org-reset endpoint wipes seven collections for every tenant.</td>
+            <td class="m">settings.controller.ts:451–511</td>
+            <td><span class="tag bad">critical</span></td>
+          </tr>
+          <tr>
+            <td class="m">2</td>
+            <td class="wrap"><strong>Depreciation never posts.</strong> <code>voucherType: "FixedAsset"</code> is in the TS union but absent from the runtime enum, so all four depreciation postings fail validation silently.</td>
+            <td class="m">gl-entry.model.ts:14 vs :44</td>
+            <td><span class="tag bad">critical</span></td>
+          </tr>
+          <tr>
+            <td class="m">3</td>
+            <td class="wrap"><strong>No tenant isolation on projects.</strong> <code>Project</code>/<code>TimeLog</code>/<code>TimesheetEntry</code> have no org field; invoices and expenses in one tenant can reference a project in another.</td>
+            <td class="m">Project.ts, routes/projects.ts</td>
+            <td><span class="tag bad">critical</span></td>
+          </tr>
+          <tr>
+            <td class="m">4</td>
+            <td class="wrap"><strong>Soft-delete not applied to payment junctions.</strong> <code>PaymentInvoiceMap</code>/<code>PaymentBillMap</code> hand-roll <code>is_deleted</code> with no query hook, so unfiltered reads double-count applied payments.</td>
+            <td class="m">payment-*-map.model.ts</td>
+            <td><span class="tag bad">high</span></td>
+          </tr>
+          <tr>
+            <td class="m">5</td>
+            <td class="wrap"><strong>Aggregations see deleted rows.</strong> <code>softDeletePlugin</code> hooks <code>find</code>/<code>findOne</code>/<code>findOneAndUpdate</code>/<code>countDocuments</code> but not <code>aggregate</code>, <code>distinct</code> or <code>updateMany</code>.</td>
+            <td class="m">plugins/softDelete.plugin.ts</td>
+            <td><span class="tag bad">high</span></td>
+          </tr>
+          <tr>
+            <td class="m">6</td>
+            <td class="wrap"><strong>Dangling ref.</strong> <code>Invoice.pdfTemplateId</code> declares <code>ref: "PdfTemplate"</code>, but no such model exists anywhere. Any <code>populate()</code> throws <code>MissingSchemaError</code>. Controllers always write <code>null</code>, so the feature is simply unbuilt.</td>
+            <td class="m">invoice.model.ts:113</td>
+            <td><span class="tag bad">medium</span></td>
+          </tr>
+          <tr>
+            <td class="m">7</td>
+            <td class="wrap"><strong>Roles are unenforced strings.</strong> <code>User.roles</code> is <code>[String]</code>; <code>Role.organizationId</code> is nullable with no partial unique index. Role names colliding across tenants resolve ambiguously.</td>
+            <td class="m">user.model.ts:39, role.model.ts:104</td>
+            <td><span class="tag bad">medium</span></td>
+          </tr>
+          <tr>
+            <td class="m">8</td>
+            <td class="wrap"><strong>Index sync is incomplete.</strong> No models barrel; <code>syncIndexes()</code> only covers models already imported by a loaded route.</td>
+            <td class="m">config/db.ts:52</td>
+            <td><span class="tag bad">medium</span></td>
+          </tr>
+          <tr>
+            <td class="m">9</td>
+            <td class="wrap"><strong>Dead abstractions.</strong> <code>organizationScoped.plugin.ts</code> applied to zero schemas; <code>NamingSeries</code> has zero callers but still registers.</td>
+            <td class="m">plugins/, utils/namingSeries.ts</td>
+            <td><span class="tag ok">low</span></td>
+          </tr>
+          <tr>
+            <td class="m">10</td>
+            <td class="wrap"><strong>Orphaned collection.</strong> <code>ExpenseCategory</code> is referenced by nothing.</td>
+            <td class="m">expense-category.model.ts</td>
+            <td><span class="tag ok">low</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
+
+<script type="module">
+  const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  try {
+    const { default: mermaid } = await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs");
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: dark ? "dark" : "neutral",
+      securityLevel: "loose",
+      er: { useMaxWidth: true },
+      flowchart: { useMaxWidth: true }
+    });
+  } catch (err) {
+    // No internet: leave the Mermaid source visible as readable text and say so.
+    const main = document.querySelector("main");
+    if (main) {
+      const n = document.createElement("p");
+      n.className = "offline-note";
+      n.textContent =
+        "Diagrams could not render — this file loads Mermaid from a CDN and there is no network. " +
+        "The diagram source below is still readable, and can be pasted into mermaid.live. " +
+        "For always-rendered diagrams, use docs/DATA_MODEL.md on GitHub instead.";
+      main.insertBefore(n, main.querySelector("h2"));
+    }
+  }
+</script>
+</body>
+</html>

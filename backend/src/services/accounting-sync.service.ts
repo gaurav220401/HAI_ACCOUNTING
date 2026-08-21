@@ -8,6 +8,12 @@ import PaymentMade from "../models/payment-made.model";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
 import { multiplyMoney, roundMoney } from "../utils/money";
+import {
+  postCommitmentChange,
+  postStockMovement,
+  resolveWarehouseId,
+} from "./stock-ledger.service";
+import type { StockMovementSource } from "../models/stock-movement.model";
 
 export type StockDeltaMap = Record<string, number>;
 export type ValueDeltaMap = Record<string, number>;
@@ -136,13 +142,27 @@ export function invertValueDeltas(deltas: ValueDeltaMap): ValueDeltaMap {
   return out;
 }
 
+/**
+ * Applies quantity changes through the stock ledger.
+ *
+ * Signature is unchanged so the ~35 existing call sites keep working, but the
+ * write now goes to `StockBalance` + `StockMovement` and `Item.stockOnHand` is
+ * refreshed as a rollup rather than incremented in place. Callers that know
+ * their warehouse should pass it; the rest fall back per
+ * docs/STOCK_LEDGER_SPEC.md §6.2.
+ *
+ * This is also what finally gives invoices and bills a movement row — until now
+ * only manual adjustments, move orders, putaway and shipments left any trace.
+ */
 export async function applyStockDeltas(params: {
   organizationId: Types.ObjectId | string;
   deltas: StockDeltaMap;
+  warehouseId?: Types.ObjectId | string | null;
+  source?: { type: StockMovementSource; id: string; number?: string };
   req?: AuthenticatedRequest;
   session?: ClientSession;
 }): Promise<void> {
-  const { organizationId, deltas, req, session } = params;
+  const { organizationId, deltas, warehouseId, source, req, session } = params;
   const oid = toObjectId(organizationId);
 
   for (const [itemId, delta] of Object.entries(deltas || {})) {
@@ -156,25 +176,40 @@ export async function applyStockDeltas(params: {
     });
     if (session) query.session(session);
 
-    const item = await query;
+    const item = await query.lean();
     if (!item) continue;
 
-    item.stockOnHand = round2(normalizeQuantity(item.stockOnHand) + delta);
-    if (req) attachUser(item, req);
+    const wid = await resolveWarehouseId({
+      organizationId: oid,
+      explicit: warehouseId,
+      itemId,
+      session,
+    });
 
-    if (session) await item.save({ session });
-
-    else await item.save();
+    await postStockMovement({
+      organizationId: oid,
+      itemId,
+      warehouseId: wid,
+      quantityDelta: delta,
+      unitCost: Number((item as { averageCost?: number }).averageCost || 0),
+      sourceType: source?.type ?? "Adjustment",
+      sourceId: source?.id ?? `stock-delta:${itemId}`,
+      sourceNumber: source?.number ?? "",
+      req,
+      session,
+    });
   }
 }
 
+/** Reserves or releases stock without moving it. Routed through the ledger. */
 export async function applyCommittedStockDeltas(params: {
   organizationId: Types.ObjectId | string;
   deltas: StockDeltaMap;
+  warehouseId?: Types.ObjectId | string | null;
   req?: AuthenticatedRequest;
   session?: ClientSession;
 }): Promise<void> {
-  const { organizationId, deltas, req, session } = params;
+  const { organizationId, deltas, warehouseId, req, session } = params;
   const oid = toObjectId(organizationId);
 
   for (const [itemId, delta] of Object.entries(deltas || {})) {
@@ -188,16 +223,24 @@ export async function applyCommittedStockDeltas(params: {
     });
     if (session) query.session(session);
 
-    const item = await query;
+    const item = await query.lean();
     if (!item) continue;
 
-    const currentCommitted = normalizeQuantity((item as any).committedStock);
-    (item as any).committedStock = round2(Math.max(0, currentCommitted + delta));
+    const wid = await resolveWarehouseId({
+      organizationId: oid,
+      explicit: warehouseId,
+      itemId,
+      session,
+    });
 
-    if (req) attachUser(item, req);
-
-    if (session) await item.save({ session });
-    else await item.save();
+    await postCommitmentChange({
+      organizationId: oid,
+      itemId,
+      warehouseId: wid,
+      delta,
+      req,
+      session,
+    });
   }
 }
 
@@ -208,10 +251,12 @@ export async function applyCommittedStockDeltas(params: {
 export async function applyStockAndCommitmentDeltas(params: {
   organizationId: Types.ObjectId | string;
   deltas: StockDeltaMap; // These should be negative for decreases
+  warehouseId?: Types.ObjectId | string | null;
+  source?: { type: StockMovementSource; id: string; number?: string };
   req?: AuthenticatedRequest;
   session?: ClientSession;
 }): Promise<void> {
-  const { organizationId, deltas, req, session } = params;
+  const { organizationId, deltas, warehouseId, source, req, session } = params;
   const oid = toObjectId(organizationId);
 
   for (const [itemId, delta] of Object.entries(deltas || {})) {
@@ -225,18 +270,38 @@ export async function applyStockAndCommitmentDeltas(params: {
     });
     if (session) query.session(session);
 
-    const item = await query;
+    const item = await query.lean();
     if (!item) continue;
 
-    // Decrease both
-    item.stockOnHand = round2(normalizeQuantity(item.stockOnHand) + delta);
-    const currentCommitted = normalizeQuantity((item as any).committedStock);
-    (item as any).committedStock = round2(Math.max(0, currentCommitted + delta));
+    const wid = await resolveWarehouseId({
+      organizationId: oid,
+      explicit: warehouseId,
+      itemId,
+      session,
+    });
 
-    if (req) attachUser(item, req);
-
-    if (session) await item.save({ session });
-    else await item.save();
+    // Shipping against a reserved order both issues the stock and releases the
+    // reservation, so the same delta is applied to each.
+    await postStockMovement({
+      organizationId: oid,
+      itemId,
+      warehouseId: wid,
+      quantityDelta: delta,
+      unitCost: Number((item as { averageCost?: number }).averageCost || 0),
+      sourceType: source?.type ?? "Shipment",
+      sourceId: source?.id ?? `shipment:${itemId}`,
+      sourceNumber: source?.number ?? "",
+      req,
+      session,
+    });
+    await postCommitmentChange({
+      organizationId: oid,
+      itemId,
+      warehouseId: wid,
+      delta,
+      req,
+      session,
+    });
   }
 }
 

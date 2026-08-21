@@ -8,6 +8,7 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
+import { postStockMovement, resolveWarehouseId } from "../services/stock-ledger.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -38,9 +39,21 @@ async function nextReceiveNumber(organizationId: any): Promise<string> {
   return `PR-${String(next).padStart(5, "0")}`;
 }
 
+/**
+ * Records received goods through the stock ledger.
+ *
+ * Previously wrote `item.stockOnHand` directly, bypassing the ledger entirely —
+ * so a receipt left no movement row and, once balances became the source of the
+ * rollup, would have been silently overwritten by the next refresh. Receipts now
+ * go through the same path as every other stock change.
+ */
 async function applyReceiveInventory(params: {
   organizationId: any;
-  lineItems: Array<{ itemId?: any; quantityReceived: number; rate: number }>;
+  lineItems: Array<{ itemId?: any; quantityReceived: number; rate: number; warehouseId?: any }>;
+  warehouseId?: any;
+  receiveId?: string;
+  receiveNumber?: string;
+  req?: AuthenticatedRequest;
 }) {
   for (const line of params.lineItems) {
     if (!line.itemId) continue;
@@ -51,23 +64,29 @@ async function applyReceiveInventory(params: {
       _id: itemId,
       organizationId: params.organizationId,
       isDeleted: false,
-    });
+    }).lean();
     if (!item) continue;
 
     const qty = Math.max(0, toNum(line.quantityReceived));
     if (qty <= 0) continue;
 
-    const valueAdd = round2(qty * Math.max(0, toNum(line.rate)));
-    const prevStock = round2(toNum(item.stockOnHand));
-    const prevValue = round2(toNum(item.inventoryValue));
+    const warehouseId = await resolveWarehouseId({
+      organizationId: params.organizationId,
+      explicit: line.warehouseId || params.warehouseId,
+      itemId,
+    });
 
-    item.stockOnHand = round2(prevStock + qty);
-    if (item.inventoryTracked) {
-      item.inventoryValue = round2(prevValue + valueAdd);
-      item.averageCost = item.stockOnHand > 0 ? round2(item.inventoryValue / item.stockOnHand) : 0;
-    }
-
-    await item.save();
+    await postStockMovement({
+      organizationId: params.organizationId,
+      itemId,
+      warehouseId,
+      quantityDelta: qty,
+      unitCost: Math.max(0, toNum(line.rate)),
+      sourceType: "PurchaseReceive",
+      sourceId: `purchase-receive:${params.receiveId ?? String(itemId)}`,
+      sourceNumber: params.receiveNumber ?? "",
+      req: params.req,
+    });
   }
 }
 
@@ -285,6 +304,9 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     await applyReceiveInventory({
       organizationId: oid,
       lineItems: normalizedLineItems,
+      receiveId: String(receiveDoc._id),
+      receiveNumber: receiveDoc.purchaseReceiveNumber,
+      req,
     });
 
     const poDoc = await PurchaseOrder.findOne({ _id: po._id, organizationId: oid, isDeleted: false });

@@ -187,10 +187,33 @@ export interface ItemBulkActionResult {
 
 // ─── API ────────────────────────────────────────────────────────────────
 
+/** Server-side filters for the item list. All of these are applied in the database. */
+export interface ItemListParams extends ListParams {
+  /** Matches name, sku, description, brand or manufacturer. */
+  search?: string;
+  type?: "Goods" | "Service";
+  /** createdAt >= this date (YYYY-MM-DD). */
+  fromDate?: string;
+  /** createdAt <= this date (YYYY-MM-DD, inclusive). */
+  toDate?: string;
+  sortBy?: "name" | "sku" | "description" | "purchaseDescription" | "rate" | "purchaseRate" | "stock" | "hsn" | "createdAt";
+  sortOrder?: "asc" | "desc";
+}
+
+/** Headline figures for the whole filtered result set, not just the page. */
+export interface ItemListSummary {
+  totalItems: number;
+  totalStock: number;
+  goodsCount: number;
+  servicesCount: number;
+}
+
 export const itemApi = {
   // Items
-  list: (params?: ListParams) =>
-    apiFetch<PaginatedResponse<Item>>(`/items${buildQuery(params || {})}`),
+  list: (params?: ItemListParams) =>
+    apiFetch<PaginatedResponse<Item> & { summary?: ItemListSummary }>(
+      `/items${buildQuery(params || {})}`,
+    ),
 
   getById: (id: string) =>
     apiFetch<{ data: Item }>(`/items/${id}`),

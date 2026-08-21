@@ -46,7 +46,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { itemApi, type Item, type ItemBulkAction, type ItemInventoryMetrics } from "@/lib/api/items";
+import { itemApi, type Item, type ItemBulkAction, type ItemInventoryMetrics, type ItemListSummary } from "@/lib/api/items";
 import { inventoryApi, type InventoryAdjustment } from "@/lib/api/inventory";
 import { reportApi } from "@/lib/api/reports";
 
@@ -172,6 +172,32 @@ function ItemsPageContent() {
   const [typeFilter, setTypeFilter] = useState<"All" | "Goods" | "Service">("All");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+
+  // Search, filtering, sorting and paging are all resolved server-side. Fetching
+  // a fixed slice and filtering it in the browser silently hides matches once an
+  // organization has more items than the page size.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [listSummary, setListSummary] = useState<ItemListSummary | null>(null);
+
+  type ItemSortField = "name" | "purchaseDescription" | "purchaseRate" | "description" | "rate" | "stock" | "hsn" | "unit";
+  type ItemSortOrder = "asc" | "desc";
+  const [sortField, setSortField] = useState<ItemSortField>("name");
+  const [sortOrder, setSortOrder] = useState<ItemSortOrder>("asc");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Any change to the result set must return to the first page, otherwise a
+  // narrower filter can leave the user stranded on a page that no longer exists.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, typeFilter, fromDate, toDate, pageSize]);
 
   // Detail panel
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -869,11 +895,25 @@ function ItemsPageContent() {
   const fetchItems = useCallback(async () => {
     setFetching(true);
     try {
-      const res = await itemApi.list({ page: 1, limit: 200 });
+      const res = await itemApi.list({
+        page,
+        limit: pageSize,
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        ...(typeFilter !== "All" ? { type: typeFilter } : {}),
+        ...(fromDate ? { fromDate } : {}),
+        ...(toDate ? { toDate } : {}),
+        // "unit" is a populated ref and cannot be sorted in the database, so
+        // fall back to name rather than sorting one page in isolation.
+        sortBy: sortField === "unit" ? "name" : sortField,
+        sortOrder,
+      });
       setItems(res.data ?? []);
+      setTotalItems(res.pagination?.total ?? (res.data ?? []).length);
+      setTotalPages(Math.max(1, res.pagination?.pages ?? 1));
+      setListSummary(res.summary ?? null);
     } catch { /* noop */ }
     finally { setFetching(false); }
-  }, []);
+  }, [page, pageSize, debouncedSearch, typeFilter, fromDate, toDate, sortField, sortOrder]);
 
   useEffect(() => {
     if (firebaseUser && !loading && activeOrganization?._id) {
@@ -1293,27 +1333,9 @@ function ItemsPageContent() {
   }
 
   // ─── Derived ─────────────────────────────────────────────────────────────
-  const filtered = items.filter((i) => {
-    const matchesType = typeFilter === "All" || i.itemType === typeFilter;
-    const matchesSearch = !search ||
-      i.name.toLowerCase().includes(search.toLowerCase()) ||
-      (i.sku ?? "").toLowerCase().includes(search.toLowerCase());
-    
-    let matchesDate = true;
-    if (fromDate || toDate) {
-      const itemDate = i.createdAt ? new Date(i.createdAt).toISOString().slice(0, 10) : "";
-      if (fromDate && itemDate < fromDate) matchesDate = false;
-      if (toDate && itemDate > toDate) matchesDate = false;
-    }
-
-    return matchesType && matchesSearch && matchesDate;
-  });
-
-  type ItemSortField = "name" | "purchaseDescription" | "purchaseRate" | "description" | "rate" | "stock" | "hsn" | "unit";
-  type ItemSortOrder = "asc" | "desc";
-
-  const [sortField, setSortField] = useState<ItemSortField>("name");
-  const [sortOrder, setSortOrder] = useState<ItemSortOrder>("asc");
+  // `items` already reflects the active search, type and date filters — the
+  // server applied them across the whole collection, not just this page.
+  const filtered = items;
 
   function toggleSort(field: ItemSortField) {
     if (sortField === field) {
@@ -1324,66 +1346,31 @@ function ItemsPageContent() {
     }
   }
 
-  const sortedFilteredItems = useMemo(() => {
-    const list = [...filtered];
-    list.sort((a, b) => {
-      let aVal: any = "";
-      let bVal: any = "";
-      switch (sortField) {
-        case "name":
-          aVal = (a.name || "").toLowerCase();
-          bVal = (b.name || "").toLowerCase();
-          break;
-        case "purchaseDescription":
-          aVal = (a.purchaseDescription || "").toLowerCase();
-          bVal = (b.purchaseDescription || "").toLowerCase();
-          break;
-        case "purchaseRate":
-          aVal = Number(a.costPrice || 0);
-          bVal = Number(b.costPrice || 0);
-          break;
-        case "description":
-          aVal = (a.sellingDescription || a.description || "").toLowerCase();
-          bVal = (b.sellingDescription || b.description || "").toLowerCase();
-          break;
-        case "rate":
-          aVal = Number(a.sellingPrice || 0);
-          bVal = Number(b.sellingPrice || 0);
-          break;
-        case "stock":
-          aVal = Number(a.stockOnHand || 0);
-          bVal = Number(b.stockOnHand || 0);
-          break;
-        case "hsn":
-          aVal = (a.hsnSacCode || "").toLowerCase();
-          bVal = (b.hsnSacCode || "").toLowerCase();
-          break;
-        case "unit":
-          aVal = (typeof a.unit === "object" && a.unit ? a.unit.name : String(a.unit || "")).toLowerCase();
-          bVal = (typeof b.unit === "object" && b.unit ? b.unit.name : String(b.unit || "")).toLowerCase();
-          break;
-      }
-      if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
-      return 0;
-    });
-    return list;
-  }, [filtered, sortField, sortOrder]);
+  // The database applied the sort across the full result set, so re-sorting
+  // here would only reorder the current page and contradict it. "unit" is the
+  // one column the server cannot sort (it is a populated ref), and fetchItems
+  // maps it to name rather than sorting a single page in isolation.
+  const sortedFilteredItems = filtered;
 
+  // Headline figures come from the server so they describe every matching item.
+  // Falling back to page-local sums would make "Total items" read 50 when the
+  // filter actually matched 137.
   const summary = useMemo(() => {
-    const totalStock = filtered.reduce(
-      (acc, i) => acc + Number(i.stockOnHand || 0),
-      0,
-    );
-    const goodsCount = filtered.filter((i) => i.itemType === "Goods").length;
-    const servicesCount = filtered.filter((i) => i.itemType === "Service").length;
+    if (listSummary) {
+      return {
+        count: listSummary.totalItems,
+        totalStock: listSummary.totalStock,
+        goodsCount: listSummary.goodsCount,
+        servicesCount: listSummary.servicesCount,
+      };
+    }
     return {
       count: filtered.length,
-      totalStock,
-      goodsCount,
-      servicesCount,
+      totalStock: filtered.reduce((acc, i) => acc + Number(i.stockOnHand || 0), 0),
+      goodsCount: filtered.filter((i) => i.itemType === "Goods").length,
+      servicesCount: filtered.filter((i) => i.itemType === "Service").length,
     };
-  }, [filtered]);
+  }, [listSummary, filtered]);
 
   useEffect(() => {
     const visibleSet = new Set(filtered.map((item) => item._id));
@@ -1971,6 +1958,67 @@ function ItemsPageContent() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+
+            {/* Pagination — the list is a server-side page of the full result
+                set, so the totals below describe every matching item, not just
+                the rows on screen. */}
+            {totalItems > 0 && (
+              <div
+                data-testid="items-pagination"
+                /* pr-40 keeps the Next button clear of the floating assistant
+                   widget pinned to the bottom-right of every page. */
+                className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pl-4 pr-40 py-2.5 bg-white"
+              >
+                <p className="text-[11px] text-slate-500" data-testid="items-range">
+                  Showing{" "}
+                  <span className="font-medium text-slate-700">
+                    {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)}
+                  </span>{" "}
+                  of <span className="font-medium text-slate-700">{totalItems}</span> items
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-slate-500">
+                    Rows
+                    <select
+                      aria-label="Rows per page"
+                      data-testid="items-page-size"
+                      className="ml-1.5 h-7 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] text-slate-700"
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                    >
+                      {[25, 50, 100, 200].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="items-prev"
+                    className="h-7 text-[11px] px-2"
+                    disabled={page <= 1 || fetching}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-[11px] text-slate-500 tabular-nums" data-testid="items-page-indicator">
+                    Page {page} of {totalPages}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="items-next"
+                    className="h-7 text-[11px] px-2"
+                    disabled={page >= totalPages || fetching}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             )}
             </div>
