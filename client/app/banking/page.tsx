@@ -96,6 +96,15 @@ function BankingPageContent() {
   const [activeDoc, setActiveDoc] = useState<DocumentItem | null>(null);
   const [rows, setRows] = useState<Record<string, RowSelection>>({});
 
+  // Rendering every row of a large statement (a real bank export can run to
+  // 1,000+ transactions) is what was hanging the page — a Checkbox plus a
+  // Radix Select per row is expensive at that count. Pagination here is
+  // purely a rendering concern: selection state above and the post action
+  // below always operate on the full pending set regardless of which page
+  // is visible, exactly like the API/data layer already does.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
   const [loadingData, setLoadingData] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -213,6 +222,7 @@ function BankingPageContent() {
       next[txn._id] = { selected: true, accountId: null };
     }
     setRows(next);
+    setPage(1);
   }, [activeDoc]);
 
   // ─── Actions ──────────────────────────────────────────────────────────
@@ -312,6 +322,20 @@ function BankingPageContent() {
   const pendingTxns = useMemo(
     () => (activeDoc?.bankTransactions || []).filter((t) => !t.addedToBank && t._id),
     [activeDoc],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(pendingTxns.length / pageSize));
+
+  // Posting removes rows from pendingTxns, which can strand the current page
+  // past the new end — pull back onto the last real page rather than showing
+  // a blank table.
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
+
+  const pagedTxns = useMemo(
+    () => pendingTxns.slice((page - 1) * pageSize, page * pageSize),
+    [pendingTxns, page, pageSize],
   );
 
   const postedTxns = useMemo(
@@ -640,7 +664,7 @@ function BankingPageContent() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {pendingTxns.map((txn) => {
+                                {pagedTxns.map((txn) => {
                                   const id = txn._id as string;
                                   const row = rows[id];
                                   const isMoneyIn = Number(txn.credit || 0) > 0;
@@ -723,6 +747,64 @@ function BankingPageContent() {
                               </TableBody>
                             </Table>
                           </div>
+
+                          {pendingTxns.length > pageSize && (
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs text-muted-foreground">
+                              <p>
+                                Showing{" "}
+                                <span className="font-medium text-foreground">
+                                  {(page - 1) * pageSize + 1}–
+                                  {Math.min(page * pageSize, pendingTxns.length)}
+                                </span>{" "}
+                                of{" "}
+                                <span className="font-medium text-foreground">
+                                  {pendingTxns.length}
+                                </span>{" "}
+                                pending
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-1.5">
+                                  Rows
+                                  <select
+                                    aria-label="Rows per page"
+                                    className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
+                                    value={pageSize}
+                                    onChange={(e) => {
+                                      setPageSize(Number(e.target.value));
+                                      setPage(1);
+                                    }}
+                                  >
+                                    {[50, 100, 200, 500].map((n) => (
+                                      <option key={n} value={n}>
+                                        {n}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={page <= 1}
+                                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                >
+                                  Previous
+                                </Button>
+                                <span className="tabular-nums">
+                                  Page {page} of {totalPages}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={page >= totalPages}
+                                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                >
+                                  Next
+                                </Button>
+                              </div>
+                            </div>
+                          )}
 
                           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                             <p className="text-xs text-muted-foreground">
