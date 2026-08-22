@@ -6,7 +6,7 @@ import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 import admin from "../config/firebase";
-import { buildSignedAssetUrl, buildDownloadUrl, uploadBuffer, getCloudinaryResourceType } from "../utils/cloudinary";
+import { buildDownloadUrl, uploadBuffer, getCloudinaryResourceType } from "../utils/cloudinary";
 import { upload } from "../middlewares/upload";
 import { attachUser } from "../plugins";
 import DocumentModel from "../models/document.model";
@@ -1132,13 +1132,17 @@ export const getSignedPreviewUrl = asyncHandler(async (req: AuthenticatedRequest
       document.extension
     );
   } else {
-    // Preview-only signed URL (no forced attachment)
-    signedUrl = buildSignedAssetUrl(
+    // Preview-only URL, rendered inline rather than downloaded. Same Admin-API
+    // mechanism as the download branch above — buildSignedAssetUrl's CDN
+    // signing 401s for "authenticated" assets on this account (see its doc
+    // comment in utils/cloudinary.ts).
+    signedUrl = buildDownloadUrl(
       document.cloudinaryPublicId,
       resourceType,
       ttl,
       undefined,
-      document.extension
+      document.extension,
+      false,
     );
   }
   res.json({ success: true, data: { url: signedUrl, ttl } });

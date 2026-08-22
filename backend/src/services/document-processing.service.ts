@@ -5,7 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import DocumentModel, { IDocument, DocumentType, ProcessingMode } from "../models/document.model";
 import Contact from "../models/contact.model";
 import Expense from "../models/expense.model";
-import { buildSignedAssetUrl, getCloudinaryResourceType } from "../utils/cloudinary";
+import { buildDownloadUrl, getCloudinaryResourceType } from "../utils/cloudinary";
 import {
   isSpreadsheetStatement,
   parseStatementWorkbook,
@@ -286,11 +286,12 @@ function getGeminiClient(): GoogleGenAI | null {
  *
  * This MUST NOT be swallowed. Files are uploaded to Cloudinary with delivery
  * type "authenticated", so the stored `url` (secure_url) is not publicly
- * fetchable — it needs signing, exactly as the preview endpoint does. When this
- * previously returned null the caller carried on and prompted the model with
- * nothing but a filename, and the model duly invented a plausible bank
- * statement. Fabricated financial data is far worse than a failed import, so
- * every load failure now surfaces as an error.
+ * fetchable — it needs a real download URL, via buildDownloadUrl() (see its
+ * doc comment for why not buildSignedAssetUrl). When this previously
+ * returned null the caller carried on and prompted the model with nothing
+ * but a filename, and the model duly invented a plausible bank statement.
+ * Fabricated financial data is far worse than a failed import, so every load
+ * failure now surfaces as an error.
  */
 class DocumentUnreadableError extends Error {
   constructor(message: string) {
@@ -300,11 +301,13 @@ class DocumentUnreadableError extends Error {
 }
 
 async function downloadDocumentBytes(document: IDocument): Promise<Buffer> {
-  // Prefer a signed URL — required for "authenticated" delivery-type assets.
+  // Prefer a real download URL — required for "authenticated" delivery-type
+  // assets (buildSignedAssetUrl 401s for these on this account; see its
+  // comment). Attachment vs. inline doesn't matter here, we only read bytes.
   let fetchUrl = document.url;
   if (document.cloudinaryPublicId) {
     try {
-      fetchUrl = buildSignedAssetUrl(
+      fetchUrl = buildDownloadUrl(
         document.cloudinaryPublicId,
         getCloudinaryResourceType(document.extension, document.mimeType),
         600,
@@ -313,7 +316,7 @@ async function downloadDocumentBytes(document: IDocument): Promise<Buffer> {
       );
     } catch (error: any) {
       // Fall back to the stored URL; the fetch below will surface any problem.
-      console.warn("Signed URL build failed, falling back to stored URL:", error?.message || error);
+      console.warn("Download URL build failed, falling back to stored URL:", error?.message || error);
     }
   }
 

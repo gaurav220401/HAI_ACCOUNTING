@@ -74,8 +74,21 @@ export async function deleteAsset(
 }
 
 /**
- * Build a short-lived, forced-download URL for authenticated Cloudinary assets.
- * Uses the Admin API endpoint (api.cloudinary.com) which correctly handles authenticated delivery.
+ * Build a short-lived URL for an `authenticated`-type Cloudinary asset, via
+ * the Admin API's private-download endpoint (api.cloudinary.com).
+ *
+ * This is the only delivery mechanism that reliably works for `authenticated`
+ * assets on this account. The CDN-side alternative (`cloudinary.url()` with
+ * `sign_url: true`, see buildSignedAssetUrl below) requires "Token-based
+ * authentication" to be turned on in Cloudinary's account security settings —
+ * it is not, so that path 401s unconditionally regardless of how correct the
+ * signing code is. Confirmed directly: signing an existing, correctly-stored
+ * `image/authenticated` asset with buildSignedAssetUrl 401s, while the exact
+ * same asset fetched through this function returns 200 with the real bytes.
+ *
+ * @param forceAttachment - true (default) sends `Content-Disposition:
+ *   attachment`, for an explicit download action. false omits it, so a
+ *   browser renders a PDF/image inline — use this for in-app previews.
  */
 export function buildDownloadUrl(
   publicId: string,
@@ -83,6 +96,7 @@ export function buildDownloadUrl(
   ttlSeconds = 300,
   downloadFilename?: string,
   format?: string,
+  forceAttachment = true,
 ): string {
   const safeTtl = Math.max(30, Math.min(3600, Number(ttlSeconds) || 300));
   const expiresAt = Math.floor(Date.now() / 1000) + safeTtl;
@@ -91,7 +105,7 @@ export function buildDownloadUrl(
     resource_type: resourceType,
     type: "authenticated",
     expires_at: expiresAt,
-    flags: "attachment",
+    ...(forceAttachment ? { flags: "attachment" } : {}),
   };
 
   if (format) {
@@ -103,6 +117,16 @@ export function buildDownloadUrl(
 
 /**
  * Build a short-lived signed URL for secure previews/downloads.
+ *
+ * NOT CURRENTLY USABLE for `type: "authenticated"` assets on this account —
+ * confirmed by direct testing that it 401s even against a correctly-stored
+ * asset with valid credentials. Cloudinary's CDN only honors a `sign_url`
+ * signature for authenticated delivery when "Token-based authentication" is
+ * enabled in the account's security settings; it is not enabled here. Use
+ * buildDownloadUrl() instead (with forceAttachment: false for inline
+ * preview) — it goes through the Admin API instead of the CDN and works
+ * regardless of that account setting. Kept for the day token-based auth is
+ * turned on, at which point this becomes the lighter-weight option again.
  */
 export function buildSignedAssetUrl(
   publicId: string,
