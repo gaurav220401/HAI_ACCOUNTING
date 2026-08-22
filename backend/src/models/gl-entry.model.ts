@@ -41,7 +41,7 @@ const glEntrySchema = new Schema<IGlEntry>(
     organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
     voucherType: {
       type: String,
-      enum: ["Invoice", "CreditNote", "Bill", "Expense", "VendorCredit", "PaymentMade", "PaymentReceived", "RetainerInvoice", "Journal", "System"],
+      enum: ["Invoice", "CreditNote", "Bill", "Expense", "VendorCredit", "PaymentMade", "PaymentReceived", "RetainerInvoice", "Journal", "FixedAsset", "System"],
       required: true,
       index: true,
     },

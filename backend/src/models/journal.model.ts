@@ -100,7 +100,12 @@ journalSchema.index(
   },
 );
 
-journalSchema.pre("save", async function () {
+// Must run before validation, not just before save: journalNumber is
+// required:true, and Mongoose validates a document before its pre("save")
+// hooks fire — a plain pre("save") here would always reject a document that
+// relies on this hook to fill the field in (e.g. bank-statement.service.ts's
+// journals, which never set it themselves).
+journalSchema.pre("validate", async function () {
   if (this.isNew && !this.journalNumber) {
     const counter = await Counter.findByIdAndUpdate(
       `journal-${this.organizationId}`,
