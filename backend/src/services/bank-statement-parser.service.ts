@@ -83,7 +83,10 @@ const BALANCE_HEADERS = [
 ];
 const AMOUNT_HEADERS = ["amount(inr)", "amount (inr)", "amount", "txn amount", "transaction amount"];
 const DRCR_HEADERS = ["dr / cr", "dr/cr", "cr/dr", "type", "txn type", "transaction type", "indicator"];
-const REF_HEADERS = ["cheque no", "chq.no", "chq no", "ref no", "reference no", "reference number", "chq./ref.no."];
+const REF_HEADERS = [
+  "cheque no", "chq.no", "chq.no.", "chq no", "ref no", "reference no",
+  "reference number", "chq./ref.no.",
+];
 
 function norm(value: unknown): string {
   return String(value ?? "")
@@ -237,7 +240,7 @@ function buildDate(year: number, monthIndex: number, day: number): Date | null {
 
 // ─── Sheet scanning ─────────────────────────────────────────────────────────
 
-type Row = unknown[];
+export type Row = unknown[];
 
 interface ColumnMap {
   date: number;
@@ -379,6 +382,22 @@ export function parseStatementWorkbook(buffer: Buffer, fileName = "statement"): 
 
   if (!rows.length) throw new StatementParseError(`"${fileName}" is empty`);
 
+  return parseStatementRows(rows, fileName);
+}
+
+/**
+ * Core row-grid parser shared by every statement source.
+ *
+ * This is everything `parseStatementWorkbook` used to do after turning a
+ * spreadsheet buffer into a `Row[]` grid (each `Row` being one row's cells)
+ * — header detection, amount/date coercion, noise filtering, all of it.
+ * Pulling it out into its own function, operating purely on that grid, means
+ * a PDF statement can be reconstructed into the same grid shape (see
+ * `parseStatementPdf` below) and handed to exactly this logic — one trusted
+ * implementation of "what a bank statement column means", not a second,
+ * weaker one for the format that most needs a reliable one.
+ */
+export function parseStatementRows(rows: Row[], fileName = "statement"): ParsedStatement {
   const header = locateHeader(rows);
   if (!header) {
     throw new StatementParseError(
@@ -487,4 +506,277 @@ export function parseStatementWorkbook(buffer: Buffer, fileName = "statement"): 
       amount: map.amount,
     },
   };
+}
+
+// ─── PDF parsing ────────────────────────────────────────────────────────────
+//
+// A PDF has no cell grid — pdf.js hands back a flat list of text fragments
+// per page, each with an (x, y) position. The table is rebuilt by treating
+// the header row's x-positions as column anchors (found with the exact same
+// locateHeader() used above, fed a synthetic "row" per line of text) and then
+// assigning every later fragment to whichever anchor it sits closest to.
+// Once that grid exists it is handed to parseStatementRows() unchanged, so a
+// PDF gets exactly the same trusted, deterministic parsing a CSV does — no
+// second, weaker implementation for the format that most needs a reliable
+// one, and no possibility of inventing a row that was never printed.
+
+interface PdfTextFragment {
+  str: string;
+  x: number;
+  y: number;
+}
+
+interface PdfTextLine {
+  y: number;
+  items: PdfTextFragment[];
+}
+
+/** Fragments within this many points of each other are the same visual row.
+ * Real statement PDFs jitter sub-pixel between columns on one printed line
+ * (observed: ~0.25pt on a genuine Bank of Baroda export) — this is well
+ * clear of that while staying far short of the gap to the next line. */
+const LINE_Y_TOLERANCE = 1.5;
+
+/**
+ * A single row band cannot legitimately be taller than a handful of wrapped
+ * narration lines. Without this cap, the last row on a page (which has no
+ * following row to bound it) would keep absorbing everything printed below
+ * it, including the page footer/disclaimer — silently appending footer text
+ * onto that row's balance cell and breaking its reconciliation. 80pt is
+ * generous (wrapped narration here runs ~11pt across two lines) while being
+ * far short of the >500pt gap down to a footer.
+ */
+const MAX_ROW_SPAN_PT = 80;
+
+/** Groups a page's text fragments into visual lines, top-to-bottom, each
+ * line's fragments sorted left-to-right. */
+function groupIntoLines(items: PdfTextFragment[]): PdfTextLine[] {
+  const sorted = [...items].sort((a, b) => b.y - a.y || a.x - b.x);
+  const lines: PdfTextLine[] = [];
+  for (const item of sorted) {
+    const last = lines[lines.length - 1];
+    // Compared against the bucket's first fragment (not the previous one) so
+    // a line's total span can never drift past the tolerance.
+    if (last && Math.abs(last.y - item.y) <= LINE_Y_TOLERANCE) {
+      last.items.push(item);
+    } else {
+      lines.push({ y: item.y, items: [item] });
+    }
+  }
+  for (const line of lines) line.items.sort((a, b) => a.x - b.x);
+  return lines;
+}
+
+interface PdfColumn {
+  key: keyof ColumnMap;
+  x: number;
+  label: string;
+}
+
+/** Nearest-anchor column assignment: a fragment belongs to whichever header
+ * x-position it sits closest to, which is equivalent to using the midpoints
+ * between adjacent headers as column boundaries. */
+function nearestColumnKey(x: number, columns: PdfColumn[]): keyof ColumnMap {
+  let best = columns[0];
+  let bestDist = Math.abs(x - best.x);
+  for (let i = 1; i < columns.length; i += 1) {
+    const dist = Math.abs(x - columns[i].x);
+    if (dist < bestDist) {
+      best = columns[i];
+      bestDist = dist;
+    }
+  }
+  return best.key;
+}
+
+/**
+ * Groups a page's text lines into transaction row bands and reads off each
+ * band's per-column text.
+ *
+ * A band starts wherever a line carries a real date in the date column — on
+ * every layout seen so far that column is never wrapped onto a second line,
+ * so it is the one reliable row boundary. Everything up to MAX_ROW_SPAN_PT
+ * below that point (wrapped narration, a debit/credit figure vertically
+ * centred against a two-line narration) is folded into the same row.
+ * Anything further off — or appearing before the first anchor on a
+ * continuation page — is dropped rather than guessed at: it is either a
+ * repeated header/page-number or a footer disclaimer, never a transaction.
+ */
+function reconstructPageRows(lines: PdfTextLine[], columns: PdfColumn[], startIndex: number): Row[] {
+  const rows: Row[] = [];
+  let bandAnchorY: number | null = null;
+  let bandLines: PdfTextLine[] = [];
+
+  const flush = () => {
+    if (bandLines.length === 0) return;
+
+    const buckets = new Map<keyof ColumnMap, { y: number; x: number; str: string }[]>();
+    for (const line of bandLines) {
+      for (const item of line.items) {
+        const key = nearestColumnKey(item.x, columns);
+        const bucket = buckets.get(key) || [];
+        bucket.push({ y: line.y, x: item.x, str: item.str });
+        buckets.set(key, bucket);
+      }
+    }
+
+    // Reading order within a cell: top line before bottom line, left before
+    // right — this is what joins a wrapped narration back into one string.
+    rows.push(
+      columns.map((col) => {
+        const bucket = buckets.get(col.key) || [];
+        bucket.sort((a, b) => b.y - a.y || a.x - b.x);
+        return bucket.map((b) => b.str).join(" ").trim();
+      }),
+    );
+
+    bandLines = [];
+    bandAnchorY = null;
+  };
+
+  for (let i = startIndex; i < lines.length; i += 1) {
+    const line = lines[i];
+    const isAnchor = line.items.some(
+      (item) => nearestColumnKey(item.x, columns) === "date" && parseDateCell(item.str) !== null,
+    );
+
+    if (isAnchor) {
+      flush();
+      bandAnchorY = line.y;
+      bandLines.push(line);
+    } else if (
+      bandLines.length > 0 &&
+      bandAnchorY !== null &&
+      bandAnchorY - line.y <= MAX_ROW_SPAN_PT &&
+      // The page footer (page number, disclaimer, "Contact-Us") sits close
+      // enough below the last row on a page to pass the span check above —
+      // real statements were seen doing exactly this. looksLikeNoise() is
+      // the same content check the spreadsheet path already trusts to tell
+      // a footer from a data row, so it is reused here rather than widening
+      // the geometry further and risking real continuation lines instead.
+      !looksLikeNoise(line.items.map((it) => it.str))
+    ) {
+      bandLines.push(line);
+    }
+    // else: orphan text before the first anchor on this page, or noise
+    // stranded far below the last real row on it — dropped.
+  }
+  flush();
+
+  return rows;
+}
+
+// The reconstructed header row is fed back through locateHeader() (inside
+// parseStatementRows), so each matched column needs real label text it will
+// recognise — the first, most literal synonym for each is enough.
+const PDF_COLUMN_LABELS: Record<keyof ColumnMap, string> = {
+  date: DATE_HEADERS[0],
+  valueDate: VALUE_DATE_HEADERS[0],
+  description: DESCRIPTION_HEADERS[0],
+  debit: DEBIT_HEADERS[0],
+  credit: CREDIT_HEADERS[0],
+  balance: BALANCE_HEADERS[0],
+  amount: AMOUNT_HEADERS[0],
+  drcr: DRCR_HEADERS[0],
+  ref: REF_HEADERS[0],
+};
+
+/**
+ * Deterministic PDF statement parser.
+ *
+ * A text-based bank statement PDF carries a real text layer with exact
+ * positions, which pdf.js reads directly — nothing here is guessed the way
+ * an AI vision model guesses. The table's column x-positions are found once
+ * from the header row, every later text fragment is assigned to its nearest
+ * column, and the reconstructed grid is parsed by the exact same
+ * locateHeader() / parseAmountCell() / parseDateCell() logic a CSV export
+ * goes through.
+ *
+ * Throws StatementParseError when no text layer/table can be found at all
+ * (a scanned image PDF, for instance) so the caller can fall back to AI
+ * extraction as a last resort — the one case this function cannot help with.
+ */
+export async function parseStatementPdf(buffer: Buffer, fileName = "statement"): Promise<ParsedStatement> {
+  // Loaded lazily: pdfjs-dist ships ESM-only, and a spreadsheet import has no
+  // reason to pull in a PDF engine at module load time.
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  let doc: Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]>;
+  try {
+    doc = await pdfjsLib.getDocument({
+      data: new Uint8Array(buffer),
+      useWorkerFetch: false,
+      // Untrusted upload — never evaluate embedded PDF functions/scripts.
+      isEvalSupported: false,
+      verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+    }).promise;
+  } catch (error: any) {
+    throw new StatementParseError(`Could not open "${fileName}" as a PDF: ${error?.message || error}`);
+  }
+
+  const pageLines: PdfTextLine[][] = [];
+  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+    const page = await doc.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const fragments: PdfTextFragment[] = [];
+    for (const item of content.items) {
+      const str = (item as { str?: unknown }).str;
+      if (typeof str !== "string" || !str.trim()) continue;
+      const transform = (item as { transform?: number[] }).transform;
+      if (!Array.isArray(transform) || transform.length < 6) continue;
+      // transform[4]/[5] are the fragment's x/y in PDF user space (y up).
+      fragments.push({ str, x: transform[4], y: transform[5] });
+    }
+    pageLines.push(groupIntoLines(fragments));
+  }
+
+  // Headers are expected near the top of the document, so search only as far
+  // as locateHeader() itself would scan a spreadsheet (60 rows) — this also
+  // bounds the work done when a PDF's text layer turns out to be unusable.
+  const searchRows: Row[] = [];
+  const searchPositions: { page: number; line: number }[] = [];
+  outer: for (let page = 0; page < pageLines.length; page += 1) {
+    for (let line = 0; line < pageLines[page].length; line += 1) {
+      if (searchRows.length >= 60) break outer;
+      searchRows.push(pageLines[page][line].items.map((it) => it.str));
+      searchPositions.push({ page, line });
+    }
+  }
+
+  const header = locateHeader(searchRows);
+  if (!header) {
+    throw new StatementParseError(
+      `Could not find a transaction table in "${fileName}". ` +
+      "This PDF may be a scanned image with no extractable text layer.",
+    );
+  }
+
+  const { page: headerPage, line: headerLine } = searchPositions[header.index];
+  const headerItems = pageLines[headerPage][headerLine].items;
+
+  const columns: PdfColumn[] = [];
+  (Object.keys(header.map) as (keyof ColumnMap)[]).forEach((key) => {
+    const itemIndex = header.map[key];
+    if (itemIndex === -1) return;
+    const item = headerItems[itemIndex];
+    if (!item) return;
+    columns.push({ key, x: item.x, label: PDF_COLUMN_LABELS[key] });
+  });
+
+  const dataRows: Row[] = [];
+  pageLines.forEach((lines, pageIndex) => {
+    const startIndex = pageIndex === headerPage ? headerLine + 1 : 0;
+    dataRows.push(...reconstructPageRows(lines, columns, startIndex));
+  });
+
+  // Whatever printed above the header (bank name, account holder, statement
+  // period) is carried through as preamble rows so scanMetadata() gets the
+  // same chance to pick up an account number it has for a spreadsheet.
+  const preambleRows: Row[] = pageLines[headerPage]
+    .slice(0, headerLine)
+    .map((line) => line.items.map((it) => it.str));
+
+  const headerRow: Row = columns.map((col) => col.label);
+
+  return parseStatementRows([...preambleRows, headerRow, ...dataRows], fileName);
 }

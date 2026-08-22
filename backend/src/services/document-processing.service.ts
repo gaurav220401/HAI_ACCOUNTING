@@ -6,7 +6,12 @@ import DocumentModel, { IDocument, DocumentType, ProcessingMode } from "../model
 import Contact from "../models/contact.model";
 import Expense from "../models/expense.model";
 import { buildSignedAssetUrl, getCloudinaryResourceType } from "../utils/cloudinary";
-import { isSpreadsheetStatement, parseStatementWorkbook } from "./bank-statement-parser.service";
+import {
+  isSpreadsheetStatement,
+  parseStatementWorkbook,
+  parseStatementPdf,
+  StatementParseError,
+} from "./bank-statement-parser.service";
 
 interface ProcessJobPayload {
   documentId: string;
@@ -579,6 +584,60 @@ async function extractStatementFromSpreadsheet(
   };
 }
 
+/**
+ * Deterministic extraction for text-based PDF statements.
+ *
+ * Reads the PDF's own text layer and rebuilds the same row/column grid a
+ * spreadsheet import produces, so it goes through identical, trusted
+ * amount/date parsing — same confidence, same "no AI used" guarantee, same
+ * impossibility of inventing a row.
+ *
+ * Throws StatementParseError (unchanged) when no table can be reconstructed
+ * — a scanned image PDF, most likely — so the caller can fall back to AI
+ * extraction; any other failure becomes DocumentUnreadableError like every
+ * other read failure in this file.
+ */
+async function extractStatementFromPdf(document: IDocument): Promise<GeminiExtraction> {
+  const bytes = await downloadDocumentBytes(document);
+
+  let parsed;
+  try {
+    parsed = await parseStatementPdf(bytes, document.fileName);
+  } catch (error: any) {
+    if (error instanceof StatementParseError) throw error;
+    throw new DocumentUnreadableError(error?.message || "Could not read this PDF");
+  }
+
+  for (const warning of parsed.warnings) {
+    document.processingLogs.push(nowLog("parse", "warn", warning));
+  }
+  document.processingLogs.push(
+    nowLog(
+      "parse",
+      "ok",
+      `Read ${parsed.transactions.length} transactions directly from the PDF's text layer (no AI used).`,
+    ),
+  );
+
+  return {
+    confidence: 0.99,
+    rawText: "",
+    transactions: parsed.transactions.map((t) => ({
+      date: t.txnDate.toISOString().slice(0, 10),
+      description: t.description,
+      debit: t.debit,
+      credit: t.credit,
+      balance: t.balance,
+    })),
+    statementMeta: {
+      accountNumber: parsed.accountNumber,
+      openingBalance: parsed.openingBalance,
+      closingBalance: parsed.closingBalance,
+      totalTransactions: parsed.transactions.length,
+    },
+  };
+}
+
 async function extractWithGemini(
   document: IDocument,
   mode: ProcessingMode,
@@ -616,6 +675,46 @@ async function extractWithGemini(
   );
   if (!text) return null;
   return parseGeminiJsonPayload(text);
+}
+
+/**
+ * Picks the extraction path for a bank statement.
+ *
+ * Spreadsheets and text-based PDFs are read deterministically wherever
+ * possible; AI is reserved for whatever is left over — a genuinely
+ * unstructured scan/image, or a PDF whose text layer turns out to hold no
+ * usable table. `deterministic` tells the caller which happened, because the
+ * strict balance-chain rejection below only makes sense for the AI path: a
+ * deterministic parse either reads a cell correctly or fails outright, so
+ * there is no "probably wrong" result for it to produce.
+ */
+async function extractStatement(
+  document: IDocument,
+  isSpreadsheet: boolean,
+  isPdf: boolean,
+  mode: ProcessingMode,
+  pdfPassword?: string,
+): Promise<{ extraction: GeminiExtraction | null; deterministic: boolean }> {
+  if (isSpreadsheet) {
+    return { extraction: await extractStatementFromSpreadsheet(document), deterministic: true };
+  }
+
+  if (isPdf) {
+    try {
+      return { extraction: await extractStatementFromPdf(document), deterministic: true };
+    } catch (error: any) {
+      if (!(error instanceof StatementParseError)) throw error;
+      document.processingLogs.push(
+        nowLog(
+          "parse",
+          "warn",
+          `Deterministic PDF parsing found no readable transaction table (${error.message}); falling back to AI extraction.`,
+        ),
+      );
+    }
+  }
+
+  return { extraction: await extractWithGemini(document, mode, pdfPassword), deterministic: false };
 }
 
 // Each window re-sends the whole PDF, so larger windows mean fewer round-trips
@@ -759,15 +858,17 @@ async function processDocument(document: IDocument, pdfPassword?: string): Promi
 
   const isStatement = document.documentType === "bank_statement";
   const isSpreadsheet = isSpreadsheetStatement(document.extension, document.mimeType);
+  const isPdf = String(document.extension || "").toLowerCase() === "pdf";
 
-  // A CSV/Excel statement is already structured. Parsing it directly is exact,
-  // free and private, so the AI path is reserved for PDFs and scans.
+  // A CSV/Excel statement is already structured, and a text-based PDF can be
+  // rebuilt into that same structure by reading its own text layer — both are
+  // exact, free and private, so the AI path is reserved for what neither can
+  // handle: a scan/image, or a PDF whose text layer turns out to be unusable.
   // Throws DocumentUnreadableError when the file cannot be read; the caller
   // records that as a real failure instead of substituting invented data.
-  const gemini =
-    isStatement && isSpreadsheet
-      ? await extractStatementFromSpreadsheet(document)
-      : await extractWithGemini(document, document.processingMode, pdfPassword);
+  const { extraction: gemini, deterministic } = isStatement
+    ? await extractStatement(document, isSpreadsheet, isPdf, document.processingMode, pdfPassword)
+    : { extraction: await extractWithGemini(document, document.processingMode, pdfPassword), deterministic: false };
 
   if (gemini?.unreadable) {
     throw new DocumentUnreadableError(
@@ -829,6 +930,35 @@ async function processDocument(document: IDocument, pdfPassword?: string): Promi
       document.processingLogs.push(
         nowLog("validate", "warn", "Fewer rows extracted than the statement appears to contain."),
       );
+    }
+
+    // A confidence downgrade alone still let a badly-hallucinated AI
+    // extraction reach the review screen, and from there the ledger — a
+    // wrong number in someone's books is a financial-integrity problem, not
+    // a UX inconvenience, so a bad-enough result is now rejected outright.
+    // This is reserved for the AI path: deterministic extraction (spreadsheet
+    // or a PDF's own text layer) either reads a cell correctly or throws, so
+    // there is no "probably wrong" result here for it to produce — gating on
+    // it would only risk rejecting a legitimately-imperfect real statement.
+    if (!deterministic) {
+      const BALANCE_CHAIN_MIN_RATIO = 0.98;
+      const COMPLETENESS_MIN_RATIO = 0.8;
+
+      if (chain.checked > 0 && chain.ratio < BALANCE_CHAIN_MIN_RATIO) {
+        throw new DocumentUnreadableError(
+          "The AI extraction could not be verified against this statement's own running balance " +
+          `(only ${chain.matched}/${chain.checked} rows reconciled). Please upload a CSV or Excel ` +
+          "export of this statement, or a text-based PDF, instead — those are read exactly rather " +
+          "than transcribed by AI.",
+        );
+      }
+      if (completeness < COMPLETENESS_MIN_RATIO) {
+        throw new DocumentUnreadableError(
+          `The AI extraction only found ${bankTransactions.length} of about ${expected} expected ` +
+          "transactions on this statement. Please upload a CSV or Excel export of this statement, " +
+          "or a text-based PDF, instead — those are read exactly rather than transcribed by AI.",
+        );
+      }
     }
   }
 

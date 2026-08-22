@@ -400,10 +400,10 @@ function BankingPageContent() {
                 Import a bank statement
               </CardTitle>
               <CardDescription>
-                Download your statement from net banking as <strong>CSV or Excel</strong> and
-                upload it here — those are read directly and exactly. PDFs and scans also work,
-                but are read by AI and should be checked more carefully. Either way you confirm
-                every transaction before it reaches your books.
+                Upload your statement as <strong>CSV, Excel, or PDF</strong> — all three are read
+                directly and exactly, straight from the file's own text, with no AI involved.
+                A scanned image falls back to AI extraction and should be checked more carefully.
+                Either way you confirm every transaction before it reaches your books.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
