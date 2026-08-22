@@ -22,6 +22,7 @@ import Journal from "../models/journal.model";
 import Account from "../models/account.model";
 import { enqueueDocumentProcessing } from "../services/document-processing.service";
 import { postStatementLines, resolveBankAccount } from "../services/bank-statement.service";
+import { getSuggestions } from "../services/categorization-suggestion.service";
 
 function orgId(req: AuthenticatedRequest): mongoose.Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -318,6 +319,41 @@ export const listDocuments = asyncHandler(async (req: AuthenticatedRequest, res:
       .limit(limitNum)
       .lean(),
   ]);
+
+  // Smart categorization: for bank-statement documents in this page of
+  // results, pre-compute a suggested category for every line still awaiting
+  // review (never for lines already posted — those are done). One batched
+  // call across every pending line on the page, not per-document/per-line,
+  // so this stays a handful of indexed queries no matter how many
+  // transactions a statement holds (a real import here runs 1,000+ rows).
+  const bankStatementDocs = data.filter((doc) => doc.documentType === "bank_statement");
+  if (bankStatementDocs.length > 0) {
+    const pendingTxns: { transactionId: string; description?: string }[] = [];
+    for (const doc of bankStatementDocs) {
+      for (const txn of doc.bankTransactions || []) {
+        if (txn.addedToBank) continue;
+        pendingTxns.push({
+          transactionId: String((txn as unknown as { _id?: unknown })._id),
+          description: txn.description,
+        });
+      }
+    }
+
+    if (pendingTxns.length > 0) {
+      const suggestions = await getSuggestions(organizationId, pendingTxns);
+      for (const doc of bankStatementDocs) {
+        for (const txn of doc.bankTransactions || []) {
+          if (txn.addedToBank) {
+            (txn as unknown as { suggestion?: unknown }).suggestion = null;
+            continue;
+          }
+          const transactionId = String((txn as unknown as { _id?: unknown })._id);
+          (txn as unknown as { suggestion?: unknown }).suggestion =
+            suggestions.get(transactionId) || null;
+        }
+      }
+    }
+  }
 
   res.json({
     success: true,

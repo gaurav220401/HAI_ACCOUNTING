@@ -1,10 +1,12 @@
 import crypto from "crypto";
 import { Types } from "mongoose";
 import Account from "../models/account.model";
+import CategorizationRule from "../models/categorization-rule.model";
 import Journal from "../models/journal.model";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
 import { ForbiddenError, ValidationError } from "../utils/errors";
+import { narrationTypeToMatchType, parseNarration } from "./narration-parser.service";
 import { postVoucher } from "./gl-posting.service";
 import { assertNotLocked } from "./transaction-lock.service";
 
@@ -65,8 +67,13 @@ function round2(value: number): number {
 /**
  * Collapses casing, whitespace and punctuation so the same transaction described
  * slightly differently across two statement exports still hashes identically.
+ *
+ * Exported so categorization-suggestion.service.ts can apply the identical
+ * normalization to a parsed counterparty when looking up a CategorizationRule
+ * — the write path below and the read path there must agree byte-for-byte on
+ * what a matchValue looks like, or a learned rule would never be found again.
  */
-function normalizeDescription(value: unknown): string {
+export function normalizeDescription(value: unknown): string {
   return String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
@@ -189,6 +196,46 @@ async function loadContraAccounts(
   }).select("_id");
 
   return new Map(accounts.map((a) => [String(a._id), a._id as Types.ObjectId]));
+}
+
+/**
+ * The learning half of the loop: whenever a line posts against a real
+ * (non-suspense) account, remember that this counterparty maps to that
+ * account, so the next occurrence — of what is usually the same recurring
+ * UPI VPA or NEFT/RTGS/IMPS beneficiary — is recognised automatically by
+ * categorization-suggestion.service.ts. Invisible to the user; no extra step.
+ *
+ * A line whose narration carries no recognisable counterparty (an unparsed
+ * line, a bank charge, a self-transfer) teaches nothing — there is nothing
+ * to key a rule on.
+ */
+async function learnCategorizationRule(params: {
+  organizationId: Types.ObjectId;
+  description?: string;
+  accountId: Types.ObjectId;
+  userId?: Types.ObjectId;
+}): Promise<void> {
+  const parsed = parseNarration(params.description);
+  const matchType = narrationTypeToMatchType(parsed.type);
+  if (!matchType || !parsed.counterpartyKey) return;
+
+  const matchValue = normalizeDescription(parsed.counterpartyKey);
+  if (!matchValue) return;
+
+  await CategorizationRule.findOneAndUpdate(
+    { organizationId: params.organizationId, matchType, matchValue },
+    {
+      $set: { accountId: params.accountId, lastAppliedAt: new Date() },
+      $setOnInsert: {
+        organizationId: params.organizationId,
+        matchType,
+        matchValue,
+        createdBy: params.userId || null,
+      },
+      $inc: { timesApplied: 1 },
+    },
+    { upsert: true },
+  );
 }
 
 /**
@@ -372,6 +419,17 @@ export async function postStatementLines(params: {
       amount,
       direction: isMoneyIn ? "in" : "out",
     });
+
+    // Learn from this decision only when it was a real categorization, not a
+    // fall-through to suspense — an uncategorised line has no signal to teach.
+    if (String(contraId) !== String(suspense._id)) {
+      await learnCategorizationRule({
+        organizationId,
+        description: line.description,
+        accountId: contraId,
+        userId: req.user?._id,
+      });
+    }
   }
 
   return { posted, skipped };

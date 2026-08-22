@@ -171,6 +171,11 @@ contactSchema.plugin(softDeletePlugin);
 contactSchema.index({ organizationId: 1, displayName: 1 });
 contactSchema.index({ organizationId: 1, contactType: 1 });
 contactSchema.index({ organizationId: 1, email: 1 });
+// Lets categorization-suggestion.service.ts join a parsed bank-statement
+// counterparty (VPA / account number) against a saved contact in one
+// indexed lookup instead of a collection scan.
+contactSchema.index({ organizationId: 1, "bankDetails.upiId": 1 });
+contactSchema.index({ organizationId: 1, "bankDetails.accountNumber": 1 });
 
 const Contact = model<IContact>("Contact", contactSchema);
 export default Contact;

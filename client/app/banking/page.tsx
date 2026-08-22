@@ -11,8 +11,10 @@ import {
   FileUp,
   Info,
   Landmark,
+  Lightbulb,
   Loader2,
   RefreshCw,
+  Sparkles,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -210,7 +212,13 @@ function BankingPageContent() {
     };
   }, [statements, loadStatements]);
 
-  // Reset row state whenever a different statement is opened.
+  // Reset row state whenever a different statement is opened. Rows start
+  // pre-filled from any suggestion the backend attached — a recognised
+  // counterparty ("rule"/"pattern") pre-selects its category, but a
+  // "contact_hint" is deliberately excluded: it names who this probably is,
+  // it does not make a categorization decision, so the dropdown stays on
+  // Uncategorised until the user actually picks something (see the badge
+  // rendered per-row below for how each source is shown).
   useEffect(() => {
     if (!activeDoc) {
       setRows({});
@@ -219,7 +227,12 @@ function BankingPageContent() {
     const next: Record<string, RowSelection> = {};
     for (const txn of activeDoc.bankTransactions || []) {
       if (!txn._id || txn.addedToBank) continue;
-      next[txn._id] = { selected: true, accountId: null };
+      const suggestion = txn.suggestion;
+      const prefillAccountId =
+        suggestion && suggestion.source !== "contact_hint" && suggestion.accountId
+          ? suggestion.accountId
+          : null;
+      next[txn._id] = { selected: true, accountId: prefillAccountId };
     }
     setRows(next);
     setPage(1);
@@ -643,6 +656,13 @@ function BankingPageContent() {
                               so your accountant can sort it later. If a line is a customer
                               payment or a vendor bill you already recorded, leave it
                               uncategorised rather than treating it as new income or expense.
+                              Lines badged{" "}
+                              <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-100 px-1 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                <Sparkles className="h-2.5 w-2.5" /> Auto
+                              </span>{" "}
+                              were pre-filled from how you (or a teammate) categorized this exact
+                              counterparty before — check them before posting, just like any other
+                              row.
                             </span>
                           </div>
 
@@ -660,7 +680,7 @@ function BankingPageContent() {
                                   <TableHead className="w-28">Date</TableHead>
                                   <TableHead>Description</TableHead>
                                   <TableHead className="w-32 text-right">Amount</TableHead>
-                                  <TableHead className="w-56">Category</TableHead>
+                                  <TableHead className="w-64">Category</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -713,33 +733,75 @@ function BankingPageContent() {
                                         </span>
                                       </TableCell>
                                       <TableCell>
-                                        <Select
-                                          value={row?.accountId ?? "__suspense__"}
-                                          onValueChange={(value) =>
-                                            setRows((prev) => ({
-                                              ...prev,
-                                              [id]: {
-                                                ...prev[id],
-                                                accountId:
-                                                  value === "__suspense__" ? null : value,
-                                              },
-                                            }))
-                                          }
-                                        >
-                                          <SelectTrigger className="h-8 text-xs">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="__suspense__">
-                                              {SUSPENSE_LABEL}
-                                            </SelectItem>
-                                            {categoryAccounts.map((account) => (
-                                              <SelectItem key={account._id} value={account._id}>
-                                                {account.name}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="min-w-0 flex-1">
+                                            <Select
+                                              value={row?.accountId ?? "__suspense__"}
+                                              onValueChange={(value) =>
+                                                setRows((prev) => ({
+                                                  ...prev,
+                                                  [id]: {
+                                                    ...prev[id],
+                                                    accountId:
+                                                      value === "__suspense__" ? null : value,
+                                                  },
+                                                }))
+                                              }
+                                            >
+                                              <SelectTrigger className="h-8 text-xs">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__suspense__">
+                                                  {SUSPENSE_LABEL}
+                                                </SelectItem>
+                                                {categoryAccounts.map((account) => (
+                                                  <SelectItem key={account._id} value={account._id}>
+                                                    {account.name}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+
+                                          {/* Smart categorization badge — always visible, never
+                                              a silent black box. "rule"/"pattern" are confident
+                                              and already pre-filled the Select above;
+                                              "contact_hint" is a lower-confidence pointer at an
+                                              identity, shown but deliberately not pre-selected. */}
+                                          {txn.suggestion?.source === "rule" && (
+                                            <Badge
+                                              variant="secondary"
+                                              title="Auto-filled: you've categorized this counterparty this way before"
+                                              className="shrink-0 gap-1 whitespace-nowrap bg-emerald-100 text-[10px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                            >
+                                              <Sparkles className="h-2.5 w-2.5" /> Auto
+                                            </Badge>
+                                          )}
+                                          {txn.suggestion?.source === "pattern" && (
+                                            <Badge
+                                              variant="secondary"
+                                              title="Auto-filled: recognised as a bank charge narration"
+                                              className="shrink-0 gap-1 whitespace-nowrap bg-emerald-100 text-[10px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                            >
+                                              <Sparkles className="h-2.5 w-2.5" /> Auto
+                                            </Badge>
+                                          )}
+                                          {txn.suggestion?.source === "contact_hint" && (
+                                            <Badge
+                                              variant="outline"
+                                              title={`Looks like ${
+                                                txn.suggestion.contactName || "a saved contact"
+                                              } based on their saved bank details — not auto-filled, pick a category to confirm`}
+                                              className="shrink-0 gap-1 whitespace-nowrap text-[10px] text-muted-foreground"
+                                            >
+                                              <Lightbulb className="h-2.5 w-2.5" />
+                                              <span className="max-w-[7rem] truncate">
+                                                {txn.suggestion.contactName || "Known contact"}
+                                              </span>
+                                            </Badge>
+                                          )}
+                                        </div>
                                       </TableCell>
                                     </TableRow>
                                   );

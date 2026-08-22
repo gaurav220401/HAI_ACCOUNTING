@@ -28,6 +28,24 @@ export interface DocumentFolder {
   permissions: DocumentFolderPermission[];
 }
 
+/**
+ * Smart categorization hint, attached server-side (see getSuggestions in
+ * categorization-suggestion.service.ts) for lines not yet posted. Never
+ * auto-posted — it only pre-fills/annotates the category dropdown so the
+ * user can confirm or override it, exactly like an unassisted line.
+ *
+ *   "rule"         — this counterparty has been categorized before; confident.
+ *   "pattern"      — recognised as a bank charge narration (e.g. "CHARGES FOR"); confident.
+ *   "contact_hint" — a saved contact's UPI id matches, but no rule exists yet;
+ *                    a pointer at who this probably is, not a category choice.
+ */
+export interface DocumentBankTransactionSuggestion {
+  accountId: string;
+  accountName: string;
+  source: "rule" | "pattern" | "contact_hint";
+  contactName?: string;
+}
+
 export interface DocumentBankTransaction {
   _id?: string;
   txnDate?: string;
@@ -37,6 +55,7 @@ export interface DocumentBankTransaction {
   balance?: number;
   confidence: number;
   addedToBank: boolean;
+  suggestion?: DocumentBankTransactionSuggestion | null;
 }
 
 export interface DocumentItem {
