@@ -2,11 +2,8 @@ import { AuthenticatedRequest } from "../types";
 import PurchaseOrder from "../models/purchase-order.model";
 import Item from "../models/item.model";
 import {
-  applyInventoryValueDeltas,
   applyStockDeltas,
   collectBillStockDeltas,
-  collectBillValueDeltas,
-  invertValueDeltas,
   recomputeContactOutstanding,
 } from "./accounting-sync.service";
 import {
@@ -208,14 +205,10 @@ export async function postBillLedger(bill: any, req?: AuthenticatedRequest) {
 
   if (!posting.posted) return;
 
-  const valueDeltas = collectBillValueDeltas(bill.lineItems as any[]);
-  if (Object.keys(valueDeltas).length > 0) {
-    await applyInventoryValueDeltas({
-      organizationId,
-      deltas: valueDeltas,
-      req,
-    });
-  }
+  // Item.inventoryValue/averageCost are NOT touched here — the goods receipt
+  // that preceded this bill already recorded the value through the stock
+  // ledger (see stock-ledger.service.ts). A bill is a financial document
+  // confirming the vendor's invoice; it doesn't move stock a second time.
 }
 
 export async function reverseBillLedger(bill: any, req?: AuthenticatedRequest) {
@@ -230,15 +223,6 @@ export async function reverseBillLedger(bill: any, req?: AuthenticatedRequest) {
   });
 
   if (!reversal.reversed) return;
-
-  const valueDeltas = collectBillValueDeltas(bill.lineItems as any[]);
-  if (Object.keys(valueDeltas).length > 0) {
-    await applyInventoryValueDeltas({
-      organizationId: bill.organizationId,
-      deltas: invertValueDeltas(valueDeltas),
-      req,
-    });
-  }
 }
 
 export async function syncBillCreationAccounting(params: {

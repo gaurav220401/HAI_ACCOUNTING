@@ -1742,7 +1742,7 @@ function ItemsPageContent() {
                 )}
               </div>
             ) : (
-              <div className="space-y-0">
+              <div className="flex flex-col flex-1 min-h-0">
                 <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-6 py-2.5">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1814,6 +1814,7 @@ function ItemsPageContent() {
                   )}
                 </div>
 
+                <div className="flex-1 overflow-y-auto min-h-0">
                 <Table>
                   <TableHeader className="bg-slate-50">
                     <TableRow className="hover:bg-transparent border-b border-slate-200">
@@ -1958,6 +1959,7 @@ function ItemsPageContent() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             )}
 

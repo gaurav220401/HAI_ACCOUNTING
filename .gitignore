@@ -1,1 +1,7 @@
 VERCEL_ENV.txt
+VERCEL_TOKEN.txt
+backend.env
+RENDER_TOKEN.txt
+
+.vercel
+.env*

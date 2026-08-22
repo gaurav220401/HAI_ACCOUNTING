@@ -4,7 +4,6 @@ import SalesOrder from "../models/sales-order.model";
 import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import {
-  applyInvoiceCostLines,
   applyStockDeltas,
   applyStockAndCommitmentDeltas,
   collectInvoiceStockDeltas,
@@ -191,14 +190,10 @@ export async function commitInvoiceAccounting(params: {
       description: `Inventory issue - ${invoice.invoiceNumber}`,
     });
 
-    // Also update item inventory values
-    await applyInvoiceCostLines({
-      organizationId,
-      costLines,
-      direction: "issue",
-      req,
-      session,
-    });
+    // Item.inventoryValue/averageCost are NOT updated here — step 1's stock
+    // movement (applyStockDeltas/applyStockAndCommitmentDeltas, via the stock
+    // ledger) already recomputed them for this same issue. costLines above is
+    // only used to size the GL COGS/Inventory Asset amounts.
   }
 
   await postVoucher({
@@ -261,23 +256,6 @@ export async function reverseInvoiceAccounting(params: {
     session,
   });
 
-  // 3. Reverse Inventory Value
-  const costLines = (invoice.items || [])
-    .map((line: any) => ({
-      itemId: String(line.itemId),
-      quantity: toNum(line.quantity),
-      costRate: toNum(line.costRate),
-      costAmount: toNum(line.costAmount),
-    }))
-    .filter((line: any) => line.itemId && line.quantity > 0 && line.costAmount > 0);
-
-  if (costLines.length > 0) {
-    await applyInvoiceCostLines({
-      organizationId,
-      costLines,
-      direction: "reverse",
-      req,
-      session,
-    });
-  }
+  // Item.inventoryValue/averageCost are NOT reversed here — step 1's reversed
+  // stock movement already recomputed them for this same reversal.
 }

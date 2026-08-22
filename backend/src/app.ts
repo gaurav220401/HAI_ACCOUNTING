@@ -41,6 +41,19 @@ const getClientIp = (req: Request): string => {
 // ─── Security ──────────────────────────────────────────────────────────
 app.use(helmet());
 
+// ─── CORS ──────────────────────────────────────────────────────────────
+// Must run before the rate limiter: express-rate-limit short-circuits the
+// response on a 429 without calling next(), so if it ran first, a 429 would
+// ship with no Access-Control-Allow-Origin header. The browser can't read a
+// CORS-less error response, so it reports an opaque network failure instead
+// of a real, recoverable 429 — a rate-limited API looks like a total outage.
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    credentials: true,
+  }),
+);
+
 // ─── Rate Limiting ─────────────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -70,14 +83,6 @@ app.use(async (_req, res, next) => {
     });
   }
 });
-
-// ─── CORS ──────────────────────────────────────────────────────────────
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    credentials: true,
-  }),
-);
 
 // ─── Body Parsing ──────────────────────────────────────────────────────
 app.use(express.json({ limit: "10mb" }));

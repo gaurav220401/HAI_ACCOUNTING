@@ -481,14 +481,17 @@ export const createAdjustment = asyncHandler(async (req: AuthenticatedRequest, r
     : "Other";
 
   if (Math.abs(signedQuantity) > 0.0001) {
+    // A stock movement already recomputes Item.inventoryValue/averageCost
+    // (from the item's current average cost) — applying valueDelta on top of
+    // it here would double-count.
     await applyStockDeltas({
       organizationId,
       deltas: { [itemId]: signedQuantity },
       req,
     });
-  }
-
-  if (Math.abs(valueDelta) > 0.0001) {
+  } else if (Math.abs(valueDelta) > 0.0001) {
+    // No stock movement occurred (a pure value-mode adjustment) — this is
+    // the only writer in that case.
     await applyInventoryValueDeltas({
       organizationId,
       deltas: { [itemId]: valueDelta },
