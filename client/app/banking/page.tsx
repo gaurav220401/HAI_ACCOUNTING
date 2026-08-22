@@ -276,6 +276,7 @@ function BankingPageContent() {
 
       const { journalsCreated, skipped } = res.data;
       const duplicates = (skipped || []).filter((s) => s.reason === "duplicate").length;
+      const locked = (skipped || []).filter((s) => s.reason === "locked_period");
 
       if (journalsCreated > 0) {
         toast.success(
@@ -287,7 +288,10 @@ function BankingPageContent() {
           `${duplicates} transaction${duplicates === 1 ? " was" : "s were"} already imported and skipped`,
         );
       }
-      if (journalsCreated === 0 && duplicates === 0) {
+      if (locked.length > 0) {
+        toast.error(locked[0].message);
+      }
+      if (journalsCreated === 0 && duplicates === 0 && locked.length === 0) {
         toast.info("Nothing was posted");
       }
 

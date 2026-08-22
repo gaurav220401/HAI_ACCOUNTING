@@ -14,6 +14,7 @@ import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 import { recomputeContactOutstanding } from "../services/accounting-sync.service";
 import { findAccountIdByName, postVoucher, reverseVoucher } from "../services/gl-posting.service";
+import { assertNotLocked } from "../services/transaction-lock.service";
 
 async function orgId(req: AuthenticatedRequest): Promise<Types.ObjectId> {
   const id = req.user?.activeOrganization;
@@ -633,6 +634,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const payment_id = String(req.body.payment_id || req.body.paymentId || `PM-${payment_number.padStart(5, "0")}`);
   const payment_date = new Date(req.body.payment_date || req.body.paymentDate || new Date());
   if (Number.isNaN(payment_date.getTime())) throw new ValidationError("Invalid payment_date");
+
+  await assertNotLocked({ organizationId: organization_id, module: "Purchases", date: payment_date });
 
   const billItems = parseApplyItems(req.body as Record<string, unknown>);
   if (status === "DRAFT" && billItems.length > 0) {

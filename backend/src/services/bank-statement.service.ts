@@ -4,8 +4,9 @@ import Account from "../models/account.model";
 import Journal from "../models/journal.model";
 import { attachUser } from "../plugins";
 import { AuthenticatedRequest } from "../types";
-import { ValidationError } from "../utils/errors";
+import { ForbiddenError, ValidationError } from "../utils/errors";
 import { postVoucher } from "./gl-posting.service";
+import { assertNotLocked } from "./transaction-lock.service";
 
 /**
  * Posting engine for bank statement imports.
@@ -48,7 +49,7 @@ export interface PostedStatementLine {
 
 export interface SkippedStatementLine {
   transactionId: string;
-  reason: "duplicate" | "zero_amount" | "invalid_account";
+  reason: "duplicate" | "zero_amount" | "invalid_account" | "locked_period";
   message: string;
 }
 
@@ -225,6 +226,27 @@ export async function postStatementLines(params: {
         message: "Transaction has no amount",
       });
       continue;
+    }
+
+    // A statement can contain a mix of lines that straddle a lock date; skip
+    // just the locked ones so the rest of the batch still posts, rather than
+    // failing the whole import (this endpoint processes many lines per call).
+    try {
+      await assertNotLocked({
+        organizationId,
+        module: "Banking",
+        date: line.txnDate || new Date(),
+      });
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        skipped.push({
+          transactionId: line.transactionId,
+          reason: "locked_period",
+          message: error.message,
+        });
+        continue;
+      }
+      throw error;
     }
 
     let contraId: Types.ObjectId;

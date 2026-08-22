@@ -18,6 +18,7 @@ import {
   postVoucher,
   reverseVoucher,
 } from "../services/gl-posting.service";
+import { assertNotLocked } from "../services/transaction-lock.service";
 import {
   multiplyMoney,
   percentMoney,
@@ -490,6 +491,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!req.body.vendorId) throw new ValidationError("Vendor is required");
   if (!req.body.vendorCreditDate) throw new ValidationError("Vendor credit date is required");
 
+  await assertNotLocked({ organizationId: oid, module: "Purchases", date: req.body.vendorCreditDate });
+
   const discountLevel: "transaction" | "line_item" =
     req.body.discountLevel === "line_item" ? "line_item" : "transaction";
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
@@ -587,6 +590,19 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   if (!credit) throw new NotFoundError("Vendor credit");
   if (credit.status === "VOID") throw new ValidationError("Cannot edit a void vendor credit");
+
+  await assertNotLocked({
+    organizationId: credit.organizationId,
+    module: "Purchases",
+    date: credit.vendorCreditDate,
+  });
+  if (req.body.vendorCreditDate) {
+    await assertNotLocked({
+      organizationId: credit.organizationId,
+      module: "Purchases",
+      date: req.body.vendorCreditDate,
+    });
+  }
 
   const prevStatus = String(credit.status || "");
 
@@ -920,6 +936,13 @@ export const voidVendorCredit = asyncHandler(async (req: AuthenticatedRequest, r
     isDeleted: false,
   });
   if (!credit) throw new NotFoundError("Vendor credit");
+
+  await assertNotLocked({
+    organizationId: credit.organizationId,
+    module: "Purchases",
+    date: credit.vendorCreditDate,
+  });
+
   if (credit.status === "VOID") throw new ValidationError("Vendor credit is already void");
   if (toNum(credit.appliedAmount) > 0) {
     throw new ValidationError("Cannot void vendor credit after it has been applied");
@@ -963,6 +986,13 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   });
 
   if (!credit) throw new NotFoundError("Vendor credit");
+
+  await assertNotLocked({
+    organizationId: credit.organizationId,
+    module: "Purchases",
+    date: credit.vendorCreditDate,
+  });
+
   if (toNum(credit.appliedAmount) > 0) {
     throw new ValidationError("Cannot delete a vendor credit that has been applied");
   }

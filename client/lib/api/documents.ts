@@ -210,7 +210,7 @@ export const documentsApi = {
         }>;
         skipped: Array<{
           transactionId: string;
-          reason: "duplicate" | "zero_amount" | "invalid_account";
+          reason: "duplicate" | "zero_amount" | "invalid_account" | "locked_period";
           message: string;
         }>;
         bankAccount?: { _id: string; name: string };

@@ -18,6 +18,7 @@ import {
   commitInvoiceAccounting,
   isPostedInvoiceStatus,
 } from "../services/invoice-accounting.service";
+import { assertNotLocked } from "../services/transaction-lock.service";
 
 function orgId(req: AuthenticatedRequest): Types.ObjectId {
   const id = req.user?.activeOrganization;
@@ -460,6 +461,10 @@ export async function createPaymentReceivedEntry(params: {
   if (Number.isNaN(payment_date.getTime())) {
     throw new ValidationError("Invalid payment_date");
   }
+
+  // Covers both the direct payments-received:create route and invoice.controller's
+  // recordPayment, which both funnel through this shared entry point.
+  await assertNotLocked({ organizationId: organization_id, module: "Sales", date: payment_date });
 
   const invoiceItems = parseApplyItems(payload);
   if (status === "DRAFT" && invoiceItems.length > 0) {

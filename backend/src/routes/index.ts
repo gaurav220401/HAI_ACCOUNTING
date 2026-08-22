@@ -43,6 +43,7 @@ import warehouseRoutes from "./warehouse.routes";
 import ocrRoutes from "./ocr.routes";
 import chatRoutes from "./chat.routes";
 import agentRoutes from "./agent.routes";
+import transactionLockRoutes from "./transaction-lock.routes";
 
 const router = Router();
 
@@ -90,5 +91,6 @@ router.use("/warehouses", warehouseRoutes);
 router.use("/ocr", ocrRoutes);
 router.use("/chat", chatRoutes);
 router.use("/agent", agentRoutes);
+router.use("/transaction-locks", transactionLockRoutes);
 
 export default router;

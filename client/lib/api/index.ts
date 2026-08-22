@@ -185,3 +185,6 @@ export type {
 
 export { ocrApi } from "./ocr";
 export type { OcrResultData } from "./ocr";
+
+export { transactionLockApi } from "./transaction-locks";
+export type { TransactionLock, TransactionLockModule } from "./transaction-locks";

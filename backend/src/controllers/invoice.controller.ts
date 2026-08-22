@@ -37,6 +37,7 @@ import {
   reverseVoucher,
 } from "../services/gl-posting.service";
 import { applyItemTaxLinkageToItems } from "../services/item-tax-linkage.service";
+import { assertNotLocked } from "../services/transaction-lock.service";
 import { createPaymentReceivedEntry } from "./payment-received.controller";
 import {
   multiplyMoney,
@@ -479,6 +480,12 @@ export const create = asyncHandler(
       throw new ValidationError("At least one item is required");
     }
 
+    await assertNotLocked({
+      organizationId: oid,
+      module: "Sales",
+      date: req.body.invoiceDate,
+    });
+
     const org = await Organization.findById(oid).lean();
     if (!org) throw new NotFoundError("Organization");
 
@@ -589,6 +596,22 @@ export const update = asyncHandler(
       organizationId: orgId(req),
     });
     if (!invoice) throw new NotFoundError("Invoice");
+
+    // Block edits to a transaction dated on/before the module's lock date...
+    await assertNotLocked({
+      organizationId: invoice.organizationId,
+      module: "Sales",
+      date: invoice.invoiceDate,
+    });
+    // ...and separately block moving it TO a locked date, so an otherwise-open
+    // invoice can't be backdated into a closed period.
+    if (req.body.invoiceDate) {
+      await assertNotLocked({
+        organizationId: invoice.organizationId,
+        module: "Sales",
+        date: req.body.invoiceDate,
+      });
+    }
 
     const previousCustomerId = String(invoice.customerId || "");
     const previousOrderNumber = String((invoice as any).orderNumber || "");
@@ -764,6 +787,12 @@ export const remove = asyncHandler(
       organizationId: orgId(req),
     });
     if (!invoice) throw new NotFoundError("Invoice");
+
+    await assertNotLocked({
+      organizationId: invoice.organizationId,
+      module: "Sales",
+      date: invoice.invoiceDate,
+    });
 
     const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
     const previousShouldApplyStock = await shouldApplyInvoiceStockMovement({
@@ -1133,6 +1162,13 @@ export const recordPayment = asyncHandler(
 export const voidInvoice = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const invoice = await requireInvoice(req);
+
+    await assertNotLocked({
+      organizationId: invoice.organizationId,
+      module: "Sales",
+      date: invoice.invoiceDate,
+    });
+
     const wasPosted = isPostedInvoiceStatus(String(invoice.status || ""));
     const previousStockDeltas = wasPosted
       ? collectInvoiceStockDeltas(invoice.items as any[])

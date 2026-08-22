@@ -17,6 +17,7 @@ import {
 import { Lock, LockOpen, UserSearch, Info, X, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { transactionLockApi } from "@/lib/api/transaction-locks";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,8 @@ const MODULE_DESCRIPTIONS: Record<Module, string> = {
   Accountant: "Locks accountant transactions including manual journals and currency adjustments.",
 };
 
+const MODULES: Module[] = ["Sales", "Purchases", "Banking", "Accountant"];
+
 const INITIAL_LOCKS: ModuleLock[] = [
   { module: "Sales", locked: false, lockedDate: null },
   { module: "Purchases", locked: false, lockedDate: null },
@@ -44,35 +47,19 @@ const INITIAL_LOCKS: ModuleLock[] = [
   { module: "Accountant", locked: false, lockedDate: null },
 ];
 
-const STORAGE_KEY = "hai_transaction_locks";
-const GLOBAL_STORAGE_KEY = "hai_transaction_lock_global";
-
-function loadLocks(): ModuleLock[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as ModuleLock[];
-  } catch {
-    // ignore
+/**
+ * The backend has no separate "global lock" record — it's derived here from
+ * the 4 module rows. All 4 count as globally locked only when every module
+ * is locked to the exact same date.
+ */
+function deriveGlobalLock(locks: ModuleLock[]): { locked: boolean; date: string | null } {
+  if (locks.length !== 4 || !locks.every((l) => l.locked && l.lockedDate)) {
+    return { locked: false, date: null };
   }
-  return INITIAL_LOCKS;
-}
-
-function saveLocks(locks: ModuleLock[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(locks));
-}
-
-function loadGlobalLock(): { locked: boolean; date: string | null } {
-  try {
-    const raw = localStorage.getItem(GLOBAL_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore
-  }
-  return { locked: false, date: null };
-}
-
-function saveGlobalLock(v: { locked: boolean; date: string | null }) {
-  localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(v));
+  const first = locks[0].lockedDate;
+  return locks.every((l) => l.lockedDate === first)
+    ? { locked: true, date: first }
+    : { locked: false, date: null };
 }
 
 function formatDate(iso: string) {
@@ -352,6 +339,7 @@ export default function TransactionLockingPage() {
     locked: false,
     date: null,
   });
+  const [locksLoading, setLocksLoading] = useState(true);
   const [lockMode, setLockMode] = useState<LockMode>("individual");
 
   // Lock dialog state
@@ -377,13 +365,32 @@ export default function TransactionLockingPage() {
       router.push("/org-setup");
   }, [loading, orgLoading, firebaseUser, needsOrgSetup, router]);
 
-  // Load from localStorage
+  // Load current lock state from the backend
   useEffect(() => {
-    setLocks(loadLocks());
-    setGlobalLock(loadGlobalLock());
+    let cancelled = false;
+    async function fetchLocks() {
+      try {
+        const res = await transactionLockApi.list();
+        if (cancelled) return;
+        const data = res.data?.length === 4 ? res.data : INITIAL_LOCKS;
+        setLocks(data);
+        setGlobalLock(deriveGlobalLock(data));
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load transaction locks",
+        );
+      } finally {
+        if (!cancelled) setLocksLoading(false);
+      }
+    }
+    fetchLocks();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (loading || orgLoading || !firebaseUser) {
+  if (loading || orgLoading || !firebaseUser || locksLoading) {
     return (
       <div className="flex min-h-svh items-center justify-center">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
@@ -412,63 +419,63 @@ export default function TransactionLockingPage() {
     }
   }
 
-  function handleLockConfirm(date: string) {
+  async function handleLockConfirm(date: string) {
     const isoDate = new Date(date + "T00:00:00").toISOString();
-    if (lockDialog.module === "All") {
-      const updated = { locked: true, date: isoDate };
-      setGlobalLock(updated);
-      saveGlobalLock(updated);
-      // Also lock all individual modules
-      const updatedLocks = locks.map((l) => ({
-        ...l,
-        locked: true,
-        lockedDate: isoDate,
-      }));
-      setLocks(updatedLocks);
-      saveLocks(updatedLocks);
-      toast.success("All transactions locked successfully.");
-    } else {
-      const updatedLocks = locks.map((l) =>
-        l.module === lockDialog.module
-          ? { ...l, locked: true, lockedDate: isoDate }
-          : l
-      );
-      setLocks(updatedLocks);
-      saveLocks(updatedLocks);
-      toast.success(`${lockDialog.module} transactions locked.`);
-    }
+    const targetModule = lockDialog.module;
     setLockDialog((prev) => ({ ...prev, open: false }));
+
+    try {
+      if (targetModule === "All") {
+        // Lock all 4 modules to the same date.
+        const results = await Promise.all(
+          MODULES.map((module) => transactionLockApi.lock(module, isoDate)),
+        );
+        const updatedLocks = results.map((r) => r.data);
+        setLocks(updatedLocks);
+        setGlobalLock(deriveGlobalLock(updatedLocks));
+        toast.success("All transactions locked successfully.");
+      } else {
+        const res = await transactionLockApi.lock(targetModule, isoDate);
+        const updatedLocks = locks.map((l) =>
+          l.module === targetModule ? res.data : l,
+        );
+        setLocks(updatedLocks);
+        setGlobalLock(deriveGlobalLock(updatedLocks));
+        toast.success(`${targetModule} transactions locked.`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update lock");
+    }
   }
 
   function openUnlockDialog(module: Module | "All") {
     setUnlockDialog({ open: { module } });
   }
 
-  function handleUnlockConfirm() {
+  async function handleUnlockConfirm() {
     if (!unlockDialog.open) return;
     const { module } = unlockDialog.open;
-    if (module === "All") {
-      const updated = { locked: false, date: null };
-      setGlobalLock(updated);
-      saveGlobalLock(updated);
-      // Unlock all modules too
-      const updatedLocks = locks.map((l) => ({
-        ...l,
-        locked: false,
-        lockedDate: null,
-      }));
-      setLocks(updatedLocks);
-      saveLocks(updatedLocks);
-      toast.success("All transactions unlocked.");
-    } else {
-      const updatedLocks = locks.map((l) =>
-        l.module === module ? { ...l, locked: false, lockedDate: null } : l
-      );
-      setLocks(updatedLocks);
-      saveLocks(updatedLocks);
-      toast.success(`${module} transactions unlocked.`);
-    }
     setUnlockDialog({ open: false });
+
+    try {
+      if (module === "All") {
+        const results = await Promise.all(
+          MODULES.map((m) => transactionLockApi.unlock(m)),
+        );
+        const updatedLocks = results.map((r) => r.data);
+        setLocks(updatedLocks);
+        setGlobalLock({ locked: false, date: null });
+        toast.success("All transactions unlocked.");
+      } else {
+        const res = await transactionLockApi.unlock(module);
+        const updatedLocks = locks.map((l) => (l.module === module ? res.data : l));
+        setLocks(updatedLocks);
+        setGlobalLock(deriveGlobalLock(updatedLocks));
+        toast.success(`${module} transactions unlocked.`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to unlock");
+    }
   }
 
   return (

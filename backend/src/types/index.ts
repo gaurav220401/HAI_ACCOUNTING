@@ -696,6 +696,21 @@ export interface IReportingTag extends Document {
   updatedAt: Date;
 }
 
+// ─── 1.10 Transaction Locking ──────────────────────────────────────────
+export type TransactionLockModule = "Sales" | "Purchases" | "Banking" | "Accountant";
+
+export interface ITransactionLock extends Document {
+  _id: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  module: TransactionLockModule;
+  isLocked: boolean;
+  lockedDate: Date | null;
+  createdBy?: Types.ObjectId | null;
+  updatedBy?: Types.ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  PHASE 2 — TRANSACTION TYPES
 // ═══════════════════════════════════════════════════════════════════════

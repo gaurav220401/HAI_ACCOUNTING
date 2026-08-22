@@ -11,6 +11,7 @@ import {
 } from "../utils/errors";
 import { attachUser } from "../plugins";
 import { postVoucher, reverseVoucher } from "../services/gl-posting.service";
+import { assertNotLocked } from "../services/transaction-lock.service";
 import fs from "fs";
 import path from "path";
 import * as XLSX from "xlsx";
@@ -368,6 +369,8 @@ export const create = asyncHandler(
       req.body.lineItems,
     );
     const organizationId = toOrgObjectId(orgId(req));
+    const journalDate = req.body.date ? new Date(req.body.date) : new Date();
+    await assertNotLocked({ organizationId, module: "Accountant", date: journalDate });
 
     const customJournalNumber = normalizeJournalNumber(req.body.journalNumber);
     let resolvedJournalNumber = customJournalNumber;
@@ -385,7 +388,7 @@ export const create = asyncHandler(
     const journal = new Journal({
       organizationId,
       journalNumber: resolvedJournalNumber,
-      date: req.body.date ? new Date(req.body.date) : new Date(),
+      date: journalDate,
       vendorId: req.body.vendorId || null,
       description: String(req.body.description || ""),
       referenceNumber: String(req.body.referenceNumber || ""),
@@ -422,6 +425,19 @@ export const update = asyncHandler(
 
     if (journal.status === "Voided") {
       throw new ValidationError("Cannot update a voided journal");
+    }
+
+    await assertNotLocked({
+      organizationId: journal.organizationId,
+      module: "Accountant",
+      date: journal.date,
+    });
+    if (req.body.date) {
+      await assertNotLocked({
+        organizationId: journal.organizationId,
+        module: "Accountant",
+        date: req.body.date,
+      });
     }
 
     const previousStatus = journal.status;
@@ -494,6 +510,12 @@ export const postJournal = asyncHandler(
       return;
     }
 
+    await assertNotLocked({
+      organizationId: journal.organizationId,
+      module: "Accountant",
+      date: journal.date,
+    });
+
     journal.status = "Posted";
     attachUser(journal as any, req);
     await journal.save();
@@ -511,6 +533,12 @@ export const voidJournal = asyncHandler(
       isDeleted: false,
     });
     if (!journal) throw new NotFoundError("Journal");
+
+    await assertNotLocked({
+      organizationId: journal.organizationId,
+      module: "Accountant",
+      date: journal.date,
+    });
 
     const wasPosted = journal.status === "Posted";
     journal.status = "Voided";
@@ -534,6 +562,12 @@ export const remove = asyncHandler(
       isDeleted: false,
     });
     if (!journal) throw new NotFoundError("Journal");
+
+    await assertNotLocked({
+      organizationId: journal.organizationId,
+      module: "Accountant",
+      date: journal.date,
+    });
 
     const wasPosted = journal.status === "Posted";
 

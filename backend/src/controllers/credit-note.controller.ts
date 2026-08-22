@@ -22,6 +22,7 @@ import { AuthenticatedRequest } from "../types";
 import asyncHandler from "../utils/asyncHandler";
 import { reserveIdempotencyKey } from "../utils/idempotency";
 import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
+import { assertNotLocked } from "../services/transaction-lock.service";
 import {
   multiplyMoney,
   percentMoney,
@@ -591,6 +592,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!req.body.customerId) throw new ValidationError("Customer is required");
   if (!req.body.creditNoteDate) throw new ValidationError("Credit note date is required");
 
+  await assertNotLocked({ organizationId: oid, module: "Sales", date: req.body.creditNoteDate });
+
   const discountLevel: "transaction" | "line_item" =
     req.body.discountLevel === "line_item" ? "line_item" : "transaction";
   const lineItems = calcLineItems(req.body.lineItems || [], discountLevel);
@@ -688,6 +691,19 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 
   if (!credit) throw new NotFoundError("Credit note");
   if (credit.status === "VOID") throw new ValidationError("Cannot edit a void credit note");
+
+  await assertNotLocked({
+    organizationId: credit.organizationId,
+    module: "Sales",
+    date: credit.creditNoteDate,
+  });
+  if (req.body.creditNoteDate) {
+    await assertNotLocked({
+      organizationId: credit.organizationId,
+      module: "Sales",
+      date: req.body.creditNoteDate,
+    });
+  }
 
   const prevStatus = String(credit.status || "");
 
@@ -1025,6 +1041,13 @@ export const voidCreditNote = asyncHandler(async (req: AuthenticatedRequest, res
     isDeleted: false,
   });
   if (!credit) throw new NotFoundError("Credit note");
+
+  await assertNotLocked({
+    organizationId: credit.organizationId,
+    module: "Sales",
+    date: credit.creditNoteDate,
+  });
+
   if (credit.status === "VOID") throw new ValidationError("Credit note is already void");
   if (toNum(credit.appliedAmount) > 0) {
     throw new ValidationError("Cannot void credit note after it has been applied");
@@ -1067,6 +1090,13 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   });
 
   if (!credit) throw new NotFoundError("Credit note");
+
+  await assertNotLocked({
+    organizationId: credit.organizationId,
+    module: "Sales",
+    date: credit.creditNoteDate,
+  });
+
   if (toNum(credit.appliedAmount) > 0) {
     throw new ValidationError("Cannot delete a credit note that has been applied");
   }

@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../types";
 import { attachUser } from "../plugins";
 import asyncHandler from "../utils/asyncHandler";
 import { NotFoundError, ValidationError, ForbiddenError } from "../utils/errors";
+import { assertNotLocked } from "../services/transaction-lock.service";
 
 function orgId(req: AuthenticatedRequest) {
   const id = req.user?.activeOrganization;
@@ -49,6 +50,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!currency) throw new ValidationError("currency is required");
   if (exchangeRate == null) throw new ValidationError("exchangeRate is required");
 
+  await assertNotLocked({ organizationId: orgId(req), module: "Accountant", date });
+
   const adj = new CurrencyAdjustment({
     organizationId: orgId(req),
     date,
@@ -72,6 +75,19 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   });
   if (!adj) throw new NotFoundError("Currency Adjustment");
 
+  await assertNotLocked({
+    organizationId: adj.organizationId,
+    module: "Accountant",
+    date: adj.date,
+  });
+  if (req.body.date) {
+    await assertNotLocked({
+      organizationId: adj.organizationId,
+      module: "Accountant",
+      date: req.body.date,
+    });
+  }
+
   const allowed = ["date", "currency", "exchangeRate", "notes", "lines", "status"];
   allowed.forEach((f) => {
     if (req.body[f] !== undefined) (adj as any)[f] = req.body[f];
@@ -89,6 +105,12 @@ export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     organizationId: orgId(req),
   });
   if (!adj) throw new NotFoundError("Currency Adjustment");
+
+  await assertNotLocked({
+    organizationId: adj.organizationId,
+    module: "Accountant",
+    date: adj.date,
+  });
 
   adj.isDeleted = true;
   adj.deletedAt = new Date();

@@ -29,6 +29,7 @@ import {
 } from "../services/bill-accounting.service";
 import { findAccountIdByName, postVoucher } from "../services/gl-posting.service";
 import { findTypeByAssetAccount } from "../services/fixed-asset-type.service";
+import { assertNotLocked } from "../services/transaction-lock.service";
 import {
   multiplyMoney,
   percentMoney,
@@ -774,6 +775,8 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   if (!req.body.vendorId) throw new ValidationError("Vendor is required");
   if (!req.body.billDate) throw new ValidationError("Bill date is required");
 
+  await assertNotLocked({ organizationId: oid, module: "Purchases", date: req.body.billDate });
+
   const billNumber = req.body.billNumber || (await nextBillNumber(oid));
   const discountLevel = req.body.discountLevel || "transaction";
   const taxType = req.body.taxType || "none";
@@ -881,6 +884,9 @@ export const create = asyncHandler(async (req: AuthenticatedRequest, res: Respon
 export const voidBill = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: await orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
+
+  await assertNotLocked({ organizationId: bill.organizationId, module: "Purchases", date: bill.billDate });
+
   if (bill.status === "Void") throw new ValidationError("Bill is already voided");
   if (bill.amountPaid > 0) throw new ValidationError("Cannot void a bill with recorded payments");
 
@@ -994,6 +1000,11 @@ export const update = asyncHandler(async (req: AuthenticatedRequest, res: Respon
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: await orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
   if (bill.status === "Void") throw new ValidationError("Cannot edit a void bill");
+
+  await assertNotLocked({ organizationId: bill.organizationId, module: "Purchases", date: bill.billDate });
+  if (req.body.billDate) {
+    await assertNotLocked({ organizationId: bill.organizationId, module: "Purchases", date: req.body.billDate });
+  }
 
   const previousOrderNumber = normalizeOrderNumber(bill.orderNumber);
   const previousVendorId = String(bill.vendorId || "");
@@ -1189,6 +1200,8 @@ export const addComment = asyncHandler(async (req: AuthenticatedRequest, res: Re
 export const remove = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const bill = await Bill.findOne({ _id: req.params.id, organizationId: await orgId(req), isDeleted: false });
   if (!bill) throw new NotFoundError("Bill");
+
+  await assertNotLocked({ organizationId: bill.organizationId, module: "Purchases", date: bill.billDate });
 
   const vendorId = bill.vendorId;
   const wasPosted = isPostedBillStatus(String(bill.status || ""));
