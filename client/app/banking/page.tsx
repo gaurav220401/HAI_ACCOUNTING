@@ -10,12 +10,16 @@ import {
   CheckCircle2,
   FileUp,
   Info,
+  Keyboard,
   Landmark,
   Lightbulb,
   Loader2,
   RefreshCw,
+  Search,
+  Settings2,
   Sparkles,
   Upload,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -26,6 +30,7 @@ import { PageHeader } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -49,6 +54,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { documentsApi, type DocumentItem } from "@/lib/api/documents";
 import { accountApi, type Account } from "@/lib/api/accounts";
 
@@ -106,6 +125,24 @@ function BankingPageContent() {
   // is visible, exactly like the API/data layer already does.
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+
+  // Text/status filters over the pending set — purely client-side, since the
+  // whole statement is already loaded. Reset to page 1 on any change so you
+  // never land on a now-empty page.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "auto" | "review">("all");
+
+  // Bulk-assign: pick one account, apply it to every currently-selected row
+  // at once — the fix for "categorize 40 rows one dropdown at a time."
+  const [bulkAccountId, setBulkAccountId] = useState<string>("");
+
+  // Keyboard nav over the visible page: j/k (or arrows) move focus, Space
+  // toggles, Enter opens that row's category picker. Ignored while typing
+  // into the search box or an open Select — see the keydown handler below.
+  const [focusedRowIndex, setFocusedRowIndex] = useState<number>(-1);
+  const rowSelectTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const [confirmPostOpen, setConfirmPostOpen] = useState(false);
 
   const [loadingData, setLoadingData] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -236,6 +273,9 @@ function BankingPageContent() {
     }
     setRows(next);
     setPage(1);
+    setSearchQuery("");
+    setStatusFilter("all");
+    setFocusedRowIndex(-1);
   }, [activeDoc]);
 
   // ─── Actions ──────────────────────────────────────────────────────────
@@ -290,6 +330,7 @@ function BankingPageContent() {
       return;
     }
 
+    setConfirmPostOpen(false);
     setPosting(true);
     try {
       const res = await documentsApi.addToBank(activeDoc._id, {
@@ -337,7 +378,25 @@ function BankingPageContent() {
     [activeDoc],
   );
 
-  const totalPages = Math.max(1, Math.ceil(pendingTxns.length / pageSize));
+  // Search + status filter, applied before pagination — at 1,000+ rows this
+  // is the difference between "scroll and squint" and actually finding the
+  // one transaction you're looking for.
+  const filteredTxns = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return pendingTxns.filter((txn) => {
+      if (q && !(txn.description || "").toLowerCase().includes(q)) return false;
+      if (statusFilter === "all") return true;
+      const row = rows[txn._id as string];
+      const isAuto =
+        txn.suggestion?.source === "rule" || txn.suggestion?.source === "pattern";
+      if (statusFilter === "auto") return isAuto;
+      // "review" = anything not auto-filled, i.e. still headed for Suspense
+      // unless a human picks a category.
+      return !isAuto && !row?.accountId;
+    });
+  }, [pendingTxns, searchQuery, statusFilter, rows]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTxns.length / pageSize));
 
   // Posting removes rows from pendingTxns, which can strand the current page
   // past the new end — pull back onto the last real page rather than showing
@@ -346,10 +405,20 @@ function BankingPageContent() {
     setPage((p) => Math.min(p, totalPages));
   }, [totalPages]);
 
+  // Filtering can also strand the page — reset to 1 whenever the filtered
+  // set's shape changes underneath the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter]);
+
   const pagedTxns = useMemo(
-    () => pendingTxns.slice((page - 1) * pageSize, page * pageSize),
-    [pendingTxns, page, pageSize],
+    () => filteredTxns.slice((page - 1) * pageSize, page * pageSize),
+    [filteredTxns, page, pageSize],
   );
+
+  useEffect(() => {
+    setFocusedRowIndex(-1);
+  }, [page, pagedTxns.length]);
 
   const postedTxns = useMemo(
     () => (activeDoc?.bankTransactions || []).filter((t) => t.addedToBank),
@@ -366,7 +435,29 @@ function BankingPageContent() {
     [rows],
   );
 
-  const allSelected = pendingTxns.length > 0 && selectedCount === pendingTxns.length;
+  // "Select all" reflects (and only ever touches) the currently filtered
+  // view — selecting everything while a filter narrows the table shouldn't
+  // silently reach out and select rows you can't currently see.
+  const allFilteredSelected =
+    filteredTxns.length > 0 && filteredTxns.every((t) => rows[t._id as string]?.selected);
+
+  // What "Post N to books" is actually about to do, across every selected
+  // row regardless of filter/page — this is the confirm dialog's summary.
+  const postSummary = useMemo(() => {
+    let autoCount = 0;
+    let suspenseCount = 0;
+    let moneyIn = 0;
+    let moneyOut = 0;
+    for (const txn of pendingTxns) {
+      const row = rows[txn._id as string];
+      if (!row?.selected) continue;
+      if (row.accountId) autoCount += 1;
+      else suspenseCount += 1;
+      if (Number(txn.credit || 0) > 0) moneyIn += Number(txn.credit || 0);
+      else moneyOut += Number(txn.debit || 0);
+    }
+    return { autoCount, suspenseCount, moneyIn, moneyOut };
+  }, [pendingTxns, rows]);
 
   /**
    * The backend logs a "validate" entry recording how many rows reconcile
@@ -390,12 +481,70 @@ function BankingPageContent() {
   const toggleAll = (checked: boolean) => {
     setRows((prev) => {
       const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        next[key] = { ...next[key], selected: checked };
+      for (const txn of filteredTxns) {
+        const id = txn._id as string;
+        next[id] = { ...next[id], selected: checked };
       }
       return next;
     });
   };
+
+  const applyBulkAccount = () => {
+    if (!bulkAccountId || selectedCount === 0) return;
+    const targetAccount = categoryAccounts.find((a) => a._id === bulkAccountId);
+    setRows((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (next[key].selected) next[key] = { ...next[key], accountId: bulkAccountId };
+      }
+      return next;
+    });
+    toast.success(
+      `${selectedCount} transaction${selectedCount === 1 ? "" : "s"} set to ${
+        targetAccount?.name || "that account"
+      }`,
+    );
+  };
+
+  // Keyboard nav over the current page: j/↓ and k/↑ move a focus highlight,
+  // Space toggles that row, Enter opens its category picker. Skipped whenever
+  // focus is already inside an input/select/button, so typing in the search
+  // box (or using a Select the normal way) is never hijacked.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      const isTyping =
+        active instanceof HTMLElement &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.getAttribute("role") === "combobox" ||
+          active.closest('[data-slot="select-content"]'));
+      if (isTyping) return;
+      if (pagedTxns.length === 0) return;
+
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusedRowIndex((i) => Math.min(pagedTxns.length - 1, i + 1));
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocusedRowIndex((i) => Math.max(0, i === -1 ? 0 : i - 1));
+      } else if (e.key === " " && focusedRowIndex >= 0) {
+        e.preventDefault();
+        const txn = pagedTxns[focusedRowIndex];
+        const id = txn._id as string;
+        setRows((prev) => ({
+          ...prev,
+          [id]: { ...prev[id], selected: !prev[id]?.selected },
+        }));
+      } else if (e.key === "Enter" && focusedRowIndex >= 0) {
+        e.preventDefault();
+        const txn = pagedTxns[focusedRowIndex];
+        rowSelectTriggerRefs.current[txn._id as string]?.click();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [pagedTxns, focusedRowIndex]);
 
   const isProcessing =
     activeDoc?.processingStatus === "PROCESSING" ||
@@ -416,15 +565,26 @@ function BankingPageContent() {
         <PageHeader
           breadcrumb={<span className="text-sm font-medium">Banking</span>}
           actions={
-            <Link href="/batch-import?section=banking&type=Bank Statements&back=/banking">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-1.5 h-8 text-xs"
-              >
-                <FileUp className="h-3.5 w-3.5" /> Batch Import
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href="/banking/rules">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-1.5 h-8 text-xs"
+                >
+                  <Settings2 className="h-3.5 w-3.5" /> Categorization rules
+                </Button>
+              </Link>
+              <Link href="/batch-import?section=banking&type=Bank Statements&back=/banking">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-1.5 h-8 text-xs"
+                >
+                  <FileUp className="h-3.5 w-3.5" /> Batch Import
+                </Button>
+              </Link>
+            </div>
           }
         />
 
@@ -666,13 +826,97 @@ function BankingPageContent() {
                             </span>
                           </div>
 
+                          {/* ─── Search / filter / keyboard-shortcut hint ──── */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative min-w-[200px] flex-1">
+                              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search description…"
+                                className="h-8 pl-8 text-xs"
+                              />
+                            </div>
+                            <Select
+                              value={statusFilter}
+                              onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
+                            >
+                              <SelectTrigger className="h-8 w-44 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All transactions</SelectItem>
+                                <SelectItem value="auto">Auto-categorized</SelectItem>
+                                <SelectItem value="review">Needs review</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0 text-muted-foreground"
+                                  >
+                                    <Keyboard className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="max-w-[220px] text-xs">
+                                  <span className="font-mono">j</span>/<span className="font-mono">k</span> move
+                                  · <span className="font-mono">space</span> select ·{" "}
+                                  <span className="font-mono">enter</span> set category
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            {(searchQuery || statusFilter !== "all") && (
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {filteredTxns.length} of {pendingTxns.length}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* ─── Bulk-assign — apply one category to every selected row ── */}
+                          {selectedCount > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2.5 text-xs">
+                              <Wand2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="text-muted-foreground">
+                                Apply a category to all{" "}
+                                <span className="font-medium text-foreground">{selectedCount}</span>{" "}
+                                selected:
+                              </span>
+                              <div className="w-48">
+                                <Select value={bulkAccountId} onValueChange={setBulkAccountId}>
+                                  <SelectTrigger className="h-7 text-xs">
+                                    <SelectValue placeholder="Choose account" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {categoryAccounts.map((account) => (
+                                      <SelectItem key={account._id} value={account._id}>
+                                        {account.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="h-7 text-xs"
+                                disabled={!bulkAccountId}
+                                onClick={applyBulkAccount}
+                              >
+                                Apply
+                              </Button>
+                            </div>
+                          )}
+
                           <div className="overflow-x-auto">
                             <Table>
                               <TableHeader>
                                 <TableRow>
                                   <TableHead className="w-10">
                                     <Checkbox
-                                      checked={allSelected}
+                                      checked={allFilteredSelected}
                                       onCheckedChange={(v) => toggleAll(Boolean(v))}
                                       aria-label="Select all"
                                     />
@@ -684,14 +928,29 @@ function BankingPageContent() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {pagedTxns.map((txn) => {
+                                {pagedTxns.length === 0 && (
+                                  <TableRow>
+                                    <TableCell colSpan={5} className="py-10 text-center text-xs text-muted-foreground">
+                                      No transactions match &ldquo;{searchQuery}&rdquo;. Try a different search or
+                                      switch the filter back to All transactions.
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                                {pagedTxns.map((txn, index) => {
                                   const id = txn._id as string;
                                   const row = rows[id];
                                   const isMoneyIn = Number(txn.credit || 0) > 0;
                                   const amount = isMoneyIn ? txn.credit : txn.debit;
+                                  const isFocused = index === focusedRowIndex;
 
                                   return (
-                                    <TableRow key={id} className={cn(!row?.selected && "opacity-50")}>
+                                    <TableRow
+                                      key={id}
+                                      className={cn(
+                                        !row?.selected && "opacity-50",
+                                        isFocused && "bg-muted/70 outline outline-1 -outline-offset-1 outline-primary/40",
+                                      )}
+                                    >
                                       <TableCell>
                                         <Checkbox
                                           checked={row?.selected ?? false}
@@ -704,7 +963,7 @@ function BankingPageContent() {
                                               },
                                             }))
                                           }
-                                          aria-label="Select transaction"
+                                          aria-label={`Select transaction: ${txn.description || "untitled"}`}
                                         />
                                       </TableCell>
                                       <TableCell className="text-xs whitespace-nowrap">
@@ -748,7 +1007,13 @@ function BankingPageContent() {
                                                 }))
                                               }
                                             >
-                                              <SelectTrigger className="h-8 text-xs">
+                                              <SelectTrigger
+                                                ref={(el) => {
+                                                  rowSelectTriggerRefs.current[id] = el;
+                                                }}
+                                                className="h-8 text-xs"
+                                                aria-label={`Category for ${txn.description || "this transaction"}`}
+                                              >
                                                 <SelectValue />
                                               </SelectTrigger>
                                               <SelectContent>
@@ -810,19 +1075,19 @@ function BankingPageContent() {
                             </Table>
                           </div>
 
-                          {pendingTxns.length > pageSize && (
+                          {filteredTxns.length > pageSize && (
                             <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs text-muted-foreground">
                               <p>
                                 Showing{" "}
                                 <span className="font-medium text-foreground">
                                   {(page - 1) * pageSize + 1}–
-                                  {Math.min(page * pageSize, pendingTxns.length)}
+                                  {Math.min(page * pageSize, filteredTxns.length)}
                                 </span>{" "}
                                 of{" "}
                                 <span className="font-medium text-foreground">
-                                  {pendingTxns.length}
+                                  {filteredTxns.length}
                                 </span>{" "}
-                                pending
+                                {filteredTxns.length === pendingTxns.length ? "pending" : "matching"}
                               </p>
                               <div className="flex items-center gap-2">
                                 <label className="flex items-center gap-1.5">
@@ -881,7 +1146,7 @@ function BankingPageContent() {
                               )}
                             </p>
                             <Button
-                              onClick={onPost}
+                              onClick={() => setConfirmPostOpen(true)}
                               disabled={posting || selectedCount === 0 || !bankAccountId}
                               className="gap-1.5"
                             >
@@ -924,6 +1189,57 @@ function BankingPageContent() {
           )}
         </div>
       </SidebarInset>
+
+      <Dialog open={confirmPostOpen} onOpenChange={setConfirmPostOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Post {selectedCount} transaction{selectedCount === 1 ? "" : "s"} to your books?</DialogTitle>
+            <DialogDescription>
+              This creates real journal entries — you can still fix a category afterwards, but the
+              entries themselves aren&apos;t undone by leaving this page.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Categorized</span>
+              <span className="font-medium tabular-nums">{postSummary.autoCount}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Going to {SUSPENSE_LABEL}</span>
+              <span
+                className={cn(
+                  "font-medium tabular-nums",
+                  postSummary.suspenseCount > 0 && "text-amber-600 dark:text-amber-400",
+                )}
+              >
+                {postSummary.suspenseCount}
+              </span>
+            </div>
+            <div className="my-1 border-t" />
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Money in</span>
+              <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                +{formatAmount(postSummary.moneyIn)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Money out</span>
+              <span className="font-medium tabular-nums">-{formatAmount(postSummary.moneyOut)}</span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmPostOpen(false)} disabled={posting}>
+              Cancel
+            </Button>
+            <Button onClick={onPost} disabled={posting} className="gap-1.5">
+              {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {posting ? "Posting…" : "Confirm & post"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }
